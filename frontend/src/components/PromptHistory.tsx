@@ -1242,7 +1242,7 @@ const mapped: Prompt[] = (body.purchases || []).map((p: any) => {
     <div className="min-h-screen flex flex-col bg-[#07080A] text-white">
       <Header />
       <main className="flex-1">
-        <div className="mx-auto w-full max-w-[1280px] px-4 md:px-6 pt-20 md:pt-12 pb-20">
+        <div className="mx-auto w-full max-w-[1280px] px-4 md:px-6 pt-24 md:pt-28 lg:pt-32 pb-20">
           {/* Header */}
 
 

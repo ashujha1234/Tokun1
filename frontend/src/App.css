@@ -1,14 +1,14 @@
 /* =======================================================
-   Fonts (Inter + Gilroy) — from src/assets/Fonts/{inter,gilroy}
+   Fonts (Inter + Gilroy) — from public/fonts/{inter,gilroy}
    Keep woff2 first, then woff, then ttf as fallback.
    ======================================================= */
 
 /* -------- Inter -------- */
 @font-face {
   font-family: 'Inter';
-  src: url('./assets/Fonts/inter/Inter-Regular.woff2') format('woff2'),
-       url('./assets/Fonts/inter/Inter-Regular.woff') format('woff'),
-       url('./assets/Fonts/inter/Inter-Regular.ttf') format('truetype');
+  src: url('/fonts/inter/Inter-Regular.woff2') format('woff2'),
+       url('/fonts/inter/Inter-Regular.woff') format('woff'),
+       url('/fonts/inter/Inter-Regular.ttf') format('truetype');
   font-weight: 400; /* Regular */
   font-style: normal;
   font-display: swap;
@@ -16,10 +16,9 @@
 
 @font-face {
   font-family: 'Inter';
-  /* Use Inter-SemiBold if you have it. If not, rename these to Inter-Bold.* */
-  src: url('./assets/Fonts/inter/Inter-SemiBold.woff2') format('woff2'),
-       url('./assets/Fonts/inter/Inter-SemiBold.woff') format('woff'),
-       url('./assets/Fonts/inter/Inter-SemiBold.ttf') format('truetype');
+  src: url('/fonts/inter/Inter-SemiBold.woff2') format('woff2'),
+       url('/fonts/inter/Inter-SemiBold.woff') format('woff'),
+       url('/fonts/inter/Inter-SemiBold.ttf') format('truetype');
   font-weight: 600; /* SemiBold */
   font-style: normal;
   font-display: swap;
@@ -27,9 +26,9 @@
 
 @font-face {
   font-family: 'Inter';
-  src: url('./assets/Fonts/inter/Inter-Bold.woff2') format('woff2'),
-       url('./assets/Fonts/inter/Inter-Bold.woff') format('woff'),
-       url('./assets/Fonts/inter/Inter-Bold.ttf') format('truetype');
+  src: url('/fonts/inter/Inter-Bold.woff2') format('woff2'),
+       url('/fonts/inter/Inter-Bold.woff') format('woff'),
+       url('/fonts/inter/Inter-Bold.ttf') format('truetype');
   font-weight: 700; /* Bold */
   font-style: normal;
   font-display: swap;
@@ -38,9 +37,9 @@
 /* -------- Gilroy -------- */
 @font-face {
   font-family: 'Gilroy';
-  src: url('./assets/Fonts/gilroy/Gilroy-Regular.woff2') format('woff2'),
-       url('./assets/Fonts/gilroy/Gilroy-Regular.woff') format('woff'),
-       url('./assets/Fonts/gilroy/Gilroy-Regular.ttf') format('truetype');
+  src: url('/fonts/gilroy/Gilroy-Regular.woff2') format('woff2'),
+       url('/fonts/gilroy/Gilroy-Regular.woff') format('woff'),
+       url('/fonts/gilroy/Gilroy-Regular.ttf') format('truetype');
   font-weight: 400; /* Regular */
   font-style: normal;
   font-display: swap;
@@ -48,9 +47,9 @@
 
 @font-face {
   font-family: 'Gilroy';
-  src: url('./assets/Fonts/gilroy/Gilroy-Medium.woff2') format('woff2'),
-       url('./assets/Fonts/gilroy/Gilroy-Medium.woff') format('woff'),
-       url('./assets/Fonts/gilroy/Gilroy-Medium.ttf') format('truetype');
+  src: url('/fonts/gilroy/Gilroy-Medium.woff2') format('woff2'),
+       url('/fonts/gilroy/Gilroy-Medium.woff') format('woff'),
+       url('/fonts/gilroy/Gilroy-Medium.ttf') format('truetype');
   font-weight: 500; /* Medium */
   font-style: normal;
   font-display: swap;
@@ -58,9 +57,9 @@
 
 @font-face {
   font-family: 'Gilroy';
-  src: url('./assets/Fonts/gilroy/Gilroy-SemiBold.woff2') format('woff2'),
-       url('./assets/Fonts/gilroy/Gilroy-SemiBold.woff') format('woff'),
-       url('./assets/Fonts/gilroy/Gilroy-SemiBold.ttf') format('truetype');
+  src: url('/fonts/gilroy/Gilroy-SemiBold.woff2') format('woff2'),
+       url('/fonts/gilroy/Gilroy-SemiBold.woff') format('woff'),
+       url('/fonts/gilroy/Gilroy-SemiBold.ttf') format('truetype');
   font-weight: 600; /* SemiBold */
   font-style: normal;
   font-display: swap;
@@ -68,9 +67,9 @@
 
 @font-face {
   font-family: 'Gilroy';
-  src: url('./assets/Fonts/gilroy/Gilroy-Bold.woff2') format('woff2'),
-       url('./assets/Fonts/gilroy/Gilroy-Bold.woff') format('woff'),
-       url('./assets/Fonts/gilroy/Gilroy-Bold.ttf') format('truetype');
+  src: url('/fonts/gilroy/Gilroy-Bold.woff2') format('woff2'),
+       url('/fonts/gilroy/Gilroy-Bold.woff') format('woff'),
+       url('/fonts/gilroy/Gilroy-Bold.ttf') format('truetype');
   font-weight: 700; /* Bold */
   font-style: normal;
   font-display: swap;
@@ -89,19 +88,16 @@ html, body {
 .font-inter  { font-family: var(--font-inter) !important; }
 .font-gilroy { font-family: var(--font-gilroy) !important; }
 
-
 body {
   background-color: #030406 !important;
 }
 
-
 /* Hide scrollbar but keep scroll */
 .hide-scrollbar {
-  -ms-overflow-style: none;   /* IE & Edge */
-  scrollbar-width: none;      /* Firefox */
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 .hide-scrollbar::-webkit-scrollbar {
-  display: none;              /* Chrome, Safari */
+  display: none;
 }
-
