@@ -596,20 +596,18 @@ const generateDetailedPrompt = async () => {
          <div className="mx-auto w-full max-w-[1050px] rounded-[36px] bg-[#121213] overflow-visible px-2 md:px-0">
         <div className="flex justify-center px-4 pt-4 md:pt-6">
           <div className="relative w-full max-w-[1000px] min-h-[150px] md:h-[200px] rounded-[30px] bg-[#121213] border border-[#282829] text-white overflow-hidden">
-           <div className="h-full flex flex-col md:block">
-  <div className="flex-1 flex">
-    <div className="w-3 md:w-12" />
-    <div className="flex-1 pr-3 md:pr-14 pl-2 py-4">
-      <Textarea
-        value={userPrompt}
-        onChange={(e) => setUserPrompt(e.target.value)}
-        placeholder="Write a technical tutorial for beginners"
-        className="w-full min-h-[120px] md:h-full bg-transparent border-none resize-none text-white placeholder-white/70 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-base leading-relaxed"
-      />
-    </div>
-    <div className="w-3 md:w-12" />
-  </div>
-</div>
+            <div className="h-full flex">
+              <div className="w-12" />
+              <div className="flex-1 pr-14 pl-2 py-4">
+                <Textarea
+                  value={userPrompt}
+                  onChange={(e) => setUserPrompt(e.target.value)}
+                  placeholder="Write a technical tutorial for beginners"
+                  className="w-full h-full bg-transparent border-none resize-none text-white placeholder-white/70 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-base leading-relaxed"
+                />
+              </div>
+              <div className="w-12" />
+            </div>
 
             {/* Bottom-left: attachments */}
             <div className="absolute bottom-3 left-3">
@@ -750,10 +748,6 @@ const generateDetailedPrompt = async () => {
 </button>
 
 </div>
-
-
-
-
 
           </div>
         </div>

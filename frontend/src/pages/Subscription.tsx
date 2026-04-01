@@ -372,7 +372,7 @@ const startEnterprisePurchase = async () => {
       </div>
 
       {/* Cards */}
-<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-x-2 lg:gap-y-4 justify-items-center">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 justify-items-center">
 
         <PlanCard
           selected={selected === "Free"}

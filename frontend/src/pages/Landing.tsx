@@ -583,11 +583,11 @@ useEffect(() => {
 
       {/* Logo */}
       <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-       <img
-  src="/icons/Tokun.png"
-  alt="Tokun.ai Logo"
-  className="h-16 sm:h-20 md:h-24 lg:h-28 w-auto object-contain transition-transform duration-200 hover:scale-105"
-/>
+        <img
+          src="/icons/Tokun.png"
+          alt="Tokun.ai Logo"
+          className="h-12 sm:h-14 md:h-16 lg:h-20 w-auto object-contain transition-transform duration-200 hover:scale-105"
+        />
       </div>
 
       {/* Right Section */}
@@ -1500,97 +1500,104 @@ useEffect(() => {
       No testimonials yet — be the first to leave feedback!
     </div>
   ) : (
-   <div className="flex justify-center items-center gap-3 sm:gap-6 px-3 sm:px-0">
-  {/* LEFT BUTTON */}
-  <button
-    onClick={prevSlide}
-    className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full border border-white text-white transition-all shrink-0"
-  >
-    <MdKeyboardArrowDown size={20} className="rotate-90 sm:text-[22px]" />
-  </button>
+    <div className="flex justify-center items-center gap-6">
 
-  {/* SLIDER */}
-  <div className="relative w-full max-w-[560px] min-h-[320px] sm:h-[260px] overflow-hidden">
-    <AnimatePresence mode="wait">
-      <motion.div
-        key={current}
-        initial={{ opacity: 0, x: 120 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: -120 }}
-        transition={{ duration: 0.4 }}
-        className="absolute w-full"
+      {/* LEFT BUTTON */}
+      <button
+        onClick={prevSlide}
+        className="flex items-center justify-center w-12 h-12 rounded-full border border-white text-white transition-all"
       >
-        {(() => {
-          const t = feedbacks[current];
+        <MdKeyboardArrowDown size={22} className="rotate-90" />
+      </button>
 
-          return (
-            <div
-              key={t.id}
-              className="relative flex flex-col justify-between p-4 sm:p-6 text-left bg-transparent overflow-hidden w-full min-h-[320px] sm:h-[260px]"
-              style={{
-                border: "1px solid #333335",
-                borderRadius: 24,
-              }}
-            >
-              {/* glow */}
-              <div
-                className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 w-28 h-28 sm:w-40 sm:h-40 rounded-full pointer-events-none"
-                style={{
-                  background:
-                    "radial-gradient(circle at center, rgba(255,20,239,0.25) 0%, rgba(26,115,232,0.25) 100%)",
-                  filter: "blur(60px)",
-                }}
-              />
+      {/* SLIDER */}
+      <div className="relative w-[560px] h-[260px] overflow-hidden">
 
-              <div className="relative z-10 flex flex-col justify-between h-full">
-                {/* stars */}
-                <div className="flex mb-2">
-                  {Array.from({
-                    length: Math.max(1, Math.min(5, Number(t.rating) || 5)),
-                  }).map((_, i) => (
-                    <Star key={i} className="h-4 w-4 sm:h-5 sm:w-5 text-white fill-white" />
-                  ))}
-                </div>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={current}
+            initial={{ opacity: 0, x: 120 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -120 }}
+            transition={{ duration: 0.4 }}
+            className="absolute w-full"
+          >
+            {(() => {
+              const t = feedbacks[current];
 
-                {/* text */}
-                <p className="text-white/90 text-[13px] sm:text-[15px] leading-relaxed mb-4 break-words">
-                  "{t.experience}"
-                </p>
-
-                {/* user */}
-                <div className="flex items-center gap-3 mt-auto">
-                  <img
-                    src={t.avatar || svgInitialsAvatar(t.name || "User")}
-                    alt={t.name || "User"}
-                    className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover shrink-0"
+              return (
+                <div
+                  key={t.id}
+                  className="relative flex flex-col justify-between p-6 text-left bg-transparent overflow-hidden"
+                  style={{
+                    width: 560,
+                    height: 260,
+                    border: "1px solid #333335",
+                    borderRadius: 24,
+                  }}
+                >
+                  {/* glow */}
+                  <div
+                    className="absolute bottom-6 right-6 w-40 h-40 rounded-full pointer-events-none"
+                    style={{
+                      background:
+                        "radial-gradient(circle at center, rgba(255,20,239,0.25) 0%, rgba(26,115,232,0.25) 100%)",
+                      filter: "blur(60px)",
+                    }}
                   />
 
-                  <div className="min-w-0">
-                    <div className="font-semibold text-white text-sm sm:text-base truncate">
-                      {t.name || "Anonymous"}
+                  <div className="relative z-10 flex flex-col justify-between h-full">
+
+                    {/* stars */}
+                    <div className="flex mb-2">
+                      {Array.from({
+                        length: Math.max(1, Math.min(5, Number(t.rating) || 5)),
+                      }).map((_, i) => (
+                        <Star key={i} className="h-5 w-5 text-white fill-white" />
+                      ))}
                     </div>
 
-                    <div className="text-xs sm:text-sm text-white/60 break-words">
-                      {[t.role, t.org].filter(Boolean).join(" • ")}
+                    {/* text */}
+                    <p className="text-white/90 text-[15px] leading-relaxed mb-4">
+                      "{t.experience}"
+                    </p>
+
+                    {/* user */}
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={t.avatar || svgInitialsAvatar(t.name || "User")}
+                        alt={t.name || "User"}
+                        className="w-10 h-10 rounded-full object-cover"
+                      />
+
+                      <div>
+                        <div className="font-semibold text-white">
+                          {t.name || "Anonymous"}
+                        </div>
+
+                        <div className="text-sm text-white/60">
+                          {[t.role, t.org].filter(Boolean).join(" • ")}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          );
-        })()}
-      </motion.div>
-    </AnimatePresence>
-  </div>
+              );
+            })()}
+          </motion.div>
+        </AnimatePresence>
 
-  {/* RIGHT BUTTON */}
-  <button
-    onClick={nextSlide}
-    className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full border border-white text-white transition-all shrink-0"
-  >
-    <MdKeyboardArrowDown size={20} className="-rotate-90 sm:text-[22px]" />
-  </button>
-</div>
+      </div>
+
+      {/* RIGHT BUTTON */}
+      <button
+        onClick={nextSlide}
+        className="flex items-center justify-center w-12 h-12 rounded-full border border-white text-white transition-all"
+      >
+        <MdKeyboardArrowDown size={22} className="-rotate-90" />
+      </button>
+
+    </div>
   )}
 </div>
 

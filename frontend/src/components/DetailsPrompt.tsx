@@ -796,33 +796,22 @@ const isOwnPrompt =
             {/* Price + Buttons */}
               {/* Price + Buttons */}
 
-              <div
+   <div
   className="
     mt-8
-    flex flex-col md:flex-row
-    md:items-center md:justify-between
-    gap-4 md:gap-6
+    flex items-center justify-between
+    gap-6
+    flex-col md:flex-row
   "
 >
   <div className="text-[22px] font-semibold text-white shrink-0">
     ₹{prompt.price.toLocaleString()}
   </div>
 
-  <div className="w-full md:w-auto flex flex-col md:flex-row items-stretch md:items-center gap-3">
+  <div className="flex items-center gap-3 flex-wrap md:flex-nowrap">
     {/* Share */}
     <button
-      className="
-        w-full md:w-auto
-        h-10 sm:h-11
-        px-5 sm:px-6
-        rounded-[8px]
-        border border-white/10
-        bg-[#1C1C1E]
-        flex items-center justify-center gap-2
-        text-white text-[13px] sm:text-[14px]
-        hover:text-white hover:bg-[#2A2A2D]
-        transition-all whitespace-nowrap shrink-0
-      "
+      className="flex items-center justify-center gap-2 text-white text-[14px] hover:text-[#FF14EF] transition-all whitespace-nowrap shrink-0"
       onClick={() => setShowRequestModal(true)}
     >
       <RiShareForwardLine className="w-5 h-5" />
@@ -833,7 +822,7 @@ const isOwnPrompt =
     {!isOwnPrompt && (
       <button
         disabled={isTeamMember}
-        className={`w-full md:w-auto flex items-center justify-center gap-2 px-5 sm:px-8 h-10 sm:h-11 rounded-[8px] border border-white/10 text-white text-[13px] sm:text-[14px] transition-all whitespace-nowrap shrink-0 min-w-[120px] ${
+        className={`flex items-center justify-center gap-2 px-5 sm:px-8 h-10 sm:h-11 rounded-[8px] border border-white/10 text-white text-[13px] sm:text-[14px] transition-all whitespace-nowrap shrink-0 min-w-[120px] ${
           isTeamMember
             ? "opacity-50 cursor-not-allowed bg-[#1C1C1E]"
             : "bg-[#1C1C1E] hover:bg-gradient-to-r hover:from-[#5A3FFF] hover:to-[#FF14EF]"
@@ -849,7 +838,7 @@ const isOwnPrompt =
       <button
         disabled={isTeamMember}
         onClick={() => !isTeamMember && onPurchase?.(prompt)}
-        className={`w-full md:w-auto flex items-center justify-center px-6 sm:px-10 h-10 sm:h-11 rounded-[8px] font-medium text-white text-[13px] sm:text-[14px] transition-all whitespace-nowrap shrink-0 min-w-[140px] ${
+        className={`flex items-center justify-center px-6 sm:px-10 h-10 sm:h-11 rounded-[8px] font-medium text-white text-[13px] sm:text-[14px] transition-all whitespace-nowrap shrink-0 min-w-[140px] ${
           isTeamMember
             ? "opacity-50 cursor-not-allowed bg-gradient-to-r from-gray-600 to-gray-500"
             : "bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] hover:opacity-90"
@@ -859,9 +848,9 @@ const isOwnPrompt =
       </button>
     )}
 
-    {/* Own prompt */}
+    {/* Optional label for own prompt */}
     {isOwnPrompt && (
-      <div className="w-full md:w-auto px-5 h-10 sm:h-11 rounded-[8px] bg-[#2A2A2A] text-white/80 text-[13px] sm:text-[14px] flex items-center justify-center whitespace-nowrap min-w-[140px]">
+      <div className="px-5 h-10 sm:h-11 rounded-[8px] bg-[#2A2A2A] text-white/80 text-[13px] sm:text-[14px] flex items-center justify-center whitespace-nowrap min-w-[140px]">
         Your Prompt
       </div>
     )}

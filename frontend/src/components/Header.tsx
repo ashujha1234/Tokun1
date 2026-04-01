@@ -804,21 +804,21 @@ const fetchNotifications = async () => {
       if (nextUnread > prevUnread) {
         const latest = data.notifications.find((n: any) => !n.read);
 
-        // if (latest) {
-        //   setHeaderToast({
-        //     title: latest.promptId?.title || "New notification",
-        //     message: latest.message || "You have a new update",
-        //   });
+        if (latest) {
+          setHeaderToast({
+            title: latest.promptId?.title || "New notification",
+            message: latest.message || "You have a new update",
+          });
 
-        //   // auto hide after 5s
-        //   if (toastTimerRef.current) {
-        //     clearTimeout(toastTimerRef.current);
-        //   }
+          // auto hide after 5s
+          if (toastTimerRef.current) {
+            clearTimeout(toastTimerRef.current);
+          }
 
-        //   toastTimerRef.current = window.setTimeout(() => {
-        //     setHeaderToast(null);
-        //   }, 5000);
-        // }
+          toastTimerRef.current = window.setTimeout(() => {
+            setHeaderToast(null);
+          }, 5000);
+        }
       }
     }
   } catch (err) {
