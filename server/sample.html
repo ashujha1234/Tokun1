@@ -108,7 +108,7 @@
 
 
 
-
+<!-- 
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -169,6 +169,123 @@
           amount: Number(order.amount),
           currency: order.currency || "INR",
           name: "Your App Name",
+          description: "Prompt Purchase",
+          order_id: order.id,
+          handler: async function (response) {
+            console.log("Payment Success:", response);
+
+            try {
+              const verifyRes = await fetch(`${API_BASE}/api/purchase/verify/${promptId}`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": "Bearer " + token
+                },
+                body: JSON.stringify({
+                  razorpayPaymentId: response.razorpay_payment_id,
+                  razorpayOrderId: response.razorpay_order_id,
+                  razorpaySignature: response.razorpay_signature,
+                  pricePaid: order.amount / 100
+                })
+              });
+
+              const verifyData = await verifyRes.json();
+              alert(
+                verifyData.success
+                  ? "Payment recorded successfully!"
+                  : "Payment verification failed."
+              );
+              console.log("Verify Response:", verifyData);
+            } catch (verifyErr) {
+              console.error("Verification error:", verifyErr);
+              alert("Payment verification failed.");
+            }
+          },
+          prefill: {
+            name: "Test User",
+            email: "testuser@example.com",
+            contact: "9999999999"
+          },
+          notes: { promptId },
+          theme: { color: "#1c87c9" }
+        };
+
+        const rzp = new Razorpay(options);
+        rzp.open();
+
+        rzp.on("payment.failed", function (response) {
+          console.error("Payment failed:", response);
+          alert("Payment failed. Check console for details.");
+        });
+
+      } catch (err) {
+        console.error("Something went wrong:", err);
+        alert("Something went wrong. Check console for details.");
+      }
+    });
+  </script>
+</body>
+</html> -->
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Razorpay Test Checkout</title>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+<body>
+  <h2>Test Razorpay Payment</h2>
+
+  <label>
+    Prompt ID:
+    <input type="text" id="promptId" value="68e637f1dbd1ba1dc6c875d2" />
+  </label>
+  <br /><br />
+
+  <button id="payBtn">Pay Now</button>
+
+  <script>
+    const API_BASE = "https://azure-deploye.onrender.com";
+
+    const payBtn = document.getElementById("payBtn");
+
+    payBtn.addEventListener("click", async () => {
+      const promptId = document.getElementById("promptId").value.trim();
+      const token = "PUT_YOUR_VALID_JWT_HERE";
+
+      if (!promptId) {
+        alert("Enter a valid Prompt ID!");
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/api/purchase/create-order/${promptId}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + token
+          }
+        });
+
+        const data = await res.json();
+
+        if (!data.success || !data.order) {
+          alert("Error creating order: " + (data.error || "Unknown error"));
+          return;
+        }
+
+        const order = data.order;
+        console.log("Order from backend:", order.id);
+
+        const options = {
+          key: "rzp_test_aNNdd7yTcNuzYQ",
+          amount: Number(order.amount),
+          currency: order.currency || "INR",
+          name: "Tokun AI",
           description: "Prompt Purchase",
           order_id: order.id,
           handler: async function (response) {
