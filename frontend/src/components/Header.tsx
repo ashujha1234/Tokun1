@@ -19,7 +19,7 @@ import SellPromptModal from "@/components/SellPromptModal";
 import { User, Landmark, FileText, CreditCard ,X,Download,Trash, Check , Star,Bell,ChevronRight,AlertTriangle} from "lucide-react";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { ShoppingCart } from "lucide-react";
-import { useCart } from "@/contexts/cartContext";
+import { useCart } from "@/contexts/CartContext";
  import { Zap } from "lucide-react";
 import { Crown } from "lucide-react";
 import { MessageCircle } from "lucide-react";
