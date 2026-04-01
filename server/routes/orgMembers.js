@@ -1917,7 +1917,7 @@ function getISTDateString(d = new Date()) {
   return `${y}-${m}-${day}`;
 }
 const invitationTemplate = fs.readFileSync(
-  path.join(__dirname, "../htmlTemplate/TeamMemberInviteTemplate.html"),
+  path.join(__dirname, "../htmltemplate/TeamMemberInviteTemplate.html"),
   "utf-8"
 );
 const resendInvitationTemplate = fs.readFileSync(
