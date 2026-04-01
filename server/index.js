@@ -1923,19 +1923,26 @@ const app = express();
 // }));
 const allowedOrigins = [
   "http://localhost:5173",
+  "https://azure-deploye-lmct.vercel.app",
   process.env.FRONTEND_URL,
-].filter(Boolean);
+].filter(Boolean).map(o => o.replace(/\/$/, ""));
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    const cleanOrigin = (origin || "").replace(/\/$/, "");
+    if (!origin || allowedOrigins.includes(cleanOrigin)) {
       callback(null, true);
     } else {
-      callback(new Error("CORS not allowed"));
+      callback(new Error("CORS not allowed: " + origin));
     }
   },
   credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
 }));
+
+// Preflight ke liye ZAROORI
+app.options("*", cors());
 
 // server/index.js — top pe, app banane ke baad TURANT
 
@@ -2376,7 +2383,11 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: ["http://localhost:5173", "https://your-domain.com"],
+    origin: [
+      "http://localhost:5173",
+      "https://azure-deploye-lmct.vercel.app",
+      process.env.FRONTEND_URL,
+    ].filter(Boolean),
     methods: ["GET", "POST"],
     credentials: true,
   },
