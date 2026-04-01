@@ -1921,7 +1921,7 @@ const invitationTemplate = fs.readFileSync(
   "utf-8"
 );
 const resendInvitationTemplate = fs.readFileSync(
-  path.join(__dirname, "../htmlTemplate/TeamMemberResendInviteTemplate.html"),
+  path.join(__dirname, "../htmltemplate/TeamMemberResendInviteTemplate.html"),
   "utf-8"
 );
 // How much capacity is still assignable (not yet assigned to members)
