@@ -1,0 +1,321 @@
+<!-- <!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Billing Demo (Static)</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+      body { font-family: system-ui, Arial, sans-serif; padding: 16px; }
+      button { margin: 8px 0; padding: 10px 14px; }
+      pre { background:#f4f4f4; padding:10px; overflow:auto; }
+    </style>
+  </head>
+  <body>
+    <h3>Static Billing Demo</h3>
+    <p>All fields are hard-coded for demo.</p>
+
+    <div>
+      <button id="pay-individual">Pay Individual (Pro, Monthly)</button>
+      <button id="pay-org">Pay Organization (Enterprise, Yearly)</button>
+    </div>
+
+    <h4>Logs</h4>
+    <pre id="log"></pre>
+
+    <script>
+      // ====== CONFIG: set these for your environment ======
+      const BASE_URL = "https://tokunbackendcode-cjfvg7a6ekhddzcf.eastus-01.azurewebsites.net//api/plans/subscribe"; // your server base
+     
+      const JWT ="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2OGM4ZmMwMDBhNDExZTA3NDIwZWFiMzAiLCJlbWFpbCI6InJhamVzaDJAZ21haWwuY29tIiwibmFtZSI6IkthdnlhMTIzIiwidXNlclR5cGUiOiJJTkQiLCJyb2xlIjpudWxsLCJvcmdJZCI6bnVsbCwicGxhbiI6ImZyZWUiLCJpYXQiOjE3NTgwMDIxOTIsImV4cCI6MTc1ODYwNjk5Mn0.65H1_txOxlaT30PmQfoduIeK5GxruBbSeI_glLICVyQ";
+      
+      const ORG_ID = "REPLACE_WITH_ORG_ID";                 // org id for owner
+      // ====================================================
+
+      const logEl = document.getElementById('log');
+      function log(...args) {
+        const line = args.map(a => (typeof a === 'string' ? a : JSON.stringify(a, null, 2))).join(' ');
+        logEl.textContent += line + "\n";
+      }
+
+      async function createUserOrder() {
+        // Hard-coded: Pro, Monthly
+        const body = { planKey: "pro", billingCycle: "monthly" };
+        const res = await fetch(`${BASE_URL}/order/create/user`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${JWT}`,
+          },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        log("Create IND order response:", data);
+        if (!data.success) throw new Error(data.error || "order_failed");
+
+        if (data.free) {
+          // For free plans, your backend may say no payment needed
+          log("Free plan, no payment. Done.");
+          return null;
+        }
+        return data; // { success, order, key, paymentId }
+      }
+
+      async function createOrgOrder() {
+        // Hard-coded: Enterprise, Yearly
+        const body = { orgId: "68e64378e4375ab32d28a5ee", billingCycle: "monthly" ,planKey: "enterprise" };
+        const res = await fetch(`${BASE_URL}/order/create/org`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2OGU2NDM3ODRkMWYzNzY3YzAwYzhmOTAiLCJlbWFpbCI6Im9yZ2FuaXphdGlvbkBnbWFpbC5jb20iLCJuYW1lIjoib3JnYW5pemF0aW9uIiwiaWF0IjoxNzU5OTIxMTE0LCJleHAiOjE3NjA1MjU5MTR9.I0xGIH3XUV_UwNLb990-yiFGNXbvGAdwTEaDfeTDwa4`,   
+          
+          },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        log("Create ORG order response:", data);
+        if (!data.success) throw new Error(data.error || "order_failed");
+        return data; // { success, order, key, paymentId }
+      }
+
+      function openCheckout({ key, order }) {
+        return new Promise((resolve, reject) => {
+          const rzp = new Razorpay({
+            key,
+            order_id: order.id,
+            name: "Tokun.ai",
+            description: "Subscription Payment",
+            // you can prefill static details if you like:
+            prefill: {
+              name: "Static User",
+              email: "user@example.com",
+              contact: "9999999999",
+            },
+            notes: order.notes || {},
+            handler: function (response) {
+              // response = { razorpay_payment_id, razorpay_order_id, razorpay_signature }
+              log("Checkout success handler:", response);
+              resolve(response);
+            },
+            modal: {
+              ondismiss: function () {
+                reject(new Error("checkout_dismissed"));
+              }
+            }
+          });
+          rzp.open();
+        });
+      }
+
+      async function verifyPayment({ razorpay_payment_id, razorpay_order_id, razorpay_signature }) {
+        const res = await fetch(`${BASE_URL}/verify/verifypayment`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentId: razorpay_payment_id,
+            orderId: razorpay_order_id,
+            signature: razorpay_signature,
+          }),
+        });
+        const data = await res.json();
+        log("Verify response:", data);
+        if (!data.success) throw new Error(data.error || "verify_failed");
+        return data;
+      }
+
+      // ----- Button handlers -----
+      document.getElementById("pay-individual").onclick = async () => {
+        log("=== IND flow (Pro/Monthly) ===");
+        try {
+          const orderData = await createUserOrder();
+          if (!orderData) return; // free plan case
+
+          const checkoutRes = await openCheckout(orderData);
+          console.log(checkoutRes);
+          await verifyPayment(checkoutRes);
+
+          log("IND purchase complete ✅");
+        } catch (e) {
+          log("IND purchase failed ❌", e.message);
+        }
+      };
+
+      document.getElementById("pay-org").onclick = async () => {
+        log("=== ORG flow (Enterprise/Yearly) ===");
+        try {
+          const orderData = await createOrgOrder();
+          const checkoutRes = await openCheckout(orderData);
+          await verifyPayment(checkoutRes);
+          log("ORG purchase complete ✅");
+        } catch (e) {
+          log("ORG purchase failed ❌", e.message);
+        }
+      };
+    </script>
+  </body>
+</html> -->
+
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Billing Demo (Static)</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+      body { font-family: system-ui, Arial, sans-serif; padding: 16px; }
+      button { margin: 8px 0; padding: 10px 14px; }
+      pre { background:#f4f4f4; padding:10px; overflow:auto; }
+    </style>
+  </head>
+  <body>
+    <h3>Static Billing Demo</h3>
+    <p>All fields are hard-coded for demo.</p>
+
+    <div>
+      <button id="pay-individual">Pay Individual (Pro, Monthly)</button>
+      <button id="pay-org">Pay Organization (Enterprise, Yearly)</button>
+    </div>
+
+    <h4>Logs</h4>
+    <pre id="log"></pre>
+
+    <script>
+      const API_BASE = "http://localhost:5000";
+      const BASE_URL = `${API_BASE}/api/plans/subscribe`;
+
+      const JWT = localStorage.getItem("tokun_token") || "PUT_VALID_JWT_HERE";
+      const ORG_JWT = localStorage.getItem("tokun_org_token") || "PUT_VALID_ORG_JWT_HERE";
+
+      const logEl = document.getElementById("log");
+      function log(...args) {
+        const line = args.map(a => (typeof a === "string" ? a : JSON.stringify(a, null, 2))).join(" ");
+        logEl.textContent += line + "\n";
+      }
+
+      async function createUserOrder() {
+        const body = { planKey: "pro", billingCycle: "monthly" };
+
+        const res = await fetch(`${BASE_URL}/order/create/user`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${JWT}`,
+          },
+          body: JSON.stringify(body),
+        });
+
+        const data = await res.json();
+        log("Create IND order response:", data);
+
+        if (!data.success) throw new Error(data.error || "order_failed");
+
+        if (data.free) {
+          log("Free plan, no payment. Done.");
+          return null;
+        }
+
+        return data;
+      }
+
+      async function createOrgOrder() {
+        const body = {
+          orgId: "68e64378e4375ab32d28a5ee",
+          billingCycle: "monthly",
+          planKey: "enterprise"
+        };
+
+        const res = await fetch(`${BASE_URL}/order/create/org`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${ORG_JWT}`,
+          },
+          body: JSON.stringify(body),
+        });
+
+        const data = await res.json();
+        log("Create ORG order response:", data);
+
+        if (!data.success) throw new Error(data.error || "order_failed");
+        return data;
+      }
+
+      function openCheckout({ key, order }) {
+        return new Promise((resolve, reject) => {
+          const rzp = new Razorpay({
+            key,
+            order_id: order.id,
+            name: "Tokun.ai",
+            description: "Subscription Payment",
+            prefill: {
+              name: "Static User",
+              email: "user@example.com",
+              contact: "9999999999",
+            },
+            notes: order.notes || {},
+            handler: function (response) {
+              log("Checkout success handler:", response);
+              resolve(response);
+            },
+            modal: {
+              ondismiss: function () {
+                reject(new Error("checkout_dismissed"));
+              }
+            }
+          });
+
+          rzp.open();
+        });
+      }
+
+      async function verifyPayment({ razorpay_payment_id, razorpay_order_id, razorpay_signature }) {
+        const res = await fetch(`${BASE_URL}/verify/verifypayment`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            paymentId: razorpay_payment_id,
+            orderId: razorpay_order_id,
+            signature: razorpay_signature,
+          }),
+        });
+
+        const data = await res.json();
+        log("Verify response:", data);
+
+        if (!data.success) throw new Error(data.error || "verify_failed");
+        return data;
+      }
+
+      document.getElementById("pay-individual").onclick = async () => {
+        log("=== IND flow (Pro/Monthly) ===");
+        try {
+          const orderData = await createUserOrder();
+          if (!orderData) return;
+
+          const checkoutRes = await openCheckout(orderData);
+          await verifyPayment(checkoutRes);
+
+          log("IND purchase complete ✅");
+        } catch (e) {
+          log("IND purchase failed ❌", e.message);
+        }
+      };
+
+      document.getElementById("pay-org").onclick = async () => {
+        log("=== ORG flow (Enterprise/Yearly) ===");
+        try {
+          const orderData = await createOrgOrder();
+          const checkoutRes = await openCheckout(orderData);
+          await verifyPayment(checkoutRes);
+
+          log("ORG purchase complete ✅");
+        } catch (e) {
+          log("ORG purchase failed ❌", e.message);
+        }
+      };
+    </script>
+  </body>
+</html>

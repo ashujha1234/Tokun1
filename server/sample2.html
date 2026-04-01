@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Vanilla JS Data Grid</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- AG Grid Community (vanilla) CSS from CDN -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-grid.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-theme-quartz.css">
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; }
+    #myGrid { height: 420px; width: 100%; }
+  </style>
+</head>
+<body>
+  <h2>Customers</h2>
+  <div id="myGrid" class="ag-theme-quartz"></div>
+
+  <!-- AG Grid Community (vanilla) JS from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min.js"></script>
+  <script>
+    const rowData = [
+      { id: 1, name: "Shivani", age: 22, city: "Noida" },
+      { id: 2, name: "Prince",  age: 25, city: "Patna" },
+      { id: 3, name: "Amit",    age: 28, city: "Pune"  },
+    ];
+
+    const gridOptions = {
+      rowData,
+      columnDefs: [
+        { field: "id",   headerName: "ID",   maxWidth: 90, sortable: true },
+        { field: "name", headerName: "Name", filter: true, floatingFilter: true },
+        { field: "age",  headerName: "Age",  sortable: true },
+        { field: "city", headerName: "City", filter: true },
+      ],
+      defaultColDef: { resizable: true },
+      animateRows: true,
+    };
+
+    const eGridDiv = document.getElementById('myGrid');
+    agGrid.createGrid(eGridDiv, gridOptions);
+  </script>
+</body>
+</html>

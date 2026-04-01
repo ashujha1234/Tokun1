@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Invoice</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: Inter, Arial, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: #121212;
+      color: #fff;
+    }
+
+    .page {
+      width: 100%;
+      padding: 40px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .brand {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+.brand img {
+  width: 90px;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 0 6px rgba(255, 20, 239, 0.35));
+}
+    .brand h1 {
+      font-size: 26px;
+      margin: 0;
+    }
+
+    .subtitle {
+      font-size: 14px;
+      opacity: 0.8;
+    }
+
+    .meta {
+      text-align: right;
+      font-size: 13px;
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid #333;
+      margin: 30px 0;
+    }
+
+    .billing {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .billing h4 {
+      font-size: 12px;
+      opacity: 0.7;
+      margin-bottom: 8px;
+    }
+
+    .billing p {
+      margin: 4px 0;
+    }
+
+    .table-header {
+      margin-top: 40px;
+      background: linear-gradient(90deg, #ff14ef, #1a73e8);
+      padding: 14px;
+      display: grid;
+      grid-template-columns: 40px 1fr 120px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 40px 1fr 120px;
+      padding: 16px 14px;
+      border-bottom: 1px solid #333;
+    }
+
+    .row-title {
+      font-size: 14px;
+    }
+
+    .row-sub {
+      font-size: 12px;
+      opacity: 0.7;
+      margin-top: 4px;
+    }
+
+    .total {
+      margin-top: 40px;
+      text-align: right;
+    }
+
+    .total div {
+      margin: 8px 0;
+    }
+
+    .total strong {
+      font-size: 20px;
+    }
+
+    .footer {
+      margin-top: 60px;
+      padding: 20px;
+      background: linear-gradient(90deg, #ff14ef, #1a73e8);
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+
+    <div class="header">
+      <div class="brand">
+        <img src="{{LOGO}}" />
+        <div>
+          <h1>Invoice</h1>
+          <div class="subtitle">Buy/Purchase Prompt</div>
+        </div>
+      </div>
+
+      <div class="meta">
+        <div>Date: {{DATE}}</div>
+        <div>Invoice no: {{INVOICE_NO}}</div>
+      </div>
+    </div>
+
+    <hr />
+
+    <div class="billing">
+      <div>
+        <h4>FROM</h4>
+        <p>Tokun.ai</p>
+        <p>username@tokun.ai</p>
+      </div>
+
+      <div>
+        <h4>Bill to</h4>
+        <p style="color:#46e38a">{{BUYER_NAME}}</p>
+        <p>{{BUYER_EMAIL}}</p>
+      </div>
+    </div>
+
+    <div class="table-header">
+      <div>#</div>
+      <div>Product</div>
+      <div style="text-align:right">Total</div>
+    </div>
+
+    {{ROWS}}
+
+    <div class="total">
+      <div>Sub total (excl. GST): ₹{{SUBTOTAL}}</div>
+      <div><strong>Grand Total: ₹{{TOTAL}}</strong></div>
+    </div>
+
+    <div class="footer">
+      <div>
+        Thank you for doing business with us.<br />
+        Have a good day!
+      </div>
+      <div>
+        Contact:<br />
+        Tokun.ai<br />
+        username@email.com<br />
+        +234 803 234 5678
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

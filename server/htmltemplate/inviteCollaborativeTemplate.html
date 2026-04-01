@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tokun.ai Collaboration Invite</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: #000000;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+        Arial, sans-serif;
+    }
+
+    a {
+      color: #7bb2ff;
+    }
+
+    .page-wrapper {
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 40px 16px;
+      background: #000000;
+    }
+
+    .email-card {
+      max-width: 720px;
+      width: 100%;
+      margin: 0 auto;
+      text-align: left;
+    }
+
+    .logo-title {
+      text-align: center;
+      font-size: 28px;
+      font-weight: 600;
+      margin-bottom: 32px;
+      color: #ffffff;
+    }
+
+    .hero-banner {
+      background: linear-gradient(90deg, #ff3bff, #6534ff, #1aa8ff);
+      border-radius: 24px;
+      padding: 32px 32px;
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 26px;
+      line-height: 1.3;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-banner::before,
+    .hero-banner::after {
+      content: "";
+      position: absolute;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    .hero-banner::before {
+      width: 140px;
+      height: 140px;
+      top: -40px;
+      right: 40px;
+    }
+
+    .hero-banner::after {
+      width: 90px;
+      height: 90px;
+      bottom: -20px;
+      right: 90px;
+    }
+
+    .hero-text {
+      position: relative;
+      z-index: 1;
+    }
+
+    .body-section {
+      padding: 40px 8px 16px;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #ffffff;
+    }
+
+    .body-section p + p {
+      margin-top: 16px;
+    }
+
+    .cta-wrapper {
+      text-align: center;
+      padding: 24px 0 40px;
+    }
+
+    .cta-button {
+      display: inline-block;
+      padding: 14px 30px;
+      border-radius: 10px;
+      background: linear-gradient(90deg, #ff3bff, #1a8bff);
+      color: #ffffff;
+      text-decoration: none;
+      font-size: 16px;
+      font-weight: 600;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: #ffffff;
+    }
+
+    .muted-text {
+      color: #c7c7c7;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .divider {
+      margin: 32px 0 24px;
+      border-top: 1px solid #333333;
+    }
+
+    .social-row {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .social-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 999px;
+      border: 1px solid #555;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: #ffffff;
+      text-decoration: none;
+    }
+
+    .footer-text {
+      text-align: center;
+      font-size: 12px;
+      color: #777777;
+      line-height: 1.6;
+      padding: 0 8px;
+    }
+
+    .footer-links {
+      margin-top: 12px;
+    }
+
+    .footer-links a {
+      color: #7bb2ff;
+      text-decoration: none;
+      margin: 0 4px;
+      font-size: 12px;
+    }
+
+    @media (max-width: 600px) {
+      .hero-banner {
+        padding: 24px 20px;
+        font-size: 22px;
+      }
+
+      .body-section {
+        padding: 32px 4px 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page-wrapper">
+    <div class="email-card">
+      <!-- Logo / Brand name -->
+      <div class="logo-title">Tokun.ai</div>
+
+      <!-- Gradient hero banner -->
+      <div class="hero-banner">
+        <div class="hero-text">
+          Start prompt collaborating with<br />
+          your team on Tokun.ai
+        </div>
+      </div>
+
+      <!-- Main text body -->
+      <div class="body-section">
+        <p>Hi {{Name}},</p>
+        <p>{{SenderName}} has invited you to collaborate on the prompt:</p>
+      <!--  <p><strong>{{PromptTitle}}</strong></p>  -->
+      </div>
+
+      <!-- CTA button -->
+      <div class="cta-wrapper">
+        <a href="{{CollaborationLink}}" class="cta-button">Open Collaboration</a>
+      </div>
+
+      <!-- What's Tokun.ai section -->
+      <div class="body-section" style="padding-top: 0;">
+        <div class="section-title">What’s Tokun.ai?</div>
+        <p class="muted-text">
+          Tokun.ai is a powerful AI-driven collaboration and productivity platform that helps teams
+          work smarter, streamline workflows, and make data-driven decisions. From task automation to
+          real-time insights, Tokun.ai empowers your team to achieve more together.
+        </p>
+        <p class="muted-text">
+          You can learn more about Tokun.ai by <a href="#">exploring our features</a>.
+        </p>
+        <p class="muted-text" style="margin-top: 18px;">
+          Enjoy your journey with Tokun.ai!
+          <br /><br />
+          – The Tokun.ai Team
+        </p>
+      </div>
+
+      <!-- Divider -->
+      <div class="divider"></div>
+
+      <!-- Social icons -->
+      <div class="social-row">
+        <a href="#" class="social-icon">f</a>
+        <a href="#" class="social-icon">t</a>
+        <a href="#" class="social-icon">i</a>
+        <a href="#" class="social-icon">in</a>
+      </div>
+
+      <!-- Footer text -->
+      <div class="footer-text">
+        <p>
+          © 2025 Tokun.ai All rights reserved.
+        </p>
+        <p>
+          You are receiving this mail because you registered to join the TOKUN.AI platform as a user or a
+          creator. This also shows that you agree to our Terms of Use and Privacy Policies. If you no longer
+          want to receive mails from us, click the unsubscribe link below to unsubscribe.
+        </p>
+        <div class="footer-links">
+          <a href="#">Privacy policy</a>
+          •
+          <a href="#">Terms of service</a>
+          •
+          <a href="#">Help center</a>
+          •
+          <a href="#">Unsubscribe</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
