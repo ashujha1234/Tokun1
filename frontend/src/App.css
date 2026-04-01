@@ -1,14 +1,14 @@
 /* =======================================================
-   Fonts (Inter + Gilroy) — from public/fonts/{inter,gilroy}
+   Fonts (Inter + Gilroy) — from public/Fonts/{inter,gilroy}
    Keep woff2 first, then woff, then ttf as fallback.
    ======================================================= */
 
 /* -------- Inter -------- */
 @font-face {
   font-family: 'Inter';
-  src: url('/fonts/inter/Inter-Regular.woff2') format('woff2'),
-       url('/fonts/inter/Inter-Regular.woff') format('woff'),
-       url('/fonts/inter/Inter-Regular.ttf') format('truetype');
+  src: url('/Fonts/inter/Inter-Regular.woff2') format('woff2'),
+       url('/Fonts/inter/Inter-Regular.woff') format('woff'),
+       url('/Fonts/inter/Inter-Regular.ttf') format('truetype');
   font-weight: 400; /* Regular */
   font-style: normal;
   font-display: swap;
@@ -16,9 +16,9 @@
 
 @font-face {
   font-family: 'Inter';
-  src: url('/fonts/inter/Inter-SemiBold.woff2') format('woff2'),
-       url('/fonts/inter/Inter-SemiBold.woff') format('woff'),
-       url('/fonts/inter/Inter-SemiBold.ttf') format('truetype');
+  src: url('/Fonts/inter/Inter-SemiBold.woff2') format('woff2'),
+       url('/Fonts/inter/Inter-SemiBold.woff') format('woff'),
+       url('/Fonts/inter/Inter-SemiBold.ttf') format('truetype');
   font-weight: 600; /* SemiBold */
   font-style: normal;
   font-display: swap;
@@ -26,9 +26,9 @@
 
 @font-face {
   font-family: 'Inter';
-  src: url('/fonts/inter/Inter-Bold.woff2') format('woff2'),
-       url('/fonts/inter/Inter-Bold.woff') format('woff'),
-       url('/fonts/inter/Inter-Bold.ttf') format('truetype');
+  src: url('/Fonts/inter/Inter-Bold.woff2') format('woff2'),
+       url('/Fonts/inter/Inter-Bold.woff') format('woff'),
+       url('/Fonts/inter/Inter-Bold.ttf') format('truetype');
   font-weight: 700; /* Bold */
   font-style: normal;
   font-display: swap;
@@ -37,9 +37,9 @@
 /* -------- Gilroy -------- */
 @font-face {
   font-family: 'Gilroy';
-  src: url('/fonts/gilroy/Gilroy-Regular.woff2') format('woff2'),
-       url('/fonts/gilroy/Gilroy-Regular.woff') format('woff'),
-       url('/fonts/gilroy/Gilroy-Regular.ttf') format('truetype');
+  src: url('/Fonts/gilroy/Gilroy-Regular.woff2') format('woff2'),
+       url('/Fonts/gilroy/Gilroy-Regular.woff') format('woff'),
+       url('/Fonts/gilroy/Gilroy-Regular.ttf') format('truetype');
   font-weight: 400; /* Regular */
   font-style: normal;
   font-display: swap;
@@ -47,9 +47,9 @@
 
 @font-face {
   font-family: 'Gilroy';
-  src: url('/fonts/gilroy/Gilroy-Medium.woff2') format('woff2'),
-       url('/fonts/gilroy/Gilroy-Medium.woff') format('woff'),
-       url('/fonts/gilroy/Gilroy-Medium.ttf') format('truetype');
+  src: url('/Fonts/gilroy/Gilroy-Medium.woff2') format('woff2'),
+       url('/Fonts/gilroy/Gilroy-Medium.woff') format('woff'),
+       url('/Fonts/gilroy/Gilroy-Medium.ttf') format('truetype');
   font-weight: 500; /* Medium */
   font-style: normal;
   font-display: swap;
@@ -57,9 +57,9 @@
 
 @font-face {
   font-family: 'Gilroy';
-  src: url('/fonts/gilroy/Gilroy-SemiBold.woff2') format('woff2'),
-       url('/fonts/gilroy/Gilroy-SemiBold.woff') format('woff'),
-       url('/fonts/gilroy/Gilroy-SemiBold.ttf') format('truetype');
+  src: url('/Fonts/gilroy/Gilroy-SemiBold.woff2') format('woff2'),
+       url('/Fonts/gilroy/Gilroy-SemiBold.woff') format('woff'),
+       url('/Fonts/gilroy/Gilroy-SemiBold.ttf') format('truetype');
   font-weight: 600; /* SemiBold */
   font-style: normal;
   font-display: swap;
@@ -67,9 +67,9 @@
 
 @font-face {
   font-family: 'Gilroy';
-  src: url('/fonts/gilroy/Gilroy-Bold.woff2') format('woff2'),
-       url('/fonts/gilroy/Gilroy-Bold.woff') format('woff'),
-       url('/fonts/gilroy/Gilroy-Bold.ttf') format('truetype');
+  src: url('/Fonts/gilroy/Gilroy-Bold.woff2') format('woff2'),
+       url('/Fonts/gilroy/Gilroy-Bold.woff') format('woff'),
+       url('/Fonts/gilroy/Gilroy-Bold.ttf') format('truetype');
   font-weight: 700; /* Bold */
   font-style: normal;
   font-display: swap;
@@ -94,10 +94,10 @@ body {
 
 /* Hide scrollbar but keep scroll */
 .hide-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+  -ms-overflow-style: none;   /* IE & Edge */
+  scrollbar-width: none;      /* Firefox */
 }
 
 .hide-scrollbar::-webkit-scrollbar {
-  display: none;
+  display: none;              /* Chrome, Safari */
 }
