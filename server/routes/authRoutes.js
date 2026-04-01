@@ -486,55 +486,10 @@ if (user.orgId) {
 /* ----------------------- LOGIN (passwordless OTP) ----------------------- */
 
 // POST /api/auth/login/initiate -> send OTP only if verified account exists
-// router.post("/login/initiate", otpLimiter, async (req, res) => {
-//   try {
-//     const { email } = req.body;
-//     if (!email) return res.status(400).json({ success: false, error: "email_required" });
-
-//     const normalizedEmail = String(email).toLowerCase().trim();
-//     const user = await User.findOne({ email: normalizedEmail });
-
-//     if (!user) {
-//       return res.status(400).json({ success: false, error: "no_account_or_not_verified" });
-//     }
-
-//     const otp = gen4DigitOtp();
-//     user.otpHash = hashOTP(otp);
-//     user.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
-//     user.otpAttempts = 0;
-//     user.lockedUntil = null;
-//     await user.save();
-
-// await sendEmail({
-//   to: normalizedEmail,
-//   subject: "Your Tokun.ai login code",
-//   html: buildOtpEmailHtml({
-//     name: user.name,
-//     otp,
-//     siteUrl: process.env.SITE_URL || "https://tokun.ai",
-//   }),
-
-// });
-
-    
-
-//     return res.json({ success: true, message: "otp_sent_if_email_is_valid" , otp:otp });
-//   } catch (err) {
-//     console.error("login/initiate", err);
-//     return res.status(500).json({ success: false, error: "server_error" });
-//   }
-// });
-
-
-
-
-
 router.post("/login/initiate", otpLimiter, async (req, res) => {
   try {
-    const { email } = req.body || {};
-    if (!email) {
-      return res.status(400).json({ success: false, error: "email_required" });
-    }
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ success: false, error: "email_required" });
 
     const normalizedEmail = String(email).toLowerCase().trim();
     const user = await User.findOne({ email: normalizedEmail });
@@ -550,37 +505,25 @@ router.post("/login/initiate", otpLimiter, async (req, res) => {
     user.lockedUntil = null;
     await user.save();
 
-    // TEMP: email send disabled for testing
-    console.log("[LOGIN INITIATE TEST] OTP =", otp, "EMAIL =", normalizedEmail);
+await sendEmail({
+  to: normalizedEmail,
+  subject: "Your Tokun.ai login code",
+  html: buildOtpEmailHtml({
+    name: user.name,
+    otp,
+    siteUrl: process.env.SITE_URL || "https://tokun.ai",
+  }),
 
-    return res.json({
-      success: true,
-      message: "otp_generated_test_mode",
-      otp,
-    });
-  } catch (err) {
-    console.error("login/initiate TEST ERROR:", err);
-    return res.status(500).json({
-      success: false,
-      error: err?.message || "server_error",
-    });
-  }
 });
 
+    
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+    return res.json({ success: true, message: "otp_sent_if_email_is_valid" , otp:otp });
+  } catch (err) {
+    console.error("login/initiate", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
 
 // POST /api/auth/login/verify -> verify OTP and issue JWT
 router.post("/login/verify", async (req, res) => {
