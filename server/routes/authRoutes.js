@@ -1,7 +1,7 @@
 // routes/authRoutes.js
 const express = require("express");
 const crypto = require("crypto");
-const rateLimit = require("express-rate-limit");
+const {rateLimit , ipKeyGenerator }= require("express-rate-limit");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const { sendEmail } = require("../utils/SendEmail"); // ← make sure filename & path match exactly
@@ -17,15 +17,25 @@ const path = require("path");
 const router = express.Router();
 
 /* ----------------------- Shared helpers ----------------------- */
+// const otpLimiter = rateLimit({
+//   windowMs: 10 * 60 * 1000,
+//   max: 5,
+//   standardHeaders: true,
+//   legacyHeaders: false,
+//   keyGenerator: (req) => `${req.ip}:${(req.body.email || "").toLowerCase().trim()}`,
+//   message: { success: false, error: "too_many_requests" },
+// });
+
+
+
 const otpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => `${req.ip}:${(req.body.email || "").toLowerCase().trim()}`,
+  keyGenerator: (req) => {
+    return `${ipKeyGenerator(req)}:${(req.body.email || "").toLowerCase().trim()}`;
+  },
   message: { success: false, error: "too_many_requests" },
 });
-
 function gen4DigitOtp() {
   return String(Math.floor(1000 + Math.random() * 9000)); // 1000..9999
 }
