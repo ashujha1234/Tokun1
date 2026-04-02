@@ -267,7 +267,7 @@ if (userType === "ORG" && orgName && !user.orgId) {
 
 
 
-    Send OTP email
+    
     await sendEmail({
       to: normalizedEmail,
       subject: "Your Tokun.ai login code",
