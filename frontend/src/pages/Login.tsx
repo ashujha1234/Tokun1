@@ -488,6 +488,7 @@ console.log("[ENV] API_BASE =", API_BASE);
 const Login = () => {
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  
   const navigate = useNavigate();
 
   const handleRequestOtp = async (e: React.FormEvent) => {
@@ -528,6 +529,8 @@ const Login = () => {
 
       const navTo = `/verify-login?email=${encodeURIComponent(emailNorm)}`;
       console.log("[LOGIN] navigate →", navTo);
+      // ✅ handleRequestOtp mein — navigate se PEHLE add karo:
+
       navigate(navTo);
     } catch (err: any) {
       console.error("[LOGIN] error:", err);
@@ -592,56 +595,63 @@ const Login = () => {
           </Link>
 
           {/* Text */}
-          <div className="text-center px-2 mb-7">
-            <h1 className="text-[22px] leading-[1.3] font-normal text-white">
-              Please enter your email to receive OTP
-            </h1>
-          </div>
+         <div className="text-center px-2 mb-6">
+  <h1
+    className="text-[16px] sm:text-[18px] leading-[1.2] font-normal text-white whitespace-nowrap"
+    style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+  >
+    Please enter your email to receive OTP
+  </h1>
+</div>
 
           {/* Form */}
           <form onSubmit={handleRequestOtp} className="space-y-4">
             <div className="space-y-2">
-              <label htmlFor="email-mobile" className="text-[17px] text-white">
-                Email
-              </label>
+              <label
+  htmlFor="email-mobile"
+  className="text-[14px] sm:text-[15px] text-white"
+  style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+>
+  Email
+</label>
 
               <Input
-                id="email-mobile"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder="Enter email"
-                className="
-                  h-[72px] w-full rounded-[18px]
-                  bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)]
-                  border border-white/80
-                  text-white text-[18px]
-                  placeholder:text-white/45
-                  px-6
-                  focus-visible:ring-0 focus:border-white
-                "
-              />
+  id="email-mobile"
+  type="email"
+  autoComplete="email"
+  value={email}
+  onChange={(e) => setEmail(e.target.value)}
+  required
+  placeholder="Enter email"
+  className="
+    h-[56px] sm:h-[60px] w-full rounded-[16px]
+    bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)]
+    border border-white/80
+    text-white text-[15px] sm:text-[16px]
+    placeholder:text-white/45 placeholder:text-[14px]
+    px-5
+    focus-visible:ring-0 focus:border-white
+  "
+/>
             </div>
 
             <button
-              type="submit"
-              disabled={isLoading || !email}
-              className="
-                w-full h-[72px] rounded-[18px]
-                text-[22px] font-semibold text-white
-                disabled:opacity-50
-              "
-              style={{
-                background:
-                  "linear-gradient(90deg, #FF14EF 0%, #A855F7 50%, #1A73E8 100%)",
-                boxShadow:
-                  "0 0 22px rgba(255,20,239,0.28), 0 0 30px rgba(26,115,232,0.22)",
-              }}
-            >
-              {isLoading ? "Sending..." : "Request OTP"}
-            </button>
+  type="submit"
+  disabled={isLoading || !email}
+  className="
+    w-full h-[56px] sm:h-[60px] rounded-[16px]
+    text-[17px] sm:text-[18px] font-semibold text-white
+    disabled:opacity-50
+  "
+  style={{
+    background:
+      "linear-gradient(90deg, #FF14EF 0%, #A855F7 50%, #1A73E8 100%)",
+    boxShadow:
+      "0 0 22px rgba(255,20,239,0.28), 0 0 30px rgba(26,115,232,0.22)",
+  }}
+>
+  {isLoading ? "Sending..." : "Request OTP"}
+</button>
           </form>
 
           {/* Footer text */}

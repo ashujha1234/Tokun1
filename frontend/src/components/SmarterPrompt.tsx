@@ -12,7 +12,7 @@ import {
   Copy,
   Download,
   ExternalLink,
-  Paperclip,
+  
   Send,
   Sparkles,
   History
@@ -596,159 +596,135 @@ const generateDetailedPrompt = async () => {
          <div className="mx-auto w-full max-w-[1050px] rounded-[36px] bg-[#121213] overflow-visible px-2 md:px-0">
         <div className="flex justify-center px-4 pt-4 md:pt-6">
           <div className="relative w-full max-w-[1000px] min-h-[150px] md:h-[200px] rounded-[30px] bg-[#121213] border border-[#282829] text-white overflow-hidden">
-            <div className="h-full flex">
-              <div className="w-12" />
-              <div className="flex-1 pr-14 pl-2 py-4">
-                <Textarea
-                  value={userPrompt}
-                  onChange={(e) => setUserPrompt(e.target.value)}
-                  placeholder="Write a technical tutorial for beginners"
-                  className="w-full h-full bg-transparent border-none resize-none text-white placeholder-white/70 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-base leading-relaxed"
-                />
-              </div>
-              <div className="w-12" />
-            </div>
-
-            {/* Bottom-left: attachments */}
-            <div className="absolute bottom-3 left-3">
-              <input
-                type="file"
-                id="file-upload"
-                className="hidden"
-                multiple
-                onChange={(e) => {
-                  const selected = Array.from(e.target.files || []);
-                  setFiles(selected);
-                  console.log(
-                    "📎 Selected files:",
-                    selected.map((f) => ({
-                      name: f.name,
-                      size: f.size,
-                      type: f.type,
-                    }))
-                  );
-                  if (selected.length) {
-                    toast({
-                      title: "Files attached",
-                      description: `${selected.length} file(s) selected`,
-                    });
-                  }
-                }}
-              />
-              <label htmlFor="file-upload" className="cursor-pointer">
-                <div className="h-8 w-8 grid place-items-center rounded-full bg-white/10 text-white hover:bg-white/15">
-                  <Paperclip className="h-5 w-5" />
-                </div>
-              </label>
-            </div>
-
-            {/* Bottom-right controls (Clear, Mic, Generate) */}
-{/* Bottom-right controls (Mic, History, Clear*, Generate) */}
-<div className="absolute bottom-3 right-3 flex items-center gap-2 overflow-x-auto no-scrollbar">
-
-  {/* Mic */}
-  {speechSupported && (
-    <button
-      onClick={isListening ? stopListening : startListening}
-   className="relative h-8 w-8 md:h-9 md:w-9 rounded-full grid place-items-center flex-shrink-0 overflow-visible border border-[#333335] text-white transition-all duration-300"
-      style={{ background: "#2C2C2C" }}
-      onMouseEnter={(e) =>
-        (e.currentTarget.style.backgroundImage =
-          "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)")
-      }
-      onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundImage = "";
-        e.currentTarget.style.background = "#2C2C2C";
-      }}
-      title={isListening ? "Stop voice input" : "Start voice input"}
-      aria-label="Microphone"
-    >
-      {isListening && (
-        <>
-          <span
-            className="absolute inset-0 rounded-full opacity-60 animate-ping"
-            style={{ background: "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)" }}
-          />
-          <span
-            className="absolute inset-0 rounded-full opacity-40 animate-ping"
-            style={{ background: "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)", animationDelay: "0.4s" }}
-          />
-        </>
-      )}
-      <img
-        src="/icons/mic.png"
-        alt="Mic"
-        className={`h-4 w-4 ${isListening ? "animate-pulse" : ""}`}
+           <div className="h-full flex flex-col md:block">
+  <div className="flex-1 flex">
+    <div className="w-3 md:w-12" />
+    <div className="flex-1 pr-3 md:pr-14 pl-2 py-4">
+      <Textarea
+        value={userPrompt}
+        onChange={(e) => setUserPrompt(e.target.value)}
+        placeholder="Write a technical tutorial for beginners"
+        className="w-full min-h-[120px] md:h-full bg-transparent border-none resize-none text-white placeholder-white/70 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-[15px] md:text-base leading-relaxed placeholder:text-[13px] md:placeholder:text-base placeholder:leading-none placeholder:whitespace-nowrap"
       />
-    </button>
-  )}
-
-  {/* Prompt History (between Mic and Clear) */}
-  <button
-    onClick={goToSmartgenHistory}
-   className="h-8 md:h-9 px-3 rounded-full flex items-center gap-2 flex-shrink-0 border border-[#333335] text-white transition-all duration-300"
-    style={{ background: "#2C2C2C" }}
-    onMouseEnter={(e) =>
-      (e.currentTarget.style.backgroundImage =
-        "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)")
-    }
-    onMouseLeave={(e) => {
-      e.currentTarget.style.backgroundImage = "";
-      e.currentTarget.style.background = "#2C2C2C";
-    }}
-    title="Prompt history"
-    aria-label="Prompt history"
-  >
-    <History className="h-4 w-4" />
-    <span className="text-sm">Smartgen History</span>
-  </button>
-
-  {/* Clear — only visible AFTER detailed prompt is generated */}
-  {Boolean(detailedPrompt.trim()) && (
-    <button
-      onClick={() => clearPrompts()}
-      className="h-9 px-4 rounded-full flex items-center justify-center text-white text-sm border border-[#333335] transition-all duration-300"
-      style={{ background: "#2C2C2C" }}
-      onMouseEnter={(e) =>
-        (e.currentTarget.style.backgroundImage =
-          "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)")
-      }
-      onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundImage = "";
-        e.currentTarget.style.background = "#2C2C2C";
-      }}
-      title="Clear"
-      aria-label="Clear"
-    >
-      Clear
-    </button>
-  )}
-
-  {/* Generate — gradient on hover (not by default) */}
-<button
-  onClick={generateDetailedPrompt}
-  disabled={isGenerating || !userPrompt.trim()}
- className="h-9 px-4 md:w-[131px] md:h-[40px] flex items-center justify-center gap-2 flex-shrink-0
-             rounded-[8px]  py-[11.5px] 
-             text-white text-sm font-medium 
-             bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] 
-             transition-all duration-300 hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
->
-  {isGenerating ? "Generating..." : "Generate"}
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    className="h-4 w-4"
-    fill="none"
-    viewBox="0 0 24 24"
-    stroke="currentColor"
-    strokeWidth={2}
-  >
-    <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
-  </svg>
-</button>
-
+    </div>
+    <div className="w-3 md:w-12" />
+  </div>
 </div>
 
+           
+
+{/* Bottom-right controls (Mic, History, Clear*, Generate) */}
+<div className="absolute bottom-3 left-1/2 -translate-x-1/2 w-full px-3 md:left-auto md:right-3 md:translate-x-0 md:w-auto md:px-0">
+  <div className="flex items-center justify-center md:justify-end gap-2">
+
+    {/* Mic — hide after detailed prompt appears */}
+    {speechSupported && !Boolean(detailedPrompt.trim()) && (
+      <button
+        onClick={isListening ? stopListening : startListening}
+        className="relative h-8 w-8 md:h-9 md:w-9 rounded-full grid place-items-center flex-shrink-0 overflow-visible border border-[#333335] text-white transition-all duration-300"
+        style={{ background: "#2C2C2C" }}
+        onMouseEnter={(e) =>
+          (e.currentTarget.style.backgroundImage =
+            "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)")
+        }
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundImage = "";
+          e.currentTarget.style.background = "#2C2C2C";
+        }}
+        title={isListening ? "Stop voice input" : "Start voice input"}
+        aria-label="Microphone"
+      >
+        {isListening && (
+          <>
+            <span
+              className="absolute inset-0 rounded-full opacity-60 animate-ping"
+              style={{ background: "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)" }}
+            />
+            <span
+              className="absolute inset-0 rounded-full opacity-40 animate-ping"
+              style={{
+                background: "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)",
+                animationDelay: "0.4s",
+              }}
+            />
+          </>
+        )}
+        <img
+          src="/icons/mic.png"
+          alt="Mic"
+          className={`h-4 w-4 ${isListening ? "animate-pulse" : ""}`}
+        />
+      </button>
+    )}
+
+    {/* History */}
+    <button
+      onClick={goToSmartgenHistory}
+      className="h-8 md:h-9 px-3 rounded-full flex items-center justify-center gap-2 flex-shrink-0 border border-[#333335] text-white transition-all duration-300"
+      style={{ background: "#2C2C2C" }}
+      onMouseEnter={(e) =>
+        (e.currentTarget.style.backgroundImage =
+          "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)")
+      }
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundImage = "";
+        e.currentTarget.style.background = "#2C2C2C";
+      }}
+      title="Prompt history"
+      aria-label="Prompt history"
+    >
+      <History className="h-4 w-4" />
+      <span className="text-xs md:text-sm whitespace-nowrap">History</span>
+    </button>
+
+    {/* Clear */}
+    {Boolean(detailedPrompt.trim()) && (
+      <button
+        onClick={() => clearPrompts()}
+        className="h-8 md:h-9 px-3 rounded-full flex items-center justify-center text-white text-xs md:text-sm border border-[#333335] transition-all duration-300 flex-shrink-0"
+        style={{ background: "#2C2C2C" }}
+        onMouseEnter={(e) =>
+          (e.currentTarget.style.backgroundImage =
+            "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)")
+        }
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundImage = "";
+          e.currentTarget.style.background = "#2C2C2C";
+        }}
+        title="Clear"
+        aria-label="Clear"
+      >
+        Clear
+      </button>
+    )}
+
+    {/* Generate */}
+    <button
+      onClick={generateDetailedPrompt}
+      disabled={isGenerating || !userPrompt.trim()}
+      className={`flex items-center justify-center flex-shrink-0 rounded-[8px]
+        bg-gradient-to-r from-[#FF14EF] to-[#1A73E8]
+        transition-all duration-300 hover:opacity-90 active:scale-[0.98] disabled:opacity-50
+        ${
+          detailedPrompt.trim()
+            ? "h-8 px-3 gap-1.5 text-[12px] md:w-[120px] md:h-[38px] md:text-sm"
+            : "h-8 px-3 gap-1.5 text-[12px] md:w-[131px] md:h-[40px] md:text-sm"
+        }`}
+    >
+      {isGenerating ? "Generating..." : "Generate"}
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        className={`${detailedPrompt.trim() ? "h-3.5 w-3.5" : "h-3.5 w-3.5 md:h-4 md:w-4"}`}
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={2}
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
+      </svg>
+    </button>
+  </div>
+</div>
           </div>
         </div>
 

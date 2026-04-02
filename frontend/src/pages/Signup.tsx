@@ -1290,6 +1290,7 @@ const Signup = () => {
   const [businessEmail, setBusinessEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isIndividual, setIsIndividual] = useState(true);
+  const [devOtp, setDevOtp] = useState<string | null>(null);
   const { signup } = useAuth();
   const navigate = useNavigate();
 
@@ -1369,6 +1370,7 @@ const Signup = () => {
 
       if (data.otp) {
         console.log("%c[DEV ONLY] OTP:", "color:#34d399;font-weight:bold", data.otp);
+  
         toast({ title: "Dev OTP", description: `Code: ${data.otp}` });
       }
 
@@ -1428,7 +1430,7 @@ const Signup = () => {
       </aside>
 
       {/* Main */}
-      <main className="flex-1 lg:basis-[40%] min-h-screen relative overflow-hidden">
+          <main className="flex-1 lg:basis-[40%] min-h-screen relative overflow-hidden">
         {/* Mobile background */}
         <div className="lg:hidden absolute inset-0 bg-black" />
 
@@ -1442,9 +1444,9 @@ const Signup = () => {
               className="w-full h-auto object-cover pointer-events-none select-none"
             />
 
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <span
-                className="text-white text-[24px] sm:text-[28px] font-bold tracking-wide"
+                className="text-white text-[22px] sm:text-[26px] font-bold tracking-wide"
                 style={{
                   textShadow:
                     "0 0 18px rgba(0,0,0,0.65), 0 0 28px rgba(0,0,0,0.55)",
@@ -1456,20 +1458,27 @@ const Signup = () => {
           </div>
 
           {/* Back */}
-          <Link
+             <Link
             to="/"
-            className="inline-flex items-center gap-2 text-white/90 text-[18px] mb-8"
+            className="inline-flex items-center gap-2 text-white/90 text-[16px] mb-7"
+            style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
           >
-            <ArrowLeft className="w-6 h-6" />
+            <ArrowLeft className="w-5 h-5" />
             <span>Back</span>
           </Link>
 
           {/* Heading */}
-          <div className="text-center px-2 mb-6">
-            <h1 className="text-[22px] leading-[1.3] font-normal text-white">
+             <div className="text-center px-2 mb-5">
+            <h1
+              className="text-[20px] sm:text-[22px] leading-[1.2] font-normal text-white"
+              style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+            >
               Create your Tokun account
             </h1>
-            <p className="mt-2 text-[16px] text-white/90">
+            <p
+              className="mt-2 text-[14px] sm:text-[15px] text-white/90"
+              style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+            >
               Already have an account?{" "}
               <Link to="/login" className="text-[#2F80FF] font-medium">
                 Sign In
@@ -1478,12 +1487,12 @@ const Signup = () => {
           </div>
 
           {/* Toggle */}
-          <div className="grid grid-cols-2 gap-3 mb-6">
+          <div className="grid grid-cols-2 gap-3 mb-5">
             <button
               type="button"
               onClick={() => setIsIndividual(true)}
               aria-pressed={isIndividual}
-              className="h-[54px] rounded-[16px] text-white flex items-center justify-center gap-2.5 transition"
+              className="h-[48px] sm:h-[52px] rounded-[14px] text-white flex items-center justify-center gap-2 transition"
               style={{
                 background: isIndividual
                   ? "linear-gradient(90deg, #FF14EF 0%, #A855F7 50%, #1A73E8 100%)"
@@ -1491,15 +1500,15 @@ const Signup = () => {
                 border: isIndividual ? "none" : "1px solid rgba(255,255,255,0.12)",
               }}
             >
-              <User className="h-5 w-5" />
-              <span className="text-[15px] font-medium">Individual</span>
+              <User className="h-4 w-4 sm:h-5 sm:w-5" />
+              <span className="text-[14px] sm:text-[15px] font-medium">Individual</span>
             </button>
 
             <button
               type="button"
               onClick={() => setIsIndividual(false)}
               aria-pressed={!isIndividual}
-              className="h-[54px] rounded-[16px] text-white flex items-center justify-center gap-2.5 transition"
+              className="h-[48px] sm:h-[52px] rounded-[14px] text-white flex items-center justify-center gap-2 transition"
               style={{
                 background: !isIndividual
                   ? "linear-gradient(90deg, #FF14EF 0%, #A855F7 50%, #1A73E8 100%)"
@@ -1507,17 +1516,21 @@ const Signup = () => {
                 border: !isIndividual ? "none" : "1px solid rgba(255,255,255,0.12)",
               }}
             >
-              <Briefcase className="h-5 w-5" />
-              <span className="text-[15px] font-medium">Organization</span>
+              <Briefcase className="h-4 w-4 sm:h-5 sm:w-5" />
+              <span className="text-[14px] sm:text-[15px] font-medium">Organization</span>
             </button>
           </div>
 
           {/* Mobile form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4">
             {isIndividual ? (
               <>
                 <div className="space-y-2">
-                  <label htmlFor="name-mobile" className="text-[17px] text-white">
+                  <label
+                    htmlFor="name-mobile"
+                    className="text-[14px] sm:text-[15px] text-white"
+                    style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+                  >
                     Full Name
                   </label>
                   <Input
@@ -1529,19 +1542,23 @@ const Signup = () => {
                     required
                     placeholder="Enter full name"
                     className="
-                      h-[72px] w-full rounded-[18px]
+                      h-[56px] sm:h-[60px] w-full rounded-[16px]
                       bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)]
                       border border-white/80
-                      text-white text-[18px]
-                      placeholder:text-white/45
-                      px-6
+                      text-white text-[15px] sm:text-[16px]
+                      placeholder:text-white/45 placeholder:text-[14px]
+                      px-5
                       focus-visible:ring-0 focus:border-white
                     "
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <label htmlFor="email-mobile" className="text-[17px] text-white">
+                  <label
+                    htmlFor="email-mobile"
+                    className="text-[14px] sm:text-[15px] text-white"
+                    style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+                  >
                     Email
                   </label>
                   <Input
@@ -1553,12 +1570,12 @@ const Signup = () => {
                     required
                     placeholder="Enter email"
                     className="
-                      h-[72px] w-full rounded-[18px]
+                      h-[56px] sm:h-[60px] w-full rounded-[16px]
                       bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)]
                       border border-white/80
-                      text-white text-[18px]
-                      placeholder:text-white/45
-                      px-6
+                      text-white text-[15px] sm:text-[16px]
+                      placeholder:text-white/45 placeholder:text-[14px]
+                      px-5
                       focus-visible:ring-0 focus:border-white
                     "
                   />
@@ -1567,7 +1584,11 @@ const Signup = () => {
             ) : (
               <>
                 <div className="space-y-2">
-                  <label htmlFor="company-mobile" className="text-[17px] text-white">
+                  <label
+                    htmlFor="company-mobile"
+                    className="text-[14px] sm:text-[15px] text-white"
+                    style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+                  >
                     Company Name
                   </label>
                   <Input
@@ -1578,19 +1599,23 @@ const Signup = () => {
                     required
                     placeholder="Enter company name"
                     className="
-                      h-[72px] w-full rounded-[18px]
+                      h-[56px] sm:h-[60px] w-full rounded-[16px]
                       bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)]
                       border border-white/80
-                      text-white text-[18px]
-                      placeholder:text-white/45
-                      px-6
+                      text-white text-[15px] sm:text-[16px]
+                      placeholder:text-white/45 placeholder:text-[14px]
+                      px-5
                       focus-visible:ring-0 focus:border-white
                     "
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <label htmlFor="business-mobile" className="text-[17px] text-white">
+                  <label
+                    htmlFor="business-mobile"
+                    className="text-[14px] sm:text-[15px] text-white"
+                    style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+                  >
                     Business Email
                   </label>
                   <Input
@@ -1602,12 +1627,12 @@ const Signup = () => {
                     required
                     placeholder="Enter business email"
                     className="
-                      h-[72px] w-full rounded-[18px]
+                      h-[56px] sm:h-[60px] w-full rounded-[16px]
                       bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)]
                       border border-white/80
-                      text-white text-[18px]
-                      placeholder:text-white/45
-                      px-6
+                      text-white text-[15px] sm:text-[16px]
+                      placeholder:text-white/45 placeholder:text-[14px]
+                      px-5
                       focus-visible:ring-0 focus:border-white
                     "
                   />
@@ -1619,8 +1644,8 @@ const Signup = () => {
               type="submit"
               disabled={isLoading}
               className="
-                w-full h-[72px] rounded-[18px]
-                text-[22px] font-semibold text-white
+                w-full h-[56px] sm:h-[60px] rounded-[16px]
+                text-[17px] sm:text-[18px] font-semibold text-white
                 disabled:opacity-50
               "
               style={{
@@ -1632,9 +1657,11 @@ const Signup = () => {
               {isLoading ? "Creating..." : "Continue"}
             </Button>
           </form>
-
-          <div className="mt-8 text-center space-y-3">
-            <p className="text-[15px] text-white/90 leading-relaxed">
+           <div className="mt-7 text-center space-y-3">
+            <p
+              className="text-[14px] sm:text-[15px] text-white/90 leading-relaxed"
+              style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+            >
               Having trouble logging in? Contact us at
               <br />
               <a
@@ -1644,11 +1671,12 @@ const Signup = () => {
                 support@tokun.ai
               </a>
             </p>
-          </div>
+            </div>
+         
         </div>
 
         {/* Desktop layout */}
-        <div className="hidden lg:flex min-h-screen items-center justify-center px-5 sm:px-8 md:px-10">
+         <div className="hidden lg:flex min-h-screen items-center justify-center px-5 sm:px-8 md:px-10">
           <div className="w-full max-w-[520px]">
             <div className="mb-6">
               <Link to="/" className="inline-flex items-center gap-2 text-white/70 hover:text-white">
@@ -1657,7 +1685,7 @@ const Signup = () => {
               </Link>
             </div>
 
-            <h1 className="text-[36px] leading-[1] font-normal text-[#FFFFFF]">
+             <h1 className="text-[36px] leading-[1] font-normal text-[#FFFFFF]">
               Create Account
             </h1>
             <p className="mt-2 text-[20px] leading-[1] font-normal text-white">
@@ -1669,16 +1697,17 @@ const Signup = () => {
                 Sign In
               </Link>
             </p>
-
-            <div className="my-6 flex items-center gap-4">
+            
+               <div className="my-6 flex items-center gap-4">
               <div className="h-px flex-1 bg-[#282C42]" />
               <div className="h-[30px] w-[30px] rounded-full border border-[#282C42] text-[#FFFFFF] text-[12px] flex items-center justify-center">
                 OR
               </div>
               <div className="h-px flex-1 bg-[#282C42]" />
             </div>
+            
 
-            <form onSubmit={handleSubmit} className="space-y-6">
+               <form onSubmit={handleSubmit} className="space-y-6">
               <div className="mt-6 flex gap-4">
                 <button
                   type="button"

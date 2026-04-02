@@ -267,7 +267,7 @@ if (userType === "ORG" && orgName && !user.orgId) {
 
 
 
-    // Send OTP email
+    Send OTP email
     await sendEmail({
       to: normalizedEmail,
       subject: "Your Tokun.ai login code",
@@ -277,6 +277,31 @@ if (userType === "ORG" && orgName && !user.orgId) {
         siteUrl: process.env.SITE_URL || "https://tokun.ai",
       }),
     });
+
+
+
+
+// // ✅ USE REPLACE KARO:
+// try {
+//   await sendEmail({
+//     to: normalizedEmail,
+//     subject: "Your Tokun.ai login code",
+//     html: buildOtpEmailHtml({
+//       name: user.name,
+//       otp,
+//       siteUrl: process.env.SITE_URL || "https://tokun.ai",
+//     }),
+//   });
+// } catch (emailErr) {
+//   console.error("❌ Email failed (non-fatal):", emailErr?.message);
+// }
+
+
+
+
+
+
+
 
     // IMPORTANT: do not return the OTP in production
     return res.json({ success: true, message: "otp_sent_if_email_is_valid" ,otp: otp});
@@ -515,6 +540,31 @@ await sendEmail({
   }),
 
 });
+
+
+
+// // ✅ REPLACE KARO:
+// try {
+//   await sendEmail({
+//     to: normalizedEmail,
+//     subject: "Your Tokun.ai login code",
+//     html: buildOtpEmailHtml({
+//       name: user.name,
+//       otp,
+//       siteUrl: process.env.SITE_URL || "https://tokun.ai",
+//     }),
+//   });
+// } catch (emailErr) {
+//   console.error("❌ Email failed (non-fatal):", emailErr?.message);
+// }
+
+
+
+
+
+
+
+
 
     
 

@@ -65,30 +65,30 @@ useEffect(() => {
 
 <div className="mt-6 text-center">
   <h2
-    className="text-[22px] sm:text-[28px] lg:text-[32px] font-semibold text-white"
-    style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
-  >
-    What would you like to create today?
-  </h2>
+  className="text-[17px] sm:text-[22px] lg:text-[28px] font-semibold text-white leading-snug"
+  style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+>
+  What would you like to create today?
+</h2>
 </div>
  
         <div className="mt-4 flex justify-center">
           <AppNavigation />
         </div>
  
-        <div className="mt-8 text-center">
-          <h1 style={{ margin: 0 }}>
-            <span style={{ fontFamily: "Inter", fontWeight: 600, fontSize: 32, color: "#ffffff" }}>
-              Smartgen –
-            </span>
-            <span style={{ fontFamily: "Inter, ui-sans-serif, system-ui", fontWeight: 400, fontSize: 32, color: "#ffffff" }}>
-              {" "}Get detailed prompts{" "}
-            </span>
-            <span style={{ fontFamily: '"DM Serif Text"', fontWeight: 400, fontStyle: "italic", fontSize: 32, color: "#ffffff" }}>
-              for any topic.
-            </span>
-          </h1>
-        </div>
+       <div className="mt-8 text-center px-4">
+  <h1 className="m-0 leading-tight text-[20px] sm:text-[24px] lg:text-[32px]">
+    <span className="font-semibold text-white" style={{ fontFamily: "Inter" }}>
+      Smartgen –
+    </span>
+    <span className="text-white font-normal" style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}>
+      {" "}Get detailed prompts{" "}
+    </span>
+    <span className="text-white italic font-normal" style={{ fontFamily: '"DM Serif Text"' }}>
+      for any topic.
+    </span>
+  </h1>
+</div>
  
         <div className="mt-6">
           <SmarterPrompt

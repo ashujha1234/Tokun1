@@ -846,7 +846,8 @@ export default function VerifyLogin() {
   const [otp, setOtp] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(50);
-
+    // ✅ Top pe imports ke baad state add karo
+const [devOtp, setDevOtp] = useState<string | null>(null);
   useEffect(() => {
     if (!email) {
       toast({
@@ -857,6 +858,10 @@ export default function VerifyLogin() {
       navigate("/login", { replace: true });
     }
   }, [email, navigate]);
+
+
+
+
 
   useEffect(() => {
     if (secondsLeft <= 0) return;
@@ -1076,226 +1081,261 @@ export default function VerifyLogin() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-black text-white flex font-inter">
-      {/* Desktop left image */}
-      <aside className="hidden lg:block basis-[60%] relative" aria-hidden>
-        <img
-          src="/icons/signup.png"
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover"
-        />
-      </aside>
+  <div className="min-h-screen w-full bg-black text-white flex font-inter">
+    {/* Desktop left image */}
+    <aside className="hidden lg:block basis-[60%] relative" aria-hidden>
+      <img
+        src="/icons/signup.png"
+        alt=""
+        className="absolute inset-0 w-full h-full object-cover"
+      />
+    </aside>
 
-      {/* Main */}
-      <main className="flex-1 lg:basis-[40%] min-h-screen relative overflow-hidden">
-        {/* Mobile background */}
-        <div className="lg:hidden absolute inset-0 bg-black" />
+    {/* Main */}
+    <main className="flex-1 lg:basis-[40%] min-h-screen relative overflow-hidden">
+      {/* Mobile background */}
+      <div className="lg:hidden absolute inset-0 bg-black" />
 
-        {/* Mobile layout */}
-        <div className="lg:hidden relative z-10 min-h-screen px-6 pt-4 pb-8 flex flex-col">
-          {/* Top hero image */}
-          <div className="-mx-6 -mt-2 mb-4 relative">
-            <img
-              src="/icons/signup.png"
-              alt="Tokun AI"
-              className="w-full h-auto object-cover pointer-events-none select-none"
+      {/* Mobile layout */}
+      <div className="lg:hidden relative z-10 min-h-screen px-6 pt-4 pb-8 flex flex-col">
+        {/* Top hero image */}
+        <div className="-mx-6 -mt-2 mb-4 relative">
+          <img
+            src="/icons/signup.png"
+            alt="Tokun AI"
+            className="w-full h-auto object-cover pointer-events-none select-none"
+          />
+
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <span
+              className="text-white text-[22px] sm:text-[26px] font-bold tracking-wide"
+              style={{
+                textShadow:
+                  "0 0 18px rgba(0,0,0,0.65), 0 0 28px rgba(0,0,0,0.55)",
+              }}
+            >
+              TOKUN.AI
+            </span>
+          </div>
+        </div>
+
+        {/* Back */}
+        <Link
+          to="/login"
+          className="inline-flex items-center gap-2 text-white/90 text-[16px] mb-7"
+          style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+        >
+          <ArrowLeft className="w-5 h-5" />
+          <span>Back</span>
+        </Link>
+
+        {/* Text */}
+        <div className="text-center px-2 mb-6">
+          <h1
+            className="text-[16px] sm:text-[18px] leading-[1.3] font-normal text-white"
+            style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+          >
+            Please enter the OTP sent to
+            <br />
+            <span className="break-all">{email || "your@email.com"}</span>{" "}
+            <button
+              type="button"
+              onClick={() => navigate("/login")}
+              className="text-[#2F80FF] font-medium"
+            >
+              Change
+            </button>
+          </h1>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleLoginVerify} className="space-y-4">
+          <div className="space-y-2">
+            <label
+              htmlFor="otp-mobile"
+              className="text-[14px] sm:text-[15px] text-white"
+              style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+            >
+              OTP
+            </label>
+
+            {devOtp && (
+              <div className="mb-4 p-4 rounded-[16px] border border-yellow-500/40 bg-yellow-500/10 text-center">
+                <div className="text-[11px] text-yellow-300 mb-2 uppercase tracking-wide">
+                  Testing Mode — Your OTP
+                </div>
+                <div className="text-[28px] sm:text-[32px] font-bold text-yellow-300 tracking-[0.28em]">
+                  {devOtp}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOtp(devOtp);
+                    navigator.clipboard?.writeText(devOtp);
+                  }}
+                  className="mt-2 text-[11px] text-yellow-300/70 underline"
+                >
+                  Tap to auto-fill
+                </button>
+              </div>
+            )}
+
+            <Input
+              id="otp-mobile"
+              type="text"
+              inputMode="numeric"
+              maxLength={4}
+              value={otp}
+              onChange={(e) =>
+                setOtp(e.target.value.replace(/\D/g, "").slice(0, 4))
+              }
+              required
+              placeholder="Enter OTP"
+              className="
+                h-[56px] sm:h-[60px] w-full rounded-[16px]
+                bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)]
+                border border-white/80
+                text-white text-[18px] sm:text-[20px] tracking-[8px] text-center
+                placeholder:text-white/45 placeholder:tracking-normal placeholder:text-left placeholder:text-[14px]
+                px-5
+                focus-visible:ring-0 focus:border-white
+              "
             />
-
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <span
-                className="text-white text-[24px] sm:text-[28px] font-bold tracking-wide"
-                style={{
-                  textShadow:
-                    "0 0 18px rgba(0,0,0,0.65), 0 0 28px rgba(0,0,0,0.55)",
-                }}
-              >
-                TOKUN.AI
-              </span>
-            </div>
           </div>
 
-          {/* Back */}
-          <Link
-            to="/login"
-            className="inline-flex items-center gap-2 text-white/90 text-[18px] mb-8"
+          <Button
+            type="submit"
+            disabled={isLoading || otp.length !== 4}
+            className="
+              w-full h-[56px] sm:h-[60px] rounded-[16px]
+              text-[17px] sm:text-[18px] font-semibold text-white
+              disabled:opacity-50
+            "
+            style={{
+              background:
+                "linear-gradient(90deg, #FF14EF 0%, #A855F7 50%, #1A73E8 100%)",
+              boxShadow:
+                "0 0 22px rgba(255,20,239,0.28), 0 0 30px rgba(26,115,232,0.22)",
+            }}
           >
-            <ArrowLeft className="w-6 h-6" />
-            <span>Back</span>
-          </Link>
+            {isLoading ? "Verifying..." : "Verify"}
+          </Button>
+        </form>
 
-          {/* Text */}
-          <div className="text-center px-2 mb-7">
-            <h1 className="text-[22px] leading-[1.3] font-normal text-white">
-              Please enter the OTP sent to
-              <br />
-              <span className="break-all">{email || "your@email.com"}</span>{" "}
+        {/* Resend / support */}
+        <div className="mt-7 text-center space-y-3">
+          <p
+            className="text-[14px] sm:text-[15px] text-white/90 leading-relaxed"
+            style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+          >
+            Not received your code?{" "}
+            {secondsLeft > 0 ? (
+              <span className="text-[#2F80FF] font-medium">
+                {formatMMSS(secondsLeft)}
+              </span>
+            ) : (
               <button
                 type="button"
-                onClick={() => navigate("/login")}
+                onClick={handleResend}
                 className="text-[#2F80FF] font-medium"
               >
-                Change
+                Resend code
               </button>
-            </h1>
+            )}
+          </p>
+
+          <p
+            className="text-[14px] sm:text-[15px] text-white/90 leading-relaxed"
+            style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+          >
+            Having trouble logging in? Contact us at
+            <br />
+            <a
+              href="mailto:support@tokun.ai"
+              className="text-transparent bg-clip-text bg-gradient-to-r from-[#FF14EF] to-[#A855F7]"
+            >
+              support@tokun.ai
+            </a>
+          </p>
+        </div>
+      </div>
+
+      {/* Desktop layout */}
+      <div className="hidden lg:flex min-h-screen items-center justify-center px-5 sm:px-8 md:px-10">
+        <div className="w-full max-w-[520px]">
+          <div className="mb-6">
+            <Link
+              to="/login"
+              className="inline-flex items-center gap-2 text-white/70 hover:text-white"
+            >
+              <ChevronLeft className="h-4 w-4" /> Back
+            </Link>
           </div>
 
-          {/* Form */}
-          <form onSubmit={handleLoginVerify} className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="otp-mobile" className="text-[17px] text-white">
-                OTP
-              </label>
+          <p className="text-[16px] font-normal text-white">
+            Please enter the OTP sent to {email || "your email"}{" "}
+            <button
+              type="button"
+              onClick={() => navigate("/login")}
+              className="text-[#1EAEDB] underline underline-offset-4"
+            >
+              Change
+            </button>
+          </p>
 
-              <Input
-                id="otp-mobile"
-                type="text"
-                inputMode="numeric"
-                maxLength={4}
-                value={otp}
-                onChange={(e) =>
-                  setOtp(e.target.value.replace(/\D/g, "").slice(0, 4))
-                }
-                required
-                placeholder="Enter OTP"
-                className="
-                  h-[72px] w-full rounded-[18px]
-                  bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)]
-                  border border-white/80
-                  text-white text-[22px] tracking-[10px] text-center
-                  placeholder:text-white/45 placeholder:tracking-normal placeholder:text-left
-                  px-6
-                  focus-visible:ring-0 focus:border-white
-                "
-              />
-            </div>
-
+          <form onSubmit={handleLoginVerify} className="space-y-6 mt-4">
+            <Input
+              id="otp"
+              type="text"
+              inputMode="numeric"
+              maxLength={4}
+              value={otp}
+              onChange={(e) =>
+                setOtp(e.target.value.replace(/\D/g, "").slice(0, 4))
+              }
+              required
+              className="h-[50px] w-full md:w-[350px] rounded-[6px] bg-[#0F1520] border border-[#282C42] text-white text-center tracking-[8px]"
+            />
             <Button
               type="submit"
               disabled={isLoading || otp.length !== 4}
-              className="
-                w-full h-[72px] rounded-[18px]
-                text-[22px] font-semibold text-white
-                disabled:opacity-50
-              "
-              style={{
-                background:
-                  "linear-gradient(90deg, #FF14EF 0%, #A855F7 50%, #1A73E8 100%)",
-                boxShadow:
-                  "0 0 22px rgba(255,20,239,0.28), 0 0 30px rgba(26,115,232,0.22)",
-              }}
+              className="w-full md:w-[350px] h-[50px] rounded-[6px] text-[16px] text-white bg-gradient-to-r from-[#7D4DFF] via-[#A24BFF] to-[#FF2CC3]"
             >
               {isLoading ? "Verifying..." : "Verify"}
             </Button>
           </form>
 
-          {/* Resend / support */}
-          <div className="mt-9 text-center space-y-3">
-            <p className="text-[17px] text-white/90 leading-relaxed">
-              Not received your code?{" "}
-              {secondsLeft > 0 ? (
-                <span className="text-[#2F80FF] font-medium">
+          <div className="mt-4">
+            {secondsLeft > 0 ? (
+              <span>
+                Not received your code?{" "}
+                <span className="text-[#1EAEDB]">
                   {formatMMSS(secondsLeft)}
                 </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleResend}
-                  className="text-[#2F80FF] font-medium"
-                >
-                  Resend code
-                </button>
-              )}
-            </p>
-
-            <p className="text-[15px] text-white/90 leading-relaxed">
-              Having trouble logging in? Contact us at
-              <br />
-              <a
-                href="mailto:support@tokun.ai"
-                className="text-transparent bg-clip-text bg-gradient-to-r from-[#FF14EF] to-[#A855F7]"
-              >
-                support@tokun.ai
-              </a>
-            </p>
-          </div>
-        </div>
-
-        {/* Desktop layout */}
-        <div className="hidden lg:flex min-h-screen items-center justify-center px-5 sm:px-8 md:px-10">
-          <div className="w-full max-w-[520px]">
-            <div className="mb-6">
-              <Link
-                to="/login"
-                className="inline-flex items-center gap-2 text-white/70 hover:text-white"
-              >
-                <ChevronLeft className="h-4 w-4" /> Back
-              </Link>
-            </div>
-
-            <p className="text-[16px] font-normal text-white">
-              Please enter the OTP sent to {email || "your email"}{" "}
+              </span>
+            ) : (
               <button
                 type="button"
-                onClick={() => navigate("/login")}
-                className="text-[#1EAEDB] underline underline-offset-4"
+                onClick={handleResend}
+                className="text-[#1EAEDB] underline"
               >
-                Change
+                Resend code
               </button>
-            </p>
-
-            <form onSubmit={handleLoginVerify} className="space-y-6 mt-4">
-              <Input
-                id="otp"
-                type="text"
-                inputMode="numeric"
-                maxLength={4}
-                value={otp}
-                onChange={(e) =>
-                  setOtp(e.target.value.replace(/\D/g, "").slice(0, 4))
-                }
-                required
-                className="h-[50px] w-full md:w-[350px] rounded-[6px] bg-[#0F1520] border border-[#282C42] text-white text-center tracking-[8px]"
-              />
-              <Button
-                type="submit"
-                disabled={isLoading || otp.length !== 4}
-                className="w-full md:w-[350px] h-[50px] rounded-[6px] text-[16px] text-white bg-gradient-to-r from-[#7D4DFF] via-[#A24BFF] to-[#FF2CC3]"
-              >
-                {isLoading ? "Verifying..." : "Verify"}
-              </Button>
-            </form>
-
-            <div className="mt-4">
-              {secondsLeft > 0 ? (
-                <span>
-                  Not received your code?{" "}
-                  <span className="text-[#1EAEDB]">
-                    {formatMMSS(secondsLeft)}
-                  </span>
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleResend}
-                  className="text-[#1EAEDB] underline"
-                >
-                  Resend code
-                </button>
-              )}
-            </div>
-
-            <p className="mt-6 text-[16px]">
-              Having trouble logging in? Contact us at{" "}
-              <a
-                href="mailto:support@tokun.ai"
-                className="text-transparent bg-clip-text bg-gradient-to-r from-[#7D4DFF] via-[#A24BFF] to-[#FF2CC3] underline"
-              >
-                support@tokun.ai
-              </a>
-            </p>
+            )}
           </div>
+
+          <p className="mt-6 text-[16px]">
+            Having trouble logging in? Contact us at{" "}
+            <a
+              href="mailto:support@tokun.ai"
+              className="text-transparent bg-clip-text bg-gradient-to-r from-[#7D4DFF] via-[#A24BFF] to-[#FF2CC3] underline"
+            >
+              support@tokun.ai
+            </a>
+          </p>
         </div>
-      </main>
-    </div>
-  );
+      </div>
+    </main>
+  </div>
+);
 }
