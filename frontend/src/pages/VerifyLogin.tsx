@@ -1097,168 +1097,189 @@ const [devOtp, setDevOtp] = useState<string | null>(null);
       <div className="lg:hidden absolute inset-0 bg-black" />
 
       {/* Mobile layout */}
-      <div className="lg:hidden relative z-10 min-h-screen px-6 pt-4 pb-8 flex flex-col">
-        {/* Top hero image */}
-        <div className="-mx-6 -mt-2 mb-4 relative">
-          <img
-            src="/icons/signup.png"
-            alt="Tokun AI"
-            className="w-full h-auto object-cover pointer-events-none select-none"
-          />
+      {/* Mobile layout */}
+<div className="lg:hidden relative z-10 min-h-screen px-6 pt-4 pb-8 flex flex-col">
 
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <span
-              className="text-white text-[22px] sm:text-[26px] font-bold tracking-wide"
-              style={{
-                textShadow:
-                  "0 0 18px rgba(0,0,0,0.65), 0 0 28px rgba(0,0,0,0.55)",
-              }}
-            >
-              TOKUN.AI
-            </span>
-          </div>
-        </div>
+  <style>{`
+    @keyframes spin-ring {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes spin-img {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+  `}</style>
 
-        {/* Back */}
-        <Link
-          to="/login"
-          className="inline-flex items-center gap-2 text-white/90 text-[16px] mb-7"
-          style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
-        >
-          <ArrowLeft className="w-5 h-5" />
-          <span>Back</span>
-        </Link>
-
-        {/* Text */}
-        <div className="text-center px-2 mb-6">
-          <h1
-            className="text-[16px] sm:text-[18px] leading-[1.3] font-normal text-white"
-            style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
-          >
-            Please enter the OTP sent to
-            <br />
-            <span className="break-all">{email || "your@email.com"}</span>{" "}
-            <button
-              type="button"
-              onClick={() => navigate("/login")}
-              className="text-[#2F80FF] font-medium"
-            >
-              Change
-            </button>
-          </h1>
-        </div>
-
-        {/* Form */}
-        <form onSubmit={handleLoginVerify} className="space-y-4">
-          <div className="space-y-2">
-            <label
-              htmlFor="otp-mobile"
-              className="text-[14px] sm:text-[15px] text-white"
-              style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
-            >
-              OTP
-            </label>
-
-            {devOtp && (
-              <div className="mb-4 p-4 rounded-[16px] border border-yellow-500/40 bg-yellow-500/10 text-center">
-                <div className="text-[11px] text-yellow-300 mb-2 uppercase tracking-wide">
-                  Testing Mode — Your OTP
-                </div>
-                <div className="text-[28px] sm:text-[32px] font-bold text-yellow-300 tracking-[0.28em]">
-                  {devOtp}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOtp(devOtp);
-                    navigator.clipboard?.writeText(devOtp);
-                  }}
-                  className="mt-2 text-[11px] text-yellow-300/70 underline"
-                >
-                  Tap to auto-fill
-                </button>
-              </div>
-            )}
-
-            <Input
-              id="otp-mobile"
-              type="text"
-              inputMode="numeric"
-              maxLength={4}
-              value={otp}
-              onChange={(e) =>
-                setOtp(e.target.value.replace(/\D/g, "").slice(0, 4))
-              }
-              required
-              placeholder="Enter OTP"
-              className="
-                h-[56px] sm:h-[60px] w-full rounded-[16px]
-                bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)]
-                border border-white/80
-                text-white text-[18px] sm:text-[20px] tracking-[8px] text-center
-                placeholder:text-white/45 placeholder:tracking-normal placeholder:text-left placeholder:text-[14px]
-                px-5
-                focus-visible:ring-0 focus:border-white
-              "
-            />
-          </div>
-
-          <Button
-            type="submit"
-            disabled={isLoading || otp.length !== 4}
-            className="
-              w-full h-[56px] sm:h-[60px] rounded-[16px]
-              text-[17px] sm:text-[18px] font-semibold text-white
-              disabled:opacity-50
-            "
-            style={{
-              background:
-                "linear-gradient(90deg, #FF14EF 0%, #A855F7 50%, #1A73E8 100%)",
-              boxShadow:
-                "0 0 22px rgba(255,20,239,0.28), 0 0 30px rgba(26,115,232,0.22)",
-            }}
-          >
-            {isLoading ? "Verifying..." : "Verify"}
-          </Button>
-        </form>
-
-        {/* Resend / support */}
-        <div className="mt-7 text-center space-y-3">
-          <p
-            className="text-[14px] sm:text-[15px] text-white/90 leading-relaxed"
-            style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
-          >
-            Not received your code?{" "}
-            {secondsLeft > 0 ? (
-              <span className="text-[#2F80FF] font-medium">
-                {formatMMSS(secondsLeft)}
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={handleResend}
-                className="text-[#2F80FF] font-medium"
-              >
-                Resend code
-              </button>
-            )}
-          </p>
-
-          <p
-            className="text-[14px] sm:text-[15px] text-white/90 leading-relaxed"
-            style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
-          >
-            Having trouble logging in? Contact us at
-            <br />
-            <a
-              href="mailto:support@tokun.ai"
-              className="text-transparent bg-clip-text bg-gradient-to-r from-[#FF14EF] to-[#A855F7]"
-            >
-              support@tokun.ai
-            </a>
-          </p>
-        </div>
+  {/* Revolving image */}
+  <div className="flex justify-center mb-5 mt-10">
+    <div className="relative w-28 h-28">
+      {/* Outer conic ring */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          borderRadius: "9999px",
+          background: "conic-gradient(from 0deg, #FF14EF, #A855F7, #1A73E8, #FF14EF)",
+          animation: "spin-ring 4s linear infinite",
+          padding: 3,
+        }}
+      >
+        <div style={{ width: "100%", height: "100%", borderRadius: "9999px", background: "#000" }} />
       </div>
+      {/* Image */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 4,
+          borderRadius: "9999px",
+          overflow: "hidden",
+          animation: "spin-img 8s linear infinite",
+        }}
+      >
+        <img
+          src="/icons/signup.png"
+          alt="Tokun AI"
+          className="w-full h-full object-cover pointer-events-none select-none"
+        />
+      </div>
+      {/* Glow */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          borderRadius: "9999px",
+          pointerEvents: "none",
+          boxShadow: "0 0 32px rgba(255,20,239,0.45), 0 0 60px rgba(26,115,232,0.3)",
+        }}
+      />
+    </div>
+  </div>
+
+  {/* Back */}
+  <Link
+    to="/login"
+    className="inline-flex items-center gap-2 text-white/90 text-[16px] mb-4"
+    style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+  >
+    <ArrowLeft className="w-5 h-5" />
+    <span>Back</span>
+  </Link>
+
+  {/* Text */}
+  <div className="text-center px-2 mb-6">
+    <h1
+      className="text-[16px] sm:text-[18px] leading-[1.3] font-normal text-white"
+      style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+    >
+      Please enter the OTP sent to
+      <br />
+      <span className="break-all">{email || "your@email.com"}</span>{" "}
+      <button
+        type="button"
+        onClick={() => navigate("/login")}
+        className="text-[#2F80FF] font-medium"
+      >
+        Change
+      </button>
+    </h1>
+  </div>
+
+  {/* Form */}
+  <form onSubmit={handleLoginVerify} className="space-y-4">
+    <div className="space-y-2">
+      <label
+        htmlFor="otp-mobile"
+        className="text-[14px] sm:text-[15px] text-white"
+        style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+      >
+        OTP
+      </label>
+
+      {devOtp && (
+        <div className="mb-4 p-4 rounded-[16px] border border-yellow-500/40 bg-yellow-500/10 text-center">
+          <div className="text-[11px] text-yellow-300 mb-2 uppercase tracking-wide">
+            Testing Mode — Your OTP
+          </div>
+          <div className="text-[28px] sm:text-[32px] font-bold text-yellow-300 tracking-[0.28em]">
+            {devOtp}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setOtp(devOtp);
+              navigator.clipboard?.writeText(devOtp);
+            }}
+            className="mt-2 text-[11px] text-yellow-300/70 underline"
+          >
+            Tap to auto-fill
+          </button>
+        </div>
+      )}
+
+      <Input
+        id="otp-mobile"
+        type="text"
+        inputMode="numeric"
+        maxLength={4}
+        value={otp}
+        onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 4))}
+        required
+        placeholder="Enter OTP"
+        className="h-[44px] w-full rounded-[12px] bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)] border border-white/20 text-white text-[18px] tracking-[8px] text-center placeholder:text-white/30 placeholder:tracking-normal placeholder:text-[13px] px-4 focus-visible:ring-0 focus:border-white/50"
+      />
+    </div>
+
+    <Button
+      type="submit"
+      disabled={isLoading || otp.length !== 4}
+      className="w-full h-[44px] rounded-[12px] text-[14px] font-semibold text-white disabled:opacity-50 mt-2"
+      style={{
+        background: "linear-gradient(90deg, #FF14EF 0%, #A855F7 50%, #1A73E8 100%)",
+      }}
+    >
+      {isLoading ? "Verifying..." : "Verify"}
+    </Button>
+  </form>
+
+  {/* Resend / support */}
+  <div className="mt-7 text-center space-y-3">
+    <p
+      className="text-[14px] sm:text-[15px] text-white/90 leading-relaxed"
+      style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+    >
+      Not received your code?{" "}
+      {secondsLeft > 0 ? (
+        <span className="text-[#2F80FF] font-medium">
+          {formatMMSS(secondsLeft)}
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={handleResend}
+          className="text-[#2F80FF] font-medium"
+        >
+          Resend code
+        </button>
+      )}
+    </p>
+
+    <p
+      className="text-[14px] sm:text-[15px] text-white/90 leading-relaxed"
+      style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+    >
+      Having trouble logging in? Contact us at
+      <br />
+      
+       <a href="mailto:support@tokun.ai"
+        className="text-transparent bg-clip-text bg-gradient-to-r from-[#FF14EF] to-[#A855F7]"
+      >
+        support@tokun.ai
+      </a>
+    </p>
+  </div>
+
+</div>
 
       {/* Desktop layout */}
       <div className="hidden lg:flex min-h-screen items-center justify-center px-5 sm:px-8 md:px-10">

@@ -806,7 +806,7 @@ const startCollaboration = async (): Promise<string | null> => {
 
 
   return (
-    <div className="space-y-4">
+   <div className="w-full space-y-4">
       <div className="mb-3 flex justify-center sm:justify-start">
   <LLMSelector />
 </div>
@@ -846,98 +846,94 @@ const startCollaboration = async (): Promise<string | null> => {
             </span>
           </div>
 
-           <div className="flex flex-wrap sm:flex-nowrap justify-center sm:justify-end gap-3 w-full">
-            <Button
-              variant="outline"
-              className="rounded-2xl min-w-[140px] bg-#252525/40 border-white/10 text-white"
-              onClick={goToOptimizerHistory}
-              title="View your saved optimizations"
-            >
-              <History className="h-4 w-4 mr-2" />
-              Prompt History
-            </Button>
+          <div className="flex flex-wrap sm:flex-nowrap justify-center sm:justify-end gap-3 w-full">
+  <Button
+    variant="outline"
+    className="rounded-2xl w-[140px] h-[40px] bg-#252525/40 border-white/10 text-white"
+    onClick={goToOptimizerHistory}
+    title="View your saved optimizations"
+  >
+    <History className="h-4 w-4 mr-2" />
+    History
+  </Button>
 
-            {/* ✅ Show Clear button only when optimized prompt exists */}
-            {optimizationOption && (
-              <Button
-                onClick={() => {
-                  clearOptimizer(); // clears both state + sessionStorage
-                  setText("");
-                  setOptimizationOption(null);
-                  setOptimizerDocId(null);
-                  setHasCleared(true);     
-                  setLastUsage(undefined);
-                  onOptimize("", 0, 0, [], undefined);
-                  localStorage.removeItem("optimizerInput"); // ✅ clear saved prompt
-                  countTokens(""); // reset token/word count
-                }}
-                className="rounded-2xl min-w-[120px] text-white border-0 transition-all duration-300"
-                style={{ background: "#252525" }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.backgroundImage = GRADIENT_BG)
-                }
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundImage = "";
-                  e.currentTarget.style.background = "#252525";
-                }}
-              >
-                <span className={BTN_TEXT_CLS}>Clear</span>
-              </Button>
-            )}
+  {optimizationOption && (
+    <Button
+      onClick={() => {
+        clearOptimizer();
+        setText("");
+        setOptimizationOption(null);
+        setOptimizerDocId(null);
+        setHasCleared(true);
+        setLastUsage(undefined);
+        onOptimize("", 0, 0, [], undefined);
+        localStorage.removeItem("optimizerInput");
+        countTokens("");
+      }}
+      className="rounded-2xl w-[140px] h-[40px] text-white border-0 transition-all duration-300"
+      style={{ background: "#252525" }}
+      onMouseEnter={(e) =>
+        (e.currentTarget.style.backgroundImage = GRADIENT_BG)
+      }
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundImage = "";
+        e.currentTarget.style.background = "#252525";
+      }}
+    >
+      <span className={BTN_TEXT_CLS}>Clear</span>
+    </Button>
+  )}
 
-          <Button
-  onClick={handleOptimize}
-  disabled={isProcessing || !text}
-  className="rounded-2xl min-w-[140px] h-[40px] text-white border-0 transition-all duration-300"
-  style={{ background: "#252525" }}
-
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.backgroundImage = GRADIENT_BG)
-              }
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundImage = "";
-                e.currentTarget.style.background = "#252525";
-              }}
-            >
-              {isProcessing ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  <span className={BTN_TEXT_CLS}>Optimizing...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  <span className={BTN_TEXT_CLS}>Optimize</span>
-                </>
-              )}
-            </Button>
-           {!isCollabActive ? (
-<Button
-  onClick={async () => {
-    let sessionId = collabSessionId;
-
-    if (!sessionId) {
-      sessionId = await startCollaboration();
-      if (!sessionId) return;
+  <Button
+    onClick={handleOptimize}
+    disabled={isProcessing || !text}
+    className="rounded-2xl w-[140px] h-[40px] text-white border-0 transition-all duration-300"
+    style={{ background: "#252525" }}
+    onMouseEnter={(e) =>
+      (e.currentTarget.style.backgroundImage = GRADIENT_BG)
     }
+    onMouseLeave={(e) => {
+      e.currentTarget.style.backgroundImage = "";
+      e.currentTarget.style.background = "#252525";
+    }}
+  >
+    {isProcessing ? (
+      <>
+        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+        <span className={BTN_TEXT_CLS}>Optimizing...</span>
+      </>
+    ) : (
+      <>
+        <Sparkles className="h-4 w-4 mr-2" />
+        <span className={BTN_TEXT_CLS}>Optimize</span>
+      </>
+    )}
+  </Button>
 
-    setInviteModal(true);
-  }}
-  className="rounded-2xl min-w-[140px] h-[40px] text-white"
-  style={{ backgroundImage: GRADIENT_BG }}
->
-  Invite Collaborator
-</Button>
-) : (
-<Button
-  onClick={() => setShowEndConfirm(true)}
-  className="rounded-2xl h-[42px] px-4 sm:px-6 text-sm sm:text-base min-w-[140px] text-white border-0 bg-red-600 hover:bg-red-700"
->
-  End Session
-</Button>
-)}
-
-          </div>
+  {!isCollabActive ? (
+    <Button
+      onClick={async () => {
+        let sessionId = collabSessionId;
+        if (!sessionId) {
+          sessionId = await startCollaboration();
+          if (!sessionId) return;
+        }
+        setInviteModal(true);
+      }}
+      className="rounded-2xl w-[140px] h-[40px] text-white border-0 transition-all duration-300"
+      style={{ backgroundImage: GRADIENT_BG }}
+    >
+      Invite Collaborator
+    </Button>
+  ) : (
+    <Button
+      onClick={() => setShowEndConfirm(true)}
+      className="rounded-2xl w-[140px] h-[40px] px-4 text-sm text-white border-0 bg-red-600 hover:bg-red-700"
+    >
+      End Session
+    </Button>
+  )}
+</div>
         </div>
 
         {optimizationOption && (

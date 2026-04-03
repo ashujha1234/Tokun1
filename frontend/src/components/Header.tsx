@@ -1626,7 +1626,7 @@ useEffect(() => {
 
     {/* Card */}
     <div
-      className="relative w-[min(96vw,900px)] max-h-[90vh] rounded-2xl text-white shadow-2xl overflow-hidden"
+      className="relative w-[96vw] md:w-[min(96vw,900px)] max-h-[90vh] rounded-2xl text-white shadow-2xl overflow-hidden"
       style={{ background: "#17171A", fontFamily: "Inter", fontWeight: 400, fontStyle: "normal" }}
     >
       {/* Close */}
@@ -1640,7 +1640,7 @@ useEffect(() => {
 
       {/* Two-column layout */}
      {/* Two-column layout */}
-<div className="grid grid-cols-[240px,1fr] max-h-[90vh] overflow-hidden">
+<div className="flex flex-col md:grid md:grid-cols-[240px,1fr] max-h-[90vh] overflow-hidden">
 
         {/* Left nav */}
    {/* <aside
@@ -1675,8 +1675,8 @@ useEffect(() => {
 
 
         <aside
-  className="no-scrollbar overflow-y-auto pt-5"
-  style={{ background: "#17171A", borderRight: "1px solid #1C1C1C" }}
+  className="no-scrollbar overflow-x-auto md:overflow-y-auto md:pt-5 flex md:flex-col flex-row"
+  style={{ background: "#17171A", borderRight: "none", borderBottom: "1px solid #1C1C1C" }}
 >
   {[ 
     { id: "profile", label: "Profile", Icon: User },
@@ -1689,11 +1689,12 @@ useEffect(() => {
       <button
         key={item.id}
         onClick={() => setProfileTab(item.id as typeof profileTab)}
-        className="w-full flex items-center gap-3 px-5 py-4 text-left"
-        style={{
-          background: active ? "#1C1C1C" : "transparent", // selected bg per spec
-          color: active ? "#ffffff" : "rgba(255,255,255,0.78)",
-        }}
+      className="flex items-center gap-2 px-4 py-3 md:px-5 md:py-4 text-left whitespace-nowrap md:w-full shrink-0"
+style={{
+  background: active ? "#1C1C1C" : "transparent",
+  color: active ? "#ffffff" : "rgba(255,255,255,0.78)",
+  borderBottom: active ? "2px solid #FF14EF" : "2px solid transparent",
+}}
       >
         <item.Icon className="w-5 h-5" />
         <span>{item.label}</span>

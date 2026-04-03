@@ -364,43 +364,55 @@ const LLMSelector = ({ onProviderChange }: LLMSelectorProps) => {
           const isDisabled = loading || (locked && provider !== key);
 
           return (
-            <button
-              key={key}
-              type="button"
-              role="radio"
-              aria-checked={isSelected}
-              aria-label={alt}
-              disabled={isDisabled}
-              onClick={() => handleClick(key)}
-              onKeyDown={(e) => {
-                if ((e.key === "Enter" || e.key === " ") && !isDisabled) {
-                  e.preventDefault();
-                  handleClick(key);
-                }
-              }}
-              className={[
-                "flex items-center justify-center gap-2",
-                "w-[120px] h-[40px] rounded-[6px] bg-white",
-                "border border-[#e9e9ea] shadow-[0_1px_0_#e9e9ea_inset]",
-                "transition-all select-none",
-                isDisabled ? "opacity-70 cursor-not-allowed" : "hover:shadow-md",
-                isSelected ? "ring-2 ring-[#1A73E8]/50" : "ring-0",
-              ].join(" ")}
-            >
-              {/* radio 'o' with spacing */}
-              <span
-                className={[
-                  "flex items-center justify-center",
-                  "w-4 h-4 rounded-full border",
-                  isSelected ? "border-[#1A73E8]" : "border-gray-400",
-                ].join(" ")}
-              >
-                <span className={["block w-2 h-2 rounded-full", isSelected ? "bg-[#1A73E8]" : "bg-transparent"].join(" ")} />
-              </span>
+     <button
+  key={key}
+  type="button"
+  role="radio"
+  aria-checked={isSelected}
+  aria-label={alt}
+  disabled={isDisabled}
+  onClick={() => handleClick(key)}
+  onKeyDown={(e) => {
+    if ((e.key === "Enter" || e.key === " ") && !isDisabled) {
+      e.preventDefault();
+      handleClick(key);
+    }
+  }}
+  className={[
+    "flex items-center gap-2",
+    "w-[130px] h-[42px] rounded-[10px]",
+    "transition-all select-none px-3",
+    isDisabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
+    isSelected
+      ? "border-[1.5px] border-[#1A73E8] bg-[#1a1a1b]"
+      : "border border-white/10 bg-[#1a1a1b] hover:border-white/25 hover:bg-[#222224]",
+  ].join(" ")}
+>
+  {/* Radio dot */}
+  <span
+    className="flex items-center justify-center w-[14px] h-[14px] rounded-full flex-shrink-0 transition-all"
+    style={{
+      border: isSelected
+        ? "1.5px solid #1A73E8"
+        : "1.5px solid rgba(255,255,255,0.3)",
+    }}
+  >
+    <span
+      className="w-[7px] h-[7px] rounded-full block transition-all"
+      style={{ background: isSelected ? "#1A73E8" : "transparent" }}
+    />
+  </span>
 
-              {/* icon (no text) */}
-              <img src={icon} alt={alt} className="h-5 w-auto object-contain" draggable={false} />
-            </button>
+  {/* Icon inside white pill */}
+  <span className="flex items-center justify-center bg-white rounded-[6px] px-[6px] py-[3px]">
+    <img
+      src={icon}
+      alt={alt}
+      className="h-[18px] w-auto object-contain"
+      draggable={false}
+    />
+  </span>
+</button>
           );
         })}
       </div>

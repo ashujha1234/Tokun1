@@ -1435,228 +1435,235 @@ const Signup = () => {
         <div className="lg:hidden absolute inset-0 bg-black" />
 
         {/* Mobile layout */}
-        <div className="lg:hidden relative z-10 min-h-screen px-6 pt-4 pb-8 flex flex-col">
-          {/* Top hero image */}
-          <div className="-mx-6 -mt-2 mb-4 relative">
-            <img
-              src="/icons/signup.png"
-              alt="Tokun AI"
-              className="w-full h-auto object-cover pointer-events-none select-none"
-            />
+       
+           {/* Mobile layout */}
+<div className="lg:hidden relative z-10 min-h-screen px-6 pt-6 pb-8 flex flex-col">
+  
+  {/* Revolving image - compact */}
+  <div className="flex justify-center mb-5 mt-10">
+    <div className="relative w-28 h-28">
+      {/* Outer rotating ring */}
+      <div
+        className="absolute inset-0 rounded-full"
+        style={{
+          background: "conic-gradient(from 0deg, #FF14EF, #A855F7, #1A73E8, #FF14EF)",
+          animation: "spin 4s linear infinite",
+          padding: 3,
+        }}
+      >
+        <div className="w-full h-full rounded-full bg-black" />
+      </div>
+      {/* Inner rotating image */}
+      <div
+        className="absolute inset-[4px] rounded-full overflow-hidden"
+        style={{ animation: "spin-slow 8s linear infinite" }}
+      >
+        <img
+          src="/icons/signup.png"
+          alt="Tokun AI"
+          className="w-full h-full object-cover"
+        />
+      </div>
+      {/* Glow */}
+      <div
+        className="absolute inset-0 rounded-full pointer-events-none"
+        style={{
+          boxShadow: "0 0 32px rgba(255,20,239,0.45), 0 0 60px rgba(26,115,232,0.3)",
+        }}
+      />
+    </div>
+  </div>
 
-             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <span
-                className="text-white text-[22px] sm:text-[26px] font-bold tracking-wide"
-                style={{
-                  textShadow:
-                    "0 0 18px rgba(0,0,0,0.65), 0 0 28px rgba(0,0,0,0.55)",
-                }}
-              >
-                TOKUN.AI
-              </span>
-            </div>
-          </div>
+  {/* CSS for animations */}
+  <style>{`
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes spin-slow {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes spin-reverse {
+      from { transform: rotate(360deg); }
+      to { transform: rotate(0deg); }
+    }
+  `}</style>
 
-          {/* Back */}
-             <Link
-            to="/"
-            className="inline-flex items-center gap-2 text-white/90 text-[16px] mb-7"
-            style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
-          >
-            <ArrowLeft className="w-5 h-5" />
-            <span>Back</span>
-          </Link>
+  {/* Back */}
+  <Link
+    to="/"
+    className="inline-flex items-center gap-2 text-white/90 text-[16px] mb-4"
+    style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+  >
+    <ArrowLeft className="w-5 h-5" />
+    <span>Back</span>
+  </Link>
 
-          {/* Heading */}
-             <div className="text-center px-2 mb-5">
-            <h1
-              className="text-[20px] sm:text-[22px] leading-[1.2] font-normal text-white"
-              style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
-            >
-              Create your Tokun account
-            </h1>
-            <p
-              className="mt-2 text-[14px] sm:text-[15px] text-white/90"
-              style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
-            >
-              Already have an account?{" "}
-              <Link to="/login" className="text-[#2F80FF] font-medium">
-                Sign In
-              </Link>
-            </p>
-          </div>
+  {/* Heading */}
+  <div className="text-center px-2 mb-4">
+    <h1
+      className="text-[20px] sm:text-[22px] leading-[1.2] font-normal text-white"
+      style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+    >
+      Create your Tokun account
+    </h1>
+    <p
+      className="mt-2 text-[14px] sm:text-[15px] text-white/90"
+      style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+    >
+      Already have an account?{" "}
+      <Link to="/login" className="text-[#2F80FF] font-medium">
+        Sign In
+      </Link>
+    </p>
+  </div>
 
-          {/* Toggle */}
-          <div className="grid grid-cols-2 gap-3 mb-5">
-            <button
-              type="button"
-              onClick={() => setIsIndividual(true)}
-              aria-pressed={isIndividual}
-              className="h-[48px] sm:h-[52px] rounded-[14px] text-white flex items-center justify-center gap-2 transition"
-              style={{
-                background: isIndividual
-                  ? "linear-gradient(90deg, #FF14EF 0%, #A855F7 50%, #1A73E8 100%)"
-                  : "rgba(255,255,255,0.06)",
-                border: isIndividual ? "none" : "1px solid rgba(255,255,255,0.12)",
-              }}
-            >
-              <User className="h-4 w-4 sm:h-5 sm:w-5" />
-              <span className="text-[14px] sm:text-[15px] font-medium">Individual</span>
-            </button>
+  {/* Toggle */}
+  <div className="grid grid-cols-2 gap-3 mb-4">
+    <button
+      type="button"
+      onClick={() => setIsIndividual(true)}
+      aria-pressed={isIndividual}
+      className="h-[40px] rounded-[12px] text-white flex items-center justify-center gap-2 transition"
+      style={{
+        background: isIndividual
+          ? "linear-gradient(90deg, #FF14EF 0%, #A855F7 50%, #1A73E8 100%)"
+          : "rgba(255,255,255,0.06)",
+        border: isIndividual ? "none" : "1px solid rgba(255,255,255,0.12)",
+      }}
+    >
+      <User className="h-4 w-4" />
+      <span className="text-[13px] font-medium">Individual</span>
+    </button>
 
-            <button
-              type="button"
-              onClick={() => setIsIndividual(false)}
-              aria-pressed={!isIndividual}
-              className="h-[48px] sm:h-[52px] rounded-[14px] text-white flex items-center justify-center gap-2 transition"
-              style={{
-                background: !isIndividual
-                  ? "linear-gradient(90deg, #FF14EF 0%, #A855F7 50%, #1A73E8 100%)"
-                  : "rgba(255,255,255,0.06)",
-                border: !isIndividual ? "none" : "1px solid rgba(255,255,255,0.12)",
-              }}
-            >
-              <Briefcase className="h-4 w-4 sm:h-5 sm:w-5" />
-              <span className="text-[14px] sm:text-[15px] font-medium">Organization</span>
-            </button>
-          </div>
+    <button
+      type="button"
+      onClick={() => setIsIndividual(false)}
+      aria-pressed={!isIndividual}
+      className="h-[40px] rounded-[12px] text-white flex items-center justify-center gap-2 transition"
+      style={{
+        background: !isIndividual
+          ? "linear-gradient(90deg, #FF14EF 0%, #A855F7 50%, #1A73E8 100%)"
+          : "rgba(255,255,255,0.06)",
+        border: !isIndividual ? "none" : "1px solid rgba(255,255,255,0.12)",
+      }}
+    >
+      <Briefcase className="h-4 w-4" />
+      <span className="text-[13px] font-medium">Organization</span>
+    </button>
+  </div>
 
+  
           {/* Mobile form */}
-      <form onSubmit={handleSubmit} className="space-y-4">
-            {isIndividual ? (
-              <>
-                <div className="space-y-2">
-                  <label
-                    htmlFor="name-mobile"
-                    className="text-[14px] sm:text-[15px] text-white"
-                    style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
-                  >
-                    Full Name
-                  </label>
-                  <Input
-                    id="name-mobile"
-                    type="text"
-                    autoComplete="name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                    placeholder="Enter full name"
-                    className="
-                      h-[56px] sm:h-[60px] w-full rounded-[16px]
-                      bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)]
-                      border border-white/80
-                      text-white text-[15px] sm:text-[16px]
-                      placeholder:text-white/45 placeholder:text-[14px]
-                      px-5
-                      focus-visible:ring-0 focus:border-white
-                    "
-                  />
-                </div>
+               {/* Mobile form */}
+<form onSubmit={handleSubmit} className="space-y-3">
+  {isIndividual ? (
+    <>
+      <div className="space-y-1.5">
+        <label
+          htmlFor="name-mobile"
+          className="text-[13px] text-white/70"
+          style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+        >
+          Full Name
+        </label>
+        <Input
+          id="name-mobile"
+          type="text"
+          autoComplete="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          placeholder="Enter full name"
+          className="h-[44px] w-full rounded-[12px] bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)] border border-white/20 text-white text-[14px] placeholder:text-white/30 placeholder:text-[13px] px-4 focus-visible:ring-0 focus:border-white/50"
+        />
+      </div>
 
-                <div className="space-y-2">
-                  <label
-                    htmlFor="email-mobile"
-                    className="text-[14px] sm:text-[15px] text-white"
-                    style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
-                  >
-                    Email
-                  </label>
-                  <Input
-                    id="email-mobile"
-                    type="email"
-                    autoComplete="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    placeholder="Enter email"
-                    className="
-                      h-[56px] sm:h-[60px] w-full rounded-[16px]
-                      bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)]
-                      border border-white/80
-                      text-white text-[15px] sm:text-[16px]
-                      placeholder:text-white/45 placeholder:text-[14px]
-                      px-5
-                      focus-visible:ring-0 focus:border-white
-                    "
-                  />
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  <label
-                    htmlFor="company-mobile"
-                    className="text-[14px] sm:text-[15px] text-white"
-                    style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
-                  >
-                    Company Name
-                  </label>
-                  <Input
-                    id="company-mobile"
-                    type="text"
-                    value={companyName}
-                    onChange={(e) => setCompanyName(e.target.value)}
-                    required
-                    placeholder="Enter company name"
-                    className="
-                      h-[56px] sm:h-[60px] w-full rounded-[16px]
-                      bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)]
-                      border border-white/80
-                      text-white text-[15px] sm:text-[16px]
-                      placeholder:text-white/45 placeholder:text-[14px]
-                      px-5
-                      focus-visible:ring-0 focus:border-white
-                    "
-                  />
-                </div>
+      <div className="space-y-1.5">
+        <label
+          htmlFor="email-mobile"
+          className="text-[13px] text-white/70"
+          style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+        >
+          Email
+        </label>
+        <Input
+          id="email-mobile"
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          placeholder="Enter email"
+          className="h-[44px] w-full rounded-[12px] bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)] border border-white/20 text-white text-[14px] placeholder:text-white/30 placeholder:text-[13px] px-4 focus-visible:ring-0 focus:border-white/50"
+        />
+      </div>
+    </>
+  ) : (
+    <>
+      <div className="space-y-1.5">
+        <label
+          htmlFor="company-mobile"
+          className="text-[13px] text-white/70"
+          style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+        >
+          Company Name
+        </label>
+        <Input
+          id="company-mobile"
+          type="text"
+          value={companyName}
+          onChange={(e) => setCompanyName(e.target.value)}
+          required
+          placeholder="Enter company name"
+          className="h-[44px] w-full rounded-[12px] bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)] border border-white/20 text-white text-[14px] placeholder:text-white/30 placeholder:text-[13px] px-4 focus-visible:ring-0 focus:border-white/50"
+        />
+      </div>
 
-                <div className="space-y-2">
-                  <label
-                    htmlFor="business-mobile"
-                    className="text-[14px] sm:text-[15px] text-white"
-                    style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
-                  >
-                    Business Email
-                  </label>
-                  <Input
-                    id="business-mobile"
-                    type="email"
-                    autoComplete="email"
-                    value={businessEmail}
-                    onChange={(e) => setBusinessEmail(e.target.value)}
-                    required
-                    placeholder="Enter business email"
-                    className="
-                      h-[56px] sm:h-[60px] w-full rounded-[16px]
-                      bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)]
-                      border border-white/80
-                      text-white text-[15px] sm:text-[16px]
-                      placeholder:text-white/45 placeholder:text-[14px]
-                      px-5
-                      focus-visible:ring-0 focus:border-white
-                    "
-                  />
-                </div>
-              </>
-            )}
+      <div className="space-y-1.5">
+        <label
+          htmlFor="business-mobile"
+          className="text-[13px] text-white/70"
+          style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
+        >
+          Business Email
+        </label>
+        <Input
+          id="business-mobile"
+          type="email"
+          autoComplete="email"
+          value={businessEmail}
+          onChange={(e) => setBusinessEmail(e.target.value)}
+          required
+          placeholder="Enter business email"
+          className="h-[44px] w-full rounded-[12px] bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)] border border-white/20 text-white text-[14px] placeholder:text-white/30 placeholder:text-[13px] px-4 focus-visible:ring-0 focus:border-white/50"
+        />
+      </div>
+    </>
+  )}
 
-            <Button
-              type="submit"
-              disabled={isLoading}
-              className="
-                w-full h-[56px] sm:h-[60px] rounded-[16px]
-                text-[17px] sm:text-[18px] font-semibold text-white
-                disabled:opacity-50
-              "
-              style={{
-                background: "linear-gradient(90deg, #FF14EF 0%, #A855F7 50%, #1A73E8 100%)",
-                boxShadow:
-                  "0 0 22px rgba(255,20,239,0.28), 0 0 30px rgba(26,115,232,0.22)",
-              }}
-            >
-              {isLoading ? "Creating..." : "Continue"}
-            </Button>
-          </form>
+  <Button
+    type="submit"
+    disabled={isLoading}
+    className="w-full h-[44px] rounded-[12px] text-[14px] font-semibold text-white disabled:opacity-50 mt-2"
+    style={{
+      background: "linear-gradient(90deg, #FF14EF 0%, #A855F7 50%, #1A73E8 100%)",
+    }}
+  >
+    {isLoading ? (
+      <span className="flex items-center justify-center gap-2">
+        <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+        </svg>
+        Creating...
+      </span>
+    ) : (
+      "Continue"
+    )}
+  </Button>
+</form>
            <div className="mt-7 text-center space-y-3">
             <p
               className="text-[14px] sm:text-[15px] text-white/90 leading-relaxed"

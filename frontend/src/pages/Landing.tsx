@@ -953,51 +953,45 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* CTAs */}
-        <div
-          id="hero-ctas"
-          className="flex flex-col sm:flex-row gap-6 justify-center items-center mt-20 mb-16"
-        >
-          {/* Smartgen + Arrow */}
-          <div className="relative">
-            <motion.img
-              src="/icons/arr.png"
-              alt="arrow highlight"
-              className="pointer-events-none select-none absolute -top-6 -left-8 w-9 sm:-top-7 sm:-left-10 sm:w-10"
-            />
-            <motion.button
-              onClick={() => go(routes.smartgen)}
-              whileHover={{ scale: 1.05 }}
-              className="relative px-10 py-5 text-lg rounded-full text-white font-semibold shadow-2xl border border-white/10 backdrop-blur-md flex items-center gap-3"
-              style={{ background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)" }}
-            >
-              <div className="absolute inset-0 rounded-full bg-white opacity-10 blur-[6px] pointer-events-none" />
-              <span>Try Smartgen</span>
-              <span
-                aria-hidden
-                className="inline-flex items-center justify-center rounded-full bg-white"
-                style={{ width: 28, height: 28 }}
-              >
-                <MdKeyboardArrowRight size={16} color="black" />
-              </span>
-            </motion.button>
-          </div>
-
-         <motion.button
-  onClick={() => go(routes.marketplace)}   // ✅ always go to marketplace
-  whileHover={{
-    scale: 1.05,
-    background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)",
-    color: "#fff",
-  }}
-  className="relative px-10 py-5 text-lg rounded-full font-semibold text-white border border-white transition-colors duration-300"
-  style={{ background: "transparent", color: "#ffffffcc" }}
+ {/* CTAs */}
+<div
+  id="hero-ctas"
+  className="flex flex-col sm:flex-row gap-4 sm:gap-6 justify-center items-center mt-6 sm:mt-20 mb-16"
 >
-  Prompt Marketplace
-</motion.button>
+  {/* Smartgen + Arrow */}
+  <div className="relative">
+    <motion.img
+      src="/icons/arr.png"
+      alt="arrow highlight"
+      className="pointer-events-none select-none absolute -top-6 -left-8 w-9 sm:-top-7 sm:-left-10 sm:w-10"
+    />
+    <motion.button
+      onClick={() => go(routes.smartgen)}
+      whileHover={{ scale: 1.05 }}
+      className="relative w-[200px] sm:w-[220px] h-[50px] sm:h-[62px] rounded-full text-white font-semibold shadow-2xl border border-white/10 backdrop-blur-md flex items-center justify-center gap-2 sm:gap-3 text-sm sm:text-lg"
+      style={{ background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)" }}
+    >
+      <div className="absolute inset-0 rounded-full bg-white opacity-10 blur-[6px] pointer-events-none" />
+      <span>Try Smartgen</span>
+      <span
+        aria-hidden
+        className="inline-flex items-center justify-center rounded-full bg-white"
+        style={{ width: 24, height: 24 }}
+      >
+        <MdKeyboardArrowRight size={14} color="black" />
+      </span>
+    </motion.button>
+  </div>
 
-        </div>
-
+  <motion.button
+    onClick={() => go(routes.marketplace)}
+    whileHover={{ scale: 1.05 }}
+    className="relative w-[200px] sm:w-[220px] h-[50px] sm:h-[62px] rounded-full text-white font-semibold shadow-2xl border border-white/10 backdrop-blur-md flex items-center justify-center gap-2 sm:gap-3 text-sm sm:text-lg"
+    style={{ background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)" }}
+  >
+    Prompt Marketplace
+  </motion.button>
+</div>
         {/* STATS */}
         {/* <section className="mt-20">
           <div className="container mx-auto px-6">
@@ -1417,53 +1411,53 @@ useEffect(() => {
             </div>
           </div>
 
-          <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            Ready to optimize your prompts?
-          </h2>
-          <p className="text-xl text-white/80 mb-8 max-w-2xl mx-auto">
-            Join thousands of developers who are already saving costs and improving efficiency with TOKUN.
-          </p>
+         <h2 className="text-2xl sm:text-4xl md:text-5xl font-bold mb-6">
+  Ready to optimize your prompts?
+</h2>
+<p className="text-base sm:text-xl text-white/80 mb-8 max-w-2xl mx-auto">
+  Join thousands of developers who are already saving costs and improving efficiency with TOKUN.
+</p>
 
-          <div className="relative inline-block overflow-visible isolate">
-            <div
-              className="pointer-events-none absolute -inset-x-16 -top-2 -bottom-10 rounded-[36px] z-0"
-              style={{
-                background: "linear-gradient(90deg, rgba(255,20,239,0.4) 0%, rgba(26,115,232,0.4) 100%)",
-                filter: "blur(60px)",
-                opacity: 1,
-              }}
-            />
-            <div className="relative">
-              <motion.img
-                src="/icons/arr.png"
-                alt="arrow highlight"
-                className="pointer-events-none select-none absolute -top-6 -left-8 w-9 sm:-top-7 sm:-left-10 sm:w-10"
-              />
-              <motion.button
-                onClick={() => go(routes.app)}
-                whileHover={{ scale: 1.05 }}
-                className="relative px-10 py-5 text-lg rounded-full text-white font-semibold shadow-2xl border border-white/10 backdrop-blur-md flex items-center gap-3"
-                style={{ background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)" }}
-              >
-                <div className="absolute inset-0 rounded-full bg-white opacity-10 blur-[6px] pointer-events-none" />
-                <span> Start Optimizing Now</span>
-                <span
-                  aria-hidden
-                  className="inline-flex items-center justify-center rounded-full bg-white"
-                  style={{ width: 28, height: 28 }}
-                >
-                  <MdKeyboardArrowRight size={16} color="black" />
-                </span>
-              </motion.button>
-            </div>
-          </div>
+         <div className="relative inline-block overflow-visible isolate">
+  <div
+    className="pointer-events-none absolute -inset-x-16 -top-2 -bottom-10 rounded-[36px] z-0"
+    style={{
+      background: "linear-gradient(90deg, rgba(255,20,239,0.4) 0%, rgba(26,115,232,0.4) 100%)",
+      filter: "blur(60px)",
+      opacity: 1,
+    }}
+  />
+  <div className="relative">
+    <motion.img
+      src="/icons/arr.png"
+      alt="arrow highlight"
+      className="pointer-events-none select-none absolute -top-6 -left-8 w-9 sm:-top-7 sm:-left-10 sm:w-10"
+    />
+    <motion.button
+      onClick={() => go(routes.app)}
+      whileHover={{ scale: 1.05 }}
+      className="relative w-[200px] sm:w-[240px] h-[50px] sm:h-[62px] rounded-full text-white font-semibold shadow-2xl border border-white/10 backdrop-blur-md flex items-center justify-center gap-2 sm:gap-3 text-sm sm:text-lg"
+      style={{ background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)" }}
+    >
+      <div className="absolute inset-0 rounded-full bg-white opacity-10 blur-[6px] pointer-events-none" />
+      <span>Start Optimizing Now</span>
+      <span
+        aria-hidden
+        className="inline-flex items-center justify-center rounded-full bg-white"
+        style={{ width: 24, height: 24 }}
+      >
+        <MdKeyboardArrowRight size={14} color="black" />
+      </span>
+    </motion.button>
+  </div>
+</div>
         </div>
 
         {/* TESTIMONIALS */}
           {/* TESTIMONIALS */}
       {/* TESTIMONIALS — SAME POSITION & DESIGN, keep < and > arrows; center when only one */}
            {/* TESTIMONIALS */}
-<div className="mt-28 mb-28 relative font-[Inter] px-4">
+<div className="mt-28 mb-20 relative font-[Inter] px-4">
 
   {/* TAG */}
   <div className="flex justify-center mb-4">
@@ -1487,111 +1481,108 @@ useEffect(() => {
     </div>
   </div>
 
-  <h2 className="text-4xl md:text-5xl font-bold text-center mb-4">
-    Loved by thinkers
-  </h2>
+ <h2 className="text-2xl sm:text-4xl md:text-5xl font-bold text-center mb-4">
+  Loved by thinkers
+</h2>
 
-  <p className="text-lg text-white/70 text-center mb-12">
-    Here’s what people worldwide are saying about us
-  </p>
+<p className="text-sm sm:text-lg text-white/70 text-center mb-12">
+  Here's what people worldwide are saying
+</p>
 
-  {feedbacks.length === 0 ? (
-    <div className="text-center text-white/60">
-      No testimonials yet — be the first to leave feedback!
-    </div>
-  ) : (
-   <div className="flex justify-center items-center gap-3 sm:gap-6 px-3 sm:px-0">
-  {/* LEFT BUTTON */}
-  <button
-    onClick={prevSlide}
-    className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full border border-white text-white transition-all shrink-0"
-  >
-    <MdKeyboardArrowDown size={20} className="rotate-90 sm:text-[22px]" />
-  </button>
+ {feedbacks.length === 0 ? (
+  <div className="text-center text-white/60">
+    No testimonials yet — be the first to leave feedback!
+  </div>
+) : (
+  <div className="flex justify-center items-center gap-3 sm:gap-6 px-3 sm:px-0">
+    {/* LEFT BUTTON */}
+    <button
+      onClick={prevSlide}
+      className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full border border-white text-white transition-all shrink-0"
+    >
+      <MdKeyboardArrowDown size={20} className="rotate-90 sm:text-[22px]" />
+    </button>
 
-  {/* SLIDER */}
-  <div className="relative w-full max-w-[560px] min-h-[320px] sm:h-[260px] overflow-hidden">
-    <AnimatePresence mode="wait">
-      <motion.div
-        key={current}
-        initial={{ opacity: 0, x: 120 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: -120 }}
-        transition={{ duration: 0.4 }}
-        className="absolute w-full"
-      >
-        {(() => {
-          const t = feedbacks[current];
-
-          return (
-            <div
-              key={t.id}
-              className="relative flex flex-col justify-between p-4 sm:p-6 text-left bg-transparent overflow-hidden w-full min-h-[320px] sm:h-[260px]"
-              style={{
-                border: "1px solid #333335",
-                borderRadius: 24,
-              }}
-            >
-              {/* glow */}
+    {/* SLIDER */}
+    <div className="relative w-full max-w-[560px] overflow-hidden">
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={current}
+          initial={{ opacity: 0, x: 120 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -120 }}
+          transition={{ duration: 0.4 }}
+          className="w-full"
+        >
+          {(() => {
+            const t = feedbacks[current];
+            return (
               <div
-                className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 w-28 h-28 sm:w-40 sm:h-40 rounded-full pointer-events-none"
+                key={t.id}
+                className="relative flex flex-col justify-between p-4 sm:p-6 text-left bg-transparent overflow-hidden w-full"
                 style={{
-                  background:
-                    "radial-gradient(circle at center, rgba(255,20,239,0.25) 0%, rgba(26,115,232,0.25) 100%)",
-                  filter: "blur(60px)",
+                  border: "1px solid #333335",
+                  borderRadius: 24,
                 }}
-              />
+              >
+                {/* glow */}
+                <div
+                  className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 w-28 h-28 sm:w-40 sm:h-40 rounded-full pointer-events-none"
+                  style={{
+                    background:
+                      "radial-gradient(circle at center, rgba(255,20,239,0.25) 0%, rgba(26,115,232,0.25) 100%)",
+                    filter: "blur(60px)",
+                  }}
+                />
 
-              <div className="relative z-10 flex flex-col justify-between h-full">
-                {/* stars */}
-                <div className="flex mb-2">
-                  {Array.from({
-                    length: Math.max(1, Math.min(5, Number(t.rating) || 5)),
-                  }).map((_, i) => (
-                    <Star key={i} className="h-4 w-4 sm:h-5 sm:w-5 text-white fill-white" />
-                  ))}
-                </div>
+                <div className="relative z-10 flex flex-col gap-3">
+                  {/* stars */}
+                  <div className="flex">
+                    {Array.from({
+                      length: Math.max(1, Math.min(5, Number(t.rating) || 5)),
+                    }).map((_, i) => (
+                      <Star key={i} className="h-4 w-4 sm:h-5 sm:w-5 text-white fill-white" />
+                    ))}
+                  </div>
 
-                {/* text */}
-                <p className="text-white/90 text-[13px] sm:text-[15px] leading-relaxed mb-4 break-words">
-                  "{t.experience}"
-                </p>
+                  {/* text */}
+                  <p className="text-white/90 text-[13px] sm:text-[15px] leading-relaxed break-words">
+                    "{t.experience}"
+                  </p>
 
-                {/* user */}
-                <div className="flex items-center gap-3 mt-auto">
-                  <img
-                    src={t.avatar || svgInitialsAvatar(t.name || "User")}
-                    alt={t.name || "User"}
-                    className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover shrink-0"
-                  />
-
-                  <div className="min-w-0">
-                    <div className="font-semibold text-white text-sm sm:text-base truncate">
-                      {t.name || "Anonymous"}
-                    </div>
-
-                    <div className="text-xs sm:text-sm text-white/60 break-words">
-                      {[t.role, t.org].filter(Boolean).join(" • ")}
+                  {/* user */}
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={t.avatar || svgInitialsAvatar(t.name || "User")}
+                      alt={t.name || "User"}
+                      className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <div className="font-semibold text-white text-sm sm:text-base truncate">
+                        {t.name || "Anonymous"}
+                      </div>
+                      <div className="text-xs sm:text-sm text-white/60 break-words">
+                        {[t.role, t.org].filter(Boolean).join(" • ")}
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          );
-        })()}
-      </motion.div>
-    </AnimatePresence>
-  </div>
+            );
+          })()}
+        </motion.div>
+      </AnimatePresence>
+    </div>
 
-  {/* RIGHT BUTTON */}
-  <button
-    onClick={nextSlide}
-    className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full border border-white text-white transition-all shrink-0"
-  >
-    <MdKeyboardArrowDown size={20} className="-rotate-90 sm:text-[22px]" />
-  </button>
-</div>
-  )}
+    {/* RIGHT BUTTON */}
+    <button
+      onClick={nextSlide}
+      className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full border border-white text-white transition-all shrink-0"
+    >
+      <MdKeyboardArrowDown size={20} className="-rotate-90 sm:text-[22px]" />
+    </button>
+  </div>
+)}
 </div>
 
 
