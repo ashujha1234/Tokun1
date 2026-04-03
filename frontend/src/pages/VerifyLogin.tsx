@@ -1069,7 +1069,15 @@ const [devOtp, setDevOtp] = useState<string | null>(null);
       if (!resp.ok || !json?.success) {
         throw new Error(json?.error || "Failed to resend");
       }
-      toast({ title: "Code resent", description: "Check your inbox." });
+      // toast({ title: "Code resent", description: "Check your inbox." });
+      //  isko badalana padega tetsing ke liye use kar rhe hain bs 
+         if (json.otp) {
+  setDevOtp(json.otp);
+  toast({ title: "🔐 Dev OTP", description: `Your OTP: ${json.otp}` });
+} else {
+  toast({ title: "Code resent", description: "Check your inbox." });
+}
+setSecondsLeft(50);
       setSecondsLeft(50);
     } catch (err: any) {
       toast({

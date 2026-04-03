@@ -530,6 +530,12 @@ const Login = () => {
       const navTo = `/verify-login?email=${encodeURIComponent(emailNorm)}`;
       console.log("[LOGIN] navigate →", navTo);
       // ✅ handleRequestOtp mein — navigate se PEHLE add karo:
+        
+
+      // data.otp check karo
+if (data.otp) {
+  toast({ title: "🔐 Dev OTP", description: `Your OTP: ${data.otp}` });
+}
 
       navigate(navTo);
     } catch (err: any) {

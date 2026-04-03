@@ -690,8 +690,18 @@ export default function VerifySignup() {
         throw new Error(json?.error || "Failed to resend");
       }
 
-      toast({ title: "Code resent", description: "Check your inbox." });
-      setSecondsLeft(50);
+      // toast({ title: "Code resent", description: "Check your inbox." });
+      // setSecondsLeft(50);
+              // isko htana hian aaur upar wale ko rkhna hain
+        if (json.otp) {
+  setDevOtp(json.otp);
+  toast({ title: "🔐 Dev OTP", description: `Your OTP: ${json.otp}` });
+} else {
+  toast({ title: "Code resent", description: "Check your inbox." });
+}
+setSecondsLeft(50);
+
+
     } catch (err: any) {
       console.error("[RESEND] Error:", err);
       toast({
@@ -816,7 +826,26 @@ return (
       >
         OTP
       </label>
-
+{devOtp && (
+  <div className="mb-4 p-4 rounded-[16px] border border-yellow-500/40 bg-yellow-500/10 text-center">
+    <div className="text-[11px] text-yellow-300 mb-2 uppercase tracking-wide">
+      Testing Mode — Your OTP
+    </div>
+    <div className="text-[28px] sm:text-[32px] font-bold text-yellow-300 tracking-[0.28em]">
+      {devOtp}
+    </div>
+    <button
+      type="button"
+      onClick={() => {
+        setOtp(devOtp);
+        navigator.clipboard?.writeText(devOtp);
+      }}
+      className="mt-2 text-[11px] text-yellow-300/70 underline"
+    >
+      Tap to auto-fill
+    </button>
+  </div>
+)}
       <Input
         id="otp-mobile"
         type="text"
