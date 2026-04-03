@@ -2535,7 +2535,9 @@ socket.on("end-session", async ({ sessionId, userId }) => {
 
 
 
-
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true });
+});
 
 
 

@@ -1204,7 +1204,7 @@ setSecondsLeft(50);
         OTP
       </label>
 
-      {devOtp && (
+      {/* {devOtp && (
         <div className="mb-4 p-4 rounded-[16px] border border-yellow-500/40 bg-yellow-500/10 text-center">
           <div className="text-[11px] text-yellow-300 mb-2 uppercase tracking-wide">
             Testing Mode — Your OTP
@@ -1223,7 +1223,7 @@ setSecondsLeft(50);
             Tap to auto-fill
           </button>
         </div>
-      )}
+      )} */}
 
       <Input
         id="otp-mobile"

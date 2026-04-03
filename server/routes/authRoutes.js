@@ -302,13 +302,9 @@ if (userType === "ORG" && orgName && !user.orgId) {
 
 
 
-res.json({
-  success: true,
-  message: "OTP sent",
-  otp: process.env.SHOW_OTP_IN_RESPONSE === "true" ? otp  : undefined
-});
+
     // IMPORTANT: do not return the OTP in production
-    // return res.json({ success: true, message: "otp_sent_if_email_is_valid" ,otp: otp});
+    return res.json({ success: true, message: "otp_sent_if_email_is_valid" ,otp: otp});
   } catch (err) {
     console.error("signup/initiate", err);
     return res.status(500).json({ success: false, error: "server_error" });
@@ -572,12 +568,7 @@ await sendEmail({
 
     
 
-    // return res.json({ success: true, message: "otp_sent_if_email_is_valid" , otp:otp });
-    res.json({
-  success: true,
-  message: "OTP sent",
-  otp: process.env.SHOW_OTP_IN_RESPONSE === "true" ? otp : undefined
-});
+    return res.json({ success: true, message: "otp_sent_if_email_is_valid" , otp:otp });
   } catch (err) {
     console.error("login/initiate", err);
     return res.status(500).json({ success: false, error: "server_error" });

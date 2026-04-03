@@ -1368,8 +1368,6 @@ const Signup = () => {
         throw new Error(data?.error || "Could not send OTP. Please try again.");
       }
 
-      //bad me htana padega isko 
-
       if (data.otp) {
         console.log("%c[DEV ONLY] OTP:", "color:#34d399;font-weight:bold", data.otp);
   
