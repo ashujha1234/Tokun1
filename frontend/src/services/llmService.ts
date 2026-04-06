@@ -4657,25 +4657,19 @@ class LLMService {
     return { tokens, words };
   }
 
-  async optimizePrompt(text: string, targetTokens?: number): Promise<OptimizeResponse> {
-    if (!this.config.apiKey) throw new Error("API key not set");
-
+ async optimizePrompt(text: string, targetTokens?: number): Promise<OptimizeResponse> {
+    // if (!this.config.apiKey) throw new Error("API key not set"); // ← COMMENT KARO
+    
     const originalCount = await this.countTokens(text);
     const target = targetTokens || Math.max(Math.floor(originalCount.tokens * 0.7), 10);
 
     switch (this.config.provider) {
       case "openai":
         return this.optimizeWithOpenAI(text, target);
-      case "perplexity":
-        return this.optimizeWithPerplexity(text, target);
-      case "anthropic":
-        return this.optimizeWithAnthropic(text, target);
-      case "google":
-        return this.optimizeWithGoogle(text, target);
       default:
         return this.optimizeWithOpenAI(text, target);
     }
-  }
+}
 
   private async optimizeWithOpenAI(text: string, targetTokens: number): Promise<OptimizeResponse> {
     const model = (this.config.model || "gpt-4o-mini").trim();
@@ -4715,7 +4709,7 @@ class LLMService {
   }
 
   async generateDetailedPrompt(text: string): Promise<OptimizeResponse> {
-    if (!this.config.apiKey) throw new Error("API key not set");
+    // if (!this.config.apiKey) throw new Error("API key not set");
 
     const model = (this.config.model || "gpt-4o-mini").trim();
 
