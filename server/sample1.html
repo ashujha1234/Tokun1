@@ -346,7 +346,8 @@
     <pre id="log"></pre>
 
     <script>
-      const API_BASE = "https://azure-deploye.onrender.com";
+      const API_BASE = "http://localhost:5000";
+      <!-- const API_BASE = "https://azure-deploye.onrender.com"; -->
       const BASE_URL = `${API_BASE}/api/plans/subscribe`;
 
       const JWT = localStorage.getItem("tokun_token") || "PUT_VALID_JWT_HERE";

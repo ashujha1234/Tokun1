@@ -16,6 +16,27 @@ import { useAuth } from "@/contexts/AuthContext";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 
+// type Prompt = {
+//   id: number | string;
+//   title: string;
+//   description: string;
+//   category: string;
+//   price?: number;
+//   rating?: number;
+//   downloads?: number;
+//   imageUrl?: string;
+//   videoUrl?: string;
+//   preview?: string;
+//   isFree?: boolean;
+//   createdAt?: string;
+//   uploadedAt?: string;
+//   purchasedAt?: string;
+//   sales?: number;
+//   promptText?: string;
+//   fullPrompt?: string;
+// };
+
+
 type Prompt = {
   id: number | string;
   title: string;
@@ -32,6 +53,7 @@ type Prompt = {
   uploadedAt?: string;
   purchasedAt?: string;
   sales?: number;
+  revenue?: number;
   promptText?: string;
   fullPrompt?: string;
 };
@@ -598,7 +620,7 @@ function HistoryGridCard({
   const isPlaying = playingVideo === prompt.id;
 
   const priceLabel = prompt.isFree ? "FREE" : `₹${(prompt.price ?? 0).toFixed(2)}`;
-  const showPurchaseOverlay = !isUploaded && !prompt.fullPrompt; // only if not owned
+  const showPurchaseOverlay = !isUploaded && !prompt.purchasedAt; // only if not owned
 
   return (
     <Card
@@ -692,9 +714,12 @@ function HistoryGridCard({
 
         {/* TEXT CONTENT */}
         <div className="mt-4">
-          {prompt.preview && <p className="text-[12px] text-white/60 line-clamp-1">{prompt.preview}</p>}
-          <h3 className="mt-1 text-[18px] leading-snug font-semibold text-white line-clamp-2">{prompt.title}</h3>
-          <p className="mt-2 text-[13px] leading-relaxed text-white/70 line-clamp-2">{prompt.description}</p>
+         <h3 className="mt-1 text-[18px] leading-snug font-semibold text-white line-clamp-2">{prompt.title}</h3>
+{prompt.fullPrompt ? (
+  <p className="mt-2 text-[13px] leading-relaxed text-white/70 line-clamp-3">{prompt.fullPrompt}</p>
+) : (
+  <p className="mt-2 text-[13px] leading-relaxed text-white/70 line-clamp-2">{prompt.description}</p>
+)}
         </div>
 
         {/* FOOTER */}
@@ -979,7 +1004,7 @@ const mapped: Prompt[] = (body.purchases || []).map((p: any) => {
 
   const description = snap.description || "";
   const promptText = snap.promptText || "";
-  const fullPrompt = snap.promptText || undefined; // owned → full
+ const fullPrompt = snap.promptText || promptText || " ";
   const pricePaid =
     typeof p?.pricePaid === "number" ? p.pricePaid : snap.originalPrice || 0;
   const isFree = snap.originalPrice === 0 || pricePaid === 0;
@@ -1053,7 +1078,7 @@ const mapped: Prompt[] = (body.purchases || []).map((p: any) => {
 
         const description = snap.description || "";
         const promptText = snap.promptText || "";
-        const fullPrompt = snap.promptText || undefined;
+        const fullPrompt = snap.promptText || promptText || " ";
         const pricePaid =
           typeof purchase?.pricePaid === "number" ? purchase.pricePaid : snap.originalPrice || 0;
         const isFree = snap.originalPrice === 0 || pricePaid === 0;
@@ -1111,47 +1136,108 @@ const mapped: Prompt[] = (body.purchases || []).map((p: any) => {
           throw new Error(data?.error || "server_error");
         }
 
+        // const mapped: Prompt[] = (data.prompts || []).map((doc: any) => {
+        //   const id = doc._id;
+        //   const title = doc.title || "Untitled";
+        //   const description = doc.description || "";
+        //   const promptText = doc.promptText || "";
+        //   const fullPrompt = promptText;
+        //   const price = Number(doc.price || 0);
+        //   const isFree = !!doc.free;
+        //   const rating = typeof doc.averageRating === "number" ? doc.averageRating : 0;
+        //   const uploadedAt = doc.createdAt;
+        //   const category =
+        //     (doc.categories?.[0]?.name as string) ||
+        //     (Array.isArray(doc.categories) ? doc.categories.join(", ") : "") ||
+        //     "General";
+
+        //   const att = doc.attachment || null;
+        //  const mediaPath = att?.path || undefined;
+        //   const imageUrl = att?.type === "image" ? mediaPath : undefined;
+        //   const videoUrl = att?.type === "video" ? mediaPath : undefined;
+
+        //   const sales =
+        //     Number(doc.sales ?? doc.purchases ?? doc.totalSales ?? doc.totalPurchases) || 0;
+
+        //   return {
+        //     id,
+        //     title,
+        //     description,
+        //     category,
+        //     price,
+        //     rating,
+        //     downloads: doc.downloads || 0,
+        //     sales,
+        //     imageUrl,
+        //     videoUrl,
+        //     preview: description || (promptText?.slice(0, 140) || ""),
+        //     isFree,
+        //     uploadedAt,
+        //     promptText,
+        //     fullPrompt,
+        //   } as Prompt;
+        // });
+
+
         const mapped: Prompt[] = (data.prompts || []).map((doc: any) => {
-          const id = doc._id;
-          const title = doc.title || "Untitled";
-          const description = doc.description || "";
-          const promptText = doc.promptText || "";
-          const fullPrompt = promptText;
-          const price = Number(doc.price || 0);
-          const isFree = !!doc.free;
-          const rating = typeof doc.averageRating === "number" ? doc.averageRating : 0;
-          const uploadedAt = doc.createdAt;
-          const category =
-            (doc.categories?.[0]?.name as string) ||
-            (Array.isArray(doc.categories) ? doc.categories.join(", ") : "") ||
-            "General";
+  const id = doc._id;
+  const title = doc.title || "Untitled";
+  const description = doc.description || "";
+  const promptText = doc.promptText || "";
+  const fullPrompt = promptText;
+  const price = Number(doc.price || 0);
+  const isFree = !!doc.free;
+  const rating = typeof doc.averageRating === "number" ? doc.averageRating : 0;
+  const uploadedAt = doc.createdAt;
+  const category =
+    (doc.categories?.[0]?.name as string) ||
+    (Array.isArray(doc.categories) ? doc.categories.join(", ") : "") ||
+    "General";
 
-          const att = doc.attachment || null;
-         const mediaPath = att?.path || undefined;
-          const imageUrl = att?.type === "image" ? mediaPath : undefined;
-          const videoUrl = att?.type === "video" ? mediaPath : undefined;
+  const att = doc.attachment || null;
+  const mediaPath = att?.path || undefined;
+  const imageUrl = att?.type === "image" ? mediaPath : undefined;
+  const videoUrl = att?.type === "video" ? mediaPath : undefined;
 
-          const sales =
-            Number(doc.sales ?? doc.purchases ?? doc.totalSales ?? doc.totalPurchases) || 0;
+  const sales = Number(
+    doc.sales ??
+    doc.purchases ??
+    doc.totalSales ??
+    doc.totalPurchases ??
+    doc.salesCount ??
+    doc.purchaseCount ??
+    doc.orderCount ??
+    0
+  );
 
-          return {
-            id,
-            title,
-            description,
-            category,
-            price,
-            rating,
-            downloads: doc.downloads || 0,
-            sales,
-            imageUrl,
-            videoUrl,
-            preview: description || (promptText?.slice(0, 140) || ""),
-            isFree,
-            uploadedAt,
-            promptText,
-            fullPrompt,
-          } as Prompt;
-        });
+  const revenue = Number(
+    doc.revenue ??
+    doc.totalRevenue ??
+    doc.totalEarning ??
+    doc.earnings ??
+    (sales * price) ??
+    0
+  );
+
+  return {
+    id,
+    title,
+    description,
+    category,
+    price,
+    rating,
+    downloads: doc.downloads || 0,
+    sales,
+    revenue,
+    imageUrl,
+    videoUrl,
+    preview: description || (promptText?.slice(0, 140) || ""),
+    isFree,
+    uploadedAt,
+    promptText,
+    fullPrompt,
+  } as Prompt;
+});
 
         setUploadHistory(mapped);
       } catch (err: any) {
@@ -1193,12 +1279,13 @@ const mapped: Prompt[] = (body.purchases || []).map((p: any) => {
     });
   }, [uploadHistory, yearFilter, typeFilter]);
 
-  const totalUploads = filteredForStats.length;
-  const totalEarningsINR = filteredForStats.reduce((sum, p) => {
-    const salesCount = typeof p.sales === "number" ? p.sales : p.downloads || 0;
-    const price = p.price ?? 0;
-    return sum + salesCount * price;
-  }, 0);
+ const totalUploads = uploadHistory.length;
+
+const totalEarningsINR = uploadHistory.reduce((sum, p) => {
+  const salesCount = typeof p.sales === "number" ? p.sales : 0;
+  const price = p.price ?? 0;
+  return sum + salesCount * price;
+}, 0);
 
   // ---- DELETE uploaded prompt ----
   const handleDeletePrompt = async (p: Prompt) => {
@@ -1443,7 +1530,7 @@ const mapped: Prompt[] = (body.purchases || []).map((p: any) => {
             open={detailsOpen}
             onOpenChange={setDetailsOpen}
             prompt={detailsPrompt}
-            owned={!!(detailsPrompt && (detailsPrompt as any).fullPrompt)}
+            owned={!!(detailsPrompt && (detailsPrompt as any).purchasedAt)}
             onPurchase={() => {}}
             showImages
           />

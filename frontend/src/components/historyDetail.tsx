@@ -177,21 +177,26 @@ async function handleDownloadInvoice() {
         <DialogContent
           className="
             bg-[#17171A] text-white p-0 border-none
-          w-[95vw] sm:w-[90vw] md:w-[85vw] lg:w-[1200px]
-rounded-2xl md:rounded-[32px]
-max-h-[95vh]
+            w-[95vw] sm:w-[90vw] md:w-[85vw] lg:w-[1200px]
+            rounded-[32px]
+            max-h-[95vh]
+            overflow-hidden
           "
         >
           {/* =================== MEDIA BANNER =================== */}
-          <div
-            className="
-              relative mx-auto
-             w-[92%] sm:w-[95%]
-aspect-[4/3] sm:aspect-[3/2]
-mt-4 sm:mt-6
-              shrink-0
-            "
-          >
+        
+<div
+  className="
+    relative mx-auto
+    w-[calc(100%-3rem)] max-w-[1300px]
+    aspect-[3/2]
+    bg-[#333335]
+    overflow-hidden
+    rounded-[18px] md:rounded-[22px]
+    mt-8
+    shrink-0
+  "
+>
             {/* Top-left single badge (category only) */}
             <div className="absolute top-4 left-4 z-10">
               <span className="px-3 py-1 text-[12px] font-semibold rounded-full text-black bg-white">
@@ -305,7 +310,39 @@ pb-8 sm:pb-10
   </div>
 </div>
 
+{/* Full Prompt Text */}
+{owned && prompt.fullPrompt && (
+  <div className="mt-8">
+    <div className="text-white/85 text-[14px] mb-2 font-medium">Full Prompt</div>
+    <div
+      className="w-full rounded-[12px] p-4 text-white/90 text-[14px] leading-relaxed whitespace-pre-wrap select-all"
+      style={{ background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.1)" }}
+    >
+      {prompt.fullPrompt}
+    </div>
+    <button
+      type="button"
+      onClick={() => {
+        navigator.clipboard.writeText(prompt.fullPrompt!);
+        toast({ title: "Copied!", description: "Prompt copied to clipboard." });
+      }}
+      className="mt-2 px-4 h-9 rounded-lg text-sm text-white"
+      style={{ background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)" }}
+    >
+      Copy Prompt
+    </button>
+  </div>
+)}
 
+{/* Locked state — not purchased */}
+{!owned && (
+  <div
+    className="mt-8 w-full rounded-[12px] p-6 text-center"
+    style={{ background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.1)" }}
+  >
+    <p className="text-white/60 text-[14px]">Purchase this prompt to unlock the full content.</p>
+  </div>
+)}
 
             {/* Feature list — green circular tick items */}
             <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">

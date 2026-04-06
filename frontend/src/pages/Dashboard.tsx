@@ -226,6 +226,7 @@ const [userPageSize, setUserPageSize] = useState(10);
 const [userTotalPages, setUserTotalPages] = useState(1);
 const [userTotal, setUserTotal] = useState(0);
 const [userSearch, setUserSearch] = useState("");
+ const [showAllActivities, setShowAllActivities] = useState(false);
  const [stats, setStats] = useState({
   totalRevenue: 0,
   totalSellers: 0,
@@ -529,6 +530,11 @@ useEffect(() => {
     ],
     []
   );
+
+     const recentActivitiesPreview = useMemo(() => {
+  return activities.slice(0, 4);
+}, [activities]);
+
 
  const timeAgo = (dateLike: string) => {
   const t = new Date(dateLike).getTime();
@@ -3588,12 +3594,11 @@ const AccountView = ({
       <div className="text-red-400 text-sm">{activitiesError}</div>
     )}
 
-    {!activitiesLoading && !activitiesError && activities.length === 0 && (
-      <div className="text-white/60 text-sm">No recent activity found.</div>
-    )}
+  {!activitiesLoading && !activitiesError && recentActivitiesPreview.length === 0 && (
+  <div className="text-white/60 text-sm">No recent activity found.</div>
+)}
 
-    {/* ✅ YE CHECK KARO — YE HONA CHAHIYE */}
-    {!activitiesLoading && !activitiesError && activities.map((a) => {
+{!activitiesLoading && !activitiesError && recentActivitiesPreview.map((a) => {
       const meta = activityMeta(a.type);
       return (
         <div key={a.id} className="flex gap-4">
@@ -3616,10 +3621,13 @@ const AccountView = ({
       );
     })}
   </div>
-
-  <button className="mt-6 w-full h-10 rounded-xl border border-white/15 bg-white/[0.03] hover:bg-white/[0.06] text-sm text-white/80">
-    View Activity Log
-  </button>
+<button
+  onClick={() => setShowAllActivities(true)}
+  className="mt-6 w-full h-10 rounded-xl border border-white/15 bg-white/[0.03] hover:bg-white/[0.06] text-sm text-white/80"
+>
+  View Activity Log
+</button>
+  
 </div>
     </section>
     {/* ✅ Sellers List (Dashboard → Seller toggle) — same look as SellersView table */}
@@ -3976,14 +3984,11 @@ const AccountView = ({
       <div className="text-red-400 text-sm">{activitiesError}</div>
     )}
 
-    {!activitiesLoading && !activitiesError && activities.length === 0 && (
-      <div className="text-white/60 text-sm">No recent activity found.</div>
-    )}
+  {!activitiesLoading && !activitiesError && recentActivitiesPreview.length === 0 && (
+  <div className="text-white/60 text-sm">No recent activity found.</div>
+)}
 
-    {/* ✅ YE MISSING THA USER VIEW MEIN — ADD KARO */}
-    {!activitiesLoading &&
-      !activitiesError &&
-      activities.map((a) => {
+{!activitiesLoading && !activitiesError && recentActivitiesPreview.map((a) => {
         const meta = activityMeta(a.type);
         return (
           <div key={a.id} className="flex gap-4">
@@ -4009,9 +4014,12 @@ const AccountView = ({
       })}
   </div>
 
-  <button className="mt-6 w-full h-10 rounded-xl border border-white/15 bg-white/[0.03] hover:bg-white/[0.06] text-sm text-white/80">
-    View Activity Log
-  </button>
+ <button
+  onClick={() => setShowAllActivities(true)}
+  className="mt-6 w-full h-10 rounded-xl border border-white/15 bg-white/[0.03] hover:bg-white/[0.06] text-sm text-white/80"
+>
+  View Activity Log
+</button>
 </div>
     </section>
 
@@ -4170,6 +4178,76 @@ const AccountView = ({
         © 2020 – 2026 Tokun.ai | All Rights Reserved
       </footer>
       <MobileBottomNav />
+
+
+
+      {showAllActivities && (
+  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+    <div className="w-full max-w-2xl max-h-[85vh] rounded-2xl border border-white/10 bg-[#0F1117] shadow-2xl overflow-hidden">
+      
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+        <h2 className="text-lg font-semibold text-white">Activity Log</h2>
+        <button
+          onClick={() => setShowAllActivities(false)}
+          className="h-9 w-9 rounded-lg bg-white/[0.05] hover:bg-white/[0.08] flex items-center justify-center text-white/80"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Body */}
+      <div className="max-h-[70vh] overflow-y-auto p-5 space-y-4 no-scrollbar">
+        {activitiesLoading && (
+          <div className="text-white/70 text-sm">Loading activities…</div>
+        )}
+
+        {!!activitiesError && !activitiesLoading && (
+          <div className="text-red-400 text-sm">{activitiesError}</div>
+        )}
+
+        {!activitiesLoading && !activitiesError && activities.length === 0 && (
+          <div className="text-white/60 text-sm">No recent activity found.</div>
+        )}
+
+        {!activitiesLoading &&
+          !activitiesError &&
+          activities.map((a) => {
+            const meta = activityMeta(a.type);
+            return (
+              <div
+                key={a.id}
+                className="flex gap-4 rounded-xl border border-white/10 bg-white/[0.03] p-4"
+              >
+                <div
+                  className={[
+                    "h-10 w-10 rounded-full border flex items-center justify-center shrink-0",
+                    meta.iconBg,
+                  ].join(" ")}
+                >
+                  {meta.icon}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-white/90">
+                    {a.title}
+                  </div>
+                  {a.desc && (
+                    <div className="text-xs text-white/55 mt-1">
+                      {a.desc}
+                    </div>
+                  )}
+                  <div className="text-[11px] text-white/40 mt-2">
+                    {timeAgo(a.createdAt)}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 };

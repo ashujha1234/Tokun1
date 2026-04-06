@@ -1681,7 +1681,7 @@ useEffect(() => {
   {[ 
     { id: "profile", label: "Profile", Icon: User },
     { id: "bank", label: "Bank Account", Icon: Landmark },
-    { id: "invoices", label: "Invoices", Icon: FileText },
+    // { id: "invoices", label: "Invoices", Icon: FileText },
     { id: "billing", label: "Billing information", Icon: CreditCard },
   ].map((item) => {
     const active = profileTab === (item.id as typeof profileTab);
@@ -2111,52 +2111,8 @@ style={{
 
 
 {/* INVOICES */}
-{profileTab === "invoices" && (
-  <div className="space-y-5">
-    <h3 className="text-[22px] mb-2">My Invoices</h3>
 
-    <div className="rounded-md overflow-hidden">
-      {/* Header */}
-      <div className="grid grid-cols-[2fr,1fr,120px] items-center bg-[#1F1F22] px-4 py-3 text-white/80">
-        <span>Date</span>
-        <span>Amount</span>
-        <span className="text-right">Status</span>
-      </div>
 
-      {/* Rows */}
-      <div className="divide-y divide-white/10">
-        {[
-          { date: "Sep 16, 2025", amount: "₹4,500" },
-          { date: "Sep 15, 2025", amount: "₹4,500" },
-        ].map((row, i) => (
-          <div
-            key={i}
-            className="grid grid-cols-[2fr,1fr,120px] items-center px-4 py-4"
-          >
-            <span className="text-white/90">{row.date}</span>
-            <span className="text-white/90">{row.amount}</span>
-            <span className="flex items-center justify-end gap-4">
-              <button
-                type="button"
-                className="grid place-items-center w-8 h-8 rounded-md border border-white/15 text-white/90"
-                title="View invoice"
-              >
-                <FileText className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                className="grid place-items-center w-8 h-8 rounded-md border border-white/15 text-white/90"
-                title="Download"
-              >
-                <Download className="w-4 h-4" />
-              </button>
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  </div>
-)}
 
 {/* BILLING INFORMATION */}
 {profileTab === "billing" && (
