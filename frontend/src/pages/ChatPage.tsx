@@ -1509,7 +1509,16 @@ window.open(
       </div>
     </div>
 
-    <div className="hidden md:block p-5 text-lg font-bold">Messages</div>
+    <div className="hidden md:flex items-center gap-3 p-5">
+  <button
+    onClick={() => navigate("/smartgen")}
+    className="w-9 h-9 rounded-full text-white flex items-center justify-center shrink-0"
+    style={{ background: GRADIENT }}
+  >
+    <FiArrowLeft />
+  </button>
+  <span className="text-lg font-bold">Messages</span>
+</div>
   </div>
 
   <div className="overflow-y-auto flex-1">
