@@ -4605,7 +4605,7 @@ class LLMService {
       localStorage.getItem(`${savedProvider}_model`) ||
       DEFAULT_MODEL_BY_PROVIDER[savedProvider as LLMProvider];
 
-    const defaultKeyFromEnv = import.meta.env.VITE_OPENAI_API_KEY || "";
+   const defaultKeyFromEnv = import.meta.env.VITE_OPENAI_API_KEY || "backend-handled";
     const defaultModelFromEnv =
       import.meta.env.VITE_DEFAULT_MODEL ||
       DEFAULT_MODEL_BY_PROVIDER[savedProvider as LLMProvider];
