@@ -346,8 +346,8 @@
     <pre id="log"></pre>
 
     <script>
-      const API_BASE = "http://localhost:5000";
-      <!-- const API_BASE = "https://azure-deploye.onrender.com"; -->
+const API_BASE = "VITE_BACKEND_URL=https://backendtokun1-dqb8gycxhpc3c8b9.eastus-01.azurewebsites.net";
+  
       const BASE_URL = `${API_BASE}/api/plans/subscribe`;
 
       const JWT = localStorage.getItem("tokun_token") || "PUT_VALID_JWT_HERE";
