@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+   "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "start": "node server/index.js",
     "dev": "nodemon server/index.js",
@@ -16,6 +19,7 @@
     "@azure/storage-blob": "^12.30.0",
     "@supabase/supabase-js": "^2.52.1",
     "bcryptjs": "^3.0.3",
+    "chromium": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dayjs": "^1.11.18",
@@ -34,7 +38,7 @@
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "path": "^0.12.7",
-    "puppeteer": "^24.35.0",
+    "puppeteer-core": "^24.40.0",
     "razorpay": "^2.9.6",
     "sentiment": "^5.0.2",
     "sharp": "^0.34.5",

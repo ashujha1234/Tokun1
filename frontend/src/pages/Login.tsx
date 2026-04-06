@@ -533,9 +533,9 @@ const Login = () => {
         
 
       // data.otp check karo
-if (data.otp) {
-  toast({ title: "🔐 Dev OTP", description: `Your OTP: ${data.otp}` });
-}
+// if (data.otp) {
+//   toast({ title: "🔐 Dev OTP", description: `Your OTP: ${data.otp}` });
+// }
 
       navigate(navTo);
     } catch (err: any) {
