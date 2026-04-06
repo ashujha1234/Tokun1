@@ -312,11 +312,11 @@ const LLMSelector = ({ onProviderChange }: LLMSelectorProps) => {
         }
       } catch (err: any) {
         console.error(err);
-        toast({
-          title: "Couldn’t load providers",
-          description: err?.message || "Please try again.",
-          variant: "destructive",
-        });
+        // toast({
+        //   title: "Couldn’t load providers",
+        //   description: err?.message || "Please try again.",
+        //   variant: "destructive",
+        // });
       } finally {
         setLoading(false);
       }
