@@ -2499,34 +2499,15 @@ const PURCHASE_BASE = `${API_BASE}/api/purchase`;
 const RAZORPAY_KEY_ID = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || "rzp_test_aNNdd7yTcNuzYQ";
 
 /* ---------- Categories rail data (UI only) ---------- */
-const categoriesData = [
-  { id: "All", icon: Sparkles },
-  { id: "Marketing", icon: Sparkles },
-  { id: "Content", icon: ImageIcon },
-  { id: "Social Media", icon: Video },
-  { id: "Business", icon: BadgeDollarSign },
-  { id: "Creative", icon: Sparkles },
-  { id: "Education", icon: GraduationCap },
-  { id: "Finance", icon: BadgeDollarSign },
-  { id: "Productivity", icon: Sparkles },
-  { id: "Health", icon: Sparkles },
-  { id: "Design", icon: Palette },
-  { id: "Writing", icon: FileText },
-  { id: "Sales", icon: BadgeDollarSign },
-  { id: "HR", icon: Users },
-  { id: "Travel", icon: Plane },
-  { id: "Research", icon: FlaskConical },
-  { id: "Code", icon: Code2 },
-  { id: "Data", icon: BarChart3 },
-  { id: "Support", icon: LifeBuoy },
-  { id: "Enterprise", icon: Briefcase },
-];
 
 /* ---------- Categories scroller ---------- */
 const CategoriesScroller: React.FC<{
   selectedCategory: string;
   setSelectedCategory: (c: string) => void;
-}> = ({ selectedCategory, setSelectedCategory }) => {
+  categoriesData: { id: string; icon: React.ComponentType<any> }[];
+}> = ({ selectedCategory, setSelectedCategory, categoriesData }) => {
+
+
   const railRef = useRef<HTMLDivElement>(null);
   const slide = (dir: "left" | "right") => {
     const rail = railRef.current;
@@ -2685,7 +2666,7 @@ const [retryPrompt, setRetryPrompt] = useState<Prompt | null>(null);
   // NEW: dropdown filters
   const [fileType, setFileType] = useState<FileType>("all");
   const [licenseType, setLicenseType] = useState<LicenseType>("all");
-
+const [apiCategories, setApiCategories] = useState<string[]>([]);
   const [playingVideo, setPlayingVideo] = useState<string | number | null>(null);
 
   const [prompts, setPrompts] = useState<Prompt[]>([]);
@@ -2710,11 +2691,21 @@ const [saveForPrompt, setSaveForPrompt] = useState<Prompt | null>(null);
   const [saveAnchorEl, setSaveAnchorEl] = useState<HTMLElement | null>(null);
    
 
-
+const [latestPurchase, setLatestPurchase] = useState<any | null>(null);
 const [categoriesModalOpen, setCategoriesModalOpen] = useState(false);
 const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 const [draftCategories, setDraftCategories] = useState<string[]>([]);
 
+
+
+
+const categoriesData = [
+  { id: "All", icon: Sparkles },
+  ...apiCategories.map((name) => ({
+    id: name,
+    icon: Sparkles,
+  })),
+];
 const categoryOptions = categoriesData.filter((item) => item.id !== "All");
 
 const openCategoriesModal = () => {
@@ -2727,6 +2718,10 @@ const openCategoriesModal = () => {
   );
   setCategoriesModalOpen(true);
 };
+
+
+
+
 
 const toggleDraftCategory = (categoryId: string) => {
   setDraftCategories((prev) =>
@@ -2806,6 +2801,32 @@ const [buyerName, setBuyerName] = useState<string>("");
       }
     })();
   }, [token]);
+
+
+
+
+
+
+  useEffect(() => {
+  const loadCategories = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/category`);
+      const data = await res.json();
+
+      if (res.ok && data?.success) {
+        setApiCategories(data.categories.map((c: any) => c.name));
+      }
+    } catch (err) {
+      console.error("Failed to load categories", err);
+    }
+  };
+
+  loadCategories();
+}, []);
+
+
+
+
 
   /* ---------- Fetch prompts ---------- */
   useEffect(() => {
@@ -3066,11 +3087,14 @@ const filteredPrompts = prompts.filter((p) => {
             });
 
             const vb = await vr.json();
-          if (vb?.success) {
+         if (vb?.success) {
   const purchasedId = prompt.id;
+
   setPurchasedPrompts((prev) =>
     prev.includes(purchasedId) ? prev : [...prev, purchasedId]
   );
+
+  setLatestPurchase(vb.purchase || null);
 
   try {
     window.dispatchEvent(
@@ -3078,7 +3102,6 @@ const filteredPrompts = prompts.filter((p) => {
     );
   } catch {}
 
-  // ✅ Show popup
   setBuyerName(vb?.user?.name || "there");
   setShowSuccessPopup(true);
 
@@ -3450,12 +3473,13 @@ const savePromptToCollections = async ({
   )}
 
   <CategoriesScroller
-    selectedCategory={selectedCategory}
-    setSelectedCategory={(category) => {
-      setSelectedCategories([]);
-      setSelectedCategory(category);
-    }}
-  />
+  categoriesData={categoriesData}
+  selectedCategory={selectedCategory}
+  setSelectedCategory={(category) => {
+    setSelectedCategories([]);
+    setSelectedCategory(category);
+  }}
+/>
 </div>
         </div>
 
@@ -3477,6 +3501,7 @@ const savePromptToCollections = async ({
 ">
               {filteredPrompts.map((prompt) => {
                 const mediaKind = decideMediaType(prompt); // "video" | "image"
+                const isPurchased = purchasedPrompts.includes(String(prompt.id));
                 return (
                   <Card
                     key={prompt.id}
@@ -3550,15 +3575,25 @@ style={{ height: 520, background: "#1C1C1C", borderRadius: 30 }}
                         </div>
 
                         {/* Purchase to unlock */}
-                      {!purchasedPrompts.includes(prompt.id) && (
+                    {!isPurchased ? (
   <div
     className="absolute top-11 left-3 mt-2 px-3 py-1 text-[11px] font-semibold rounded-full"
     style={{
       background: prompt.exclusive ? "#2A2A2A" : GRADIENT,
-      color: prompt.exclusive ? "#4ADE80" : "#FFFFFF", // green font for one-time sale
+      color: prompt.exclusive ? "#4ADE80" : "#FFFFFF",
     }}
   >
     {prompt.exclusive ? "ONE-TIME PURCHASE" : "PURCHASE TO UNLOCK"}
+  </div>
+) : (
+  <div
+    className="absolute top-11 left-3 mt-2 px-3 py-1 text-[11px] font-semibold rounded-full"
+    style={{
+      background: "#14532D",
+      color: "#BBF7D0",
+    }}
+  >
+    PURCHASED
   </div>
 )}
 
@@ -3695,22 +3730,37 @@ style={{ height: 520, background: "#1C1C1C", borderRadius: 30 }}
 )}
 
       {/* ✅ Buy Now button is hidden if one-time and already sold */}
-   {!isOwnPrompt(prompt) && !(prompt.exclusive && prompt.sold) && (
-  <button
-    onClick={(e) => {
-      e.stopPropagation();
-      handlePurchase(prompt);
-    }}
-    className="text-sm font-medium text-white"
-    style={{
-      width: "89.814px",
-      height: "40px",
-      borderRadius: "8px",
-      background: "linear-gradient(270deg,#FF14EF 0%, #1A73E8 100%)",
-    }}
-  >
-    Buy Now
-  </button>
+  {!isOwnPrompt(prompt) && !isPurchased && (
+  isPurchased ? (
+    <div
+      className="flex items-center justify-center text-sm font-medium"
+      style={{
+        width: "89.814px",
+        height: "40px",
+        borderRadius: "8px",
+        background: "#14532D",
+        color: "#BBF7D0",
+      }}
+    >
+      Purchased
+    </div>
+  ) : !(prompt.exclusive && prompt.sold) ? (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        handlePurchase(prompt);
+      }}
+      className="text-sm font-medium text-white"
+      style={{
+        width: "89.814px",
+        height: "40px",
+        borderRadius: "8px",
+        background: "linear-gradient(270deg,#FF14EF 0%, #1A73E8 100%)",
+      }}
+    >
+      Buy Now
+    </button>
+  ) : null
 )}
     </>
   )}
@@ -3875,14 +3925,25 @@ style={{ height: 520, background: "#1C1C1C", borderRadius: 30 }}
       <div className="flex items-center justify-center gap-4">
         {/* ✅ Go to Purchases */}
         <button
-          onClick={() => {
-            setShowSuccessPopup(false);
-            navigate("/purchases");  // 👈 goes to purchased prompts page
-          }}
-          className="w-40 h-11 rounded-lg text-sm font-medium bg-white/10 hover:bg-white/20 transition"
-        >
-          Go to My Purchases
-        </button>
+  onClick={() => {
+    setShowSuccessPopup(false);
+
+    try {
+      if (latestPurchase) {
+        window.dispatchEvent(
+          new CustomEvent("tokun:purchased", { detail: latestPurchase })
+        );
+      }
+    } catch {}
+
+    navigate("/purchases?p=purchased", {
+      state: { refreshPurchases: true },
+    });
+  }}
+  className="w-40 h-11 rounded-lg text-sm font-medium bg-white/10 hover:bg-white/20 transition"
+>
+  Go to My Purchases
+</button>
 
         {/* ✅ Back to Marketplace */}
         <button

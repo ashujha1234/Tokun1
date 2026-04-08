@@ -1269,18 +1269,82 @@ export default function ChatPage() {
     ringingAudio.current.loop = true;
   }, []);
 
+
+useEffect(() => {
+  if (!token) return;
+
+  const markAllReadOnOpen = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/chat/conversations/read-all`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || `read-all failed: ${res.status}`);
+      }
+
+      setConversations((prev) =>
+        prev.map((c) => ({ ...c, unreadCount: 0 }))
+      );
+
+      window.dispatchEvent(new CustomEvent("chat-read"));
+    } catch (err) {
+      console.error("Mark all read on chat page open failed", err);
+    }
+  };
+
+  markAllReadOnOpen();
+}, [token, API_BASE]);
+
+
+
+
+
   /* ================= LOAD MESSAGES ================= */
-  useEffect(() => {
-    if (!activeConvo) return;
+ useEffect(() => {
+  if (!activeConvo) return;
 
-   fetch(`${API_BASE}/api/chat/messages/${activeConvo._id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
-      .then((d) => d.success && setMessages(d.messages));
+  fetch(`${API_BASE}/api/chat/messages/${activeConvo._id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+    .then((r) => r.json())
+    .then((d) => d.success && setMessages(d.messages));
 
-    socket.emit("join-chat", { conversationId: activeConvo._id });
-  }, [activeConvo, token]);
+  socket.emit("join-chat", { conversationId: activeConvo._id });
+
+  const markRead = async () => {
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/chat/conversations/${activeConvo._id}/read`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.error || `read failed: ${res.status}`);
+    }
+
+    setConversations((prev) =>
+      prev.map((c) =>
+        c._id === activeConvo._id ? { ...c, unreadCount: 0 } : c
+      )
+    );
+
+    window.dispatchEvent(new CustomEvent("chat-read"));
+  } catch (err) {
+    console.error("Mark single conversation read failed", err);
+  }
+};
+
+  markRead();
+}, [activeConvo, token]);
 
   /* ================= SOCKET ================= */
   useEffect(() => {

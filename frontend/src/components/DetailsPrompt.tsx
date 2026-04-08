@@ -535,7 +535,8 @@ import {
 import { RiShareForwardLine } from "react-icons/ri";
 import { useAuth } from "@/contexts/AuthContext";
 import RequestToBuyModal from "@/components/RequestToBuyModel";
-
+import { toast } from "@/components/ui/use-toast";
+import { useCart } from "@/contexts/CartContext";
 export interface MarketplacePrompt {
   id: number | string;
   title: string;
@@ -586,6 +587,7 @@ export default function DetailsPrompt({
   showImages = false,
 }: DetailsPromptProps) {
   const { user } = useAuth();
+  const { addToCart } = useCart();
 
   const isOrg = user?.userType === "ORG";
   const isOwner = user?.role === "Owner" || user?.role === "Admin";
@@ -653,13 +655,17 @@ const isOwnPrompt =
               </span>
             </div>
 
-            {!owned && (
-              <div className="absolute top-4 right-4 z-10">
-                <span className="px-3 py-1 text-[12px] font-semibold rounded-full text-black bg-white">
-                  PURCHASE TO UNLOCK
-                </span>
-              </div>
-            )}
+         <div className="absolute top-4 right-4 z-10">
+  <span
+    className="px-3 py-1 text-[12px] font-semibold rounded-full"
+    style={{
+      background: owned ? "#14532D" : "#FFFFFF",
+      color: owned ? "#BBF7D0" : "#000000",
+    }}
+  >
+    {owned ? "PURCHASED" : "PURCHASE TO UNLOCK"}
+  </span>
+</div>
 
             <div className="absolute inset-0">
               {media?.type === "image" ? (
@@ -830,34 +836,51 @@ const isOwnPrompt =
     </button>
 
     {/* Cart */}
-    {!isOwnPrompt && (
-      <button
-        disabled={isTeamMember}
-        className={`w-full sm:w-auto flex items-center justify-center gap-2 px-5 sm:px-8 h-10 sm:h-11 rounded-[8px] border border-white/10 text-white text-[13px] sm:text-[14px] transition-all whitespace-nowrap shrink-0 ${
-          isTeamMember
-            ? "opacity-50 cursor-not-allowed bg-[#1C1C1E]"
-            : "bg-[#1C1C1E] hover:bg-gradient-to-r hover:from-[#5A3FFF] hover:to-[#FF14EF]"
-        }`}
-      >
-        <ShoppingCart className="w-5 h-5" />
-        Cart
-      </button>
-    )}
+    {!isOwnPrompt && !owned && Number(prompt.price || 0) > 0 && (
+  <button
+    disabled={isTeamMember}
+    onClick={(e) => {
+      e.stopPropagation();
+      if (isTeamMember) return;
+
+      addToCart(prompt.id);
+      toast({
+        title: "Added to Cart",
+        description: `"${prompt.title}" was added.`,
+      });
+      onOpenChange(false);
+    }}
+    className={`w-full sm:w-auto flex items-center justify-center gap-2 px-5 sm:px-8 h-10 sm:h-11 rounded-[8px] border border-white/10 text-white text-[13px] sm:text-[14px] transition-all whitespace-nowrap shrink-0 ${
+      isTeamMember
+        ? "opacity-50 cursor-not-allowed bg-[#1C1C1E]"
+        : "bg-[#1C1C1E] hover:bg-gradient-to-r hover:from-[#5A3FFF] hover:to-[#FF14EF]"
+    }`}
+  >
+    <ShoppingCart className="w-5 h-5" />
+    Cart
+  </button>
+)}
 
     {/* Buy Now */}
-    {!isOwnPrompt && !(prompt.exclusive && prompt.sold) && (
-      <button
-        disabled={isTeamMember}
-        onClick={() => !isTeamMember && onPurchase?.(prompt)}
-        className={`w-full sm:w-auto flex items-center justify-center px-6 sm:px-10 h-10 sm:h-11 rounded-[8px] font-medium text-white text-[13px] sm:text-[14px] transition-all whitespace-nowrap shrink-0 ${
-          isTeamMember
-            ? "opacity-50 cursor-not-allowed bg-gradient-to-r from-gray-600 to-gray-500"
-            : "bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] hover:opacity-90"
-        }`}
-      >
-        Buy Now
-      </button>
-    )}
+   {!isOwnPrompt && (
+  owned ? (
+    <div className="w-full sm:w-auto px-6 sm:px-10 h-10 sm:h-11 rounded-[8px] bg-[#14532D] text-[#BBF7D0] text-[13px] sm:text-[14px] font-medium flex items-center justify-center whitespace-nowrap shrink-0">
+      Purchased
+    </div>
+  ) : !(prompt.exclusive && prompt.sold) ? (
+    <button
+      disabled={isTeamMember}
+      onClick={() => !isTeamMember && onPurchase?.(prompt)}
+      className={`w-full sm:w-auto flex items-center justify-center px-6 sm:px-10 h-10 sm:h-11 rounded-[8px] font-medium text-white text-[13px] sm:text-[14px] transition-all whitespace-nowrap shrink-0 ${
+        isTeamMember
+          ? "opacity-50 cursor-not-allowed bg-gradient-to-r from-gray-600 to-gray-500"
+          : "bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] hover:opacity-90"
+      }`}
+    >
+      Buy Now
+    </button>
+  ) : null
+)}
 
     {/* Own prompt */}
     {isOwnPrompt && (

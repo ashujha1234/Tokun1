@@ -33,14 +33,31 @@ import Dashboard from "@/pages/Dashboard";
 import AdminForgotPassword from "./pages/AdminForgotPassword";
 const queryClient = new QueryClient();
 
+// function RequireAuth({ children }: { children: React.ReactNode }) {
+//   const { isAuthenticated, isLoading } = useAuth();
+//   const location = useLocation();
+//   if (isLoading) return null; // or a spinner
+//   if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location }} />;
+//   return <>{children}</>;
+// }
+
+
+
+
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isReady } = useAuth();
   const location = useLocation();
-  if (isLoading) return null; // or a spinner
-  if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location }} />;
+
+  if (!isReady) {
+    return null; // ya loader
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
   return <>{children}</>;
 }
-
 // ...imports unchanged...
 // (keep your existing imports)
 

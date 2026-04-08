@@ -145,7 +145,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     () => ({
       user,
       token,
-      isAuthenticated: !!user && !!token,
+      // isAuthenticated: !!user && !!token,
+      isAuthenticated: !!token,
       isReady,
       logout,
       persistAuth,

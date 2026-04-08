@@ -76,20 +76,58 @@ export default function DetailsPrompt({
   const [hover, setHover] = useState<number>(0);
 
   // Media handling
-  const media = useMemo(() => {
-    if (!prompt) return null;
-    const hasVideo = !!prompt.videoUrl?.trim();
-    const hasImage = !!prompt.imageUrl?.trim();
+  // const media = useMemo(() => {
+  //   if (!prompt) return null;
+  //   const hasVideo = !!prompt.videoUrl?.trim();
+  //   const hasImage = !!prompt.imageUrl?.trim();
 
-    if (showImages || !hasVideo) {
-      return {
-        type: "image" as const,
-        url: hasImage ? prompt.imageUrl! : "/icons/fallback.png",
-      };
-    } else {
-      return { type: "video" as const, url: prompt.videoUrl! };
-    }
-  }, [prompt, showImages]);
+  //   if (showImages || !hasVideo) {
+  //     return {
+  //       type: "image" as const,
+  //       url: hasImage ? prompt.imageUrl! : "/icons/fallback.png",
+  //     };
+  //   } else {
+  //     return { type: "video" as const, url: prompt.videoUrl! };
+  //   }
+  // }, [prompt, showImages]);
+
+
+
+
+//   const media = useMemo(() => {
+//   if (!prompt) return null;
+//   const hasVideo = !!prompt.videoUrl?.trim();
+//   const hasImage = !!prompt.imageUrl?.trim();
+
+//   // ✅ Video ko priority do — showImages sirf fallback ke liye
+//   if (hasVideo && !showImages) {
+//     return { type: "video" as const, url: prompt.videoUrl! };
+//   }
+
+//   return {
+//     type: "image" as const,
+//     url: hasImage ? prompt.imageUrl! : "/icons/fallback.png",
+//   };
+// }, [prompt, showImages]);
+
+
+
+const media = useMemo(() => {
+  if (!prompt) return null;
+  const hasVideo = !!prompt.videoUrl?.trim();
+  const hasImage = !!prompt.imageUrl?.trim();
+
+  // ✅ Video ko hamesha priority do
+  if (hasVideo) {
+    return { type: "video" as const, url: prompt.videoUrl! };
+  }
+
+  return {
+    type: "image" as const,
+    url: hasImage ? prompt.imageUrl! : "/icons/fallback.png",
+  };
+}, [prompt]); // showImages dependency hatao
+
 
   if (!prompt) return null;
 

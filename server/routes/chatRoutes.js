@@ -85,10 +85,11 @@ router.get("/conversations", requireAuth, async (req, res) => {
   // Add unread count
   const enriched = await Promise.all(
     conversations.map(async (c) => {
-      const unreadCount = await Message.countDocuments({
-        conversationId: c._id,
-        readBy: { $ne: myId },
-      });
+    const unreadCount = await Message.countDocuments({
+  conversationId: c._id,
+  sender: { $ne: myId },
+  readBy: { $ne: myId },
+});
 
       const otherUser = c.participants.find(
         (p) => p._id.toString() !== myId.toString()
@@ -157,16 +158,15 @@ router.post(
       );
 
       const message = await Message.create({
-        conversationId,
-        sender: req.user._id,
-        attachment: {
-          url: azureUrl,          // ✅ FULL URL
-          name: req.file.originalname,
-          type: req.file.mimetype.startsWith("image")
-            ? "image"
-            : "file",
-        },
-      });
+  conversationId,
+  sender: req.user._id,
+  readBy: [req.user._id],
+  attachment: {
+    url: azureUrl,
+    name: req.file.originalname,
+    type: req.file.mimetype.startsWith("image") ? "image" : "file",
+  },
+});
 
       res.json({ success: true, message });
     } catch (err) {
@@ -175,6 +175,58 @@ router.post(
     }
   }
 );
+
+/* ===============================
+   MARK CONVERSATION AS READ
+================================ */
+router.post("/conversations/:conversationId/read", requireAuth, async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const myId = req.user._id;
+
+    if (!mongoose.Types.ObjectId.isValid(conversationId)) {
+      return res.status(400).json({ success: false, error: "Invalid ID" });
+    }
+
+    // ✅ Us conversation ke saare messages me apna _id readBy me add karo
+    await Message.updateMany(
+      {
+        conversationId,
+        readBy: { $ne: myId }, // sirf unread messages update karo
+      },
+      {
+        $addToSet: { readBy: myId },
+      }
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Mark read error:", err);
+    res.status(500).json({ success: false });
+  }
+});
+
+
+router.post("/conversations/read-all", requireAuth, async (req, res) => {
+  try {
+    const myId = req.user._id;
+
+    await Message.updateMany(
+      {
+        sender: { $ne: myId },
+        readBy: { $ne: myId },
+      },
+      {
+        $addToSet: { readBy: myId },
+      }
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Mark all read error:", err);
+    res.status(500).json({ success: false, error: "Server error" });
+  }
+});
 
 
 module.exports = router;

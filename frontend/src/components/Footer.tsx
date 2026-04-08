@@ -132,16 +132,15 @@
 // }
 
 
-
-
 // src/components/Footer.tsx
 import { useMemo, useState } from "react";
-import { Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
+import { Facebook, Instagram, Linkedin } from "lucide-react";
+import { FaXTwitter } from "react-icons/fa6";
 import { Button } from "@/components/ui/button";
 
 const ICONS = [
   { Icon: Facebook, href: "#" },
-  { Icon: Twitter, href: "#" },
+  { Icon: FaXTwitter, href: "#" },
   { Icon: Instagram, href: "#" },
   { Icon: Linkedin, href: "#" },
 ];
@@ -156,10 +155,8 @@ export default function Footer() {
   return (
     <footer className="relative z-10 bg-black text-white">
       <div className="container mx-auto px-4 sm:px-6 py-12 sm:py-16">
-        
         {/* Top Section */}
         <div className="flex flex-col items-center text-center">
-
           {/* Logo */}
           <div className="flex items-center gap-3">
             <span
@@ -257,7 +254,6 @@ export default function Footer() {
             © 2025 TOKUN. All rights reserved.
           </p>
         </div>
-
       </div>
     </footer>
   );

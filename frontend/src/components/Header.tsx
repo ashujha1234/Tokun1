@@ -3,8 +3,9 @@
 
 // src/components/Header.tsx
 import { useMemo, useState,useEffect ,useRef} from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { socket } from "@/lib/socket";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,8 +33,22 @@ type ThemeMode = "light" | "dark" | "system";
 
 const Header = () => {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const location = useLocation();
+const CHAT_BADGE_KEY = "tokun_chat_badge_count";
+
+const getStoredChatBadge = () => {
+  const raw = localStorage.getItem(CHAT_BADGE_KEY);
+  const n = Number(raw || "0");
+  return Number.isFinite(n) ? n : 0;
+};
+
+const setStoredChatBadge = (count: number) => {
+  localStorage.setItem(CHAT_BADGE_KEY, String(Math.max(0, count)));
+};
+  // const { user, logout } = useAuth();
+  const { user, logout, token } = useAuth() as any;
  const { cart, removeFromCart, fetchCart } = useCart();
+ const [unreadChats, setUnreadChats] = useState<number>(() => getStoredChatBadge());
 // Text color based on plan
 const userPlanColor =
   user?.plan === "pro"
@@ -49,7 +64,7 @@ const userPlanColor =
   const [sellOpen, setSellOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>("system");
    const [cartOpen, setCartOpen] = useState(false);
-const [unreadChats, setUnreadChats] = useState(0);
+
    const [headerToast, setHeaderToast] = useState<{
   title: string;
   message: string;
@@ -57,7 +72,7 @@ const [unreadChats, setUnreadChats] = useState(0);
 
   const [kycOpen, setKycOpen] = useState(false);
 const [pendingUpload, setPendingUpload] = useState(false);
-
+const [pendingCheckout, setPendingCheckout] = useState(false);
 
 
 const toastTimerRef = useRef<number | null>(null);
@@ -187,6 +202,27 @@ const ensureKycVerified = async () => {
   } catch {
     setKycOpen(true);
     return false;
+  }
+};
+
+const handleChatClick = async () => {
+  setUnreadChats(0);
+  setStoredChatBadge(0);
+
+  navigate("/chat");
+
+  if (!token) return;
+
+  try {
+    await fetch(`${API_BASE}/api/chat/conversations/read-all`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
+    });
+
+    window.dispatchEvent(new CustomEvent("chat-read"));
+  } catch (err) {
+    console.error("Chat badge clear failed", err);
   }
 };
 
@@ -613,9 +649,162 @@ const goToNotifications = () => navigate("/notifications");
 const markAllRead = () => setNotifs(prev => prev.map(n => ({ ...n, read: true })));
 
 
-const { token } = useAuth();
+// const { token } = useAuth();
 
-const handleCheckout = async () => {
+// const handleCheckout = async () => {
+//   if (!token) {
+//     console.error("[Checkout] ❌ No auth token found");
+//     toast({
+//       title: "Unauthorized",
+//       description: "Please login first.",
+//       variant: "destructive",
+//     });
+//     return;
+//   }
+
+//   const headers: Record<string, string> = {
+//     "Content-Type": "application/json",
+//     Authorization: `Bearer ${token}`,
+//   };
+
+//   const CHECKOUT_URL = `${API_BASE}/api/cart/checkout`;
+//   const VERIFY_URL = `${API_BASE}/api/cart/verify`;
+
+//   try {
+//     // --- Step 1: Create checkout order ---
+//     console.groupCollapsed(
+//       "%c[Checkout] POST → /api/cart/checkout",
+//       "color:#60a5fa;font-weight:700;"
+//     );
+
+//     const res = await fetch(CHECKOUT_URL, {
+//       method: "POST",
+//       headers,
+//       credentials: "include",
+//     });
+
+//     console.log("[Checkout] HTTP:", res.status, res.statusText);
+//     const rawCheckout = await res.text();
+//     console.log("[Checkout] Raw body:", rawCheckout);
+
+//     let checkoutData: any = {};
+//     try {
+//       checkoutData = JSON.parse(rawCheckout);
+//     } catch (e) {}
+
+//     if (!res.ok || !checkoutData.success) {
+//       throw new Error(checkoutData?.error || `http_${res.status}`);
+//     }
+
+//     const { order, prompts } = checkoutData;
+//     console.log(
+//       "%c[Checkout] ✅ Success",
+//       "color:#22c55e;font-weight:700;",
+//       { order, prompts }
+//     );
+//     console.groupEnd();
+
+//     // --- Step 2: Handle free prompts (no Razorpay needed) ---
+//     if (!order) {
+//       console.log("[Checkout] No paid prompts → directly calling verify");
+
+//       const verifyRes = await fetch(VERIFY_URL, {
+//         method: "POST",
+//         headers,
+//         body: JSON.stringify({
+//           razorpayPaymentId: null,
+//           razorpayOrderId: null,
+//           razorpaySignature: null,
+//           pricePaid: 0,
+//         }),
+//         credentials: "include",
+//       });
+
+//       const rawVerify = await verifyRes.text();
+//       console.log("[Verify] Raw body:", rawVerify);
+
+//       let verifyData: any = {};
+//       try {
+//         verifyData = JSON.parse(rawVerify);
+//       } catch {}
+
+//       if (!verifyRes.ok || !verifyData.success) {
+//         throw new Error(verifyData?.error || `http_${verifyRes.status}`);
+//       }
+
+//       toast({
+//         title: "Checkout complete",
+//         description: "Free prompts added to purchases.",
+//       });
+//       return;
+//     }
+
+//     // --- Step 3: Open Razorpay popup ---
+//     const options: any = {
+//       key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+//       amount: order.amount,
+//       currency: order.currency,
+//       name: "Tokun.ai",
+//       description: "Prompt Checkout",
+//       order_id: order.id,
+//       handler: async (response: any) => {
+//         console.log("[Razorpay] Payment success:", response);
+
+//         // --- Step 4: Verify payment ---
+//         const verifyRes = await fetch(VERIFY_URL, {
+//           method: "POST",
+//           headers,
+//           body: JSON.stringify({
+//             razorpayPaymentId: response.razorpay_payment_id,
+//             razorpayOrderId: response.razorpay_order_id,
+//             razorpaySignature: response.razorpay_signature,
+//             pricePaid: order.amount / 100,
+//           }),
+//           credentials: "include",
+//         });
+
+//         const rawVerify = await verifyRes.text();
+//         console.log("[Verify] Raw body:", rawVerify);
+
+//         let verifyData: any = {};
+//         try {
+//           verifyData = JSON.parse(rawVerify);
+//         } catch {}
+
+//         if (!verifyRes.ok || !verifyData.success) {
+//           throw new Error(verifyData?.error || `http_${verifyRes.status}`);
+//         }
+
+//         console.log(
+//           "%c[Verify] ✅ Success",
+//           "color:#22c55e;font-weight:700;",
+//           verifyData
+//         );
+//         toast({
+//           title: "Checkout complete",
+//           description: "Your prompts are now available.",
+//         });
+//       },
+//       theme: { color: "#1A73E8" },
+//     };
+
+//     const razorpayInstance = new (window as any).Razorpay(options);
+//     razorpayInstance.open();
+//   } catch (err: any) {
+//     console.error("[Checkout] ❌ FAILED:", err?.message || err);
+//     toast({
+//       title: "Checkout failed",
+//       description: err?.message || "Something went wrong.",
+//       variant: "destructive",
+//     });
+//     console.groupEnd();
+//   }
+// };
+
+
+
+
+const doCheckout = async () => {
   if (!token) {
     console.error("[Checkout] ❌ No auth token found");
     toast({
@@ -635,7 +824,6 @@ const handleCheckout = async () => {
   const VERIFY_URL = `${API_BASE}/api/cart/verify`;
 
   try {
-    // --- Step 1: Create checkout order ---
     console.groupCollapsed(
       "%c[Checkout] POST → /api/cart/checkout",
       "color:#60a5fa;font-weight:700;"
@@ -668,7 +856,6 @@ const handleCheckout = async () => {
     );
     console.groupEnd();
 
-    // --- Step 2: Handle free prompts (no Razorpay needed) ---
     if (!order) {
       console.log("[Checkout] No paid prompts → directly calling verify");
 
@@ -703,7 +890,6 @@ const handleCheckout = async () => {
       return;
     }
 
-    // --- Step 3: Open Razorpay popup ---
     const options: any = {
       key: import.meta.env.VITE_RAZORPAY_KEY_ID,
       amount: order.amount,
@@ -714,7 +900,6 @@ const handleCheckout = async () => {
       handler: async (response: any) => {
         console.log("[Razorpay] Payment success:", response);
 
-        // --- Step 4: Verify payment ---
         const verifyRes = await fetch(VERIFY_URL, {
           method: "POST",
           headers,
@@ -763,6 +948,27 @@ const handleCheckout = async () => {
     });
     console.groupEnd();
   }
+};
+
+
+const handleCheckout = async () => {
+  if (!token) {
+    toast({
+      title: "Please log in",
+      description: "You must be logged in to checkout.",
+      variant: "destructive",
+    });
+    navigate("/login");
+    return;
+  }
+
+  const ok = await ensureKycVerified();
+  if (!ok) {
+    setPendingCheckout(true);
+    return;
+  }
+
+  await doCheckout();
 };
 
 const [notifications, setNotifications] = useState<any[]>([]);
@@ -828,6 +1034,10 @@ const fetchNotifications = async () => {
 
 
 const markAllAsRead = async () => {
+  // ✅ Optimistic update — turant 0 dikhao
+  setRealUnreadCount(0);
+  setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+
   const unread = notifications.filter((n) => !n.read);
   await Promise.all(
     unread.map((n) =>
@@ -837,7 +1047,8 @@ const markAllAsRead = async () => {
       })
     )
   );
-  fetchNotifications(); // refresh
+  // Optional: refresh from server
+  fetchNotifications();
 };
 
 useEffect(() => {
@@ -846,23 +1057,53 @@ useEffect(() => {
   return () => clearInterval(interval);
 }, [token]);
 
-useEffect(() => {
-  if (!token) return;
+// Header.tsx me existing useEffect ke andar add karo
 
-  fetch(`${API_BASE}/api/chat/conversations`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-    .then(res => res.json())
-    .then(data => {
-      if (data?.success) {
-        const totalUnread = data.conversations.reduce(
-          (sum: number, c: any) => sum + (c.unreadCount || 0),
-          0
-        );
-        setUnreadChats(totalUnread);
-      }
+useEffect(() => {
+  if (location.pathname === "/chat") {
+    setUnreadChats(0);
+    setStoredChatBadge(0);
+  } else {
+    setUnreadChats(getStoredChatBadge());
+  }
+}, [location.pathname]);
+
+useEffect(() => {
+  const myId = user?._id || user?.id;
+
+  const handleIncomingMessage = (msg: any) => {
+    if (!msg) return;
+
+    // apne khud ke bheje hue messages count mat karo
+    if (String(msg.sender) === String(myId)) return;
+
+    // agar user chat page par hai to badge 0 hi rahe
+    if (location.pathname === "/chat") {
+      setUnreadChats(0);
+      setStoredChatBadge(0);
+      return;
+    }
+
+    setUnreadChats((prev) => {
+      const next = prev + 1;
+      setStoredChatBadge(next);
+      return next;
     });
-}, [token]);
+  };
+
+  const handleChatRead = () => {
+    setUnreadChats(0);
+    setStoredChatBadge(0);
+  };
+
+  socket.on("new-message", handleIncomingMessage);
+  window.addEventListener("chat-read", handleChatRead);
+
+  return () => {
+    socket.off("new-message", handleIncomingMessage);
+    window.removeEventListener("chat-read", handleChatRead);
+  };
+}, [location.pathname, user?._id, user?.id]);
 
   return (
     <>
@@ -958,9 +1199,9 @@ useEffect(() => {
 
  {/* CHAT */}
     <button
-      onClick={() => navigate("/chat")}
-      className="relative p-2 rounded-full hover:bg-white/10 transition"
-    >
+  onClick={handleChatClick}
+  className="relative p-2 rounded-full hover:bg-white/10 transition"
+>
       <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
 
       {unreadChats > 0 && (
@@ -1397,16 +1638,16 @@ useEffect(() => {
     />
 
     {/* Cart container */}
-    <div
-      className="relative text-white shadow-2xl flex flex-col"
-      style={{
-        width: "min(95vw, 950px)",
-        height: "min(90vh, 750px)",
-        background: "#17171A",
-        borderRadius: 16,
-        fontFamily: "Inter",
-      }}
-    >
+   <div
+  className="relative text-white shadow-2xl flex flex-col overflow-hidden"
+  style={{
+    width: "min(95vw, 950px)",
+    height: "min(90vh, 750px)",
+    background: "#17171A",
+    borderRadius: 16,
+    fontFamily: "Inter",
+  }}
+>
       {/* Close Button */}
       <button
         aria-label="Close"
@@ -1440,7 +1681,7 @@ useEffect(() => {
       </div> */}
 
      {/* Cart Body */}
-<div className="flex-1 overflow-y-auto no-scrollbar px-6 space-y-4">
+<div className="min-h-0 flex-1 overflow-y-auto px-6 pr-4 pb-2 space-y-4">
   {cart.length === 0 ? (
     // ---------- EMPTY CART ----------
     <div className="flex flex-col items-center justify-center text-center py-20 space-y-6">
@@ -1497,27 +1738,42 @@ useEffect(() => {
           >
             {/* Prompt info */}
             <div className="flex items-center gap-4">
-              <div className="relative w-16 h-16 rounded-md overflow-hidden bg-black">
-                {item.imageUrl && (
-                  <img
-                    src={item.imageUrl}
-                    alt={item.title}
-                    className="w-full h-full object-cover"
-                  />
-                )}
-                {item.videoUrl && (
-                  <button className="absolute inset-0 flex items-center justify-center bg-black/40">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="w-6 h-6 text-white"
-                      fill="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  </button>
-                )}
-              </div>
+              <div className="relative w-16 h-16 rounded-md overflow-hidden bg-black shrink-0">
+  {item.videoUrl ? (
+    <>
+      <video
+        src={item.videoUrl}
+        className="w-full h-full object-cover"
+        muted
+        playsInline
+        preload="metadata"
+      />
+      <div className="absolute inset-0 flex items-center justify-center bg-black/25 pointer-events-none">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="w-5 h-5 text-white"
+          fill="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path d="M8 5v14l11-7z" />
+        </svg>
+      </div>
+    </>
+  ) : item.imageUrl ? (
+    <img
+      src={item.imageUrl}
+      alt={item.title}
+      className="w-full h-full object-cover"
+      onError={(e) => {
+        (e.currentTarget as HTMLImageElement).src = "/icons/fallback.png";
+      }}
+    />
+  ) : (
+    <div className="w-full h-full flex items-center justify-center text-white/40 text-[10px]">
+      No media
+    </div>
+  )}
+</div>
               <div>
                 <p className="text-xs text-white/60">
                   Create an engaging product description
@@ -2177,19 +2433,26 @@ style={{
     onClose={() => {
       setKycOpen(false);
       setPendingUpload(false);
+      setPendingCheckout(false);
+
     }}
     token={token}
     apiBase={API_BASE}
     defaultCountry="IN"
     requiredForLabel="buying and uploading prompts"
-    onVerified={() => {
-      setKycOpen(false);
+   onVerified={async () => {
+  setKycOpen(false);
 
-      if (pendingUpload) {
-        setPendingUpload(false);
-        setSellOpen(true);
-      }
-    }}
+  if (pendingUpload) {
+    setPendingUpload(false);
+    setSellOpen(true);
+  }
+
+  if (pendingCheckout) {
+    setPendingCheckout(false);
+    await doCheckout();
+  }
+}}
   />
 )}
 

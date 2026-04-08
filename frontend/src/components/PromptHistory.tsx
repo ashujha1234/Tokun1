@@ -3,7 +3,7 @@
 
 // src/pages/PromptHistory.tsx
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -887,7 +887,7 @@ export default function PromptHistory() {
   const [purchaseHistory, setPurchaseHistory] = useState<Prompt[]>([]);
   const [purchasesLoading, setPurchasesLoading] = useState(false);
   const [purchasesError, setPurchasesError] = useState<string | null>(null);
-     
+     const location = useLocation() as any;
   // Uploaded: fetched from API
   const [uploadHistory, setUploadHistory] = useState<Prompt[]>([]);
   const [uploadsLoading, setUploadsLoading] = useState<boolean>(false);
@@ -1322,7 +1322,21 @@ const totalEarningsINR = uploadHistory.reduce((sum, p) => {
   };
 
 
+useEffect(() => {
+  if (!token) return;
 
+  if (tab === "purchased") {
+    fetchPurchaseHistory();
+  }
+}, [tab, token]);
+
+useEffect(() => {
+  if (!token) return;
+
+  if (location.state?.refreshPurchases) {
+    fetchPurchaseHistory();
+  }
+}, [location.state, token]);
   
 
   return (
@@ -1443,18 +1457,17 @@ const totalEarningsINR = uploadHistory.reduce((sum, p) => {
                   <div className="flex justify-center">
   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
 
+{purchaseHistory.map((prompt) => (
+  <HistoryGridCard
+    key={prompt.id}
+    prompt={prompt}
+    showImages={!prompt.videoUrl} // ✅ fix
+    playingVideo={playingVideo}
+    onToggleVideo={onToggleVideo}
+    onPreview={openDetails}
+  />
+))}
 
-                  {purchaseHistory.map((prompt) => (
-                    <HistoryGridCard
-                      key={prompt.id}
-                      prompt={prompt}
-                      showImages={!!prompt.imageUrl}
-                      playingVideo={playingVideo}
-                      onToggleVideo={onToggleVideo}
-                      onPreview={openDetails}
-                      // isUploaded omitted → purchased behavior
-                    />
-                  ))}
                 </div>
                 </div>
               )}
@@ -1494,18 +1507,18 @@ const totalEarningsINR = uploadHistory.reduce((sum, p) => {
   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
 
  
-                  {uploadHistory.map((prompt) => (
-                    <HistoryGridCard
-                      key={prompt.id}
-                      prompt={prompt}
-                      showImages={!!prompt.imageUrl}
-                      playingVideo={playingVideo}
-                      onToggleVideo={onToggleVideo}
-                      onPreview={openDetails}
-                      isUploaded
-                      onDelete={handleDeletePrompt}
-                    />
-                  ))}
+                 {uploadHistory.map((prompt) => (
+  <HistoryGridCard
+    key={prompt.id}
+    prompt={prompt}
+    showImages={!prompt.videoUrl} // ✅ fix
+    playingVideo={playingVideo}
+    onToggleVideo={onToggleVideo}
+    onPreview={openDetails}
+    isUploaded
+    onDelete={handleDeletePrompt}
+  />
+))}
                 </div>
                  </div>
               )}
@@ -1525,15 +1538,14 @@ const totalEarningsINR = uploadHistory.reduce((sum, p) => {
 
           </Tabs>
 
-          {/* Details Modal */}
-          <DetailsPrompt
-            open={detailsOpen}
-            onOpenChange={setDetailsOpen}
-            prompt={detailsPrompt}
-            owned={!!(detailsPrompt && (detailsPrompt as any).purchasedAt)}
-            onPurchase={() => {}}
-            showImages
-          />
+         
+<DetailsPrompt
+  open={detailsOpen}
+  onOpenChange={setDetailsOpen}
+  prompt={detailsPrompt}
+  owned={!!(detailsPrompt && (detailsPrompt as any).purchasedAt)}
+  onPurchase={() => {}}
+/>
         </div>
       </main>
       <Footer />
