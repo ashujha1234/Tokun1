@@ -54,6 +54,7 @@ type Prompt = {
   purchasedAt?: string;
   sales?: number;
   revenue?: number;
+  isUploadedByMe?: boolean;
   promptText?: string;
   fullPrompt?: string;
 };
@@ -1018,20 +1019,21 @@ const mapped: Prompt[] = (body.purchases || []).map((p: any) => {
   // ✅ Correct category resolution (prompt → snapshot → purchase record)
   const category = resolveCategory(pop, snap, p);
 
-  return {
-    id: String(promptId || p._id),
-    title,
-    description,
-    category,
-    price: pricePaid,
-    imageUrl,
-    videoUrl,
-    preview: description || (promptText ? String(promptText).slice(0, 140) : ""),
-    isFree,
-    purchasedAt: p?.purchasedAt,
-    promptText,
-    fullPrompt,
-  } as Prompt;
+ return {
+  id: String(promptId || p._id),
+  title,
+  description,
+  category,
+  price: pricePaid,
+  imageUrl,
+  videoUrl,
+  preview: description || (promptText ? String(promptText).slice(0, 140) : ""),
+  isFree,
+  purchasedAt: p?.purchasedAt,
+  isUploadedByMe: false,
+  promptText,
+  fullPrompt,
+} as Prompt;
 });
 
 
@@ -1211,32 +1213,35 @@ const mapped: Prompt[] = (body.purchases || []).map((p: any) => {
   );
 
   const revenue = Number(
-    doc.revenue ??
-    doc.totalRevenue ??
-    doc.totalEarning ??
-    doc.earnings ??
-    (sales * price) ??
-    0
-  );
+  doc.revenue ??
+  doc.totalRevenue ??
+  doc.totalEarning ??
+  doc.earnings ??
+  doc.cost ??
+  doc.totalCost ??
+  (sales * price) ??
+  0
+);
 
   return {
-    id,
-    title,
-    description,
-    category,
-    price,
-    rating,
-    downloads: doc.downloads || 0,
-    sales,
-    revenue,
-    imageUrl,
-    videoUrl,
-    preview: description || (promptText?.slice(0, 140) || ""),
-    isFree,
-    uploadedAt,
-    promptText,
-    fullPrompt,
-  } as Prompt;
+  id,
+  title,
+  description,
+  category,
+  price,
+  rating,
+  downloads: doc.downloads || 0,
+  sales,
+  revenue,
+  imageUrl,
+  videoUrl,
+  preview: description || (promptText?.slice(0, 140) || ""),
+  isFree,
+  uploadedAt,
+  isUploadedByMe: true,
+  promptText,
+  fullPrompt,
+} as Prompt;
 });
 
         setUploadHistory(mapped);
@@ -1543,7 +1548,10 @@ useEffect(() => {
   open={detailsOpen}
   onOpenChange={setDetailsOpen}
   prompt={detailsPrompt}
-  owned={!!(detailsPrompt && (detailsPrompt as any).purchasedAt)}
+  owned={
+    !!detailsPrompt &&
+    (!!(detailsPrompt as any).purchasedAt || !!(detailsPrompt as any).isUploadedByMe)
+  }
   onPurchase={() => {}}
 />
         </div>
