@@ -188,6 +188,7 @@ sellerRating: { type: Number, default: 0 },
 sellerReviewsCount: { type: Number, default: 0 },
 sellerRefundRate: { type: Number, default: 0 },
 sellerRefundThreshold: { type: Number, default: 5 },
+
 // models/seller
 sellerStatus: { type: String, default: "ACTIVE" },
 isDeleted: { type: Boolean, default: false },

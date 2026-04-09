@@ -231,6 +231,9 @@ const [userSearch, setUserSearch] = useState("");
   totalRevenue: 0,
   totalSellers: 0,
 });
+const [pendingApprovals, setPendingApprovals] = useState(0);
+
+
 
 const [sellerRows, setSellerRows] = useState<SellerRow[]>([]);
 
@@ -813,26 +816,50 @@ const [sellerSearch, setSellerSearch] = useState("");
         throw new Error(userData?.error || "User sellers failed");
 
       // ✅ MAP ORG
-      const orgMapped: SellerRow[] = (orgData.sellers || []).map((s: any) => ({
-        id: String(s._id),
-        name: s?.name || "Unknown",
-        email: s?.email || "—",
-        status: s?.status === "SUSPENDED" ? "Blocked" : "Active",
-        avatar: s?.avatar || s?.avatarUrl,
-        joined: s?.joined || s?.createdAt || null,
-        totalProducts: Number(s?.totalProducts ?? 0),
-      }));
+      // const orgMapped: SellerRow[] = (orgData.sellers || []).map((s: any) => ({
+      //   id: String(s._id),
+      //   name: s?.name || "Unknown",
+      //   email: s?.email || "—",
+      //   status: s?.status === "SUSPENDED" ? "Blocked" : "Active",
+      //   avatar: s?.avatar || s?.avatarUrl,
+      //   joined: s?.joined || s?.createdAt || null,
+      //   totalProducts: Number(s?.totalProducts ?? 0),
+      // }));
 
-      // ✅ MAP USERS
-      const userMapped: SellerRow[] = (userData.users || []).map((u: any) => ({
-        id: String(u._id),
-        name: u?.name || "Unknown",
-        email: u?.email || "—",
-        status: u?.isBanned ? "Blocked" : "Active",
-        avatar: u?.avatarUrl,
-        joined: u?.createdAt || null,
-        totalProducts: Number(u?.totalProducts ?? 0),
-      }));
+      // // ✅ MAP USERS
+      // const userMapped: SellerRow[] = (userData.users || []).map((u: any) => ({
+      //   id: String(u._id),
+      //   name: u?.name || "Unknown",
+      //   email: u?.email || "—",
+      //   status: u?.isBanned ? "Blocked" : "Active",
+      //   avatar: u?.avatarUrl,
+      //   joined: u?.createdAt || null,
+      //   totalProducts: Number(u?.totalProducts ?? 0),
+      // }));
+
+
+
+      const orgMapped: SellerRow[] = (orgData.sellers || []).map((s: any) => ({
+  id: String(s._id),
+  name: s?.name || "Unknown",
+  email: s?.email || "—",
+  status: s?.status === "SUSPENDED" ? "Blocked" : "Active",
+  avatar: s?.avatar || s?.avatarUrl,
+  joined: s?.joined || s?.createdAt || null,
+  totalProducts: Number(s?.totalProducts ?? 0),
+  kycStatus: s?.kycStatus,
+}));
+
+const userMapped: SellerRow[] = (userData.users || []).map((u: any) => ({
+  id: String(u._id),
+  name: u?.name || "Unknown",
+  email: u?.email || "—",
+  status: u?.isBanned ? "Blocked" : "Active",
+  avatar: u?.avatarUrl,
+  joined: u?.createdAt || null,
+  totalProducts: Number(u?.totalProducts ?? 0),
+  kycStatus: u?.kycStatus,
+}));
 
       // ✅ MERGE + DEDUPE
       const merged = [...orgMapped, ...userMapped].reduce((acc, cur) => {
@@ -861,6 +888,64 @@ const [sellerSearch, setSellerSearch] = useState("");
 
   fetchAllSellers();
 }, []);
+
+
+useEffect(() => {
+  const loadPendingApprovals = async () => {
+    try {
+      const token = getToken();
+      const headers = {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      };
+
+      const [usersRes, sellersRes, sellerUsersRes] = await Promise.all([
+        fetch(`${USERS_BASE}?limit=1000&page=1`, {
+          headers,
+          credentials: "include",
+        }),
+        fetch(`${SELLERS_BASE}`, {
+          headers,
+          credentials: "include",
+        }),
+        fetch(`${USERS_BASE}?seller=true&limit=1000&page=1`, {
+          headers,
+          credentials: "include",
+        }),
+      ]);
+
+      const [usersData, sellersData, sellerUsersData] = await Promise.all([
+        usersRes.json(),
+        sellersRes.json(),
+        sellerUsersRes.json(),
+      ]);
+
+      const isPendingUser = (u: any) => {
+        const kyc = String(u?.kycStatus || "");
+        const verified = !!u?.isVerified;
+        return !verified || kyc === "NOT_SUBMITTED" || kyc === "PENDING";
+      };
+
+      const isPendingSeller = (s: any) => {
+        const kyc = String(s?.kycStatus || "");
+        const verified = !!s?.verified || !!s?.isVerified;
+        return !verified || kyc === "NOT_SUBMITTED" || kyc === "PENDING";
+      };
+
+      const pendingUsers = (usersData?.users || []).filter(isPendingUser).length;
+      const pendingOrgSellers = (sellersData?.sellers || []).filter(isPendingSeller).length;
+      const pendingSellerUsers = (sellerUsersData?.users || []).filter(isPendingUser).length;
+
+      setPendingApprovals(pendingUsers + pendingOrgSellers + pendingSellerUsers);
+    } catch (err) {
+      console.error("Pending approvals fetch failed:", err);
+      setPendingApprovals(0);
+    }
+  };
+
+  if (active === "dashboard") {
+    loadPendingApprovals();
+  }
+}, [active]);
 
   useEffect(() => {
     const fetchMarketplacePrompts = async () => {
@@ -893,7 +978,13 @@ const [sellerSearch, setSellerSearch] = useState("");
             id: String(doc._id),
             title: doc?.title || "Untitled",
             uploaderName: doc?.userId?.name || "Unknown",
-            uploaderId: doc?.userId?._id || null,
+           uploaderId:
+  doc?.userId?._id ||
+  doc?.uploaderId?._id ||
+  doc?.uploaderId ||
+  doc?.sellerId?._id ||
+  doc?.sellerId ||
+  null,
             price:
               typeof doc?.tokun_price === "number"
                 ? doc.tokun_price
@@ -1910,22 +2001,54 @@ const SellersView = () => {
       if (!resPrompts.ok || !promptData?.success)
         throw new Error(promptData?.error || "Failed to load seller products");
 
-      const s = sellerData.seller;
-      setSelectedSeller({
-        id: String(s?._id || sellerId),
-        name: s?.name || "Unknown",
-        email: s?.email,
-        location: s?.location,
-        joined: s?.joined,
-        status: s?.status || "ACTIVE",
-        avatar: s?.avatar,
-        verified: !!s?.verified,
-        totalEarnings: s?.totalEarnings ?? 0,
-        rating: s?.rating ?? 0,
-        reviewsCount: s?.reviewsCount ?? 0,
-        refundRate: s?.refundRate ?? 0,
-        refundThreshold: s?.refundThreshold ?? 5,
-      });
+     const s = sellerData.seller;
+
+const derivedTotalEarnings = (promptData.prompts || []).reduce((sum: number, doc: any) => {
+  const price = Number(doc?.price ?? doc?.tokun_price ?? 0);
+
+  const sales = Number(
+    doc?.sales ??
+    doc?.purchases ??
+    doc?.totalSales ??
+    doc?.totalPurchases ??
+    doc?.salesCount ??
+    doc?.purchaseCount ??
+    doc?.orderCount ??
+    0
+  );
+
+  const revenue = Number(
+    doc?.revenue ??
+    doc?.totalRevenue ??
+    doc?.totalEarning ??
+    doc?.earnings ??
+    doc?.cost ??
+    doc?.totalCost ??
+    (sales * price) ??
+    0
+  );
+
+  return sum + (Number.isFinite(revenue) ? revenue : 0);
+}, 0);
+
+setSelectedSeller({
+  id: String(s?._id || sellerId),
+  name: s?.name || "Unknown",
+  email: s?.email,
+  location: s?.location,
+  joined: s?.joined,
+  status: s?.status || "ACTIVE",
+  avatar: s?.avatar,
+  verified: !!s?.verified,
+  totalEarnings:
+    typeof s?.totalEarnings === "number" && s.totalEarnings > 0
+      ? s.totalEarnings
+      : derivedTotalEarnings,
+  rating: s?.rating ?? 0,
+  reviewsCount: s?.reviewsCount ?? 0,
+  refundRate: s?.refundRate ?? 0,
+  refundThreshold: s?.refundThreshold ?? 5,
+});
 
       const mapped: PromptProduct[] = (promptData.prompts || []).map((doc: any) => {
         const att = doc?.attachment || null;
@@ -1935,7 +2058,13 @@ const SellersView = () => {
           id: String(doc._id),
           title: doc?.title || "Untitled",
           uploaderName: doc?.userId?.name || "Unknown",
-          uploaderId: doc?.userId?._id || null,
+          uploaderId:
+  doc?.userId?._id ||
+  doc?.uploaderId?._id ||
+  doc?.uploaderId ||
+  doc?.sellerId?._id ||
+  doc?.sellerId ||
+  null,
           price: typeof doc?.price === "number" ? doc.price : 0,
           status,
           imageUrl: att?.type === "image" ? att?.path : undefined,
@@ -2150,9 +2279,15 @@ const SellersView = () => {
                       alt={r.name}
                     />
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-white/90 truncate">{r.name}</div>
-                      <div className="text-xs text-white/50 truncate">{r.email}</div>
-                    </div>
+  <button
+    type="button"
+    onClick={() => openSellerProfile(r.id)}
+    className="text-sm font-semibold text-white/90 truncate hover:text-sky-400 text-left block w-full"
+  >
+    {r.name}
+  </button>
+  <div className="text-xs text-white/50 truncate">{r.email}</div>
+</div>
                   </div>
                   <span className={[
                     "px-3 py-1 rounded-full text-xs font-medium border shrink-0",
@@ -2489,6 +2624,127 @@ const ProductsView = () => {
   const endIndex = Math.min(startIndex + pageSize, total);
   const pageProducts = filtered.slice(startIndex, endIndex); // ✅ sirf 10
 
+
+const openSellerProfile = async (sellerId?: string | null) => {
+  if (!sellerId) return;
+
+  try {
+    setSellerLoading(true);
+    setSellerError(null);
+
+    const token = getToken();
+
+    const resSeller = await fetch(`${SELLERS_BASE}/${sellerId}`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      credentials: "include",
+    });
+    const sellerData = await resSeller.json();
+
+    if (!resSeller.ok || !sellerData?.success) {
+      throw new Error(sellerData?.error || "Failed to load seller profile");
+    }
+
+    const resPrompts = await fetch(`${PROMPTS_BASE}/by-seller/${sellerId}`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      credentials: "include",
+    });
+    const promptData = await resPrompts.json();
+
+    if (!resPrompts.ok || !promptData?.success) {
+      throw new Error(promptData?.error || "Failed to load seller products");
+    }
+
+    const s = sellerData.seller;
+
+    const derivedTotalEarnings = (promptData.prompts || []).reduce((sum: number, doc: any) => {
+      const price = Number(doc?.price ?? doc?.tokun_price ?? 0);
+
+      const sales = Number(
+        doc?.sales ??
+        doc?.purchases ??
+        doc?.totalSales ??
+        doc?.totalPurchases ??
+        doc?.salesCount ??
+        doc?.purchaseCount ??
+        doc?.orderCount ??
+        0
+      );
+
+      const revenue = Number(
+        doc?.revenue ??
+        doc?.totalRevenue ??
+        doc?.totalEarning ??
+        doc?.earnings ??
+        doc?.cost ??
+        doc?.totalCost ??
+        (sales * price) ??
+        0
+      );
+
+      return sum + (Number.isFinite(revenue) ? revenue : 0);
+    }, 0);
+
+    setSelectedSeller({
+      id: String(s?._id || sellerId),
+      name: s?.name || "Unknown",
+      email: s?.email,
+      location: s?.location,
+      joined: s?.joined,
+      status: s?.status || "ACTIVE",
+      avatar: s?.avatar,
+      verified: !!s?.verified,
+      totalEarnings:
+        typeof s?.totalEarnings === "number" && s.totalEarnings > 0
+          ? s.totalEarnings
+          : derivedTotalEarnings,
+      rating: s?.rating ?? 0,
+      reviewsCount: s?.reviewsCount ?? 0,
+      refundRate: s?.refundRate ?? 0,
+      refundThreshold: s?.refundThreshold ?? 5,
+    });
+
+    const mapped: PromptProduct[] = (promptData.prompts || []).map((doc: any) => {
+      const att = doc?.attachment || null;
+      const status: PromptProduct["status"] =
+        doc?.flagged ? "Flagged" : doc?.draft ? "Draft" : "Published";
+
+      return {
+        id: String(doc._id),
+        title: doc?.title || "Untitled",
+        uploaderName: doc?.userId?.name || "Unknown",
+        uploaderId:
+          doc?.userId?._id ||
+          doc?.uploaderId?._id ||
+          doc?.uploaderId ||
+          doc?.sellerId?._id ||
+          doc?.sellerId ||
+          null,
+        price: typeof doc?.price === "number" ? doc.price : 0,
+        status,
+        imageUrl: att?.type === "image" ? att?.path : undefined,
+        videoUrl: att?.type === "video" ? att?.path : undefined,
+        category: doc?.categories?.[0]?.name || "General",
+        exclusive: !!doc?.exclusive,
+        sold: !!doc?.sold,
+      };
+    });
+
+    setSellerProducts(mapped);
+  } catch (e: any) {
+    setSellerError(e?.message || "Error loading seller profile");
+  } finally {
+    setSellerLoading(false);
+  }
+};
+
+const closeSellerProfile = () => {
+  setSelectedSeller(null);
+  setSellerProducts([]);
+  setSellerError(null);
+};
+
+
+
   if (selectedSeller) {
     return (
       <SellerProfileView
@@ -2646,26 +2902,28 @@ const ProductsView = () => {
                 >
                   <div className="relative h-[230px] bg-black/40">
                     {hasImage ? (
-                      <img
-                        src={p.imageUrl}
-                        alt={p.title}
-                        className="absolute inset-0 w-full h-full object-cover"
-                      />
-                    ) : hasVideo ? (
-                      <div className="absolute inset-0 w-full h-full flex items-center justify-center">
-                        <div className="flex items-center gap-2 text-white/70 text-sm">
-                          <Video className="h-5 w-5" />
-                          Video Prompt
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="absolute inset-0 w-full h-full flex items-center justify-center">
-                        <div className="flex items-center gap-2 text-white/60 text-sm">
-                          <ImageIcon className="h-5 w-5" />
-                          No Preview
-                        </div>
-                      </div>
-                    )}
+  <img
+    src={p.imageUrl}
+    alt={p.title}
+    className="absolute inset-0 w-full h-full object-cover"
+  />
+) : hasVideo ? (
+  <video
+    src={p.videoUrl}
+    className="absolute inset-0 w-full h-full object-cover"
+    controls
+    muted
+    playsInline
+    preload="metadata"
+  />
+) : (
+  <div className="absolute inset-0 w-full h-full flex items-center justify-center">
+    <div className="flex items-center gap-2 text-white/60 text-sm">
+      <ImageIcon className="h-5 w-5" />
+      No Preview
+    </div>
+  </div>
+)}
 
                     <span className="absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-medium bg-sky-500/15 text-sky-200 border border-sky-500/25">
                       {p.status}
@@ -2684,13 +2942,16 @@ const ProductsView = () => {
                     </div>
                     <div className="mt-2 text-[12px] text-white/60 truncate">
                       by{" "}
-                      <button
-                        type="button"
-                        onClick={() => openSellerProfile(p.uploaderId)}
-                        className="text-sky-300 hover:underline font-medium"
-                      >
-                        {p.uploaderName}
-                      </button>
+                    <button
+  type="button"
+  onClick={() => {
+    console.log("SELLER CLICK", p.uploaderId, p);
+    openSellerProfile(p.uploaderId);
+  }}
+  className="text-sky-300 hover:underline font-medium"
+>
+  {p.uploaderName}
+</button>
                       {p.category ? ` • ${p.category}` : ""}
                     </div>
                     <div className="mt-3 flex items-center justify-between">
@@ -3443,7 +3704,7 @@ const AccountView = ({
           PENDING APPROVALS
         </div>
         <div className="mt-4 flex items-end justify-between">
-          <div className="text-3xl font-semibold">42</div>
+        <div className="text-3xl font-semibold">{pendingApprovals}</div>
           <div className="text-sm text-fuchsia-300 font-medium">
             New submissions
           </div>
@@ -3870,7 +4131,7 @@ const AccountView = ({
           PENDING APPROVALS
         </div>
         <div className="mt-4 flex items-end justify-between">
-          <div className="text-3xl font-semibold">42</div>
+     <div className="text-3xl font-semibold">{pendingApprovals}</div>
           <div className="text-sm text-fuchsia-300 font-medium">
             New submissions
           </div>
