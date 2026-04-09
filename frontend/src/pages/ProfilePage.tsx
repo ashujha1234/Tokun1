@@ -29,6 +29,7 @@ type Prompt = {
   category: string;
   price?: number;
   imageUrl?: string;
+  videoUrl?: string;
   isFree?: boolean;
 };
 
@@ -112,7 +113,7 @@ const [selectedTime, setSelectedTime] = useState("11:00 AM");
 const [openServicePopup, setOpenServicePopup] = useState(false);
 // const [selectedService, setSelectedService] = useState<any>(null);
 const [openCreateServicePopup, setOpenCreateServicePopup] = useState(false);
-
+const isOwnProfile = userId === user?._id;
 const fileRef = useRef<HTMLInputElement | null>(null);
 const [avatar, setAvatar] = useState<string | null>(null);
 
@@ -242,24 +243,30 @@ const [messageInput, setMessageInput] = useState("");
   const att = doc?.attachment;
 
   // ✅ Azure already returns FULL URL
-  const imageUrl =
-    att?.type === "image" && att?.path
-      ? att.path
-      : undefined;
+ const imageUrl =
+  att?.type === "image" && att?.path
+    ? att.path
+    : undefined;
 
-  return {
-    id: doc._id,
-    title: doc.title,
-    description: doc.description,
-    category:
-      doc.categories?.[0]?.name ||
-      (Array.isArray(doc.categories)
-        ? doc.categories.join(", ")
-        : "General"),
-    price: Number(doc.price || 0),
-    imageUrl,
-    isFree: !!doc.free,
-  };
+const videoUrl =
+  att?.type === "video" && att?.path
+    ? att.path
+    : undefined;
+
+return {
+  id: doc._id,
+  title: doc.title,
+  description: doc.description,
+  category:
+    doc.categories?.[0]?.name ||
+    (Array.isArray(doc.categories)
+      ? doc.categories.join(", ")
+      : "General"),
+  price: Number(doc.price || 0),
+  imageUrl,
+  videoUrl,
+  isFree: !!doc.free,
+};
 });
 
         setPrompts(mapped);
@@ -715,7 +722,7 @@ const sendMessage = () => {
   My Digital Products
 </h2>
 
-    {kycInfo?.kycStatus === "VERIFIED" && (
+    {kycInfo?.kycStatus === "VERIFIED" && isOwnProfile && (
   <div className="mt-10 max-w-[520px]">
 
     {/* Verification Status Header */}
@@ -752,12 +759,14 @@ const sendMessage = () => {
           </p>
         </div>
 
-        <div>
-          <p className="text-white/40">DOCUMENT TYPE</p>
-          <p className="text-white mt-1">
-            {kycInfo?.docType === "AADHAAR" ? "Aadhaar" : "Passport"}
-          </p>
-        </div>
+        {isOwnProfile && (
+  <div>
+    <p className="text-white/40">DOCUMENT TYPE</p>
+    <p className="text-white mt-1">
+      {kycInfo?.docType === "AADHAAR" ? "Aadhaar" : "Passport"}
+    </p>
+  </div>
+)}
 
         <div>
           <p className="text-white/40">STATUS</p>
@@ -879,22 +888,31 @@ const sendMessage = () => {
   }}
 >
             <CardContent className="p-4 h-full flex flex-col">
-              <div className="relative w-full h-[240px] rounded-[20px] overflow-hidden bg-black">
-                {prompt.imageUrl && (
-                  <img
-                    src={prompt.imageUrl}
-                    alt={prompt.title}
-                    className="w-full h-full object-cover"
-                  />
-                )}
+             <div className="relative w-full h-[240px] rounded-[20px] overflow-hidden bg-black">
+  {prompt.videoUrl ? (
+    <video
+      src={prompt.videoUrl}
+      className="w-full h-full object-cover"
+      controls
+      muted
+      playsInline
+      preload="metadata"
+    />
+  ) : prompt.imageUrl ? (
+    <img
+      src={prompt.imageUrl}
+      alt={prompt.title}
+      className="w-full h-full object-cover"
+    />
+  ) : null}
 
-                <div
-                  className="absolute top-3 left-3 px-3 py-1 text-[11px] font-semibold text-white rounded-full"
-                  style={{ background: GRADIENT }}
-                >
-                  {prompt.category.toUpperCase()}
-                </div>
-              </div>
+  <div
+    className="absolute top-3 left-3 px-3 py-1 text-[11px] font-semibold text-white rounded-full"
+    style={{ background: GRADIENT }}
+  >
+    {prompt.category.toUpperCase()}
+  </div>
+</div>
 
               <div className="mt-4">
                 <h3 className="text-[18px] font-semibold text-white line-clamp-2">
@@ -958,11 +976,22 @@ const sendMessage = () => {
           >
             {/* IMAGE */}
             <div className="h-[160px] rounded-xl bg-black mb-4 overflow-hidden">
-              {service.media?.length > 0 && (
-  <img
-    src={service.media[0]}
-    className="w-full h-full object-cover"
-  />
+             {service.media?.length > 0 && (
+  service.media[0].match(/\.(mp4|webm|ogg)$/i) ? (
+    <video
+      src={service.media[0]}
+      className="w-full h-full object-cover"
+      controls
+      muted
+      playsInline
+      preload="metadata"
+    />
+  ) : (
+    <img
+      src={service.media[0]}
+      className="w-full h-full object-cover"
+    />
+  )
 )}
             </div>
 
