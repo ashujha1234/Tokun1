@@ -1705,13 +1705,13 @@ const Signup = () => {
               </Link>
             </p>
             
-               <div className="my-6 flex items-center gap-4">
-              <div className="h-px flex-1 bg-[#282C42]" />
-              <div className="h-[30px] w-[30px] rounded-full border border-[#282C42] text-[#FFFFFF] text-[12px] flex items-center justify-center">
-                OR
-              </div>
-              <div className="h-px flex-1 bg-[#282C42]" />
-            </div>
+             <div className="my-6 flex items-center gap-4 w-full md:w-[350px]">
+  <div className="h-px flex-1 bg-[#282C42]" />
+  <div className="h-[30px] w-[30px] rounded-full border border-[#282C42] text-[#FFFFFF] text-[12px] flex items-center justify-center shrink-0">
+    OR
+  </div>
+  <div className="h-px flex-1 bg-[#282C42]" />
+</div>
             
 
                <form onSubmit={handleSubmit} className="space-y-6">

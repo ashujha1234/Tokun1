@@ -609,8 +609,7 @@ useEffect(() => {
             >
               Login
             </button>
-
-           <button
+<button
   type="button"
   onClick={handleGetStarted}
   className="inline-flex items-center justify-center rounded-full hover:opacity-95 transition-opacity"
@@ -989,6 +988,33 @@ useEffect(() => {
         <MdKeyboardArrowRight size={14} color="black" />
       </span>
     </motion.button>
+
+    {/* <motion.button
+  onClick={() => go(routes.smartgen)}
+  whileHover={{ scale: 1.05 }}
+  className="steam-btn relative w-[200px] sm:w-[220px] h-[50px] sm:h-[62px] rounded-full text-white font-semibold"
+  style={{ borderRadius: 9999 }}
+>
+  <span
+    className="steam-btn-inner backdrop-blur-md border border-white/10"
+    style={{
+      borderRadius: 9999,
+      background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)",
+      boxShadow: "0 10px 30px rgba(255,20,239,0.18)",
+      gap: 12,
+      fontSize: "inherit",
+    }}
+  >
+    <span>Try Smartgen</span>
+    <span
+      aria-hidden
+      className="inline-flex items-center justify-center rounded-full bg-white"
+      style={{ width: 24, height: 24 }}
+    >
+      <MdKeyboardArrowRight size={14} color="black" />
+    </span>
+  </span>
+</motion.button> */}
   </div>
 
   <motion.button
@@ -999,6 +1025,25 @@ useEffect(() => {
   >
     Prompt Marketplace
   </motion.button>
+
+
+  {/* <motion.button
+  onClick={() => go(routes.marketplace)}
+  whileHover={{ scale: 1.05 }}
+  className="steam-btn relative w-[200px] sm:w-[220px] h-[50px] sm:h-[62px] rounded-full text-white font-semibold"
+  style={{ borderRadius: 9999 }}
+>
+  <span
+    className="steam-btn-inner backdrop-blur-md border border-white/10"
+    style={{
+      borderRadius: 9999,
+      background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)",
+      boxShadow: "0 10px 30px rgba(255,20,239,0.18)",
+    }}
+  >
+    Prompt Marketplace
+  </span>
+</motion.button> */}
 </div>
         {/* STATS */}
         {/* <section className="mt-20">
@@ -1179,7 +1224,7 @@ useEffect(() => {
 
         {/* HOW IT WORKS + PRODUCT DEMO */}
         <div className="mt-28" style={{ borderWidth: "1px 0 1px 0", borderStyle: "solid", borderColor: "#171717", background: "#08090B" }}>
-          <div className="pt-16 flex justify-center mb-8">
+          {/* <div className="pt-16 flex justify-center mb-8">
             <div className="p-[1px] rounded-full" style={{ background: "linear-gradient(90deg, #1A73E8 0%, #FF14EF 100%)" }}>
               <div className="px-5 py-2 rounded-full bg-black">
                 <span
@@ -1197,7 +1242,37 @@ useEffect(() => {
                 </span>
               </div>
             </div>
-          </div>
+          </div> */}
+
+          <div className="pt-16 flex justify-center mb-8">
+  <button
+    type="button"
+    className="steam-btn rounded-full"
+    style={{ borderRadius: 9999 }}
+  >
+    <span
+      className="steam-btn-inner px-5 py-2"
+      style={{
+        borderRadius: 9999,
+        background: "#000000",
+      }}
+    >
+      <span
+        style={{
+          fontFamily: "Inter, ui-sans-serif, system-ui",
+          fontWeight: 500,
+          fontSize: 16,
+          lineHeight: "100%",
+          background: "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)",
+          WebkitBackgroundClip: "text",
+          color: "transparent",
+        }}
+      >
+        PROCESS
+      </span>
+    </span>
+  </button>
+</div>
           <h2 className="text-4xl md:text-5xl font-bold text-center mb-12">How It Works</h2>
 
           {/* Steps grid */}
@@ -1399,25 +1474,35 @@ useEffect(() => {
 
         {/* FINAL CTA */}
         <div className="mt-28 text-center">
-          <div className="flex justify-center mb-4">
-            <div className="p-[1px] rounded-full" style={{ background: "linear-gradient(90deg, #1A73E8 0%, #FF14EF 100%)" }}>
-              <div className="px-5 py-2 rounded-full bg-black">
-                <span
-                  style={{
-                    fontFamily: "Inter, ui-sans-serif, system-ui",
-                    fontWeight: 500,
-                    fontSize: 16,
-                    lineHeight: "100%",
-                    background: "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)",
-                    WebkitBackgroundClip: "text",
-                    color: "transparent",
-                  }}
-                >
-                  REACH OUT ANY TIME
-                </span>
-              </div>
-            </div>
-          </div>
+         <div className="flex justify-center mb-4">
+  <button
+    type="button"
+    className="steam-btn rounded-full"
+    style={{ borderRadius: 9999 }}
+  >
+    <span
+      className="steam-btn-inner px-5 py-2"
+      style={{
+        borderRadius: 9999,
+        background: "#000000",
+      }}
+    >
+      <span
+        style={{
+          fontFamily: "Inter, ui-sans-serif, system-ui",
+          fontWeight: 500,
+          fontSize: 16,
+          lineHeight: "100%",
+          background: "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)",
+          WebkitBackgroundClip: "text",
+          color: "transparent",
+        }}
+      >
+        REACH OUT ANY TIME
+      </span>
+    </span>
+  </button>
+</div>
 
          <h2 className="text-2xl sm:text-4xl md:text-5xl font-bold mb-6">
   Ready to optimize your prompts?
@@ -1457,6 +1542,31 @@ useEffect(() => {
         <MdKeyboardArrowRight size={14} color="black" />
       </span>
     </motion.button>
+    {/* <motion.button
+  onClick={() => go(routes.app)}
+  whileHover={{ scale: 1.05 }}
+  className="steam-btn relative w-[200px] sm:w-[240px] h-[50px] sm:h-[62px] rounded-full text-white font-semibold"
+  style={{ borderRadius: 9999 }}
+>
+  <span
+    className="steam-btn-inner backdrop-blur-md border border-white/10"
+    style={{
+      borderRadius: 9999,
+      background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)",
+      boxShadow: "0 10px 30px rgba(255,20,239,0.18)",
+      gap: 12,
+    }}
+  >
+    <span>Start Optimizing Now</span>
+    <span
+      aria-hidden
+      className="inline-flex items-center justify-center rounded-full bg-white"
+      style={{ width: 24, height: 24 }}
+    >
+      <MdKeyboardArrowRight size={14} color="black" />
+    </span>
+  </span>
+</motion.button> */}
   </div>
 </div>
         </div>
@@ -1468,7 +1578,7 @@ useEffect(() => {
 <div className="mt-28 mb-20 relative font-[Inter] px-4">
 
   {/* TAG */}
-  <div className="flex justify-center mb-4">
+  {/* <div className="flex justify-center mb-4">
     <div
       className="p-[1px] rounded-full"
       style={{ background: "linear-gradient(90deg, #1A73E8 0%, #FF14EF 100%)" }}
@@ -1487,7 +1597,35 @@ useEffect(() => {
         </span>
       </div>
     </div>
-  </div>
+  </div> */}
+
+  <div className="flex justify-center mb-4">
+  <button
+    type="button"
+    className="steam-btn rounded-full"
+    style={{ borderRadius: 9999 }}
+  >
+    <span
+      className="steam-btn-inner px-5 py-2"
+      style={{
+        borderRadius: 9999,
+        background: "#000000",
+      }}
+    >
+      <span
+        style={{
+          fontWeight: 500,
+          fontSize: 16,
+          background: "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)",
+          WebkitBackgroundClip: "text",
+          color: "transparent",
+        }}
+      >
+        WALL OF LOVE
+      </span>
+    </span>
+  </button>
+</div>
 
  <h2 className="text-2xl sm:text-4xl md:text-5xl font-bold text-center mb-4">
   Loved by thinkers
@@ -1976,7 +2114,60 @@ style={{
     </div>
   </div>
 )}
+<style>{`
+  .steam-btn {
+    position: relative;
+    isolation: isolate;
+    overflow: visible;
+  }
 
+  .steam-btn::before,
+  .steam-btn::after {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    background: linear-gradient(
+      45deg,
+      #fb0094,
+      #0000ff,
+      #00ff00,
+      #ffff00,
+      #ff0000,
+      #fb0094,
+      #0000ff,
+      #00ff00,
+      #ffff00,
+      #ff0000
+    );
+    background-size: 400%;
+    z-index: -2;
+    animation: steam 20s linear infinite;
+  }
+
+  .steam-btn::after {
+    z-index: -3;
+    filter: blur(22px);
+    opacity: 0.95;
+  }
+
+  .steam-btn-inner {
+    position: relative;
+    z-index: 1;
+    border-radius: inherit;
+    width: 100%;
+    height: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  @keyframes steam {
+    0% { background-position: 0 0; }
+    50% { background-position: 400% 0; }
+    100% { background-position: 0 0; }
+  }
+`}</style>
 
     </motion.section>
   );
