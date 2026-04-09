@@ -131,7 +131,6 @@
 //   );
 // }
 
-
 // src/components/Footer.tsx
 import { useMemo, useState } from "react";
 import { Facebook, Instagram, Linkedin } from "lucide-react";
@@ -146,11 +145,14 @@ const ICONS = [
 ];
 
 export default function Footer() {
-  const [active, setActive] = useState(0);
+  const [active, setActive] = useState<number | null>(null);
 
   const ICON_SIZE = 44;
   const GAP = 16;
-  const puckX = useMemo(() => active * (ICON_SIZE + GAP), [active]);
+  const puckX = useMemo(
+    () => (active !== null ? active * (ICON_SIZE + GAP) : 0),
+    [active]
+  );
 
   return (
     <footer className="relative z-10 bg-black text-white">
@@ -195,18 +197,20 @@ export default function Footer() {
               height: ICON_SIZE,
             }}
           >
-            <span
-              aria-hidden
-              className="absolute top-0 left-0 rounded-full"
-              style={{
-                width: ICON_SIZE,
-                height: ICON_SIZE,
-                transform: `translateX(${puckX}px)`,
-                transition: "transform 300ms cubic-bezier(.2,.8,.2,1)",
-                background: "linear-gradient(270.19deg,#1A73E8 0.16%,#FF14EF 99.84%)",
-                boxShadow: "0 8px 24px rgba(255,20,239,0.35)",
-              }}
-            />
+            {active !== null && (
+              <span
+                aria-hidden
+                className="absolute top-0 left-0 rounded-full"
+                style={{
+                  width: ICON_SIZE,
+                  height: ICON_SIZE,
+                  transform: `translateX(${puckX}px)`,
+                  transition: "transform 300ms cubic-bezier(.2,.8,.2,1)",
+                  background: "linear-gradient(270.19deg,#1A73E8 0.16%,#FF14EF 99.84%)",
+                  boxShadow: "0 8px 24px rgba(255,20,239,0.35)",
+                }}
+              />
+            )}
 
             <div className="absolute inset-0 flex items-center gap-4">
               {ICONS.map(({ Icon, href }, i) => (

@@ -299,6 +299,48 @@ useEffect(() => {
   }
 }, [profileOpen]);
 
+
+
+const [bankFormToast, setBankFormToast] = useState<{
+  title: string;
+  message: string;
+  type?: "error" | "success";
+} | null>(null);
+
+const bankToastTimerRef = useRef<number | null>(null);
+
+const showBankFormToast = (
+  title: string,
+  message: string,
+  type: "error" | "success" = "error"
+) => {
+  setBankFormToast({ title, message, type });
+
+  if (bankToastTimerRef.current) {
+    window.clearTimeout(bankToastTimerRef.current);
+  }
+
+  bankToastTimerRef.current = window.setTimeout(() => {
+    setBankFormToast(null);
+  }, 4000);
+};
+
+useEffect(() => {
+  return () => {
+    if (bankToastTimerRef.current) {
+      window.clearTimeout(bankToastTimerRef.current);
+    }
+  };
+}, []);
+
+const onlyLetters = (value: string) =>
+  value
+    .replace(/[^A-Za-z\s]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^\s+/, "");
+
+const onlyDigits = (value: string) => value.replace(/\D/g, "").slice(0, 18);
+
 // confirm-delete modal state
 const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id?: string; last4?: string }>({ open: false });
 
@@ -315,24 +357,27 @@ const performDelete = () => {
 const hasBankAccount = bankAccounts.length > 0;
 
 // Add account
-
 const handleSaveBank = async () => {
-  // client-side validation (kept)
-  if (!bankForm.holder || !bankForm.accNum || !bankForm.confirmAccNum || !bankForm.ifsc || !bankForm.bankName) {
-    console.warn("[BankAdd] Missing fields:", bankForm);
-    toast({ title: "Missing fields", description: "Please fill out all fields.", variant: "destructive" });
-    return;
-  }
-  if (bankForm.accNum !== bankForm.confirmAccNum) {
-    console.warn("[BankAdd] Account numbers mismatch", {
-      accNum: bankForm.accNum,
-      confirmAccNum: bankForm.confirmAccNum,
-    });
-    toast({ title: "Account numbers mismatch", description: "Please re-enter account number.", variant: "destructive" });
+  const holder = bankForm.holder.trim();
+  const accNum = bankForm.accNum.trim();
+  const confirmAccNum = bankForm.confirmAccNum.trim();
+  const ifsc = bankForm.ifsc.trim().toUpperCase();
+  const bankName = bankForm.bankName.trim();
+
+  if (!holder || !accNum || !confirmAccNum || !ifsc || !bankName) {
+    showBankFormToast("Missing details", "Please fill out all fields.", "error");
     return;
   }
 
-  // ---- Build request ----
+  if (accNum !== confirmAccNum) {
+    showBankFormToast(
+      "Account numbers mismatch",
+      "Please re-enter account number correctly.",
+      "error"
+    );
+    return;
+  }
+
   const API_BASE = (import.meta as any).env?.VITE_API_URL?.replace(/\/$/, "") || "";
   const BANK_ADD_URL = API_BASE ? `${API_BASE}/api/bankaccount/add` : `/api/bankaccount/add`;
   const token =
@@ -346,19 +391,15 @@ const handleSaveBank = async () => {
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const makeDefault = bankAccounts.length > 0 ? !!setAsDefault : undefined;
+
   const body = {
-    accountHolderName: bankForm.holder.trim(),
-    accountNumber: bankForm.accNum.trim(),
-    confirmAccountNumber: bankForm.confirmAccNum.trim(),
-    ifscCode: bankForm.ifsc.trim().toUpperCase(),
-    bankName: bankForm.bankName.trim(),
+    accountHolderName: holder,
+    accountNumber: accNum,
+    confirmAccountNumber: confirmAccNum,
+    ifscCode: ifsc,
+    bankName: bankName,
     default: makeDefault,
   };
-
-  // ---- Console preflight ----
-  console.log("%c[BankAdd] POST", "color:#22c55e;font-weight:bold;", BANK_ADD_URL);
-  console.log("[BankAdd] Headers:", { ...headers, Authorization: headers.Authorization ? "Bearer <present>" : "—" });
-  console.log("[BankAdd] Payload:", body);
 
   try {
     const res = await fetch(BANK_ADD_URL, {
@@ -368,38 +409,27 @@ const handleSaveBank = async () => {
       credentials: "include",
     });
 
-    // ---- Console response ----
-    console.log("%c[BankAdd] HTTP", "color:#22c55e;font-weight:bold;", res.status, res.statusText);
-    console.log("[BankAdd] Resp headers (subset):", {
-      "content-type": res.headers.get("content-type"),
-      "set-cookie": res.headers.get("set-cookie"),
-    });
-
     const raw = await res.text();
-    console.log("[BankAdd] Raw body:", raw);
-
     let data: any = {};
-    try { data = JSON.parse(raw); } catch (e) {
-      console.warn("[BankAdd] JSON parse failed, using raw text:", e);
-    }
-
-    console.log("[BankAdd] Parsed JSON:", data);
+    try {
+      data = JSON.parse(raw);
+    } catch {}
 
     if (!res.ok) {
       const code = data?.error || `http_${res.status}`;
       const nice =
-        code === "all_fields_required" ? "Please fill out all fields."
-      : code === "account_numbers_mismatch" ? "Account numbers do not match."
-      : code === "account_already_exists" ? "This bank account is already saved."
-      : code;
-      console.error("[BankAdd] Error:", { code, nice });
+        code === "all_fields_required"
+          ? "Please fill out all fields."
+          : code === "account_numbers_mismatch"
+          ? "Account numbers do not match."
+          : code === "account_already_exists"
+          ? "This bank account is already saved."
+          : "Could not add bank account.";
+
       throw new Error(nice);
     }
 
     const ba = data?.bankAccount;
-    if (!ba?._id) {
-      console.warn("[BankAdd] Unexpected success shape:", data);
-    }
 
     const newAcc = {
       id: ba._id as string,
@@ -409,27 +439,30 @@ const handleSaveBank = async () => {
       isDefault: !!ba.default,
     };
 
-    console.log("[BankAdd] Mapped UI model:", newAcc);
-
     setBankAccounts((prev) => {
-      const next = newAcc.isDefault ? prev.map(a => ({ ...a, isDefault: false })) : prev;
-      const merged = [...next, newAcc];
-      console.log("[BankAdd] Updated bankAccounts state:", merged);
-      return merged;
+      const next = newAcc.isDefault ? prev.map((a) => ({ ...a, isDefault: false })) : prev;
+      return [...next, newAcc];
     });
 
-    // Reset UI
     setShowBankForm(false);
     setSetAsDefault(false);
-    setBankForm({ holder: "", accNum: "", confirmAccNum: "", ifsc: "", bankName: "" });
+    setBankForm({
+      holder: "",
+      accNum: "",
+      confirmAccNum: "",
+      ifsc: "",
+      bankName: "",
+    });
 
-    toast({ title: "Bank account added", description: newAcc.isDefault ? "Set as default." : "Saved successfully." });
+    showBankFormToast(
+      "Bank account added",
+      newAcc.isDefault ? "Saved and set as default." : "Saved successfully.",
+      "success"
+    );
   } catch (err: any) {
-    console.error("[BankAdd] Fetch failed:", err);
-    toast({ title: "Add failed", description: err?.message || "Could not add bank account.", variant: "destructive" });
+    showBankFormToast("Add failed", err?.message || "Could not add bank account.", "error");
   }
 };
-
 const getAuthToken = () =>
   localStorage.getItem("auth_token") ||
   sessionStorage.getItem("auth_token") ||
@@ -2099,6 +2132,34 @@ style={{
 
        {profileTab === "bank" && (
   <>
+  {bankFormToast && (
+  <div
+    className="sticky top-0 z-20 mb-4 rounded-xl border px-4 py-3 shadow-lg"
+    style={{
+      background: bankFormToast.type === "success" ? "#13261B" : "#2A1717",
+      borderColor:
+        bankFormToast.type === "success"
+          ? "rgba(34,197,94,0.35)"
+          : "rgba(239,68,68,0.35)",
+    }}
+  >
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <div className="text-sm font-semibold text-white">{bankFormToast.title}</div>
+        <div className="text-xs text-white/80 mt-1">{bankFormToast.message}</div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setBankFormToast(null)}
+        className="grid place-items-center rounded-full bg-black/25 hover:bg-black/40 transition h-7 w-7 shrink-0"
+      >
+        <X className="w-4 h-4 text-white/85" />
+      </button>
+    </div>
+  </div>
+)}
+  
     {/* ---------- EMPTY STATE (no bank added) ---------- */}
     {!hasBankAccount && !showBankForm && (
       <div
@@ -2125,32 +2186,46 @@ style={{
 
         <div>
           <label className="block mb-2 text-white/80 text-sm">Account holder name</label>
-          <input
-            value={bankForm.holder}
-            onChange={(e) => setBankForm((p) => ({ ...p, holder: e.target.value }))}
-            className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none focus:ring-2 focus:ring-white/10"
-            placeholder="Enter account holder name"
-          />
+         <input
+  value={bankForm.holder}
+  onChange={(e) =>
+    setBankForm((p) => ({ ...p, holder: onlyLetters(e.target.value) }))
+  }
+  inputMode="text"
+  autoComplete="name"
+  className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none focus:ring-2 focus:ring-white/10"
+  placeholder="Enter account holder name"
+/>
         </div>
 
         <div>
           <label className="block mb-2 text-white/80 text-sm">Account number</label>
           <input
-            value={bankForm.accNum}
-            onChange={(e) => setBankForm((p) => ({ ...p, accNum: e.target.value }))}
-            className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none focus:ring-2 focus:ring-white/10"
-            placeholder="Enter account number"
-          />
+  value={bankForm.accNum}
+  onChange={(e) =>
+    setBankForm((p) => ({ ...p, accNum: onlyDigits(e.target.value) }))
+  }
+  inputMode="numeric"
+  pattern="[0-9]*"
+  autoComplete="off"
+  className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none focus:ring-2 focus:ring-white/10"
+  placeholder="Enter account number"
+/>
         </div>
 
         <div>
           <label className="block mb-2 text-white/80 text-sm">Confirm account number</label>
-          <input
-            value={bankForm.confirmAccNum}
-            onChange={(e) => setBankForm((p) => ({ ...p, confirmAccNum: e.target.value }))}
-            className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none focus:ring-2 focus:ring-white/10"
-            placeholder="Re-enter account number"
-          />
+         <input
+  value={bankForm.confirmAccNum}
+  onChange={(e) =>
+    setBankForm((p) => ({ ...p, confirmAccNum: onlyDigits(e.target.value) }))
+  }
+  inputMode="numeric"
+  pattern="[0-9]*"
+  autoComplete="off"
+  className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none focus:ring-2 focus:ring-white/10"
+  placeholder="Re-enter account number"
+/>
         </div>
 
         <div>

@@ -77,6 +77,48 @@ const AccountMenu = () => {
     bankName: "",
   });
 
+
+
+  const [bankFormToast, setBankFormToast] = useState<{
+  title: string;
+  message: string;
+  type?: "error" | "success";
+} | null>(null);
+
+const bankToastTimerRef = useRef<number | null>(null);
+
+const showBankFormToast = (
+  title: string,
+  message: string,
+  type: "error" | "success" = "error"
+) => {
+  setBankFormToast({ title, message, type });
+
+  if (bankToastTimerRef.current) {
+    window.clearTimeout(bankToastTimerRef.current);
+  }
+
+  bankToastTimerRef.current = window.setTimeout(() => {
+    setBankFormToast(null);
+  }, 4000);
+};
+
+useEffect(() => {
+  return () => {
+    if (bankToastTimerRef.current) {
+      window.clearTimeout(bankToastTimerRef.current);
+    }
+  };
+}, []);
+
+const onlyLetters = (value: string) =>
+  value
+    .replace(/[^A-Za-z\s]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^\s+/, "");
+
+const onlyDigits = (value: string) => value.replace(/\D/g, "").slice(0, 18);
+
   const displayName = useMemo(() => user?.name?.trim() || "", [user]);
   const displayEmail = useMemo(() => user?.email || "", [user]);
   const fullName = useMemo(() => {
@@ -198,70 +240,104 @@ const AccountMenu = () => {
     if (profileOpen && profileTab === "bank") fetchBankAccounts();
   }, [profileOpen, profileTab]);
 
-  const handleSaveBank = async () => {
-    if (!bankForm.holder || !bankForm.accNum || !bankForm.confirmAccNum || !bankForm.ifsc || !bankForm.bankName) {
-      toast({ title: "Missing fields", description: "Please fill out all fields.", variant: "destructive" });
-      return;
-    }
-    if (bankForm.accNum !== bankForm.confirmAccNum) {
-      toast({ title: "Account numbers mismatch", description: "Please re-enter account number.", variant: "destructive" });
-      return;
-    }
 
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers.Authorization = `Bearer ${token}`;
+      const handleSaveBank = async () => {
+  const holder = bankForm.holder.trim();
+  const accNum = bankForm.accNum.trim();
+  const confirmAccNum = bankForm.confirmAccNum.trim();
+  const ifsc = bankForm.ifsc.trim().toUpperCase();
+  const bankName = bankForm.bankName.trim();
 
-    const makeDefault = bankAccounts.length > 0 ? !!setAsDefault : undefined;
+  if (!holder || !accNum || !confirmAccNum || !ifsc || !bankName) {
+    showBankFormToast("Missing details", "Please fill out all fields.", "error");
+    return;
+  }
 
-    const body = {
-      accountHolderName: bankForm.holder.trim(),
-      accountNumber: bankForm.accNum.trim(),
-      confirmAccountNumber: bankForm.confirmAccNum.trim(),
-      ifscCode: bankForm.ifsc.trim().toUpperCase(),
-      bankName: bankForm.bankName.trim(),
-      default: makeDefault,
-    };
+  if (accNum !== confirmAccNum) {
+    showBankFormToast(
+      "Account numbers mismatch",
+      "Please re-enter account number correctly.",
+      "error"
+    );
+    return;
+  }
 
-    try {
-      const res = await fetch(BANK_ADD_URL, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        credentials: "include",
-      });
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
 
-      const raw = await res.text();
-      let data: any = {};
-      try {
-        data = JSON.parse(raw);
-      } catch {}
+  const makeDefault = bankAccounts.length > 0 ? !!setAsDefault : undefined;
 
-      if (!res.ok) throw new Error(data?.error || `http_${res.status}`);
-
-      const ba = data?.bankAccount;
-      const newAcc = {
-        id: ba._id as string,
-        bank: String(ba.bankName || ""),
-        last4: String(ba.accountNumber || "").slice(-4),
-        ifsc: String(ba.ifscCode || "").toUpperCase(),
-        isDefault: !!ba.default,
-      };
-
-      setBankAccounts((prev) => {
-        const next = newAcc.isDefault ? prev.map((a) => ({ ...a, isDefault: false })) : prev;
-        return [...next, newAcc];
-      });
-
-      setShowBankForm(false);
-      setSetAsDefault(false);
-      setBankForm({ holder: "", accNum: "", confirmAccNum: "", ifsc: "", bankName: "" });
-
-      toast({ title: "Bank account added", description: newAcc.isDefault ? "Set as default." : "Saved successfully." });
-    } catch (err: any) {
-      toast({ title: "Add failed", description: err?.message || "Could not add bank account.", variant: "destructive" });
-    }
+  const body = {
+    accountHolderName: holder,
+    accountNumber: accNum,
+    confirmAccountNumber: confirmAccNum,
+    ifscCode: ifsc,
+    bankName: bankName,
+    default: makeDefault,
   };
 
+  try {
+    const res = await fetch(BANK_ADD_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      credentials: "include",
+    });
+
+    const raw = await res.text();
+    let data: any = {};
+    try {
+      data = JSON.parse(raw);
+    } catch {}
+
+    if (!res.ok) {
+      const code = data?.error || `http_${res.status}`;
+      const nice =
+        code === "all_fields_required"
+          ? "Please fill out all fields."
+          : code === "account_numbers_mismatch"
+          ? "Account numbers do not match."
+          : code === "account_already_exists"
+          ? "This bank account is already saved."
+          : "Could not add bank account.";
+
+      throw new Error(nice);
+    }
+
+    const ba = data?.bankAccount;
+    const newAcc = {
+      id: ba._id as string,
+      bank: String(ba.bankName || ""),
+      last4: String(ba.accountNumber || "").slice(-4),
+      ifsc: String(ba.ifscCode || "").toUpperCase(),
+      isDefault: !!ba.default,
+    };
+
+    setBankAccounts((prev) => {
+      const next = newAcc.isDefault ? prev.map((a) => ({ ...a, isDefault: false })) : prev;
+      return [...next, newAcc];
+    });
+
+    setShowBankForm(false);
+    setSetAsDefault(false);
+    setBankForm({
+      holder: "",
+      accNum: "",
+      confirmAccNum: "",
+      ifsc: "",
+      bankName: "",
+    });
+
+    showBankFormToast(
+      "Bank account added",
+      newAcc.isDefault ? "Saved and set as default." : "Saved successfully.",
+      "success"
+    );
+  } catch (err: any) {
+    showBankFormToast("Add failed", err?.message || "Could not add bank account.", "error");
+  }
+};
+  
   const setDefaultBankAccount = async (accountId: string): Promise<void> => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -523,7 +599,7 @@ const AccountMenu = () => {
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setProfileOpen(false)} />
 
           <div
-            className="relative w-[min(96vw,900px)] max-h-[90vh] rounded-2xl text-white shadow-2xl overflow-hidden"
+  className="relative w-[96vw] md:w-[min(96vw,900px)] max-h-[90vh] rounded-2xl text-white shadow-2xl overflow-hidden"
             style={{ background: "#17171A", fontFamily: "Inter", fontWeight: 400, fontStyle: "normal" }}
           >
             <button
@@ -534,34 +610,39 @@ const AccountMenu = () => {
               <X className="w-4 h-4 text-white/90" />
             </button>
 
-            <div className="grid grid-cols-[240px,1fr] max-h-[90vh] overflow-hidden">
+          <div className="flex flex-col md:grid md:grid-cols-[240px,1fr] max-h-[90vh] overflow-hidden">
               <aside
-                className="no-scrollbar overflow-y-auto pt-5"
-                style={{ background: "#17171A", borderRight: "1px solid #1C1C1C" }}
-              >
-                {[
-                  { id: "profile", label: "Profile", Icon: User },
-                  { id: "bank", label: "Bank Account", Icon: Landmark },
-                  // { id: "invoices", label: "Invoices", Icon: FileText },
-                  { id: "billing", label: "Billing information", Icon: CreditCard },
-                ].map((item) => {
-                  const active = profileTab === (item.id as typeof profileTab);
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => setProfileTab(item.id as typeof profileTab)}
-                      className="w-full flex items-center gap-3 px-5 py-4 text-left"
-                      style={{
-                        background: active ? "#1C1C1C" : "transparent",
-                        color: active ? "#ffffff" : "rgba(255,255,255,0.78)",
-                      }}
-                    >
-                      <item.Icon className="w-5 h-5" />
-                      <span>{item.label}</span>
-                    </button>
-                  );
-                })}
-              </aside>
+  className="no-scrollbar overflow-x-auto md:overflow-y-auto md:pt-5 flex md:flex-col flex-row"
+  style={{
+    background: "#17171A",
+    borderRight: "none",
+    borderBottom: "1px solid #1C1C1C",
+  }}
+>
+  {[
+    { id: "profile", label: "Profile", Icon: User },
+    { id: "bank", label: "Bank Account", Icon: Landmark },
+    { id: "billing", label: "Billing information", Icon: CreditCard },
+  ].map((item) => {
+    const active = profileTab === (item.id as typeof profileTab);
+
+    return (
+      <button
+        key={item.id}
+        onClick={() => setProfileTab(item.id as typeof profileTab)}
+        className="flex items-center gap-2 px-4 py-3 md:px-5 md:py-4 text-left whitespace-nowrap md:w-full shrink-0"
+        style={{
+          background: active ? "#1C1C1C" : "transparent",
+          color: active ? "#ffffff" : "rgba(255,255,255,0.78)",
+          borderBottom: active ? "2px solid #FF14EF" : "2px solid transparent",
+        }}
+      >
+        <item.Icon className="w-5 h-5" />
+        <span>{item.label}</span>
+      </button>
+    );
+  })}
+</aside>
 
               <section className="no-scrollbar overflow-y-auto p-6 md:p-8" style={{ maxHeight: "90vh" }}>
                 <div className="mb-6">
@@ -666,6 +747,34 @@ const AccountMenu = () => {
 
                 {profileTab === "bank" && (
                   <>
+
+                  {bankFormToast && (
+  <div
+    className="sticky top-0 z-20 mb-4 rounded-xl border px-4 py-3 shadow-lg"
+    style={{
+      background: bankFormToast.type === "success" ? "#13261B" : "#2A1717",
+      borderColor:
+        bankFormToast.type === "success"
+          ? "rgba(34,197,94,0.35)"
+          : "rgba(239,68,68,0.35)",
+    }}
+  >
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <div className="text-sm font-semibold text-white">{bankFormToast.title}</div>
+        <div className="text-xs text-white/80 mt-1">{bankFormToast.message}</div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setBankFormToast(null)}
+        className="grid place-items-center rounded-full bg-black/25 hover:bg-black/40 transition h-7 w-7 shrink-0"
+      >
+        <X className="w-4 h-4 text-white/85" />
+      </button>
+    </div>
+  </div>
+)}
                     {!hasBankAccount && !showBankForm && (
                       <div
                         className="flex flex-col gap-4 rounded-xl border border-white/10 p-6"
@@ -690,32 +799,46 @@ const AccountMenu = () => {
 
                         <div>
                           <label className="block mb-2 text-white/80 text-sm">Account holder name</label>
-                          <input
-                            value={bankForm.holder}
-                            onChange={(e) => setBankForm((p) => ({ ...p, holder: e.target.value }))}
-                            className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none focus:ring-2 focus:ring-white/10"
-                            placeholder="Enter account holder name"
-                          />
+                         <input
+  value={bankForm.holder}
+  onChange={(e) =>
+    setBankForm((p) => ({ ...p, holder: onlyLetters(e.target.value) }))
+  }
+  inputMode="text"
+  autoComplete="name"
+  className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none focus:ring-2 focus:ring-white/10"
+  placeholder="Enter account holder name"
+/>
                         </div>
 
                         <div>
                           <label className="block mb-2 text-white/80 text-sm">Account number</label>
-                          <input
-                            value={bankForm.accNum}
-                            onChange={(e) => setBankForm((p) => ({ ...p, accNum: e.target.value }))}
-                            className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none focus:ring-2 focus:ring-white/10"
-                            placeholder="Enter account number"
-                          />
+                         <input
+  value={bankForm.accNum}
+  onChange={(e) =>
+    setBankForm((p) => ({ ...p, accNum: onlyDigits(e.target.value) }))
+  }
+  inputMode="numeric"
+  pattern="[0-9]*"
+  autoComplete="off"
+  className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none focus:ring-2 focus:ring-white/10"
+  placeholder="Enter account number"
+/>
                         </div>
 
                         <div>
                           <label className="block mb-2 text-white/80 text-sm">Confirm account number</label>
-                          <input
-                            value={bankForm.confirmAccNum}
-                            onChange={(e) => setBankForm((p) => ({ ...p, confirmAccNum: e.target.value }))}
-                            className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none focus:ring-2 focus:ring-white/10"
-                            placeholder="Re-enter account number"
-                          />
+                         <input
+  value={bankForm.confirmAccNum}
+  onChange={(e) =>
+    setBankForm((p) => ({ ...p, confirmAccNum: onlyDigits(e.target.value) }))
+  }
+  inputMode="numeric"
+  pattern="[0-9]*"
+  autoComplete="off"
+  className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none focus:ring-2 focus:ring-white/10"
+  placeholder="Re-enter account number"
+/>
                         </div>
 
                         <div>

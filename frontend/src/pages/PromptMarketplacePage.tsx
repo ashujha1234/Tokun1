@@ -2526,38 +2526,38 @@ const CategoriesScroller: React.FC<{
         <ChevronLeft className="w-5 h-5" />
       </button>
 
-      <div className="relative w-full max-w-[1200px] overflow-hidden">
-        <div
-          ref={railRef}
-          className="flex items-center gap-3 overflow-x-auto scroll-smooth px-1 no-scrollbar"
-        >
-          {categoriesData.map(({ id, icon: Icon }) => {
-            const isAll = id === "All";
-            const isActive = selectedCategory === id;
-            const pillWidth = isAll ? "109.525px" : "185.628px";
-            const baseStyle: React.CSSProperties = isActive
-              ? { width: pillWidth, background: GRADIENT, color: "#FFFFFF" }
-              : { width: pillWidth, background: "#17171A", color: "rgba(255,255,255,0.85)" };
+     <div className="relative w-full max-w-[1200px] overflow-hidden">
+  <div
+    ref={railRef}
+    className="flex items-center gap-3 overflow-x-auto scroll-smooth px-1 no-scrollbar md:justify-center"
+  >
+    {categoriesData.map(({ id, icon: Icon }) => {
+      const isAll = id === "All";
+      const isActive = selectedCategory === id;
+      const pillWidth = isAll ? "109.525px" : "185.628px";
+      const baseStyle: React.CSSProperties = isActive
+        ? { width: pillWidth, background: GRADIENT, color: "#FFFFFF" }
+        : { width: pillWidth, background: "#17171A", color: "rgba(255,255,255,0.85)" };
 
-            return (
-              <button
-                key={id}
-                onClick={() => setSelectedCategory(id)}
-                aria-pressed={isActive}
-                className={[
-                  "flex items-center justify-center gap-[10px] h-[50px] rounded-[200px]",
-                  "text-sm font-medium whitespace-nowrap transition-colors",
-                  isActive ? "ring-1 ring-white/15" : "hover:bg-white/5",
-                ].join(" ")}
-                style={{ padding: "15px 30px", ...baseStyle }}
-              >
-                <Icon className="h-4 w-4" />
-                <span>{id}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      return (
+        <button
+          key={id}
+          onClick={() => setSelectedCategory(id)}
+          aria-pressed={isActive}
+          className={[
+            "flex items-center justify-center gap-[10px] h-[50px] rounded-[200px]",
+            "text-sm font-medium whitespace-nowrap transition-colors",
+            isActive ? "ring-1 ring-white/15" : "hover:bg-white/5",
+          ].join(" ")}
+          style={{ padding: "15px 30px", ...baseStyle }}
+        >
+          <Icon className="h-4 w-4" />
+          <span>{id}</span>
+        </button>
+      );
+    })}
+  </div>
+</div>
 
       <button
         onClick={() => slide("right")}

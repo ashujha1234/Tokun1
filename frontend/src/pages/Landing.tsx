@@ -85,6 +85,7 @@ type LandingProps = {
   userFullName?: string;
   routes?: {
     login?: string;
+    signup?: string;
     app?: string;
     promptLibrary?: string;
     smartgen?: string;
@@ -99,14 +100,15 @@ export default function Landing({
   variant = "marketing",
   userFullName,
   routes = {
-    login: "/login",
-    app: "/app",
-    promptLibrary: "/prompt-library",
-    smartgen: "/smartgen",
-    marketplace: "/prompt-marketplace",
-    dashboard: "/app",
-    profile: "/profile",
-  },
+  login: "/login",
+  signup: "/signup",
+  app: "/app",
+  promptLibrary: "/prompt-library",
+  smartgen: "/smartgen",
+  marketplace: "/prompt-marketplace",
+  dashboard: "/app",
+  profile: "/profile",
+},
   showFooter = true,
 }: LandingProps) {
   const navigate = useNavigate();
@@ -136,7 +138,13 @@ export default function Landing({
   const border = useMotionTemplate`1px solid ${color}`;
   const boxShadow = useMotionTemplate`0px 4px 24px ${color}`;
   const go = (path?: string) => path && navigate(path);
-
+const handleGetStarted = () => {
+  if (isAuthenticated) {
+    go(routes.dashboard);
+  } else {
+    go(routes.signup || "/signup");
+  }
+};
   // Steps
   const [activeStep, setActiveStep] = useState(0);
   const [hoveredStep, setHoveredStep] = useState<number | null>(null);
@@ -602,32 +610,32 @@ useEffect(() => {
               Login
             </button>
 
-            <button
-              type="button"
-              onClick={() => go(routes.dashboard)}
-              className="inline-flex items-center justify-center rounded-full hover:opacity-95 transition-opacity"
-              style={{
-                height: 40,
-                padding: "0 16px",
-                borderRadius: 200,
-                background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)",
-                color: "#FFFFFF",
-                fontFamily: "Inter, system-ui, Arial, sans-serif",
-                fontWeight: 600,
-                fontSize: 13,
-                lineHeight: "20px",
-                gap: 6,
-              }}
-            >
-              <span>Dashboard</span>
-              <span
-                aria-hidden
-                className="inline-flex items-center justify-center rounded-full bg-white"
-                style={{ width: 22, height: 22 }}
-              >
-                <MdKeyboardArrowRight size={14} color="black" />
-              </span>
-            </button>
+           <button
+  type="button"
+  onClick={handleGetStarted}
+  className="inline-flex items-center justify-center rounded-full hover:opacity-95 transition-opacity"
+  style={{
+    height: 40,
+    padding: "0 16px",
+    borderRadius: 200,
+    background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)",
+    color: "#FFFFFF",
+    fontFamily: "Inter, system-ui, Arial, sans-serif",
+    fontWeight: 600,
+    fontSize: 13,
+    lineHeight: "20px",
+    gap: 6,
+  }}
+>
+  <span>Get Started</span>
+  <span
+    aria-hidden
+    className="inline-flex items-center justify-center rounded-full bg-white"
+    style={{ width: 22, height: 22 }}
+  >
+    <MdKeyboardArrowRight size={14} color="black" />
+  </span>
+</button>
           </>
         ) : (
           <DropdownMenu>
