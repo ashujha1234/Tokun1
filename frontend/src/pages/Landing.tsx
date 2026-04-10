@@ -18,6 +18,7 @@ import SubscriptionModal from "@/components/SubscriptionModal";
 import { Settings, ChevronDown } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { MessageCircleHeart, X } from "lucide-react";
+import { GlobeSection, FAQSection , TickerSection } from "@/components/GlobeAndFAQ_components";
 // top of file (with other lucide-react imports)
 import { Check  } from "lucide-react";
 import { LuBadgeCheck } from "react-icons/lu";
@@ -1141,15 +1142,21 @@ useEffect(() => {
   </div>
 </section>
 
-        <div className="mt-12 flex flex-col items-center justify-center text-center select-none">
-          <Mouse className="h-12 w-12 sm:h-14 sm:w-14 md:h-16 md:w-16 text-white/70" strokeWidth={2.25} />
-          <div className="mt-3 text-white/80" style={{ fontFamily: "Inter, ui-sans-serif, system-ui", fontSize: 14, lineHeight: "18px" }}>
-            Scroll down
-          </div>
-          <motion.div className="mt-3" animate={{ y: [0, 8, 0] }} transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}>
-            <MoveDown className="h-10 w-10 sm:h-12 sm:w-12 md:h-14 md:w-14 text-white/80" strokeWidth={2.25} />
-          </motion.div>
-        </div>
+
+             <div className="mt-12">
+  <TickerSection />
+</div>
+
+       <div className="mt-8 flex flex-col items-center justify-center text-center select-none">
+  <Mouse className="h-8 w-8 sm:h-9 sm:w-9 md:h-10 md:w-10 text-white/70" strokeWidth={2.25} />
+  <div className="mt-2 text-white/80" style={{ fontFamily: "Inter, ui-sans-serif, system-ui", fontSize: 12, lineHeight: "16px" }}>
+    Scroll down
+  </div>
+  <motion.div className="mt-2" animate={{ y: [0, 6, 0] }} transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}>
+    <MoveDown className="h-7 w-7 sm:h-8 sm:w-8 md:h-9 md:w-9 text-white/80" strokeWidth={2.25} />
+  </motion.div>
+</div>
+
 
         {/* WHAT WE OFFER */}
         <div className="mt-28">
@@ -1224,7 +1231,7 @@ useEffect(() => {
 
         {/* HOW IT WORKS + PRODUCT DEMO */}
         <div className="mt-28" style={{ borderWidth: "1px 0 1px 0", borderStyle: "solid", borderColor: "#171717", background: "#08090B" }}>
-          {/* <div className="pt-16 flex justify-center mb-8">
+          <div className="pt-16 flex justify-center mb-8">
             <div className="p-[1px] rounded-full" style={{ background: "linear-gradient(90deg, #1A73E8 0%, #FF14EF 100%)" }}>
               <div className="px-5 py-2 rounded-full bg-black">
                 <span
@@ -1242,9 +1249,9 @@ useEffect(() => {
                 </span>
               </div>
             </div>
-          </div> */}
+          </div>
 
-          <div className="pt-16 flex justify-center mb-8">
+          {/* <div className="pt-16 flex justify-center mb-8">
   <button
     type="button"
     className="steam-btn rounded-full"
@@ -1272,7 +1279,7 @@ useEffect(() => {
       </span>
     </span>
   </button>
-</div>
+</div> */}
           <h2 className="text-4xl md:text-5xl font-bold text-center mb-12">How It Works</h2>
 
           {/* Steps grid */}
@@ -1472,16 +1479,22 @@ useEffect(() => {
 </div>
         </div>
 
+        <GlobeSection /> {/* ← yahan add karo */}
+          <FAQSection />   
         {/* FINAL CTA */}
         <div className="mt-28 text-center">
-         <div className="flex justify-center mb-4">
+       <div className="flex justify-center mb-4">
   <button
     type="button"
-    className="steam-btn rounded-full"
-    style={{ borderRadius: 9999 }}
+    className="rounded-full"
+    style={{
+      borderRadius: 9999,
+      padding: "1px",
+      background: "linear-gradient(90deg, #1A73E8 0%, #FF14EF 100%)",
+    }}
   >
     <span
-      className="steam-btn-inner px-5 py-2"
+      className="px-5 py-2 inline-flex items-center justify-center rounded-full"
       style={{
         borderRadius: 9999,
         background: "#000000",
@@ -1578,7 +1591,7 @@ useEffect(() => {
 <div className="mt-28 mb-20 relative font-[Inter] px-4">
 
   {/* TAG */}
-  {/* <div className="flex justify-center mb-4">
+  <div className="flex justify-center mb-4">
     <div
       className="p-[1px] rounded-full"
       style={{ background: "linear-gradient(90deg, #1A73E8 0%, #FF14EF 100%)" }}
@@ -1597,9 +1610,9 @@ useEffect(() => {
         </span>
       </div>
     </div>
-  </div> */}
+  </div>
 
-  <div className="flex justify-center mb-4">
+  {/* <div className="flex justify-center mb-4">
   <button
     type="button"
     className="steam-btn rounded-full"
@@ -1625,7 +1638,7 @@ useEffect(() => {
       </span>
     </span>
   </button>
-</div>
+</div> */}
 
  <h2 className="text-2xl sm:text-4xl md:text-5xl font-bold text-center mb-4">
   Loved by thinkers
@@ -1730,6 +1743,7 @@ useEffect(() => {
   </div>
 )}
 </div>
+
 
 
         {showFooter && <Footer />}
