@@ -3720,13 +3720,19 @@ function ReviewCard({
   cardKey: string;
   isMobile: boolean;
 }) {
-  const cardWidth = isMobile ? 110  : 170;
-  const titleFont = isMobile ? 8    : 10;
-  const subFont   = isMobile ? 6    : 8;
-  const msgFont   = isMobile ? 7    : 9;
-  const lineLen   = isMobile ? 28   : 42;
-  const hLineLen  = isMobile ? 26   : 38;
-  const gap       = isMobile ? 4    : 6;
+  const cardWidth = isMobile ? 110 : 170;
+  const titleFont = isMobile ? 8 : 10;
+  const subFont = isMobile ? 6 : 8;
+  const msgFont = isMobile ? 7 : 9;
+
+  const lineLen = isMobile ? 28 : 42;      // vertical
+  const elbowLen = isMobile ? 24 : 34;     // L-shape horizontal
+  const sideLineLen = isMobile ? 28 : 30;  // straight side lines
+  const gap = isMobile ? 4 : 6;
+
+  // card kis side par hai uske hisaab se line globe ki taraf bend hogi
+  const cardLeft = Number.parseFloat(pos.left);
+  const bendInward = cardLeft > 50 ? "left" : "right";
 
   return (
     <motion.div
@@ -3758,60 +3764,262 @@ function ReviewCard({
           textAlign: "left",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap, marginBottom: isMobile ? 4 : 5 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap,
+            marginBottom: isMobile ? 4 : 5,
+          }}
+        >
           <span style={{ fontSize: isMobile ? 12 : 13 }}>{user.flag}</span>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: titleFont, fontWeight: 600, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <div
+              style={{
+                fontSize: titleFont,
+                fontWeight: 600,
+                color: "#fff",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
               {user.name}
             </div>
-            <div style={{ fontSize: subFont, color: "rgba(255,255,255,0.55)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <div
+              style={{
+                fontSize: subFont,
+                color: "rgba(255,255,255,0.55)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
               {user.city}
             </div>
           </div>
         </div>
 
-        <p style={{ fontSize: msgFont, lineHeight: isMobile ? 1.35 : 1.5, color: "rgba(255,255,255,0.76)", margin: 0 }}>
+        <p
+          style={{
+            fontSize: msgFont,
+            lineHeight: isMobile ? 1.35 : 1.5,
+            color: "rgba(255,255,255,0.76)",
+            margin: 0,
+          }}
+        >
           "{user.msg}"
         </p>
 
-        {/* BOTTOM: vertical ↓ + horizontal → */}
+        {/* BOTTOM: vertical ↓ + inward horizontal */}
         {pos.lineTo === "bottom" && (
           <>
-            <div style={{ position: "absolute", left: "50%", top: "100%", transform: "translateX(-50%)", width: 2, height: lineLen, background: "repeating-linear-gradient(to bottom, rgba(255,20,239,0.9) 0px, rgba(255,20,239,0.9) 4px, transparent 4px, transparent 9px)" }} />
-            <div style={{ position: "absolute", left: "50%", top: `calc(100% + ${lineLen}px)`, width: hLineLen, height: 2, background: "repeating-linear-gradient(to right, rgba(255,20,239,0.9) 0px, rgba(255,20,239,0.9) 4px, transparent 4px, transparent 9px)" }} />
-            <div style={{ position: "absolute", left: `calc(50% + ${hLineLen - 4}px)`, top: `calc(100% + ${lineLen - 4}px)`, width: 7, height: 7, borderRadius: "9999px", background: "#FF14EF", boxShadow: "0 0 10px rgba(255,20,239,0.7)" }} />
+            <div
+              style={{
+                position: "absolute",
+                left: "50%",
+                top: "100%",
+                transform: "translateX(-50%)",
+                width: 2,
+                height: lineLen,
+                background:
+                  "repeating-linear-gradient(to bottom, rgba(255,20,239,0.9) 0px, rgba(255,20,239,0.9) 4px, transparent 4px, transparent 9px)",
+              }}
+            />
+
+            {bendInward === "right" ? (
+              <>
+                <div
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    top: `calc(100% + ${lineLen}px)`,
+                    width: elbowLen,
+                    height: 2,
+                    background:
+                      "repeating-linear-gradient(to right, rgba(255,20,239,0.9) 0px, rgba(255,20,239,0.9) 4px, transparent 4px, transparent 9px)",
+                  }}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    left: `calc(50% + ${elbowLen - 4}px)`,
+                    top: `calc(100% + ${lineLen - 4}px)`,
+                    width: 7,
+                    height: 7,
+                    borderRadius: "9999px",
+                    background: "#FF14EF",
+                    boxShadow: "0 0 10px rgba(255,20,239,0.7)",
+                  }}
+                />
+              </>
+            ) : (
+              <>
+                <div
+                  style={{
+                    position: "absolute",
+                    right: "50%",
+                    top: `calc(100% + ${lineLen}px)`,
+                    width: elbowLen,
+                    height: 2,
+                    background:
+                      "repeating-linear-gradient(to left, rgba(255,20,239,0.9) 0px, rgba(255,20,239,0.9) 4px, transparent 4px, transparent 9px)",
+                  }}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    right: `calc(50% + ${elbowLen - 4}px)`,
+                    top: `calc(100% + ${lineLen - 4}px)`,
+                    width: 7,
+                    height: 7,
+                    borderRadius: "9999px",
+                    background: "#FF14EF",
+                    boxShadow: "0 0 10px rgba(255,20,239,0.7)",
+                  }}
+                />
+              </>
+            )}
           </>
         )}
 
-        {/* TOP: vertical ↑ + horizontal → */}
+        {/* TOP: vertical ↑ + inward horizontal */}
         {pos.lineTo === "top" && (
           <>
-            <div style={{ position: "absolute", left: "50%", bottom: "100%", transform: "translateX(-50%)", width: 2, height: lineLen, background: "repeating-linear-gradient(to top, rgba(255,20,239,0.9) 0px, rgba(255,20,239,0.9) 4px, transparent 4px, transparent 9px)" }} />
-            <div style={{ position: "absolute", left: "50%", bottom: `calc(100% + ${lineLen}px)`, width: hLineLen, height: 2, background: "repeating-linear-gradient(to right, rgba(255,20,239,0.9) 0px, rgba(255,20,239,0.9) 4px, transparent 4px, transparent 9px)" }} />
-            <div style={{ position: "absolute", left: `calc(50% + ${hLineLen - 4}px)`, bottom: `calc(100% + ${lineLen - 4}px)`, width: 7, height: 7, borderRadius: "9999px", background: "#FF14EF", boxShadow: "0 0 10px rgba(255,20,239,0.7)" }} />
+            <div
+              style={{
+                position: "absolute",
+                left: "50%",
+                bottom: "100%",
+                transform: "translateX(-50%)",
+                width: 2,
+                height: lineLen,
+                background:
+                  "repeating-linear-gradient(to top, rgba(255,20,239,0.9) 0px, rgba(255,20,239,0.9) 4px, transparent 4px, transparent 9px)",
+              }}
+            />
+
+            {bendInward === "right" ? (
+              <>
+                <div
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    bottom: `calc(100% + ${lineLen}px)`,
+                    width: elbowLen,
+                    height: 2,
+                    background:
+                      "repeating-linear-gradient(to right, rgba(255,20,239,0.9) 0px, rgba(255,20,239,0.9) 4px, transparent 4px, transparent 9px)",
+                  }}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    left: `calc(50% + ${elbowLen - 4}px)`,
+                    bottom: `calc(100% + ${lineLen - 4}px)`,
+                    width: 7,
+                    height: 7,
+                    borderRadius: "9999px",
+                    background: "#FF14EF",
+                    boxShadow: "0 0 10px rgba(255,20,239,0.7)",
+                  }}
+                />
+              </>
+            ) : (
+              <>
+                <div
+                  style={{
+                    position: "absolute",
+                    right: "50%",
+                    bottom: `calc(100% + ${lineLen}px)`,
+                    width: elbowLen,
+                    height: 2,
+                    background:
+                      "repeating-linear-gradient(to left, rgba(255,20,239,0.9) 0px, rgba(255,20,239,0.9) 4px, transparent 4px, transparent 9px)",
+                  }}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    right: `calc(50% + ${elbowLen - 4}px)`,
+                    bottom: `calc(100% + ${lineLen - 4}px)`,
+                    width: 7,
+                    height: 7,
+                    borderRadius: "9999px",
+                    background: "#FF14EF",
+                    boxShadow: "0 0 10px rgba(255,20,239,0.7)",
+                  }}
+                />
+              </>
+            )}
           </>
         )}
 
         {/* LEFT: straight horizontal */}
         {pos.lineTo === "left" && (
           <>
-            <div style={{ position: "absolute", right: "100%", top: "50%", transform: "translateY(-50%)", width: lineLen, height: 2, background: "repeating-linear-gradient(to left, rgba(255,20,239,0.9) 0px, rgba(255,20,239,0.9) 4px, transparent 4px, transparent 9px)" }} />
-            <div style={{ position: "absolute", right: `calc(100% + ${lineLen - 4}px)`, top: "50%", transform: "translateY(-50%)", width: 7, height: 7, borderRadius: "9999px", background: "#FF14EF", boxShadow: "0 0 10px rgba(255,20,239,0.7)" }} />
+            <div
+              style={{
+                position: "absolute",
+                right: "100%",
+                top: "50%",
+                transform: "translateY(-50%)",
+                width: sideLineLen,
+                height: 2,
+                background:
+                  "repeating-linear-gradient(to left, rgba(255,20,239,0.9) 0px, rgba(255,20,239,0.9) 4px, transparent 4px, transparent 9px)",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                right: `calc(100% + ${sideLineLen - 4}px)`,
+                top: "50%",
+                transform: "translateY(-50%)",
+                width: 7,
+                height: 7,
+                borderRadius: "9999px",
+                background: "#FF14EF",
+                boxShadow: "0 0 10px rgba(255,20,239,0.7)",
+              }}
+            />
           </>
         )}
 
         {/* RIGHT: straight horizontal */}
         {pos.lineTo === "right" && (
           <>
-            <div style={{ position: "absolute", left: "100%", top: "50%", transform: "translateY(-50%)", width: lineLen, height: 2, background: "repeating-linear-gradient(to right, rgba(255,20,239,0.9) 0px, rgba(255,20,239,0.9) 4px, transparent 4px, transparent 9px)" }} />
-            <div style={{ position: "absolute", left: `calc(100% + ${lineLen - 4}px)`, top: "50%", transform: "translateY(-50%)", width: 7, height: 7, borderRadius: "9999px", background: "#FF14EF", boxShadow: "0 0 10px rgba(255,20,239,0.7)" }} />
+            <div
+              style={{
+                position: "absolute",
+                left: "100%",
+                top: "50%",
+                transform: "translateY(-50%)",
+                width: sideLineLen,
+                height: 2,
+                background:
+                  "repeating-linear-gradient(to right, rgba(255,20,239,0.9) 0px, rgba(255,20,239,0.9) 4px, transparent 4px, transparent 9px)",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                left: `calc(100% + ${sideLineLen - 4}px)`,
+                top: "50%",
+                transform: "translateY(-50%)",
+                width: 7,
+                height: 7,
+                borderRadius: "9999px",
+                background: "#FF14EF",
+                boxShadow: "0 0 10px rgba(255,20,239,0.7)",
+              }}
+            />
           </>
         )}
       </div>
     </motion.div>
   );
 }
-
 export function GlobeSection() {
   const [activeUser, setActiveUser] = useState<GlobeUser | null>(null);
   const [userIndex, setUserIndex] = useState(0);
