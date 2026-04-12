@@ -131,8 +131,148 @@
 //   );
 // }
 
+// // src/components/Footer.tsx
+// import { useMemo, useState } from "react";
+// import { Facebook, Instagram, Linkedin } from "lucide-react";
+// import { FaXTwitter } from "react-icons/fa6";
+// import { Button } from "@/components/ui/button";
+// import { Link } from "react-router-dom";
+// const ICONS = [
+//   { Icon: Facebook, href: "#" },
+//   { Icon: FaXTwitter, href: "#" },
+//   { Icon: Instagram, href: "#" },
+//   { Icon: Linkedin, href: "#" },
+// ];
+
+// export default function Footer() {
+//   const [active, setActive] = useState<number | null>(null);
+
+//   const ICON_SIZE = 44;
+//   const GAP = 16;
+//   const puckX = useMemo(
+//     () => (active !== null ? active * (ICON_SIZE + GAP) : 0),
+//     [active]
+//   );
+
+//   return (
+//     <footer className="relative z-10 bg-black text-white">
+//       <div className="container mx-auto px-4 sm:px-6 py-12 sm:py-16">
+//         {/* Top Section */}
+//         <div className="flex flex-col items-center text-center">
+//           {/* Logo */}
+//           <div className="flex items-center gap-3">
+//             <span
+//               style={{
+//                 fontFamily: "Inter, sans-serif",
+//                 fontWeight: 700,
+//                 fontSize: "28px",
+//                 lineHeight: "100%",
+//                 textTransform: "uppercase",
+//                 color: "#FFFFFF",
+//               }}
+//               className="sm:text-[32px]"
+//             >
+//               TOKUN.AI
+//             </span>
+//           </div>
+
+//           {/* Navigation */}
+//         <nav className="mt-6 sm:mt-8">
+//   <ul className="flex flex-wrap justify-center gap-x-6 gap-y-3 text-white/80 text-sm sm:text-base">
+//     {[
+//       { label: "About us", href: "/about" },
+//       { label: "Pricing", href: "/pricing" },
+//       { label: "Blog", href: "/blog" },
+//       { label: "Careers", href: "/careers" },
+//       { label: "Support", href: "/support" },
+//     ].map((item) => (
+//       <li key={item.label}>
+//         <Link to={item.href} className="hover:text-white transition-colors">
+//           {item.label}
+//         </Link>
+//       </li>
+//     ))}
+//   </ul>
+// </nav>
+
+//           {/* Social Icons */}
+//           <div
+//             className="relative mt-8"
+//             style={{
+//               width: ICONS.length * ICON_SIZE + (ICONS.length - 1) * GAP,
+//               height: ICON_SIZE,
+//             }}
+//           >
+//             {active !== null && (
+//               <span
+//                 aria-hidden
+//                 className="absolute top-0 left-0 rounded-full"
+//                 style={{
+//                   width: ICON_SIZE,
+//                   height: ICON_SIZE,
+//                   transform: `translateX(${puckX}px)`,
+//                   transition: "transform 300ms cubic-bezier(.2,.8,.2,1)",
+//                   background: "linear-gradient(270.19deg,#1A73E8 0.16%,#FF14EF 99.84%)",
+//                   boxShadow: "0 8px 24px rgba(255,20,239,0.35)",
+//                 }}
+//               />
+//             )}
+
+//             <div className="absolute inset-0 flex items-center gap-4">
+//               {ICONS.map(({ Icon, href }, i) => (
+//                 <a
+//                   key={i}
+//                   href={href}
+//                   onClick={(e) => {
+//                     e.preventDefault();
+//                     setActive(i);
+//                   }}
+//                   className="relative grid place-items-center w-11 h-11 rounded-full bg-white/10 border border-white/15 backdrop-blur hover:bg-white/15 transition-colors focus:outline-none focus:ring-2 focus:ring-white/40 z-[1]"
+//                   title="Follow us"
+//                 >
+//                   <Icon className="w-5 h-5" />
+//                 </a>
+//               ))}
+//             </div>
+//           </div>
+
+//           {/* Subscribe Section */}
+//           <div className="mt-8 flex flex-col sm:flex-row items-center gap-3 w-full max-w-md">
+//             <input
+//               type="email"
+//               placeholder="Enter your email"
+//               className="w-full sm:flex-1 h-11 px-4 rounded-full bg-transparent border border-white/25 text-white placeholder:text-white/50 outline-none focus:border-white/50"
+//             />
+
+//             <Button className="w-full sm:w-auto h-11 px-6 rounded-full bg-white text-black hover:bg-white/90">
+//               Subscribe
+//             </Button>
+//           </div>
+//         </div>
+
+//         {/* Bottom */}
+//         <div className="mt-8 sm:mt-10">
+//           <p
+//             className="text-center text-white/70"
+//             style={{
+//               fontFamily: "Inter, sans-serif",
+//               fontWeight: 400,
+//               fontSize: "12px",
+//               lineHeight: "100%",
+//             }}
+//           >
+//             © 2025 TOKUN. All rights reserved.
+//           </p>
+//         </div>
+//       </div>
+//     </footer>
+//   );
+// }
+
+
 // src/components/Footer.tsx
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Facebook, Instagram, Linkedin } from "lucide-react";
 import { FaXTwitter } from "react-icons/fa6";
 import { Button } from "@/components/ui/button";
@@ -142,6 +282,14 @@ const ICONS = [
   { Icon: FaXTwitter, href: "#" },
   { Icon: Instagram, href: "#" },
   { Icon: Linkedin, href: "#" },
+];
+
+const NAV_LINKS = [
+  { label: "About us", href: "/about" },
+  { label: "Pricing", href: "/subscription" },
+  { label: "Blog", href: "/blog" },
+  { label: "Careers", href: "/careers" },
+  { label: "Support", href: "/support" },
 ];
 
 export default function Footer() {
@@ -156,11 +304,10 @@ export default function Footer() {
 
   return (
     <footer className="relative z-10 bg-black text-white">
-      <div className="container mx-auto px-4 sm:px-6 py-12 sm:py-16">
-        {/* Top Section */}
+<div className="container mx-auto px-4 sm:px-6 py-8 sm:py-10">
         <div className="flex flex-col items-center text-center">
           {/* Logo */}
-          <div className="flex items-center gap-3">
+          <Link to="/" className="flex items-center gap-3">
             <span
               style={{
                 fontFamily: "Inter, sans-serif",
@@ -174,61 +321,98 @@ export default function Footer() {
             >
               TOKUN.AI
             </span>
-          </div>
+          </Link>
 
           {/* Navigation */}
           <nav className="mt-6 sm:mt-8">
-            <ul className="flex flex-wrap justify-center gap-x-6 gap-y-3 text-white/80 text-sm sm:text-base">
-              {["About us", "Pricing", "Blog", "Careers", "Support"].map((item) => (
-                <li key={item}>
-                  <a href="#" className="hover:text-white transition-colors">
-                    {item}
-                  </a>
+            <ul className="flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm sm:text-base">
+              {NAV_LINKS.map((item) => (
+                <li key={item.label}>
+                  <Link
+                    to={item.href}
+                    className="group relative inline-block text-white/80 transition-all duration-300"
+                  >
+                    <span
+                      className="transition-all duration-300 group-hover:text-transparent bg-clip-text"
+                      style={{
+                        backgroundImage:
+                          "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)",
+                      }}
+                    >
+                      {item.label}
+                    </span>
+
+                    <span
+                      aria-hidden
+                      className="absolute left-0 -bottom-1 h-[2px] w-0 rounded-full transition-all duration-300 group-hover:w-full"
+                      style={{
+                        background:
+                          "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)",
+                      }}
+                    />
+                  </Link>
                 </li>
               ))}
             </ul>
           </nav>
 
           {/* Social Icons */}
-          <div
-            className="relative mt-8"
-            style={{
-              width: ICONS.length * ICON_SIZE + (ICONS.length - 1) * GAP,
-              height: ICON_SIZE,
-            }}
-          >
-            {active !== null && (
-              <span
-                aria-hidden
-                className="absolute top-0 left-0 rounded-full"
-                style={{
-                  width: ICON_SIZE,
-                  height: ICON_SIZE,
-                  transform: `translateX(${puckX}px)`,
-                  transition: "transform 300ms cubic-bezier(.2,.8,.2,1)",
-                  background: "linear-gradient(270.19deg,#1A73E8 0.16%,#FF14EF 99.84%)",
-                  boxShadow: "0 8px 24px rgba(255,20,239,0.35)",
-                }}
-              />
-            )}
+         {/* Social Icons */}
+<div
+  className="relative mt-8"
+  style={{
+    width: ICONS.length * ICON_SIZE + (ICONS.length - 1) * GAP,
+    height: ICON_SIZE,
+  }}
+  onMouseLeave={() => setActive(null)}
+>
+  {active !== null && (
+    <span
+      aria-hidden
+      className="absolute top-0 left-0 rounded-full"
+      style={{
+        width: ICON_SIZE,
+        height: ICON_SIZE,
+        transform: `translateX(${puckX}px)`,
+        transition: "transform 300ms cubic-bezier(.2,.8,.2,1)",
+        background: "linear-gradient(270.19deg,#1A73E8 0.16%,#FF14EF 99.84%)",
+        boxShadow: "0 8px 24px rgba(255,20,239,0.35)",
+      }}
+    />
+  )}
 
-            <div className="absolute inset-0 flex items-center gap-4">
-              {ICONS.map(({ Icon, href }, i) => (
-                <a
-                  key={i}
-                  href={href}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setActive(i);
-                  }}
-                  className="relative grid place-items-center w-11 h-11 rounded-full bg-white/10 border border-white/15 backdrop-blur hover:bg-white/15 transition-colors focus:outline-none focus:ring-2 focus:ring-white/40 z-[1]"
-                  title="Follow us"
-                >
-                  <Icon className="w-5 h-5" />
-                </a>
-              ))}
-            </div>
-          </div>
+  <div className="absolute inset-0 flex items-center gap-4">
+    {ICONS.map(({ Icon, href }, i) => (
+      <a
+        key={i}
+        href={href}
+        onMouseEnter={() => setActive(i)}
+        onFocus={() => setActive(i)}
+        onBlur={() => setActive(null)}
+        className="group relative grid place-items-center w-11 h-11 rounded-full bg-white/10 border border-white/15 backdrop-blur transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-white/40 z-[1] hover:scale-110 hover:border-white/30 hover:bg-white/15"
+        title="Follow us"
+      >
+        <span
+          aria-hidden
+          className="absolute inset-0 rounded-full opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-100"
+          style={{
+            background: "linear-gradient(135deg, rgba(255,20,239,0.45) 0%, rgba(26,115,232,0.45) 100%)",
+          }}
+        />
+
+        <span
+          aria-hidden
+          className="absolute inset-0 rounded-full opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+          style={{
+            background: "linear-gradient(135deg, rgba(255,20,239,0.18) 0%, rgba(26,115,232,0.18) 100%)",
+          }}
+        />
+
+        <Icon className="relative z-[1] w-5 h-5 transition-transform duration-300 group-hover:scale-110" />
+      </a>
+    ))}
+  </div>
+</div>
 
           {/* Subscribe Section */}
           <div className="mt-8 flex flex-col sm:flex-row items-center gap-3 w-full max-w-md">
@@ -245,7 +429,7 @@ export default function Footer() {
         </div>
 
         {/* Bottom */}
-        <div className="mt-8 sm:mt-10">
+       <div className="mt-4 sm:mt-6">
           <p
             className="text-center text-white/70"
             style={{

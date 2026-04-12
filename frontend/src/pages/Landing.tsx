@@ -2,6 +2,8 @@
 
 
 import { useState, useEffect, useMemo } from "react";
+import { useRef } from "react";
+
 import { useNavigate } from "react-router-dom";
 import {  AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -149,28 +151,13 @@ const handleGetStarted = () => {
   // Steps
   const [activeStep, setActiveStep] = useState(0);
   const [hoveredStep, setHoveredStep] = useState<number | null>(null);
+ const [activeOffer, setActiveOffer] = useState<number | null>(null);
   
-   
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+ 
 
   // const [current, setCurrent] = useState(0);
   const [activeButton, setActiveButton] = useState<"left" | "right" | null>(null);
@@ -212,11 +199,12 @@ const handleGetStarted = () => {
   );
 
 const PlanStyledName = ({ user, fullName }: { user: any; fullName: string }) => {
-  // PRO
   if (user?.plan === "pro") {
     return (
       <div className="flex items-center gap-2">
-       <PlanStyledName user={user} fullName={fullName} />
+        <span className="truncate font-semibold bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] text-transparent bg-clip-text">
+          Hello, {fullName}
+        </span>
         <LuBadgeCheck
           className="w-[22px] h-[22px]"
           style={{ stroke: "url(#proGradient)", strokeWidth: 2 }}
@@ -233,7 +221,6 @@ const PlanStyledName = ({ user, fullName }: { user: any; fullName: string }) => 
     );
   }
 
-  // ENTERPRISE
   if (user?.plan === "enterprise") {
     return (
       <div className="flex items-center gap-2">
@@ -256,7 +243,6 @@ const PlanStyledName = ({ user, fullName }: { user: any; fullName: string }) => 
     );
   }
 
-  // FREE (default)
   return (
     <div className="flex items-center gap-2">
       <span className="truncate font-semibold text-white">
@@ -268,7 +254,6 @@ const PlanStyledName = ({ user, fullName }: { user: any; fullName: string }) => 
     </div>
   );
 };
-
 
 
 
@@ -530,8 +515,82 @@ const [current, setCurrent] = useState(0);
 const API_BASE = (import.meta as any).env?.VITE_API_URL?.replace(/\/$/, "") || "";
 
 
+const FEATURE_PREVIEWS = [
+  {
+    icon: Zap,
+    title: "Prompt Optimization",
+    description:
+      "Reduce token usage by up to 60% while maintaining meaning and effectiveness across all LLM platforms.",
+    onClick: () => go(routes.smartgen),
+    mediaSrc: "/icons/srt.mp4",
+  },
+  {
+    icon: Sparkles,
+    title: "Smartgen Generator",
+    description:
+      "Transform simple ideas into powerful, optimized prompts with our AI-powered generation system.",
+    onClick: () => go(routes.smartgen),
+    mediaSrc: "/icons/srt.mp4",
+  },
+  {
+    icon: TrendingUp,
+    title: "Prompt Marketplace",
+    description:
+      "Built a great prompt? Trade it. Monetize your creativity and earn from your best prompt innovations.",
+    onClick: () => go(routes.marketplace),
+   mediaSrc: "/icons/srt.mp4",
+  },
+  {
+    icon: null,
+    image: "/icons/circle.png",
+    title: "Prompt Library",
+    description:
+      "Access categorized prompts for Coding, Design, Marketing, Video Creation, and more.",
+    onClick: () => go(routes.promptLibrary),
+    mediaSrc: "/icons/srt.mp4",
+  },
+];
 
 
+const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+const [previewPhase, setPreviewPhase] = useState<"idle" | "entering" | "open">("idle");
+const previewTimerRef = useRef<number | null>(null);
+
+const activeFeature =
+  previewIndex !== null ? FEATURE_PREVIEWS[previewIndex] : null;
+
+const openOfferPreview = (index: number) => {
+  if (previewPhase !== "idle") return;
+
+  if (previewTimerRef.current) {
+    window.clearTimeout(previewTimerRef.current);
+  }
+
+  setPreviewIndex(index);
+  setPreviewPhase("entering");
+
+  previewTimerRef.current = window.setTimeout(() => {
+    setPreviewPhase("open");
+  }, 520);
+};
+
+const closeOfferPreview = () => {
+  if (previewTimerRef.current) {
+    window.clearTimeout(previewTimerRef.current);
+    previewTimerRef.current = null;
+  }
+
+  setPreviewPhase("idle");
+  setPreviewIndex(null);
+};
+
+useEffect(() => {
+  return () => {
+    if (previewTimerRef.current) {
+      window.clearTimeout(previewTimerRef.current);
+    }
+  };
+}, []);
 
 
 const nextSlide = () => {
@@ -648,7 +707,7 @@ useEffect(() => {
 </header>
 
       {/* MAIN */}
-      <div className="relative z-10 container mx-auto px-4 sm:px-6 pt-32 sm:pt-36 md:pt-24 lg:pt-24 pb-20">
+<div className="relative z-10 container mx-auto px-4 sm:px-6 pt-32 sm:pt-36 md:pt-24 lg:pt-24 pb-0">
         {/* HERO */}
         <div className="text-center space-y-8 mb-20">
           {/* <div className="flex justify-center">
@@ -952,6 +1011,14 @@ useEffect(() => {
   </span>
 </h1>
 
+
+
+{/* <img
+  src="/icons/tokun-logo-transparent.png"
+  alt="Tokun"
+  className="w-[320px] sm:w-[440px] md:w-[560px] lg:w-[680px] object-contain"
+/> */}
+
             <h2 className="text-3xl md:text-4xl font-bold mb-8">
               Enter the Promptverse
             </h2>
@@ -1018,11 +1085,21 @@ useEffect(() => {
 </motion.button> */}
   </div>
 
-  <motion.button
+ <motion.button
     onClick={() => go(routes.marketplace)}
-    whileHover={{ scale: 1.05 }}
-    className="relative w-[200px] sm:w-[220px] h-[50px] sm:h-[62px] rounded-full text-white font-semibold shadow-2xl border border-white/10 backdrop-blur-md flex items-center justify-center gap-2 sm:gap-3 text-sm sm:text-lg"
-    style={{ background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)" }}
+    whileHover={{ 
+      scale: 1.05,
+      background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)",
+      borderColor: "transparent"
+    }}
+    initial={{
+      background: "transparent",
+      borderColor: "rgba(255,255,255,0.25)"
+    }}
+    className="relative w-[200px] sm:w-[220px] h-[50px] sm:h-[62px] rounded-full text-white font-semibold shadow-2xl backdrop-blur-md flex items-center justify-center gap-2 sm:gap-3 text-sm sm:text-lg"
+    style={{ 
+      border: "1px solid rgba(255,255,255,0.25)"
+    }}
   >
     Prompt Marketplace
   </motion.button>
@@ -1158,76 +1235,230 @@ useEffect(() => {
 </div>
 
 
-        {/* WHAT WE OFFER */}
-        <div className="mt-28">
-          <h2 className="text-4xl md:text-5xl font-bold text-center mb-12">
-            What We Offer
-          </h2>
+<div className="mt-28">
+  <AnimatePresence mode="wait" initial={false}>
+    {previewPhase === "idle" ? (
+      <motion.div
+        key="offer-grid-view"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -12 }}
+        transition={{ duration: 0.28, ease: "easeOut" }}
+      >
+        <h2 className="text-3xl md:text-5xl font-bold text-center mb-12">
+          What We Offer
+        </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 auto-rows-fr">
-            {[
-              {
-                icon: Zap,
-                title: "Prompt Optimization",
-                description: "Reduce token usage by up to 60% while maintaining meaning and effectiveness across all LLM platforms.",
-              },
-              {
-                icon: Sparkles,
-                title: "Smartgen Generator",
-                description: "Transform simple ideas into powerful, optimized prompts with our AI-powered generation system.",
-              },
-              {
-                icon: TrendingUp,
-                title: "Prompt Marketplace",
-                description: "Built a great prompt? Trade it. Monetize your creativity and earn from your best prompt innovations.",
-              },
-              {
-                icon: null,
-                image: "/icons/circle.png",
-                title: "Prompt Library",
-                description: "Access categorized prompts for Coding, Design, Marketing, Video Creation, and more.",
-              },
-            ].map((feature, index) => (
-              <div key={index} className="rounded-[32px] p-[1px] h-full" style={{ background: "linear-gradient(180deg, #333333 0%, #12141A 100%)" }}>
-                <div className="rounded-[30px] bg-[#030406] p-6 md:p-8 flex h-full flex-col">
-                  <div className="mb-4">
-                    {feature.image ? (
-                      <img src={feature.image} alt="" className="h-8 w-8 object-contain" />
-                    ) : (
-                      <>
-                        <feature.icon className="h-8 w-8" style={{ stroke: "url(#icon-gradient)", strokeWidth: 1.5, fill: "none" }} />
-                        <svg width="0" height="0" aria-hidden>
-                          <defs>
-                            <linearGradient id="icon-gradient" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor="#1A73E8" />
-                              <stop offset="100%" stopColor="#FF14EF" />
-                            </linearGradient>
-                          </defs>
-                        </svg>
-                      </>
-                    )}
-                  </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 auto-rows-fr">
+          {FEATURE_PREVIEWS.map((feature, index) => {
+            const Icon = feature.icon;
 
-                  <h3
-                    className="mb-3 text-white"
-                    style={{ fontFamily: "Inter, sans-serif", fontWeight: 600, fontSize: "24px", lineHeight: "100%", letterSpacing: "0" }}
-                  >
-                    {feature.title}
-                  </h3>
+            return (
+             <motion.button
+  key={feature.title}
+  type="button"
+  onClick={() => openOfferPreview(index)}
+  whileHover={{ y: -6, scale: 1.015 }}
+  whileTap={{ scale: 0.99 }}
+  className="group relative rounded-[32px] p-[1px] h-full text-left overflow-hidden"
+  style={{
+    background: "linear-gradient(180deg, #333333 0%, #12141A 100%)",
+  }}
+>
+  {/* hover border glow */}
+  <div
+    className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-[32px]"
+    style={{
+      background: "linear-gradient(135deg, #FF14EF 0%, #1A73E8 100%)",
+      filter: "blur(10px)",
+    }}
+  />
 
-                  <p
-                    className="text-white/80"
-                    style={{ fontFamily: "Inter, sans-serif", fontWeight: 400, fontSize: "14px", lineHeight: "100%", letterSpacing: "0" }}
-                  >
-                    {feature.description}
-                  </p>
+  {/* actual border */}
+  <div
+    className="pointer-events-none absolute inset-0 rounded-[32px] opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+    style={{
+      background: "linear-gradient(135deg, #FF14EF 0%, #1A73E8 100%)",
+    }}
+  />
 
-                  <div className="mt-auto" />
-                </div>
+  {/* inner card */}
+  <div className="relative rounded-[30px] bg-[#030406] p-6 md:p-8 flex h-full flex-col transition-colors duration-300 group-hover:bg-[#06070B]">
+    <div className="mb-4">
+      {feature.image ? (
+        <img
+          src={feature.image}
+          alt=""
+          className="h-8 w-8 object-contain"
+        />
+      ) : Icon ? (
+        <>
+          <Icon
+            className="h-8 w-8"
+            style={{
+              stroke: "url(#icon-gradient-offer-main)",
+              strokeWidth: 1.5,
+              fill: "none",
+            }}
+          />
+          <svg width="0" height="0" aria-hidden>
+            <defs>
+              <linearGradient id="icon-gradient-offer-main" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#1A73E8" />
+                <stop offset="100%" stopColor="#FF14EF" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </>
+      ) : null}
+    </div>
+
+    <h3
+      className="mb-3 text-white transition-colors duration-300 group-hover:text-white"
+      style={{
+        fontFamily: "Inter, sans-serif",
+        fontWeight: 600,
+        fontSize: "24px",
+        lineHeight: "100%",
+        letterSpacing: "0",
+      }}
+    >
+      {feature.title}
+    </h3>
+
+    <p
+      className="text-white/80 transition-colors duration-300 group-hover:text-white/90"
+      style={{
+        fontFamily: "Inter, sans-serif",
+        fontWeight: 400,
+        fontSize: "14px",
+        lineHeight: "100%",
+        letterSpacing: "0",
+      }}
+    >
+      {feature.description}
+    </p>
+
+    <div className="mt-auto" />
+  </div>
+</motion.button>
+            );
+          })}
+        </div>
+      </motion.div>
+    ) : activeFeature ? (
+      <motion.div
+        key={`offer-preview-${previewIndex}`}
+        initial={{ opacity: 0, y: 18, scale: 0.985 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 18, scale: 0.985 }}
+        transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+        className="max-w-[1200px] mx-auto"
+      >
+        <h2 className="text-3xl md:text-5xl font-bold text-center mb-8">
+          What We Offer
+        </h2>
+
+        <div className="relative rounded-[32px] overflow-hidden border border-white/10 bg-[#05070B]">
+          <button
+            type="button"
+            onClick={closeOfferPreview}
+            className="absolute top-4 right-4 z-20 flex items-center justify-center w-10 h-10 rounded-full border border-white/15 bg-black/50 text-white hover:bg-black/70 transition"
+            aria-label="Close video"
+          >
+            <X className="h-4 w-4" />
+          </button>
+
+          <div className="relative w-full h-[320px] md:h-[440px] lg:h-[520px] bg-black overflow-hidden">
+            <motion.video
+              src={activeFeature.mediaSrc}
+              className="absolute inset-0 w-full h-full object-cover"
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              initial={{ x: 220, opacity: 0, scale: 0.98 }}
+              animate={{ x: 0, opacity: 1, scale: 1 }}
+              transition={{ duration: 0.52, ease: [0.22, 1, 0.36, 1] }}
+            />
+
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent pointer-events-none" />
+
+            <div className="absolute left-5 right-5 bottom-5 md:left-8 md:right-8 md:bottom-8 z-10">
+              <div className="max-w-[720px]">
+                <h3 className="text-white text-2xl md:text-4xl font-semibold mb-3">
+                  {activeFeature.title}
+                </h3>
+                <p className="text-white/80 text-sm md:text-base leading-relaxed">
+                  {activeFeature.description}
+                </p>
               </div>
-            ))}
+            </div>
+
+            <AnimatePresence>
+              {previewPhase === "entering" && (
+                <motion.div
+                  initial={{ x: 0, opacity: 1, scale: 1 }}
+                  animate={{ x: -260, opacity: 0, scale: 0.92, rotate: -6 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.52, ease: [0.22, 1, 0.36, 1] }}
+                  className="absolute left-0 top-0 z-20 w-[280px] md:w-[320px] pointer-events-none"
+                >
+                  <div
+                    className="rounded-[32px] p-[1px]"
+                    style={{
+                      background: "linear-gradient(180deg, #333333 0%, #12141A 100%)",
+                    }}
+                  >
+                    <div className="rounded-[30px] bg-[#030406] p-6 md:p-8">
+                      <div className="mb-4">
+                        {activeFeature.image ? (
+                          <img
+                            src={activeFeature.image}
+                            alt=""
+                            className="h-8 w-8 object-contain"
+                          />
+                        ) : activeFeature.icon ? (
+                          <>
+                            <activeFeature.icon
+                              className="h-8 w-8"
+                              style={{
+                                stroke: "url(#icon-gradient-offer-fly)",
+                                strokeWidth: 1.5,
+                                fill: "none",
+                              }}
+                            />
+                            <svg width="0" height="0" aria-hidden>
+                              <defs>
+                                <linearGradient id="icon-gradient-offer-fly" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#1A73E8" />
+                                  <stop offset="100%" stopColor="#FF14EF" />
+                                </linearGradient>
+                              </defs>
+                            </svg>
+                          </>
+                        ) : null}
+                      </div>
+
+                      <h3 className="mb-3 text-white text-2xl font-semibold">
+                        {activeFeature.title}
+                      </h3>
+
+                      <p className="text-white/80 text-sm leading-relaxed">
+                        {activeFeature.description}
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
+      </motion.div>
+    ) : null}
+  </AnimatePresence>
+</div>
 
         {/* HOW IT WORKS + PRODUCT DEMO */}
         <div className="mt-28" style={{ borderWidth: "1px 0 1px 0", borderStyle: "solid", borderColor: "#171717", background: "#08090B" }}>
@@ -1250,6 +1481,16 @@ useEffect(() => {
               </div>
             </div>
           </div>
+
+
+
+
+
+
+
+
+
+
 
           {/* <div className="pt-16 flex justify-center mb-8">
   <button
@@ -1280,7 +1521,10 @@ useEffect(() => {
     </span>
   </button>
 </div> */}
-          <h2 className="text-4xl md:text-5xl font-bold text-center mb-12">How It Works</h2>
+          {/* <h2 className="text-4xl md:text-5xl font-bold text-center mb-12">How It Works</h2> */}
+           <h2 className="text-3xl md:text-5xl font-bold text-center mb-12">
+  How It Works
+</h2>
 
           {/* Steps grid */}
           {/* <div className="px-6">
@@ -1412,9 +1656,9 @@ useEffect(() => {
   <div className="container mx-auto px-6 text-center">
 
     {/* Heading */}
-    <h3 className="text-3xl md:text-4xl font-bold text-white">
-      Product Demo
-    </h3>
+   <h3 className="text-3xl md:text-5xl font-bold text-white">
+  Product Demo
+</h3>
 
     <p className="text-white/70 text-lg mt-3 mb-12">
       Video demonstration of earn feature
@@ -1462,14 +1706,14 @@ useEffect(() => {
             height: "64%",
           }}
         >
-          <video
-            src="/icons/token.mp4"
-            className="w-full h-full object-cover"
-            autoPlay
-            muted
-            loop
-            playsInline
-          />
+    <video
+  src="/icons/token.mp4"
+  className="w-full h-full object-cover"
+  autoPlay
+  muted
+  loop
+  playsInline
+/>
         </div>
 
       </motion.div>
@@ -1517,7 +1761,7 @@ useEffect(() => {
   </button>
 </div>
 
-         <h2 className="text-2xl sm:text-4xl md:text-5xl font-bold mb-6">
+       <h2 className="text-3xl md:text-5xl font-bold mb-6">
   Ready to optimize your prompts?
 </h2>
 <p className="text-base sm:text-xl text-white/80 mb-8 max-w-2xl mx-auto">
@@ -1588,7 +1832,7 @@ useEffect(() => {
           {/* TESTIMONIALS */}
       {/* TESTIMONIALS — SAME POSITION & DESIGN, keep < and > arrows; center when only one */}
            {/* TESTIMONIALS */}
-<div className="mt-28 mb-20 relative font-[Inter] px-4">
+<div className="mt-28 mb-8 relative font-[Inter] px-4">
 
   {/* TAG */}
   <div className="flex justify-center mb-4">

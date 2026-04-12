@@ -30,6 +30,11 @@ import { CartProvider } from "@/contexts/CartContext";
 import ChatPage from "./pages/ChatPage";
 import AdminLogin from "./pages/AdminLogin";
 import Dashboard from "@/pages/Dashboard";
+import AboutPage from "@/pages/AboutPage";
+import SupportPage from "@/pages/SupportPage";
+import CareersPage from "@/pages/CareersPage";
+import BlogPage from "@/pages/BlogPage";
+import ScrollToTop from "@/components/ScrollToTop";
 import AdminForgotPassword from "./pages/AdminForgotPassword";
 const queryClient = new QueryClient();
 
@@ -72,6 +77,7 @@ export default function App() {
           <Toaster />
           <Sonner />
           <BrowserRouter>
+          <ScrollToTop />
             <Routes>
               {/* public */}
               <Route path="/" element={<Landing />} />
@@ -113,6 +119,10 @@ export default function App() {
     </RequireAuth>
   }
 />
+<Route path="/blog" element={<BlogPage />} />
+<Route path="/about" element={<AboutPage />} />
+<Route path="/support" element={<SupportPage />} />
+<Route path="/careers" element={<CareersPage />} />
 <Route path="/subscription" element={<Subscription />} />
   <Route path="/prompty-history" element={<PromptHistory />} />
 <Route
