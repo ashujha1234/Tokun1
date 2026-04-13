@@ -154,7 +154,29 @@ const handleGetStarted = () => {
  const [activeOffer, setActiveOffer] = useState<number | null>(null);
   
 
+// State add karo (existing states ke saath)
+const [activeOfferIdx, setActiveOfferIdx] = useState<number | null>(null);
+const [offerPhase,     setOfferPhase]     = useState<"grid" | "split">("grid");
+const [offerBusy,      setOfferBusy]      = useState(false);
 
+const openSplit = (idx: number) => {
+  if (offerBusy) return;
+  setOfferBusy(true);
+  setTimeout(() => {
+    setActiveOfferIdx(idx);
+    setOfferPhase("split");
+    setOfferBusy(false);
+  }, 215);
+};
+const closeSplit = () => {
+  if (offerBusy) return;
+  setOfferBusy(true);
+  setTimeout(() => {
+    setOfferPhase("grid");
+    setActiveOfferIdx(null);
+    setOfferBusy(false);
+  }, 200);
+};
 
 
  
@@ -1234,231 +1256,288 @@ useEffect(() => {
   </motion.div>
 </div>
 
-
+{/* ══════════ OFFER SECTION ══════════ */}
 <div className="mt-28">
-  <AnimatePresence mode="wait" initial={false}>
-    {previewPhase === "idle" ? (
+  <AnimatePresence mode="wait">
+
+    {/* ─── GRID VIEW ─── */}
+    {offerPhase === "grid" && (
       <motion.div
-        key="offer-grid-view"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -12 }}
-        transition={{ duration: 0.28, ease: "easeOut" }}
+        key="offer-grid"
+        initial={{ opacity: 0, scale: 0.94, y: 22 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 6 }}
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
       >
-        <h2 className="text-3xl md:text-5xl font-bold text-center mb-12">
+        <h2 className="text-3xl md:text-5xl font-extrabold text-center mb-12 tracking-tight"
+          style={{ letterSpacing: "-0.03em" }}>
           What We Offer
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 auto-rows-fr">
-          {FEATURE_PREVIEWS.map((feature, index) => {
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          {FEATURE_PREVIEWS.map((feature, i) => {
             const Icon = feature.icon;
-
             return (
-             <motion.button
-  key={feature.title}
-  type="button"
-  onClick={() => openOfferPreview(index)}
-  whileHover={{ y: -6, scale: 1.015 }}
-  whileTap={{ scale: 0.99 }}
-  className="group relative rounded-[32px] p-[1px] h-full text-left overflow-hidden"
-  style={{
-    background: "linear-gradient(180deg, #333333 0%, #12141A 100%)",
-  }}
->
-  {/* hover border glow */}
-  <div
-    className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-[32px]"
-    style={{
-      background: "linear-gradient(135deg, #FF14EF 0%, #1A73E8 100%)",
-      filter: "blur(10px)",
-    }}
-  />
+              <motion.button
+                key={feature.title}
+                type="button"
+                onClick={() => openSplit(i)}
+                initial={{ opacity: 0, scale: 0.88, y: 18 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1], delay: i * 0.07 }}
+                whileHover={{ y: -10, scale: 1.025, transition: { type: "spring", stiffness: 280, damping: 18 } }}
+                whileTap={{ scale: 0.97 }}
+                className="group relative rounded-[28px] p-[1px] text-left overflow-hidden h-full"
+                style={{ background: "linear-gradient(160deg,#252528,#0d0e12)" }}
+              >
+                {/* glow behind border */}
+                <div className="pointer-events-none absolute -inset-px rounded-[29px] opacity-0 group-hover:opacity-100 transition-opacity duration-400"
+                  style={{ background: "linear-gradient(135deg,#FF14EF,#1A73E8)", filter: "blur(14px)", zIndex: 0 }} />
+                {/* border itself */}
+                <div className="pointer-events-none absolute inset-0 rounded-[28px] opacity-0 group-hover:opacity-100 transition-opacity duration-350"
+                  style={{ background: "linear-gradient(135deg,#FF14EF,#1A73E8)" }} />
 
-  {/* actual border */}
-  <div
-    className="pointer-events-none absolute inset-0 rounded-[32px] opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-    style={{
-      background: "linear-gradient(135deg, #FF14EF 0%, #1A73E8 100%)",
-    }}
-  />
+                <div className="relative rounded-[26px] bg-[#030406] group-hover:bg-[#06070d] transition-colors duration-300 p-6 flex flex-col gap-3 h-full z-[1]">
+                  <span className="absolute top-3.5 right-4 text-[10px] font-bold text-white/20 tracking-widest">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
 
-  {/* inner card */}
-  <div className="relative rounded-[30px] bg-[#030406] p-6 md:p-8 flex h-full flex-col transition-colors duration-300 group-hover:bg-[#06070B]">
-    <div className="mb-4">
-      {feature.image ? (
-        <img
-          src={feature.image}
-          alt=""
-          className="h-8 w-8 object-contain"
-        />
-      ) : Icon ? (
-        <>
-          <Icon
-            className="h-8 w-8"
-            style={{
-              stroke: "url(#icon-gradient-offer-main)",
-              strokeWidth: 1.5,
-              fill: "none",
-            }}
-          />
-          <svg width="0" height="0" aria-hidden>
-            <defs>
-              <linearGradient id="icon-gradient-offer-main" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#1A73E8" />
-                <stop offset="100%" stopColor="#FF14EF" />
-              </linearGradient>
-            </defs>
-          </svg>
-        </>
-      ) : null}
-    </div>
+                  {/* icon box */}
+                  <div className="w-11 h-11 rounded-[14px] flex items-center justify-center transition-all duration-300 group-hover:bg-white/8"
+                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                    {feature.image
+                      ? <img src={feature.image} className="h-6 w-6 object-contain" alt="" />
+                      : Icon
+                        ? <>
+                            <Icon className="h-6 w-6" style={{ stroke: "url(#ig-grid)", strokeWidth: 1.7, fill: "none" }} />
+                            <svg width="0" height="0" aria-hidden><defs>
+                              <linearGradient id="ig-grid" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#1A73E8" /><stop offset="100%" stopColor="#FF14EF" />
+                              </linearGradient>
+                            </defs></svg>
+                          </>
+                        : null}
+                  </div>
 
-    <h3
-      className="mb-3 text-white transition-colors duration-300 group-hover:text-white"
-      style={{
-        fontFamily: "Inter, sans-serif",
-        fontWeight: 600,
-        fontSize: "24px",
-        lineHeight: "100%",
-        letterSpacing: "0",
-      }}
-    >
-      {feature.title}
-    </h3>
+                  <div className="font-bold text-[17px] text-white tracking-tight leading-snug" style={{ letterSpacing: "-0.02em" }}>
+                    {feature.title}
+                  </div>
+                  <div className="text-[11.5px] text-white/55 leading-relaxed flex-1">
+                    {feature.description}
+                  </div>
 
-    <p
-      className="text-white/80 transition-colors duration-300 group-hover:text-white/90"
-      style={{
-        fontFamily: "Inter, sans-serif",
-        fontWeight: 400,
-        fontSize: "14px",
-        lineHeight: "100%",
-        letterSpacing: "0",
-      }}
-    >
-      {feature.description}
-    </p>
-
-    <div className="mt-auto" />
-  </div>
-</motion.button>
+                  {/* explore cta */}
+                  <div className="mt-auto flex items-center gap-1.5 text-[11px] font-semibold text-white/35 group-hover:text-white/75 transition-colors duration-300 tracking-wide">
+                    <span>Explore</span>
+                    <div className="w-[22px] h-[22px] rounded-full border border-current flex items-center justify-center text-[11px] transition-all duration-300 group-hover:bg-gradient-to-br group-hover:from-[#FF14EF] group-hover:to-[#1A73E8] group-hover:border-transparent group-hover:text-white">
+                      →
+                    </div>
+                  </div>
+                </div>
+              </motion.button>
             );
           })}
         </div>
       </motion.div>
-    ) : activeFeature ? (
+    )}
+
+    {/* ─── SPLIT VIEW ─── */}
+    {offerPhase === "split" && (
       <motion.div
-        key={`offer-preview-${previewIndex}`}
-        initial={{ opacity: 0, y: 18, scale: 0.985 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 18, scale: 0.985 }}
-        transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-        className="max-w-[1200px] mx-auto"
+        key="offer-split"
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
       >
-        <h2 className="text-3xl md:text-5xl font-bold text-center mb-8">
+        <h2 className="text-3xl md:text-5xl font-extrabold text-center mb-10 tracking-tight"
+          style={{ letterSpacing: "-0.03em" }}>
           What We Offer
         </h2>
 
-        <div className="relative rounded-[32px] overflow-hidden border border-white/10 bg-[#05070B]">
-          <button
-            type="button"
-            onClick={closeOfferPreview}
-            className="absolute top-4 right-4 z-20 flex items-center justify-center w-10 h-10 rounded-full border border-white/15 bg-black/50 text-white hover:bg-black/70 transition"
-            aria-label="Close video"
-          >
-            <X className="h-4 w-4" />
-          </button>
+        <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-3.5 max-w-[1100px] mx-auto items-stretch">
 
-          <div className="relative w-full h-[320px] md:h-[440px] lg:h-[520px] bg-black overflow-hidden">
-            <motion.video
-              src={activeFeature.mediaSrc}
-              className="absolute inset-0 w-full h-full object-cover"
-              autoPlay
-              muted
-              loop
-              playsInline
-              preload="metadata"
-              initial={{ x: 220, opacity: 0, scale: 0.98 }}
-              animate={{ x: 0, opacity: 1, scale: 1 }}
-              transition={{ duration: 0.52, ease: [0.22, 1, 0.36, 1] }}
-            />
-
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent pointer-events-none" />
-
-            <div className="absolute left-5 right-5 bottom-5 md:left-8 md:right-8 md:bottom-8 z-10">
-              <div className="max-w-[720px]">
-                <h3 className="text-white text-2xl md:text-4xl font-semibold mb-3">
-                  {activeFeature.title}
-                </h3>
-                <p className="text-white/80 text-sm md:text-base leading-relaxed">
-                  {activeFeature.description}
-                </p>
-              </div>
-            </div>
-
-            <AnimatePresence>
-              {previewPhase === "entering" && (
-                <motion.div
-                  initial={{ x: 0, opacity: 1, scale: 1 }}
-                  animate={{ x: -260, opacity: 0, scale: 0.92, rotate: -6 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.52, ease: [0.22, 1, 0.36, 1] }}
-                  className="absolute left-0 top-0 z-20 w-[280px] md:w-[320px] pointer-events-none"
+          {/* LEFT — mini cards */}
+          <div className="flex flex-col gap-2 h-full">
+            {FEATURE_PREVIEWS.map((feature, i) => {
+              const Icon = feature.icon;
+              const isAct = i === activeOfferIdx;
+              return (
+                <motion.button
+                  key={feature.title}
+                  type="button"
+                  onClick={() => !offerBusy && setActiveOfferIdx(i)}
+                  whileHover={!isAct ? { x: 6, transition: { type: "spring", stiffness: 320, damping: 20 } } : {}}
+                  whileTap={{ scale: 0.98 }}
+                  className="relative rounded-[14px] p-[1px] text-left overflow-hidden flex-1 flex flex-col"
+                  style={{ background: isAct ? "linear-gradient(135deg,#FF14EF,#1A73E8)" : "linear-gradient(160deg,#1e1e22,#0d0e12)" }}
                 >
-                  <div
-                    className="rounded-[32px] p-[1px]"
-                    style={{
-                      background: "linear-gradient(180deg, #333333 0%, #12141A 100%)",
-                    }}
-                  >
-                    <div className="rounded-[30px] bg-[#030406] p-6 md:p-8">
-                      <div className="mb-4">
-                        {activeFeature.image ? (
-                          <img
-                            src={activeFeature.image}
-                            alt=""
-                            className="h-8 w-8 object-contain"
-                          />
-                        ) : activeFeature.icon ? (
-                          <>
-                            <activeFeature.icon
-                              className="h-8 w-8"
-                              style={{
-                                stroke: "url(#icon-gradient-offer-fly)",
-                                strokeWidth: 1.5,
-                                fill: "none",
-                              }}
-                            />
-                            <svg width="0" height="0" aria-hidden>
-                              <defs>
-                                <linearGradient id="icon-gradient-offer-fly" x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="0%" stopColor="#1A73E8" />
-                                  <stop offset="100%" stopColor="#FF14EF" />
+                  {/* active left bar */}
+                  {isAct && (
+                    <motion.div
+                      layoutId="active-bar"
+                      className="absolute left-0 top-[10%] bottom-[10%] w-[2px] rounded-full z-10"
+                      style={{ background: "linear-gradient(to bottom,#FF14EF,#1A73E8)" }}
+                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    />
+                  )}
+                  <div className="rounded-[12px] p-3 flex items-start gap-2.5 h-full transition-colors duration-250"
+                    style={{ background: isAct ? "rgba(8,16,36,.88)" : "#030406" }}>
+                    <div className="flex-shrink-0 mt-[3px]">
+                      {feature.image
+                        ? <img src={feature.image} className="h-4 w-4 object-contain" alt="" />
+                        : Icon
+                          ? <>
+                              <Icon className="h-4 w-4" style={{ stroke: "url(#ig-mini)", strokeWidth: 1.7, fill: "none" }} />
+                              <svg width="0" height="0" aria-hidden><defs>
+                                <linearGradient id="ig-mini" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#1A73E8" /><stop offset="100%" stopColor="#FF14EF" />
                                 </linearGradient>
-                              </defs>
-                            </svg>
-                          </>
-                        ) : null}
-                      </div>
-
-                      <h3 className="mb-3 text-white text-2xl font-semibold">
-                        {activeFeature.title}
-                      </h3>
-
-                      <p className="text-white/80 text-sm leading-relaxed">
-                        {activeFeature.description}
-                      </p>
+                              </defs></svg>
+                            </>
+                          : null}
+                    </div>
+                    <div>
+                      <div className="text-white font-bold text-[12px] leading-snug mb-0.5 tracking-tight">{feature.title}</div>
+                      <div className="text-white/42 text-[10px] leading-relaxed">{feature.description}</div>
                     </div>
                   </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                </motion.button>
+              );
+            })}
           </div>
+
+          {/* RIGHT — video pane */}
+          <AnimatePresence mode="wait">
+            {activeOfferIdx !== null && (() => {
+              const f = FEATURE_PREVIEWS[activeOfferIdx];
+              const Icon = f.icon;
+              return (
+                <motion.div
+                  key={`vp-${activeOfferIdx}`}
+                  initial={{ opacity: 0, x: 36, scale: 0.95 }}
+                  animate={{ opacity: 1, x: 0, scale: 1 }}
+                  exit={{ opacity: 0, x: -20, scale: 0.97 }}
+                  transition={{ duration: 0.46, ease: [0.22, 1, 0.36, 1] }}
+                  className="relative rounded-[22px] overflow-hidden flex flex-col justify-end"
+                  style={{ border: "1px solid rgba(255,255,255,.07)", minHeight: 380 }}
+                >
+                  {/* dynamic radial bg */}
+                  <motion.div
+                    key={`bg-${activeOfferIdx}`}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.7 }}
+                    className="absolute inset-0"
+                    style={{ background: `radial-gradient(ellipse at 65% 25%, rgba(26,115,232,.22) 0%, rgba(255,20,239,.14) 45%, #020307 100%)` }}
+                  />
+
+                  {/* dot grid */}
+                  <div className="absolute inset-0 z-[1] pointer-events-none" style={{
+                    backgroundImage: "linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px)",
+                    backgroundSize: "40px 40px"
+                  }} />
+
+                  {/* scan line */}
+                  <div className="absolute inset-0 overflow-hidden z-[2] pointer-events-none">
+                    <div className="absolute left-0 right-0 h-[2px]" style={{
+                      background: "linear-gradient(90deg,transparent 0%,rgba(255,20,239,.6) 30%,rgba(26,115,232,.6) 70%,transparent 100%)",
+                      animation: "scan 2.8s cubic-bezier(.4,0,.6,1) infinite",
+                      boxShadow: "0 0 12px rgba(255,20,239,.4)"
+                    }} />
+                  </div>
+
+                  {/* dark overlay */}
+                  <div className="absolute inset-0 z-[3] pointer-events-none" style={{
+                    background: "linear-gradient(to top,rgba(2,3,7,.95) 0%,rgba(2,3,7,.5) 35%,rgba(2,3,7,.1) 65%,transparent 100%)"
+                  }} />
+
+                  {/* video */}
+                  <video src={f.mediaSrc} className="absolute inset-0 w-full h-full object-cover z-0"
+                    autoPlay muted loop playsInline />
+
+                  {/* close */}
+                  <button type="button" onClick={closeSplit} aria-label="Back to grid"
+                    className="absolute top-3 right-3 z-20 w-[30px] h-[30px] rounded-full flex items-center justify-center text-white/80 hover:text-white hover:scale-110 transition-all duration-200"
+                    style={{ border: "1px solid rgba(255,255,255,.18)", background: "rgba(0,0,0,.65)", backdropFilter: "blur(6px)" }}>
+                    <X className="h-3 w-3" />
+                  </button>
+
+                  {/* center icon with pulse rings */}
+                  <div className="absolute inset-0 flex items-center justify-center z-[4] pointer-events-none">
+                    <div className="relative">
+                      <div className="absolute inset-[-8px] rounded-full" style={{ border: "1px solid rgba(255,20,239,.25)", animation: "pulse-ring 2.2s ease-in-out infinite" }} />
+                      <div className="absolute inset-[-16px] rounded-full" style={{ border: "1px solid rgba(26,115,232,.15)", animation: "pulse-ring 2.2s ease-in-out .6s infinite" }} />
+                      <div className="w-[68px] h-[68px] rounded-full flex items-center justify-center relative z-[1]"
+                        style={{ border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", backdropFilter: "blur(10px)" }}>
+                        {f.image
+                          ? <img src={f.image} className="h-6 w-6 object-contain" alt="" />
+                          : Icon
+                            ? <>
+                                <Icon className="h-6 w-6" style={{ stroke: "url(#ig-video)", strokeWidth: 1.7, fill: "none" }} />
+                                <svg width="0" height="0" aria-hidden><defs>
+                                  <linearGradient id="ig-video" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#1A73E8" /><stop offset="100%" stopColor="#FF14EF" />
+                                  </linearGradient>
+                                </defs></svg>
+                              </>
+                            : null}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* bottom content */}
+                  <div className="relative z-[5] p-5 md:p-6">
+                    <div className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 mb-2.5 text-[9px] font-bold tracking-[.1em] uppercase text-white/50"
+                      style={{ background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.1)" }}>
+                      <div className="w-[5px] h-[5px] rounded-full" style={{ background: "linear-gradient(135deg,#FF14EF,#1A73E8)" }} />
+                      {String(activeOfferIdx + 1).padStart(2, "0")} · {f.title.split(" ")[0]}
+                    </div>
+                    <motion.h3
+                      key={`t-${activeOfferIdx}`}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                      className="text-white font-black text-2xl md:text-3xl mb-2 leading-tight"
+                      style={{ letterSpacing: "-0.03em" }}
+                    >
+                      {f.title}
+                    </motion.h3>
+                    <motion.p
+                      key={`d-${activeOfferIdx}`}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.32, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
+                      className="text-white/60 text-xs leading-relaxed"
+                    >
+                      {f.description}
+                    </motion.p>
+                  </div>
+                </motion.div>
+              );
+            })()}
+          </AnimatePresence>
+        </div>
+
+        {/* progress dots */}
+        <div className="flex justify-center gap-1.5 mt-4">
+          {FEATURE_PREVIEWS.map((_, i) => (
+            <motion.button
+              key={i}
+              onClick={() => !offerBusy && setActiveOfferIdx(i)}
+              animate={{ width: i === activeOfferIdx ? 20 : 4 }}
+              transition={{ type: "spring", stiffness: 400, damping: 28 }}
+              className="h-[4px] rounded-full"
+              style={{ background: i === activeOfferIdx ? "linear-gradient(90deg,#FF14EF,#1A73E8)" : "rgba(255,255,255,0.18)" }}
+            />
+          ))}
         </div>
       </motion.div>
-    ) : null}
+    )}
+
   </AnimatePresence>
 </div>
+
 
         {/* HOW IT WORKS + PRODUCT DEMO */}
         <div className="mt-28" style={{ borderWidth: "1px 0 1px 0", borderStyle: "solid", borderColor: "#171717", background: "#08090B" }}>
@@ -2425,7 +2504,25 @@ style={{
     50% { background-position: 400% 0; }
     100% { background-position: 0 0; }
   }
-`}</style>
+`}
+
+
+{`
+  @keyframes scan {
+    0%   { top: 0%;   opacity: 0; }
+    5%   { opacity: 1; }
+    95%  { opacity: 1; }
+    100% { top: 100%; opacity: 0; }
+  }
+  @keyframes pulse-ring {
+    0%, 100% { transform: scale(1);    opacity: .6; }
+    50%       { transform: scale(1.07); opacity: 1; }
+  }
+`}
+
+
+
+</style>
 
     </motion.section>
   );

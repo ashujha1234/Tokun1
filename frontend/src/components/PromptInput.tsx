@@ -1561,14 +1561,7 @@ const [inviteEmail, setInviteEmail] = useState("");
     }
   }, [initialText, navInitialText, hasCleared]);
 
-  // also re-count whenever text changes programmatically (safety net)
-  useEffect(() => {
-    if (text?.trim()) countTokens(text);
-    // NOTE: handleTextChange already counts on user input;
-    // this covers programmatic updates only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text]);
-
+ 
   useEffect(() => {
   textRef.current = text;
 }, [text]);
@@ -1750,27 +1743,39 @@ const [inviteMessage, setInviteMessage] = useState("");
 const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
   const newText = e.target.value;
 
-  // update UI
+  // ✅ SEEDHA setState — koi bhi heavy kaam nahi
   setText(newText);
   textRef.current = newText;
-
-  // local logic
-  setOptimizerInput(newText);
-  countTokens(newText);
   setOptimizationOption(null);
   setOptimizerDocId(null);
   setLastUsage(undefined);
-
-  // ❗ Avoid echo-loop if update is from server
-  if (isRemoteUpdateRef.current) return;
-
-  // ===== SEND TO OTHER USERS =====
-  socket.emit("prompt-change", {
-    sessionId: collabSessionId,
-    text: newText,
-    userId: user?.id || null,
-  });
 };
+
+
+// Debounced side-effects — token count + storage + socket
+useEffect(() => {
+  if (!text.trim()) {
+    onTokensChange(0, 0);
+    setOptimizerInput("");
+    return;
+  }
+
+  const timer = setTimeout(() => {
+    setOptimizerInput(text);
+    countTokens(text); // yeh onTokensChange call karta hai
+
+    if (!isRemoteUpdateRef.current && collabSessionId) {
+      socket.emit("prompt-change", {
+        sessionId: collabSessionId,
+        text,
+        userId: user?.id || null,
+      });
+    }
+  }, 400);
+
+  return () => clearTimeout(timer);
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [text]);
 
 const handleConfirmEndSession = () => {
   socket.emit("end-session", {
@@ -2135,12 +2140,12 @@ const startCollaboration = async (): Promise<string | null> => {
 
       <div className={PANEL_CLS}>
         <div className={`${BOX_CLS} ${BOX_PAD} relative`}>
-        <Textarea
-    placeholder="Enter your prompt here..."
-    className="min-h-[180px] bg-transparent resize-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 pr-10"
-    value={text}
-    onChange={handleTextChange}
-  />
+        <textarea
+  placeholder="Enter your prompt here..."
+  className="min-h-[180px] w-full bg-transparent resize-none border-0 outline-none focus:ring-0 pr-10 text-white placeholder:text-white/40 text-sm p-2"
+  value={text}
+  onChange={handleTextChange}
+/>
 
  {/* ✅ Large, visible Clear button */}
   {text.trim() && (

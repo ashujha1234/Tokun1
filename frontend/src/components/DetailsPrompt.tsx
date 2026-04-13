@@ -628,6 +628,26 @@ const isOwnPrompt =
 
   if (!prompt) return null;
 
+
+
+
+
+  const handleCopy = async () => {
+  try {
+    await navigator.clipboard.writeText(prompt?.fullPrompt || "");
+    toast({
+      title: "Copied",
+      description: "Prompt copied to clipboard.",
+    });
+  } catch {
+    toast({
+      title: "Copy failed",
+      description: "Unable to copy prompt.",
+      variant: "destructive",
+    });
+  }
+};
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -877,25 +897,33 @@ const isOwnPrompt =
     )}
 
     {/* Buy Now */}
-    {!isOwnPrompt && (
-      owned ? (
-        <div className="w-full sm:w-auto px-4 md:px-5 h-9 rounded-[8px] bg-[#14532D] text-[#BBF7D0] text-[12px] md:text-[13px] font-medium flex items-center justify-center whitespace-nowrap shrink-0">
-          Purchased
-        </div>
-      ) : !(prompt.exclusive && prompt.sold) ? (
-        <button
-          disabled={isTeamMember}
-          onClick={() => !isTeamMember && onPurchase?.(prompt)}
-          className={`w-full sm:w-auto flex items-center justify-center px-4 md:px-5 h-9 rounded-[8px] font-medium text-white text-[12px] md:text-[13px] transition-all whitespace-nowrap shrink-0 ${
-            isTeamMember
-              ? "opacity-50 cursor-not-allowed bg-gradient-to-r from-gray-600 to-gray-500"
-              : "bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] hover:opacity-90"
-          }`}
-        >
-          Buy Now
-        </button>
-      ) : null
-    )}
+   {/* Action Button */}
+{!isOwnPrompt && (
+  owned ? (
+    <div className="w-full sm:w-auto px-4 md:px-5 h-9 rounded-[8px] bg-[#14532D] text-[#BBF7D0] text-[12px] md:text-[13px] font-medium flex items-center justify-center whitespace-nowrap shrink-0">
+      Purchased
+    </div>
+  ) : Number(prompt.price || 0) <= 0 ? (
+    <button
+      onClick={handleCopy}
+      className="w-full sm:w-auto flex items-center justify-center px-4 md:px-5 h-9 rounded-[8px] font-medium text-white text-[12px] md:text-[13px] transition-all whitespace-nowrap shrink-0 bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] hover:opacity-90"
+    >
+      Copy
+    </button>
+  ) : !(prompt.exclusive && prompt.sold) ? (
+    <button
+      disabled={isTeamMember}
+      onClick={() => !isTeamMember && onPurchase?.(prompt)}
+      className={`w-full sm:w-auto flex items-center justify-center px-4 md:px-5 h-9 rounded-[8px] font-medium text-white text-[12px] md:text-[13px] transition-all whitespace-nowrap shrink-0 ${
+        isTeamMember
+          ? "opacity-50 cursor-not-allowed bg-gradient-to-r from-gray-600 to-gray-500"
+          : "bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] hover:opacity-90"
+      }`}
+    >
+      Buy Now
+    </button>
+  ) : null
+)}
 
     {/* Own prompt */}
     {isOwnPrompt && (

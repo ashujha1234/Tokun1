@@ -4069,7 +4069,7 @@ export function GlobeSection() {
       {/* Globe wrapper — koi background nahi, sirf subtle glow */}
       <div
         className="relative mx-auto w-full"
-        style={{ maxWidth: isMobile ? 480 : 680 }}
+      style={{ maxWidth: isMobile ? 320 : 460 }}
       >
         {/* Sirf ek bahut halka glow — koi solid bg nahi */}
         <div
@@ -4084,9 +4084,9 @@ export function GlobeSection() {
           <Suspense fallback={<GlobeFallback />}>
             <Canvas
               camera={{
-                position: isMobile ? [0, 0.18, 5.45] : [0, 0.22, 5.35],
-                fov: isMobile ? 33 : 31,
-              }}
+  position: isMobile ? [0, 0.18, 7.2] : [0, 0.22, 7.0],
+  fov: isMobile ? 26 : 24,
+}}
               dpr={[1, 2]}
               gl={{ alpha: true }}
               style={{ background: "transparent" }}
@@ -4112,10 +4112,11 @@ export function GlobeSection() {
       <div
         style={{
           display: "flex",
-          gap: isMobile ? 20 : 72,
+         gap: isMobile ? 16 : 48,
+marginTop: isMobile ? 8 : 20,
           justifyContent: "center",
           flexWrap: "nowrap",
-          marginTop: isMobile ? 12 : 32,
+         
         }}
       >
         {[["120+", "Countries"], ["10K+", "Active Users"], ["50K+", "Prompts Created"]].map(

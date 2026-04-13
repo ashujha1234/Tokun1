@@ -69,7 +69,7 @@ const userPlanColor =
   const [sellOpen, setSellOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>("system");
    const [cartOpen, setCartOpen] = useState(false);
-
+   
    const [headerToast, setHeaderToast] = useState<{
   title: string;
   message: string;
@@ -78,8 +78,12 @@ const userPlanColor =
   const [kycOpen, setKycOpen] = useState(false);
 const [pendingUpload, setPendingUpload] = useState(false);
 const [pendingCheckout, setPendingCheckout] = useState(false);
-
-
+const [hideHeader, setHideHeader] = useState(false);
+useEffect(() => {
+  const onScroll = () => setHideHeader(window.scrollY > 10);
+  window.addEventListener("scroll", onScroll, { passive: true });
+  return () => window.removeEventListener("scroll", onScroll);
+}, []);
 const toastTimerRef = useRef<number | null>(null);
 
 type Notif = { id: string; title: string; body: string; date: string; unread: boolean };
@@ -1146,7 +1150,11 @@ useEffect(() => {
   return (
     <>
     
- <header className="fixed top-0 left-0 right-0 z-50 flex justify-center pointer-events-none">
+<header
+  className={`fixed top-0 left-0 right-0 z-50 flex justify-center pointer-events-none transition-all duration-300 ${
+    hideHeader ? "-translate-y-full opacity-0" : "translate-y-0 opacity-100"
+  }`}
+>
   <div className="pointer-events-auto w-[92%] max-w-[1180px] mt-2 rounded-2xl backdrop-blur-md bg-transparent text-white px-2 sm:px-3 md:px-4 py-1.5 flex items-center justify-between">
   
         {/* Brand */}
