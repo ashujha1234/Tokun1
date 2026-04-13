@@ -972,9 +972,11 @@ const doCheckout = async () => {
           verifyData
         );
         toast({
-          title: "Checkout complete",
-          description: "Your prompts are now available.",
-        });
+  title: "Checkout complete",
+  description: "Your prompts are now available.",
+});
+// ✅ Cart refresh karo
+fetchCart();
       },
       theme: { color: "#1A73E8" },
     };
@@ -1003,6 +1005,12 @@ const handleCheckout = async () => {
     navigate("/login");
     return;
   }
+
+  // ✅ Cart pehle band karo — warna KYC modal uske neeche dab jaata hai
+  setCartOpen(false);
+
+  // Thoda wait karo taaki cart close animation complete ho
+  await new Promise((res) => setTimeout(res, 150));
 
   const ok = await ensureKycVerified();
   if (!ok) {
@@ -1784,34 +1792,40 @@ useEffect(() => {
           >
             {/* Prompt info */}
             <div className="flex items-center gap-4">
-              <div className="relative w-16 h-16 rounded-md overflow-hidden bg-black shrink-0">
+           <div className="relative w-16 h-16 rounded-md overflow-hidden bg-black shrink-0">
   {item.videoUrl ? (
     <>
       <video
-        src={item.videoUrl}
-        className="w-full h-full object-cover"
-        muted
-        playsInline
-        preload="metadata"
-      />
+  src={
+    item.videoUrl?.startsWith("http")
+      ? item.videoUrl
+      : `${(import.meta as any).env?.VITE_API_URL?.replace(/\/$/, "") || ""}${item.videoUrl}`
+  }
+  className="w-full h-full object-cover"
+  muted
+  playsInline
+  preload="metadata"
+/>
       <div className="absolute inset-0 flex items-center justify-center bg-black/25 pointer-events-none">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          className="w-5 h-5 text-white"
-          fill="currentColor"
-          viewBox="0 0 24 24"
-        >
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
           <path d="M8 5v14l11-7z" />
         </svg>
       </div>
     </>
-  ) : item.imageUrl ? (
+ ) : item.imageUrl ? (
     <img
-      src={item.imageUrl}
+      src={
+        item.imageUrl.startsWith("http")
+          ? item.imageUrl
+          : `${(import.meta as any).env?.VITE_API_URL?.replace(/\/$/, "") || ""}${item.imageUrl}`
+      }
       alt={item.title}
       className="w-full h-full object-cover"
       onError={(e) => {
-        (e.currentTarget as HTMLImageElement).src = "/icons/fallback.png";
+        (e.currentTarget as HTMLImageElement).style.display = "none";
+        const parent = (e.currentTarget as HTMLImageElement).parentElement;
+        if (parent) parent.innerHTML =
+          `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-size:10px;">No image</div>`;
       }}
     />
   ) : (
@@ -2039,7 +2053,7 @@ style={{
                 <label className="block mb-2 text-white/80 text-sm">Full Name</label>
                <input
   disabled
-  value={displayName || "Sagar Patel"}
+  value={displayName || ""}
   className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white/80 placeholder-white/40 outline-none focus:ring-2 focus:ring-white/10"
   placeholder="Your name"
 />
@@ -2049,7 +2063,7 @@ style={{
                 <label className="block mb-2 text-white/80 text-sm">Email</label>
               <input
   disabled
-  value={displayEmail || "sagar@techverse.world"}
+  value={displayEmail || ""}
   className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white/70 placeholder-white/40 outline-none focus:ring-2 focus:ring-white/10"
   placeholder="you@example.com"
 />
@@ -2515,7 +2529,7 @@ style={{
   </div>
 )}
 
-  {token && (
+ {token && kycOpen && (
   <KycGateModal
     open={kycOpen}
     onClose={() => {
@@ -2528,8 +2542,9 @@ style={{
     apiBase={API_BASE}
     defaultCountry="IN"
     requiredForLabel="buying and uploading prompts"
-   onVerified={async () => {
+  onVerified={async () => {
   setKycOpen(false);
+  setCartOpen(false); // ✅ ensure cart band hai
 
   if (pendingUpload) {
     setPendingUpload(false);
@@ -2538,6 +2553,7 @@ style={{
 
   if (pendingCheckout) {
     setPendingCheckout(false);
+    await new Promise((res) => setTimeout(res, 100));
     await doCheckout();
   }
 }}

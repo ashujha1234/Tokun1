@@ -1289,11 +1289,12 @@ setSecondsLeft(50);
         <div className="w-full max-w-[520px]">
           <div className="mb-6">
             <Link
-              to="/login"
-              className="inline-flex items-center gap-2 text-white/70 hover:text-white"
-            >
-              <ChevronLeft className="h-4 w-4" /> Back
-            </Link>
+  to="/login"
+  className="inline-flex items-center gap-2 text-white/90 hover:text-white"
+>
+  <ArrowLeft className="w-5 h-5" />
+  <span>Back</span>
+</Link>
           </div>
 
           <p className="text-[16px] font-normal text-white">

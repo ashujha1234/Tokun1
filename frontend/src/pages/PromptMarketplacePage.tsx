@@ -2890,7 +2890,11 @@ const [buyerName, setBuyerName] = useState<string>("");
 const mapped: Prompt[] = (data.prompts || []).map((doc: any) => {
   const att = doc?.attachment || null;
   // const mediaPath = att?.path ? `${API_BASE}${att.path}` : undefined;
-    const mediaPath = att?.path || undefined;
+  const mediaPath = att?.path
+  ? att.path.startsWith("http")
+    ? att.path
+    : `${API_BASE}${att.path}`
+  : undefined;
   return {
     id: String(doc._id),
     title: doc.title || "Untitled",

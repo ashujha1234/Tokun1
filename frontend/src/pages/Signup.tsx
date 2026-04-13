@@ -1826,7 +1826,10 @@ const Signup = () => {
 
               <Button
                 type="submit"
-                disabled={isLoading}
+               disabled={
+  isLoading ||
+  (isIndividual ? !name.trim() || !email.trim() : !companyName.trim() || !businessEmail.trim())
+}
                 className="w-full md:w-[350px] h-[50px] rounded-[6px] text-[16px] font-normal text-[#FFFFFF] text-center bg-gradient-to-r from-[#7D4DFF] via-[#A24BFF] to-[#FF2CC3] hover:opacity-90 disabled:opacity-50"
               >
                 {isLoading ? "Creating..." : "Continue"}

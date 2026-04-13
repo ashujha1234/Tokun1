@@ -104,8 +104,16 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
             description: i.prompt.description,
             category: i.prompt.categories?.[0]?.name || "General",
             price: i.prompt.price,
-            imageUrl: i.prompt.attachment?.type === "image" ? `${API_BASE}${i.prompt.attachment.path}` : undefined,
-            videoUrl: i.prompt.attachment?.type === "video" ? `${API_BASE}${i.prompt.attachment.path}` : undefined,
+            imageUrl: i.prompt.attachment?.type === "image"
+  ? (i.prompt.attachment.path?.startsWith("http")
+      ? i.prompt.attachment.path
+      : `${API_BASE}${i.prompt.attachment.path}`)
+  : undefined,
+videoUrl: i.prompt.attachment?.type === "video"
+  ? (i.prompt.attachment.path?.startsWith("http")
+      ? i.prompt.attachment.path
+      : `${API_BASE}${i.prompt.attachment.path}`)
+  : undefined,
             isFree: !!i.prompt.free,
               exclusive: !!i.prompt.exclusive,  
           }))

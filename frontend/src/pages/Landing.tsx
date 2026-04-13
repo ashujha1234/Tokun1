@@ -667,7 +667,7 @@ useEffect(() => {
       />
 
       {/* HEADER */}
-  <header className="w-full fixed top-0 left-0 right-0 z-50">
+<header className="w-full">
   <div className="px-4 md:px-6 lg:px-8 py-4 lg:py-6">
     <div className="container mx-auto flex items-center justify-between">
 
@@ -729,7 +729,7 @@ useEffect(() => {
 </header>
 
       {/* MAIN */}
-<div className="relative z-10 container mx-auto px-4 sm:px-6 pt-32 sm:pt-36 md:pt-24 lg:pt-24 pb-0">
+<div className="relative z-10 container mx-auto px-4 sm:px-6 pt-8 pb-0">
         {/* HERO */}
         <div className="text-center space-y-8 mb-20">
           {/* <div className="flex justify-center">

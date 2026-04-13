@@ -723,12 +723,13 @@ const Login = () => {
         <div className="hidden lg:flex min-h-screen items-center justify-center px-5 sm:px-8 md:px-10">
           <div className="w-full max-w-[520px]">
             <div className="mb-6">
-              <Link
-                to="/"
-                className="inline-flex items-center gap-2 text-white/70 hover:text-white"
-              >
-                Back
-              </Link>
+             <Link
+  to="/"
+  className="inline-flex items-center gap-2 text-white/70 hover:text-white"
+>
+  <ArrowLeft className="w-5 h-5" />
+  <span>Back</span>
+</Link>
             </div>
 
             <h1 className="text-[36px] leading-[1] font-normal text-white">
