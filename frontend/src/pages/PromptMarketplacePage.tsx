@@ -2434,6 +2434,1653 @@
 
 
 
+// // src/pages/PromptMarketplacePage.tsx
+// import { useEffect, useRef, useState } from "react";
+// import { useNavigate } from "react-router-dom";
+// import { Card, CardContent } from "@/components/ui/card";
+// import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+// import {
+//   Search, Star, Eye, Video, Sparkles, History,
+//   ChevronLeft, ChevronRight, GraduationCap, Palette, FileText,
+//   BadgeDollarSign, Users, Plane, FlaskConical, Code2, BarChart3,
+//   LifeBuoy, Briefcase, Image as ImageIcon, ArrowLeft,
+//   SlidersHorizontal, Check, X,
+// } from "lucide-react";
+// import { User } from "lucide-react";
+
+// import { toast } from "@/components/ui/use-toast";
+// import Header from "@/components/Header";
+// import MediaEnlargeModal from "@/components/MediaEnlargeModal";
+// import PromptHistory from "@/components/PromptHistory";
+// import AppNavigation from "@/components/AppNavigation";
+// import TokenUsageSection from "@/components/TokenUsageSection";
+// import { useUserTokenUsage } from "@/hooks/useUserTokenUsage";
+// import Footer from "@/components/Footer";
+// import DetailsPrompt from "@/components/DetailsPrompt";
+// import { Button } from "@/components/ui/button";
+// import { useAuth } from "@/contexts/AuthContext";
+// import ModalComponent from "@/components/ModalComponent";
+//  import { ShoppingCart } from "lucide-react";
+//  import KycGateModal from "@/components/KycGateModal";
+//    import { useCart } from "@/contexts/CartContext";
+// type Prompt = {
+//   id: string;
+//   title: string;
+//   description: string;
+//   category: string;
+//   price?: number;
+//   rating?: number;
+//   downloads?: number;
+//   imageUrl?: string;
+//   videoUrl?: string;
+//   preview?: string;
+//   isFree?: boolean;
+//   createdAt?: string;
+//   fullPrompt?: string;
+//   exclusive?: boolean;
+//   sold?: boolean;
+
+//   uploaderName?: string;
+//   uploaderId?: string | null;
+//   uploaderAvatar?: string;
+// };
+
+// type FileType = "all" | "video" | "image" | "code";
+// type LicenseType = "all" | "free" | "premium" | "one-time";
+
+
+// const GRADIENT = "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)";
+
+// const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+// const PROMPTS_BASE = `${API_BASE}/api/prompt`;
+// const PURCHASE_BASE = `${API_BASE}/api/purchase`;
+
+// // ⚠️ Keep your real Razorpay key id in env:
+// const RAZORPAY_KEY_ID = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || "rzp_test_aNNdd7yTcNuzYQ";
+
+// /* ---------- Categories rail data (UI only) ---------- */
+
+// /* ---------- Categories scroller ---------- */
+// const CategoriesScroller: React.FC<{
+//   selectedCategory: string;
+//   setSelectedCategory: (c: string) => void;
+//   categoriesData: { id: string; icon: React.ComponentType<any> }[];
+// }> = ({ selectedCategory, setSelectedCategory, categoriesData }) => {
+
+
+//   const railRef = useRef<HTMLDivElement>(null);
+//   const slide = (dir: "left" | "right") => {
+//     const rail = railRef.current;
+//     if (!rail) return;
+//     rail.scrollBy({ left: dir === "left" ? -260 : 260, behavior: "smooth" });
+//   };
+
+//   return (
+//     <div className="w-full flex items-center justify-center gap-3">
+//       <button
+//         onClick={() => slide("left")}
+//         className="shrink-0 rounded-full grid place-items-center text-white"
+//         style={{ background: GRADIENT, width: 50, height: 50, borderRadius: "200px" }}
+//         aria-label="Scroll categories left"
+//       >
+//         <ChevronLeft className="w-5 h-5" />
+//       </button>
+
+//      <div className="relative w-full max-w-[1200px] overflow-hidden">
+//   <div
+//     ref={railRef}
+//     className="flex items-center gap-3 overflow-x-auto scroll-smooth px-1 no-scrollbar md:justify-center"
+//   >
+//     {categoriesData.map(({ id, icon: Icon }) => {
+//       const isAll = id === "All";
+//       const isActive = selectedCategory === id;
+//       const pillWidth = isAll ? "109.525px" : "185.628px";
+//       const baseStyle: React.CSSProperties = isActive
+//         ? { width: pillWidth, background: GRADIENT, color: "#FFFFFF" }
+//         : { width: pillWidth, background: "#17171A", color: "rgba(255,255,255,0.85)" };
+
+//       return (
+//         <button
+//           key={id}
+//           onClick={() => setSelectedCategory(id)}
+//           aria-pressed={isActive}
+//           className={[
+//             "flex items-center justify-center gap-[10px] h-[50px] rounded-[200px]",
+//             "text-sm font-medium whitespace-nowrap transition-colors",
+//             isActive ? "ring-1 ring-white/15" : "hover:bg-white/5",
+//           ].join(" ")}
+//           style={{ padding: "15px 30px", ...baseStyle }}
+//         >
+//           <Icon className="h-4 w-4" />
+//           <span>{id}</span>
+//         </button>
+//       );
+//     })}
+//   </div>
+// </div>
+
+//       <button
+//         onClick={() => slide("right")}
+//         className="shrink-0 rounded-full grid place-items-center text-white"
+//         style={{ background: GRADIENT, width: 50, height: 50, borderRadius: "200px" }}
+//         aria-label="Scroll categories right"
+//       >
+//         <ChevronRight className="w-5 h-5" />
+//       </button>
+//     </div>
+//   );
+// };
+
+// /* ---------- Small pill dropdown used below the search bar ---------- */
+// const PillDropdown = ({
+//   label,
+//   value,
+//   onChange,
+//   options,
+//   // optional: pass absolute positioning (e.g., { top: 687, left: 805 })
+//   positionStyle,
+// }: {
+//   label: string;
+//   value: string;
+//   onChange: (v: string) => void;
+//   options: { label: string; value: string; icon?: React.ComponentType<any> }[];
+//   positionStyle?: React.CSSProperties;
+// }) => {
+//   const [open, setOpen] = useState(false);
+
+//   return (
+//     <div className="relative" style={positionStyle}>
+//       <button
+//         type="button"
+//         onClick={() => setOpen((o) => !o)}
+//         aria-haspopup="listbox"
+//         aria-expanded={open}
+//         className="flex items-center justify-between gap-2 px-3"
+//         style={{
+//           width: 150,         // <- width: 150px
+//           height: 50,         // <- height: 50px
+//           borderRadius: 6,    // <- border-radius: 6px
+//           backgroundColor: "#121213",
+//           border: "1px solid #282829",
+//           opacity: 1,         // <- opacity: 1
+//         }}
+//       >
+//         <span className="text-white/80 text-sm truncate">{label}</span>
+//         <svg width="18" height="18" viewBox="0 0 24 24" className="text-white/80 shrink-0">
+//           <path fill="currentColor" d="M7 10l5 5 5-5z" />
+//         </svg>
+//       </button>
+
+//       {open && (
+//         <div
+//           role="listbox"
+//           className="absolute z-30 mt-2 p-2"
+//           style={{
+//             width: 150,            // match trigger width
+//             borderRadius: 6,       // match 6px radius
+//             backgroundColor: "#17171A",
+//             border: "1px solid #282829",
+//           }}
+//         >
+//           {options.map((opt) => {
+//             const Icon = opt.icon;
+//             const selected = opt.value === value;
+//             return (
+//               <button
+//                 key={opt.value}
+//                 role="option"
+//                 aria-selected={selected}
+//                 onClick={() => {
+//                   onChange(opt.value);
+//                   setOpen(false);
+//                 }}
+//                 className={[
+//                   "w-full flex items-center gap-2 px-2 text-left rounded-[6px]",
+//                   selected ? "bg-white/10 text-white" : "text-white/85 hover:bg-white/5",
+//                 ].join(" ")}
+//                 style={{ height: 40 }}  // tidy row height
+//               >
+//                 {Icon ? <Icon className="h-4 w-4" /> : null}
+//                 <span className="text-sm truncate">{opt.label}</span>
+//               </button>
+//             );
+//           })}
+//         </div>
+//       )}
+//     </div>
+//   );
+// };
+
+
+// const PromptMarketplacePage = () => {
+//   const navigate = useNavigate();
+//   const { totalTokensUsed, tokenLimit } = useUserTokenUsage();
+//   const { token , user} = useAuth?.() || ({} as any);
+//   const { addToCart } = useCart();
+//   const currentUserId = user?._id || user?.id || null;
+//   const [searchQuery, setSearchQuery] = useState("");
+//   const [selectedCategory, setSelectedCategory] = useState("All");
+//     const [kycOpen, setKycOpen] = useState(false);
+// const [pendingPurchasePrompt, setPendingPurchasePrompt] = useState<Prompt | null>(null);
+// const [retryPrompt, setRetryPrompt] = useState<Prompt | null>(null);
+//   // NEW: dropdown filters
+//   const [fileType, setFileType] = useState<FileType>("all");
+//   const [licenseType, setLicenseType] = useState<LicenseType>("all");
+// const [apiCategories, setApiCategories] = useState<string[]>([]);
+//   const [playingVideo, setPlayingVideo] = useState<string | number | null>(null);
+
+//   const [prompts, setPrompts] = useState<Prompt[]>([]);
+//   const [loading, setLoading] = useState(false);
+//   const [loadError, setLoadError] = useState<string | null>(null);
+
+//   // IDs of prompts user already owns
+//   const [purchasedPrompts, setPurchasedPrompts] = useState<string[]>([]);
+
+//   const [enlargeModalOpen, setEnlargeModalOpen] = useState(false);
+//   const [enlargeMedia, setEnlargeMedia] = useState<{ url: string; type: "image" | "video"; title: string } | null>(null);
+
+//   const [showHistory, setShowHistory] = useState(false);
+//   const [detailsOpen, setDetailsOpen] = useState(false);
+//   const [detailsPrompt, setDetailsPrompt] = useState<any>(null);
+//   // top-level state (near other state)
+// const [saveForPromptId, setSaveForPromptId] = useState<string | null>(null);
+// const [saveForPrompt, setSaveForPrompt] = useState<Prompt | null>(null);
+
+//   // Save modal (anchored to cop.png)
+//   const [saveModalOpen, setSaveModalOpen] = useState(false);
+//   const [saveAnchorEl, setSaveAnchorEl] = useState<HTMLElement | null>(null);
+   
+
+// const [latestPurchase, setLatestPurchase] = useState<any | null>(null);
+// const [categoriesModalOpen, setCategoriesModalOpen] = useState(false);
+// const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+// const [draftCategories, setDraftCategories] = useState<string[]>([]);
+
+
+
+
+// const categoriesData = [
+//   { id: "All", icon: Sparkles },
+//   ...apiCategories.map((name) => ({
+//     id: name,
+//     icon: Sparkles,
+//   })),
+// ];
+// const categoryOptions = categoriesData.filter((item) => item.id !== "All");
+
+// const openCategoriesModal = () => {
+//   setDraftCategories(
+//     selectedCategories.length
+//       ? selectedCategories
+//       : selectedCategory !== "All"
+//       ? [selectedCategory]
+//       : []
+//   );
+//   setCategoriesModalOpen(true);
+// };
+
+
+
+
+
+// const toggleDraftCategory = (categoryId: string) => {
+//   setDraftCategories((prev) =>
+//     prev.includes(categoryId)
+//       ? prev.filter((id) => id !== categoryId)
+//       : [...prev, categoryId]
+//   );
+// };
+
+// const applyCategorySelection = () => {
+//   setSelectedCategories(draftCategories);
+//   if (draftCategories.length) {
+//     setSelectedCategory("All");
+//   }
+//   setCategoriesModalOpen(false);
+// };
+
+// const clearCategorySelection = () => {
+//   setSelectedCategories([]);
+//   setDraftCategories([]);
+//   setSelectedCategory("All");
+//   setCategoriesModalOpen(false);
+// };
+
+// const effectiveCategoryFilter =
+//   selectedCategories.length > 0
+//     ? selectedCategories
+//     : selectedCategory !== "All"
+//     ? [selectedCategory]
+//     : [];
+
+
+
+
+
+
+//   // Razorpay script ready?
+//   const [rzpReady, setRzpReady] = useState(false);
+//    const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+// const [buyerName, setBuyerName] = useState<string>(""); 
+
+//   /* ---------- Load Razorpay script once ---------- */
+//   useEffect(() => {
+//     if ((window as any).Razorpay) {
+//       setRzpReady(true);
+//       return;
+//     }
+//     const script = document.createElement("script");
+//     script.src = "https://checkout.razorpay.com/v1/checkout.js";
+//     script.async = true;
+//     script.onload = () => setRzpReady(true);
+//     script.onerror = () => setRzpReady(false);
+//     document.body.appendChild(script);
+//   }, []);
+
+//   /* ---------- [API #3] Load purchase history ---------- */
+//   useEffect(() => {
+//     if (!token) return;
+//     (async () => {
+//       try {
+//         const res = await fetch(`${PURCHASE_BASE}/history`, {
+//           headers: { Authorization: `Bearer ${token}` },
+//           credentials: "include",
+//         });
+//         const body = await res.json();
+//         if (!res.ok || !body?.success) return;
+//         const ownedIds = (body.purchases || [])
+//           .map((p: any) => {
+//             if (p?.prompt && typeof p.prompt === "object") return String(p.prompt._id);
+//             if (p?.prompt && typeof p.prompt === "string") return p.prompt;
+//             return null;
+//           })
+//           .filter(Boolean);
+//         setPurchasedPrompts((prev) => Array.from(new Set([...(prev || []), ...ownedIds])));
+//       } catch (e) {
+//         console.error("[History] fetch failed", e);
+//       }
+//     })();
+//   }, [token]);
+
+
+
+
+
+
+//   useEffect(() => {
+//   const loadCategories = async () => {
+//     try {
+//       const res = await fetch(`${API_BASE}/api/category`);
+//       const data = await res.json();
+
+//       if (res.ok && data?.success) {
+//         setApiCategories(data.categories.map((c: any) => c.name));
+//       }
+//     } catch (err) {
+//       console.error("Failed to load categories", err);
+//     }
+//   };
+
+//   loadCategories();
+// }, []);
+
+
+
+
+
+//   /* ---------- Fetch prompts ---------- */
+//   useEffect(() => {
+//     const fetchPrompts = async () => {
+//       try {
+//         setLoading(true);
+//         setLoadError(null);
+
+//         const params = new URLSearchParams();
+//         // backend hinting (safe even if server ignores)
+//         params.set("type", fileType); // all | video | image | code
+//         params.set("license", licenseType); // all | free | premium
+//         if (selectedCategory && selectedCategory !== "All") {
+//           params.set("category", selectedCategory);
+//         }
+
+//         const res = await fetch(`${PROMPTS_BASE}/others?${params.toString()}`, {
+//           headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+//           credentials: "include",
+//         });
+//         const data = await res.json();
+
+//         if (!res.ok || !data?.success) {
+//           throw new Error(data?.error || "server_error");
+//         }
+
+// //     const mapped: Prompt[] = (data.prompts || []).map((doc: any) => {
+// //   const att = doc?.attachment || null;
+// //   const mediaPath = att?.path ? `${API_BASE}${att.path}` : undefined;
+
+// //   return {
+// //     id: String(doc._id),
+// //     title: doc.title || "Untitled",
+// //     description: doc.description || "",
+// //     category:
+// //       (doc.categories?.[0]?.name as string) ||
+// //       (Array.isArray(doc.categories) ? doc.categories.join(", ") : "") ||
+// //       "General",
+// //     price: typeof doc.price === "number" ? doc.price : 0,
+// //     rating: typeof doc.averageRating === "number" ? doc.averageRating : undefined,
+// //     downloads: doc.downloads || 0,
+// //     imageUrl: att?.type === "image" ? mediaPath : undefined,
+// //     videoUrl: att?.type === "video" ? mediaPath : undefined,
+// //     preview:
+// //       (doc.description && String(doc.description).slice(0, 140)) ||
+// //       (doc.promptText && String(doc.promptText).slice(0, 140)) ||
+// //       "",
+// //     isFree: !!doc.free,
+// //     createdAt: doc.createdAt,
+// //     exclusive: !!doc.exclusive,
+// //     sold: !!doc.sold, // ✅ Add this line (make sure backend sends `sold: true` when sold)
+
+// // uploaderName: doc?.userId?.name || "Unknown",
+// // uploaderAvatar: "/icons/default-user.png",  // always default (no avatar)
+
+
+
+// //   };
+// // });
+
+// const mapped: Prompt[] = (data.prompts || []).map((doc: any) => {
+//   const att = doc?.attachment || null;
+//   // const mediaPath = att?.path ? `${API_BASE}${att.path}` : undefined;
+//   const mediaPath = att?.path
+//   ? att.path.startsWith("http")
+//     ? att.path
+//     : `${API_BASE}${att.path}`
+//   : undefined;
+//   return {
+//     id: String(doc._id),
+//     title: doc.title || "Untitled",
+//     description: doc.description || "",
+//     category:
+//       (doc.categories?.[0]?.name as string) ||
+//       (Array.isArray(doc.categories) ? doc.categories.join(", ") : "") ||
+//       "General",
+
+//     price: typeof doc.price === "number" ? doc.price : 0,
+//     rating: typeof doc.averageRating === "number" ? doc.averageRating : undefined,
+//     imageUrl: att?.type === "image" ? mediaPath : undefined,
+//     videoUrl: att?.type === "video" ? mediaPath : undefined,
+//     preview:
+//       (doc.description && String(doc.description).slice(0, 140)) ||
+//       (doc.promptText && String(doc.promptText).slice(0, 140)) ||
+//       "",
+
+//     isFree: !!doc.free,
+//     exclusive: !!doc.exclusive,
+//     sold: !!doc.sold,
+
+//     // ⭐⭐ THIS IS WHAT YOU ASKED FOR
+//     uploaderName: doc?.userId?.name || "Unknown",
+//     uploaderId: doc?.userId?._id || null,
+
+//     // avatar if needed
+//     uploaderAvatar: "/icons/default-user.png"
+//   };
+// });
+
+
+
+//         setPrompts(mapped);
+//       } catch (err: any) {
+//         console.error("Failed to load prompts", err);
+//         setLoadError(err?.message || "Failed to load prompts");
+//         toast({
+//           title: "Couldn’t load prompts",
+//           description: err?.message || "Please try again.",
+//           variant: "destructive",
+//         });
+//       } finally {
+//         setLoading(false);
+//       }
+//     };
+
+//     fetchPrompts();
+//   }, [fileType, licenseType, selectedCategory, token]);
+
+//   /* ---------- Derived: local search + filter ---------- */
+// const filteredPrompts = prompts.filter((p) => {
+//   if (searchQuery.trim()) {
+//     const q = searchQuery.toLowerCase();
+//     if (
+//       !p.title.toLowerCase().includes(q) &&
+//       !(p.description || "").toLowerCase().includes(q)
+//     ) {
+//       return false;
+//     }
+//   }
+
+//   if (licenseType === "free" && !p.isFree) return false;
+//   if (licenseType === "premium" && !(p.price && p.price > 0)) return false;
+//   if (licenseType === "one-time" && !p.exclusive) return false;
+
+//   if (fileType === "video" && !p.videoUrl) return false;
+//   if (fileType === "image" && !p.imageUrl) return false;
+//   if (fileType === "code" && p.category.toLowerCase() !== "code") return false;
+
+//   if (effectiveCategoryFilter.length > 0) {
+//     const promptCategories = String(p.category || "")
+//       .split(",")
+//       .map((item) => item.trim());
+
+//     const hasCategoryMatch = effectiveCategoryFilter.some((cat) =>
+//       promptCategories.includes(cat)
+//     );
+
+//     if (!hasCategoryMatch) return false;
+//   }
+
+//   return true;
+// });
+
+//   /* ---------- Helpers ---------- */
+//   const decideMediaType = (prompt: Prompt): "video" | "image" => {
+//     if (fileType === "video") return "video";
+//     if (fileType === "image") return "image";
+//     // "all" or "code": prefer video if available, else image
+//     return prompt.videoUrl ? "video" : "image";
+//   };
+
+//   const handleVideoPlay = (promptId: string | number) => {
+//     setPlayingVideo((prev) => (prev === promptId ? null : promptId));
+//   };
+
+//   const handlePreview = (prompt: Prompt) => {
+//     if (purchasedPrompts.includes(prompt.id)) {
+//       toast({ title: "Full Prompt Access", description: `You have full access to "${prompt.title}"` });
+//     } else {
+//       toast({ title: "Preview Mode", description: `Showing preview for "${prompt.title}". Purchase to see full prompt.` });
+//     }
+//   };
+
+
+//   const isOwnPrompt = (prompt: Prompt) => {
+//   if (!currentUserId || !prompt?.uploaderId) return false;
+//   return String(prompt.uploaderId) === String(currentUserId);
+// };
+
+//   /** PURCHASE FLOW — integrates CREATE ORDER (+ verify) with detailed consoles */
+//  const handlePurchase = async (prompt: Prompt) => {
+//   if (isOwnPrompt(prompt)) {
+//     toast({
+//       title: "Not allowed",
+//       description: "You cannot buy your own prompt.",
+//       variant: "destructive",
+//     });
+//     return;
+//   }
+
+//   if (!token) {
+//     toast({
+//       title: "Please log in",
+//       description: "You must be logged in to purchase.",
+//       variant: "destructive",
+//     });
+//     return;
+//   }
+    
+//     if (!rzpReady) {
+//       toast({ title: "Loading payment…", description: "Razorpay is still initializing." });
+//       return;
+//     }
+
+//     try {
+//       // [API #1] CREATE ORDER
+//       const res = await fetch(`${PURCHASE_BASE}/create-order/${prompt.id}`, {
+//         method: "POST",
+//         headers: {
+//           "Content-Type": "application/json",
+//           Authorization: `Bearer ${token}`,
+//         },
+//         credentials: "include",
+//       });
+//       const data = await res.json();
+//       if (res.status === 403 && (data?.error === "KYC_REQUIRED" || data?.code === "KYC_REQUIRED")) {
+//   setPendingPurchasePrompt(prompt);
+//   setKycOpen(true);
+//   return;
+// }
+
+     
+//         if (res.status === 403 && data?.error === "KYC_REQUIRED") {
+//     setRetryPrompt(prompt);
+//     setKycOpen(true);
+//     return;
+//   }
+
+
+//       if (!res.ok || !data?.success || !data?.order) {
+//         throw new Error(data?.error || "order_create_failed");
+//       }
+ 
+//       const order = data.order;
+
+//       // Razorpay Checkout
+//       const options: any = {
+//         key: RAZORPAY_KEY_ID,
+//         amount: Number(order.amount),
+//         currency: order.currency || "INR",
+//         name: "Tokun",
+//         description: `Purchase: ${prompt.title}`,
+//         order_id: order.id,
+//         notes: { promptId: prompt.id },
+//         theme: { color: "#1A73E8" },
+//         handler: async (response: any) => {
+//           try {
+//             // [API #2] VERIFY PAYMENT
+//             const vr = await fetch(`${PURCHASE_BASE}/verify/${prompt.id}`, {
+//               method: "POST",
+//               headers: {
+//                 "Content-Type": "application/json",
+//                 Authorization: `Bearer ${token}`,
+//               },
+//               credentials: "include",
+//               body: JSON.stringify({
+//                 razorpayPaymentId: response.razorpay_payment_id,
+//                 razorpayOrderId: response.razorpay_order_id,
+//                 razorpaySignature: response.razorpay_signature,
+//                 pricePaid: order.amount / 100,
+//               }),
+//             });
+
+//             const vb = await vr.json();
+//          if (vb?.success) {
+//   const purchasedId = prompt.id;
+
+//   setPurchasedPrompts((prev) =>
+//     prev.includes(purchasedId) ? prev : [...prev, purchasedId]
+//   );
+
+//   setLatestPurchase(vb.purchase || null);
+
+//   try {
+//     window.dispatchEvent(
+//       new CustomEvent("tokun:purchased", { detail: vb.purchase })
+//     );
+//   } catch {}
+
+//   setBuyerName(vb?.user?.name || "there");
+//   setShowSuccessPopup(true);
+
+//   toast({
+//     title: "Payment Successful",
+//     description: "You now own this prompt.",
+//   });
+// } else {
+//               toast({ title: "Verification Failed", description: vb?.error || "Unknown error", variant: "destructive" });
+//             }
+//           } catch (err) {
+//             console.error("Verify error", err);
+//             toast({ title: "Verification Error", description: "Could not verify payment.", variant: "destructive" });
+//           }
+//         },
+//       };
+
+//       const rzp = new (window as any).Razorpay(options);
+//       rzp.on("payment.failed", function () {
+//         toast({ title: "Payment Failed", description: "Please try again.", variant: "destructive" });
+//       });
+//       rzp.open();
+//     } catch (err: any) {
+//       console.error("Purchase flow error", err);
+//       toast({ title: "Purchase Error", description: err?.message || "Something went wrong.", variant: "destructive" });
+//     }
+//   };
+
+//   if (showHistory) {
+//     return (
+//       <div className="min-h-screen bg-[#07080A] text-white">
+//         <div className="container mx-auto px-6 py-8">
+//           <Header />
+//             <Header />
+//           <div className="flex items-center gap-4 mb-8">
+//             <Button
+//               variant="ghost"
+//               onClick={() => setShowHistory(false)}
+//               className="flex items-center gap-2 hover:bg-white/10"
+//             >
+//               <ArrowLeft className="h-4 w-4" />
+//               Back to Marketplace
+//             </Button>
+//             <div className="h-6 w-px bg-white/10" />
+//           </div>
+
+//           {/* PromptHistory fetches [API #3] internally and also listens to tokun:purchased */}
+//           <PromptHistory />
+//         </div>
+//         <Footer />
+//       </div>
+//     );
+//   }
+
+// const ensureKycVerified = async (promptToBuy?: Prompt) => {
+//   if (!token) return false;
+
+//   try {
+//     // const res = await fetch(`${API_BASE}/api/kyc/status`, {
+//       const res = await  fetch(`http://localhost:5000/api/kyc/status` ,{
+//       headers: { Authorization: `Bearer ${token}` },
+//       credentials: "include",
+//     });
+//     const data = await res.json().catch(() => ({}));
+//     const s = data?.kycStatus || data?.status;
+
+//     if (s === "VERIFIED") return true;
+
+//     // open KYC UI
+//     if (promptToBuy) setPendingPurchasePrompt(promptToBuy);
+//     setKycOpen(true);
+//     return false;
+//   } catch {
+//     // if status api fails, still open UI (safer)
+//     if (promptToBuy) setPendingPurchasePrompt(promptToBuy);
+//     setKycOpen(true);
+//     return false;
+//   }
+// };
+
+
+
+// const savePromptToCollections = async ({
+//   refId,
+//   collectionTitle, // optional
+//   name,            // optional item label
+// }: {
+//   refId: string;
+//   collectionTitle?: string;
+//   name?: string;
+// }) => {
+//   if (!token) {
+//     toast({
+//       title: "Please log in",
+//       description: "You need to be logged in to save prompts.",
+//       variant: "destructive",
+//     });
+//     return { ok: false };
+//   }
+
+//   try {
+//     const res = await fetch(`${API_BASE}/api/saved-collections`, {
+//       method: "POST",
+//       headers: {
+//         "Content-Type": "application/json",
+//         Authorization: `Bearer ${token}`,
+//       },
+//       credentials: "include",
+//       body: JSON.stringify({
+//         section: "prompt",      // 👈 you asked for Prompt model
+//         refId,                  // prompt._id
+//         // When collectionTitle is provided, backend saves inside that collection;
+//         // Otherwise it goes to directItems (All Saved).
+//         ...(collectionTitle ? { collectionTitle } : {}),
+//         ...(name ? { name } : {}),
+//       }),
+//     });
+
+//     const data = await res.json();
+//     if (!res.ok || !data?.success) {
+//       throw new Error(data?.error || "server_error");
+//     }
+//     return { ok: true, data };
+//   } catch (err: any) {
+//     toast({
+//       title: "Save failed",
+//       description: err?.message || "Could not save this prompt.",
+//       variant: "destructive",
+//     });
+//     return { ok: false };
+//   }
+// };
+
+
+
+//   return (
+//  <div className="dark relative min-h-screen bg-[#07080A] text-foreground overflow-x-hidden">
+//   <img
+//     src="/icons/mpbg.png"
+//     alt="background"
+//     className="fixed inset-0 z-0 w-full h-screen object-contain object-top pointer-events-none select-none"
+//   />
+
+
+//       {/* Header + token usage */}
+//      {/* 🔹 Full-width compact Header */}
+// <div className="relative z-20 w-full bg-transparent px-4">
+//     <Header />
+//   <Header />
+// </div>
+
+
+
+//       {/* Main Content */}
+//   <div className="relative z-10 container mx-auto px-6 pb-16">
+//         {/* History Button */}
+//         {/* <div className="flex justify-between items-center mb-12">
+//           <Button
+//             variant="outline"
+//             onClick={() => setShowHistory(true)}
+//             className="flex items-center gap-2 hover:bg-tokun/10 hover:text-tokun hover:border-tokun/30"
+//           >
+//             <History className="h-4 w-4" />
+//             Purchase History
+//           </Button>
+//         </div> */}
+
+//         {/* Title + blurb */}
+//       {/* Section spacing below Header */}
+// {/* <div className="mt-10 flex flex-col items-center text-center mb-12">
+  
+//   <h1
+//     style={{
+//       fontFamily: "Inter",
+//       fontWeight: 700,
+//       fontStyle: "normal",
+//       fontSize: "64px",
+//       lineHeight: "74px",
+//       textAlign: "center",
+//       color: "#FFFFFF",
+//       marginBottom: "0px",
+//     }}
+//   >
+//     Prompt
+//   </h1>
+
+  
+//   <h2
+//     style={{
+//       fontFamily: "Inter",
+//       fontWeight: 700,
+//       fontStyle: "normal",
+//       fontSize: "64px",
+//       lineHeight: "74px",
+//       textAlign: "center",
+//       color: "#FFFFFF",
+//       marginTop: "0px",
+//     }}
+//   >
+//     Marketplace
+//   </h2>
+
+ 
+//   <p
+//     style={{
+//       fontFamily: "Inter",
+//       fontWeight: 400,
+//       fontStyle: "normal",
+//       fontSize: "16px",
+//       lineHeight: "140%",
+//       textAlign: "center",
+//       color: "rgba(255,255,255,0.8)",
+//       marginTop: "18px",
+//       maxWidth: "680px", // wider for natural 2-line wrap
+//     }}
+//   >
+//     Discover and purchase premium AI prompts created by experts from around the world. 
+//     Transform your ideas into reality with our curated collections.
+//   </p>
+// </div> */}
+
+//           <div className="mt-20 sm:mt-20 md:mt-28 flex flex-col items-center text-center mb-12 px-4">
+//   {/* Prompt */}
+//   <h1 className="text-white font-bold leading-tight 
+//     text-[36px] sm:text-[48px] md:text-[64px]">
+//     Prompt
+//   </h1>
+
+//   {/* Marketplace */}
+//   <h2 className="text-white font-bold leading-tight 
+//     text-[36px] sm:text-[48px] md:text-[64px]">
+//     Marketplace
+//   </h2>
+
+//   {/* Description */}
+//   <p className="text-white/80 mt-4 max-w-[680px] text-sm sm:text-base leading-relaxed">
+//     Discover and purchase premium AI prompts created by experts from around the world.
+//     Transform your ideas into reality with our curated collections.
+//   </p>
+// </div>
+
+
+//         {/* Navigation + Search/Filters */}
+//         <div className="mt-4 flex justify-center">
+//   <AppNavigation activeSection="prompt-marketplace" />
+// </div>
+//         <div className="mt-6"></div>
+
+
+//         {/* Search + NEW FILTER BAR */}
+//         <div className="space-y-6 mb-12">
+//           <div className="flex flex-wrap items-center justify-center gap-4 md:gap-6">
+//             {/* Search pill */}
+//             <div
+//               className="flex items-center w-full sm:w-[700px] h-[50px] rounded-[200px] overflow-hidden"
+//               style={{ backgroundColor: "#121213", border: "1px solid #282829" }}
+//             >
+//               <Search className="h-5 w-5 text-white/40 ml-4" />
+//               <input
+//                 placeholder="Search premium prompts..."
+//                 value={searchQuery}
+//                 onChange={(e) => setSearchQuery(e.target.value)}
+//                 className="ml-3 flex-1 bg-transparent outline-none text-white placeholder:text-white/40 text-sm md:text-base"
+//               />
+//               <button
+//                 onClick={() => {/* client-side filter only */}}
+//                 className="text-white font-medium"
+//                 style={{
+//                   width: "100px",
+//                   height: "40px",
+//                   borderRadius: "200px",
+//                   background: "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)",
+//                   marginRight: "5px",
+//                 }}
+//               >
+//                 Search
+//               </button>
+//             </div>
+//           </div>
+
+//           {/* NEW: File type + License type pills (like your screenshots) */}
+//           <div className="flex flex-wrap items-center justify-center gap-4 md:gap-6">
+//             <PillDropdown
+//               label={
+//                 fileType === "all"
+//                   ? "File type"
+//                   : fileType === "video"
+//                   ? "Video"
+//                   : fileType === "image"
+//                   ? "Image"
+//                   : "Code"
+//               }
+//               value={fileType}
+//               onChange={(v) => setFileType(v as FileType)}
+//               options={[
+//                 { label: "All type", value: "all" },
+//                 { label: "Video", value: "video", icon: Video },
+//                 { label: "Image", value: "image", icon: ImageIcon },
+//                 { label: "Code", value: "code", icon: Code2 },
+//               ]}
+//             />
+
+//           <PillDropdown
+//   label={
+//     licenseType === "all"
+//       ? "License type"
+//       : licenseType === "free"
+//       ? "Free"
+//       : licenseType === "premium"
+//       ? "Premium"
+//       : "One-time Purchase"
+//   }
+//   value={licenseType}
+//   onChange={(v) => setLicenseType(v as LicenseType)}
+//   options={[
+//     { label: "All type", value: "all" },
+//     { label: "Free", value: "free" },
+//     { label: "Premium", value: "premium" },
+//     { label: "One-time Purchase", value: "one-time" }, // ✅ added
+//   ]}
+// />
+
+//           </div>
+
+//           {/* <CategoriesScroller selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} /> */}
+
+
+
+//           <div className="space-y-4">
+//   <div className="flex flex-wrap items-center justify-center gap-3">
+//     <button
+//       type="button"
+//       onClick={openCategoriesModal}
+//       className="flex items-center gap-2 px-4 h-[46px] rounded-full text-white border border-white/10 bg-[#17171A] hover:bg-white/5 transition-colors"
+//     >
+//       <SlidersHorizontal className="h-4 w-4" />
+//       <span className="text-sm font-medium">
+//         Select Categories
+//         {selectedCategories.length > 0 ? ` (${selectedCategories.length})` : ""}
+//       </span>
+//     </button>
+
+//     {selectedCategories.length > 0 && (
+//       <button
+//         type="button"
+//         onClick={clearCategorySelection}
+//         className="px-4 h-[46px] rounded-full text-white/80 border border-white/10 bg-[#121213] hover:bg-white/5 transition-colors text-sm"
+//       >
+//         Clear Selection
+//       </button>
+//     )}
+//   </div>
+
+//   {selectedCategories.length > 0 && (
+//     <div className="flex flex-wrap items-center justify-center gap-2">
+//       {selectedCategories.map((category) => (
+//         <span
+//           key={category}
+//           className="px-3 py-1.5 rounded-full text-xs text-white border border-white/10 bg-white/5"
+//         >
+//           {category}
+//         </span>
+//       ))}
+//     </div>
+//   )}
+
+//   <CategoriesScroller
+//   categoriesData={categoriesData}
+//   selectedCategory={selectedCategory}
+//   setSelectedCategory={(category) => {
+//     setSelectedCategories([]);
+//     setSelectedCategory(category);
+//   }}
+// />
+// </div>
+//         </div>
+
+//         {/* Loading / error states */}
+//         {loading && <p className="text-white/70 text-sm">Loading prompts…</p>}
+//         {!!loadError && !loading && <p className="text-red-400 text-sm">{loadError}</p>}
+
+//         {/* Prompts Grid */}
+//         {!loading && !loadError && (
+//           <>
+//             <div className="
+//   grid 
+//   grid-cols-1 
+//   md:grid-cols-2 
+//   lg:grid-cols-3 
+//   xl:grid-cols-4 
+//   gap-8 
+//   justify-items-center
+// ">
+//               {filteredPrompts.map((prompt) => {
+//                 const mediaKind = decideMediaType(prompt); // "video" | "image"
+//                 const isPurchased = purchasedPrompts.includes(String(prompt.id));
+//                 return (
+//                   <Card
+//                     key={prompt.id}
+//                     onClick={() => {
+//                       setDetailsPrompt(prompt);
+//                       setDetailsOpen(true);
+//                     }}
+//                     className="w-full max-w-[306px] overflow-hidden cursor-pointer hover:scale-[1.01] transition-transform"
+// style={{ height: 520, background: "#1C1C1C", borderRadius: 30 }}
+//                   >
+//                     <CardContent className="p-4 h-full flex flex-col">
+//                       {/* MEDIA */}
+//                       <div
+//                         className="relative w-full overflow-hidden group"
+//                         style={{ height: 240, borderRadius: 20, backgroundColor: "#0B0B0B" }}
+//                       >
+//                         {mediaKind === "image" ? (
+//                           <img src={prompt.imageUrl} alt={prompt.title} className="w-full h-full object-cover" />
+//                         ) : (
+//                           <>
+//                             <video
+//                               className="w-full h-full object-cover"
+//                               src={prompt.videoUrl}
+//                               loop
+//                               muted
+//                               playsInline
+//                               ref={(el) => {
+//                                 if (!el) return;
+//                                 if (playingVideo === prompt.id) el.play().catch(() => {});
+//                                 else el.pause();
+//                               }}
+//                             />
+//                             <button
+//                               type="button"
+//                               onClick={(e) => {
+//                                 e.stopPropagation();
+//                                 handleVideoPlay(prompt.id);
+//                               }}
+//                               className="absolute inset-0 flex items-center justify-center"
+//                               aria-label={playingVideo === prompt.id ? "Pause" : "Play"}
+//                             >
+//                               <span className="w-12 h-12 rounded-full bg-black/60 hover:bg-black/75 grid place-items-center text-white transition-colors">
+//                                 {playingVideo === prompt.id ? (
+//                                   <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+//                                     <rect x="6" y="5" width="4" height="14" rx="1" />
+//                                     <rect x="14" y="5" width="4" height="14" rx="1" />
+//                                   </svg>
+//                                 ) : (
+//                                   <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+//                                     <path d="M8 5v14l11-7-11-7z" />
+//                                   </svg>
+//                                 )}
+//                               </span>
+//                             </button>
+//                             <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">0:20</div>
+//                           </>
+//                         )}
+
+
+                        
+
+
+
+
+//                         {/* Category pill */}
+//                         <div
+//                           className="absolute top-3 left-3 px-3 py-1 text-[11px] font-semibold text-white rounded-full"
+//                           style={{ background: GRADIENT }}
+//                         >
+//                           {prompt.category?.toUpperCase()}
+//                         </div>
+
+//                         {/* Purchase to unlock */}
+//                     {!isPurchased ? (
+//   <div
+//     className="absolute top-11 left-3 mt-2 px-3 py-1 text-[11px] font-semibold rounded-full"
+//     style={{
+//       background: prompt.exclusive ? "#2A2A2A" : GRADIENT,
+//       color: prompt.exclusive ? "#4ADE80" : "#FFFFFF",
+//     }}
+//   >
+//     {prompt.exclusive ? "ONE-TIME PURCHASE" : "PURCHASE TO UNLOCK"}
+//   </div>
+// ) : (
+//   <div
+//     className="absolute top-11 left-3 mt-2 px-3 py-1 text-[11px] font-semibold rounded-full"
+//     style={{
+//       background: "#14532D",
+//       color: "#BBF7D0",
+//     }}
+//   >
+//     PURCHASED
+//   </div>
+// )}
+
+
+//                         {/* Rating pill */}
+//                       {/* Rating / Premium Icon pill */}
+// <div className="absolute top-3 right-3">
+//   {!prompt.isFree && prompt.price && prompt.price > 0 ? (
+//     <div
+//       className="flex items-center justify-center rounded-full"
+//       style={{
+//         width: 32,
+//         height: 32,
+//         backgroundColor: "black",
+//       }}
+//     >
+//       <img
+//         src="/icons/premium.png"
+//         alt="Premium"
+//         className={`w-5 h-5 object-contain ${
+//           prompt.exclusive ? "filter-green" : ""
+//         }`}
+//       />
+//     </div>
+//   ) : null}
+// </div>
+
+//      {/* Uploader Row */}
+
+
+
+
+//                       </div>
+
+       
+//                    <div className="flex items-center gap-2 mt-3">
+
+//   {/* Default avatar icon */}
+//   <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
+//     <User className="w-4 h-4 text-white/70" />
+//   </div>
+
+//   {/* <span className="text-white/80 text-sm">
+//     {prompt.uploaderName || "Unknown"}
+//   </span> */}
+
+//   <span
+//   className="text-white/80 text-sm hover:underline cursor-pointer"
+//   onClick={(e) => {
+//     e.stopPropagation();
+//     navigate(`/profile/${prompt.uploaderId}`);
+//   }}
+// >
+//   {prompt.uploaderName || "Unknown"}
+// </span>
+
+
+//   <div className="flex items-center ml-auto text-white/80 text-sm gap-1">
+//     <Star className="w-4 h-4 text-yellow-400" />
+//     <span>{prompt.rating?.toFixed(1) || "0.0"}</span>
+//   </div>
+// </div>
+
+
+                      
+
+//                       {/* TEXT */}
+//                       <div className="mt-4">
+                       
+//                         <h3 className="mt-1 text-[18px] leading-snug font-semibold text-white line-clamp-2">
+//                           {prompt.title}
+//                         </h3>
+//                         <p className="mt-2 text-[13px] leading-relaxed text-white/70 line-clamp-2">
+//                           {prompt.description}
+//                         </p>
+//                       </div>
+
+//                       {/* FOOTER */}
+//                        {/* FOOTER */}
+// {/* FOOTER */}
+// <div className="mt-auto pt-4 flex items-center gap-[10px]">
+//   {prompt.isFree ? (
+//     // FREE pill
+//     <div
+//       className="flex items-center justify-center text-sm font-medium"
+//       style={{
+//         width: "89.814px",
+//         height: "40px",
+//         borderRadius: "8px",
+//         background: "#333335",
+//         color: "#FFFFFF",
+//       }}
+//     >
+//       FREE
+//     </div>
+//   ) : (
+//     <>
+//       {/* Price pill */}
+//       <div
+//         className="flex items-center justify-center text-sm font-medium text-white/90"
+//         style={{
+//           width: "89.814px",
+//           height: "40px",
+//           borderRadius: "8px",
+//           background: "#333335",
+//         }}
+//       >
+//         ₹{(prompt.price ?? 0).toFixed(2)}
+//       </div>
+
+//       {/* Cart pill */}
+//     {!isOwnPrompt(prompt) && (
+//   <button
+//     type="button"
+//     onClick={(e) => {
+//       e.stopPropagation();
+//       addToCart(prompt.id);
+//       toast({
+//         title: "Added to Cart",
+//         description: `"${prompt.title}" was added.`,
+//       });
+//     }}
+//     className="flex items-center justify-center gap-2 text-sm font-medium text-white/90"
+//     style={{
+//       width: "89.814px",
+//       height: "40px",
+//       borderRadius: "8px",
+//       background: "#333335",
+//     }}
+//   >
+//     <ShoppingCart className="h-4 w-4" />
+//     Cart
+//   </button>
+// )}
+
+//       {/* ✅ Buy Now button is hidden if one-time and already sold */}
+//   {!isOwnPrompt(prompt) && !isPurchased && (
+//   isPurchased ? (
+//     <div
+//       className="flex items-center justify-center text-sm font-medium"
+//       style={{
+//         width: "89.814px",
+//         height: "40px",
+//         borderRadius: "8px",
+//         background: "#14532D",
+//         color: "#BBF7D0",
+//       }}
+//     >
+//       Purchased
+//     </div>
+//   ) : !(prompt.exclusive && prompt.sold) ? (
+//     <button
+//       onClick={(e) => {
+//         e.stopPropagation();
+//         handlePurchase(prompt);
+//       }}
+//       className="text-sm font-medium text-white"
+//       style={{
+//         width: "89.814px",
+//         height: "40px",
+//         borderRadius: "8px",
+//         background: "linear-gradient(270deg,#FF14EF 0%, #1A73E8 100%)",
+//       }}
+//     >
+//       Buy Now
+//     </button>
+//   ) : null
+// )}
+//     </>
+//   )}
+// </div>
+
+
+//                     </CardContent>
+//                   </Card>
+//                 );
+//               })}
+//             </div>
+
+//             {/* Empty state */}
+//             {filteredPrompts.length === 0 && (
+//               <div className="text-center py-16">
+//                 <p
+//                   style={{ fontFamily: "Inter, sans-serif", fontWeight: 400, fontSize: "24px", lineHeight: "100%" }}
+//                   className="text-white"
+//                 >
+//                   {`Showing 0 premium prompts in ${selectedCategory || "All"}`}
+//                 </p>
+//                 <p
+//                   style={{ fontFamily: "Inter, sans-serif", fontWeight: 400, fontSize: "16px", lineHeight: "100%" }}
+//                   className="mt-3 text-white/80"
+//                 >
+//                   No prompts found matching your criteria.
+//                 </p>
+//                 <button
+//                   type="button"
+//                   onClick={() => {
+//                     setSearchQuery("");
+//                     setSelectedCategory("All");
+//                     setFileType("all");
+//                     setLicenseType("all");
+//                   }}
+//                   className="mx-auto mt-6 text-white"
+//                   style={{
+//                     width: "160px",
+//                     height: "50px",
+//                     borderRadius: "10px",
+//                     border: "1px solid #FFFFFF",
+//                     background: "transparent",
+//                   }}
+//                 >
+//                   Clear Filters
+//                 </button>
+//               </div>
+//             )}
+//           </>
+//         )}
+//       </div>
+
+//     <div className="relative z-10 mt-20">
+//   <Footer />
+// </div>
+
+//       {/* Save dropdown modal anchored to cop.png */}
+//       {/* <ModalComponent
+//         isOpen={saveModalOpen}
+//         onClose={() => setSaveModalOpen(false)}
+//         onSave={(payload) => {
+//           toast({
+//             title: payload?.quick ? "Saved to All Saved" : "Collection created",
+//             description: payload?.quick
+//               ? "Prompt saved quickly to All Saved."
+//               : `Created collection: ${payload?.title || ""}`,
+//           });
+//         }}
+//         anchorRef={{ current: saveAnchorEl } as unknown as React.RefObject<HTMLElement>}
+//       /> */}
+
+
+
+//       <ModalComponent
+//   isOpen={saveModalOpen}
+//   onClose={() => setSaveModalOpen(false)}
+//   onSave={async (payload) => {
+//   if (!saveForPromptId) { /* toast ... */ return; }
+
+//   if (payload?.quick) {
+//     await savePromptToCollections({ refId: saveForPromptId, name: saveForPrompt?.title });
+//     toast({ title: "Saved", description: "Prompt saved to All Saved." });
+//   } else if (payload?.title) {
+//     await savePromptToCollections({
+//       refId: saveForPromptId,
+//       collectionTitle: payload.title,
+//       name: saveForPrompt?.title, // 👈 label = original title
+//     });
+//     toast({ title: "Collection created", description: `Saved to "${payload.title}".` });
+//   } else {
+//     await savePromptToCollections({ refId: saveForPromptId, name: saveForPrompt?.title });
+//     toast({ title: "Saved", description: "Prompt saved to All Saved." });
+//   }
+//   setSaveForPromptId(null);
+//   setSaveForPrompt(null);
+// }}
+
+//   anchorRef={{ current: saveAnchorEl } as unknown as React.RefObject<HTMLElement>}
+// />
+
+
+//       <MediaEnlargeModal
+//         isOpen={enlargeModalOpen}
+//         onClose={() => setEnlargeModalOpen(false)}
+//         mediaUrl={enlargeMedia?.url || ""}
+//         mediaType={enlargeMedia?.type || "image"}
+//         title={enlargeMedia?.title || ""}
+//       />
+
+//       <DetailsPrompt
+//         open={detailsOpen}
+//         onOpenChange={setDetailsOpen}
+//         prompt={detailsPrompt}
+//         owned={detailsPrompt ? purchasedPrompts.includes(String(detailsPrompt.id)) : false}
+//         onPurchase={(p) => {
+//           setDetailsOpen(false);
+//           handlePurchase(p);
+//         }}
+//         // showImages removed; DetailsPrompt can infer using prompt.videoUrl / prompt.imageUrl
+//         onEnlargeMedia={(m) => {
+//           setEnlargeMedia({ url: m.url, type: m.type, title: m.title });
+//           setEnlargeModalOpen(true);
+//         }}
+//       />
+
+//       {/* ✅ Purchase Success Popup */}
+// {/* ✅ Purchase Success Popup */}
+// {showSuccessPopup && (
+//   <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+//     <div
+//       className="bg-[#1C1C1C] text-white rounded-2xl shadow-2xl px-8 py-10 w-[420px] text-center animate-fadeIn relative"
+//       style={{ border: "1px solid rgba(255,255,255,0.1)" }}
+//     >
+//       {/* Close button */}
+//       <button
+//         onClick={() => setShowSuccessPopup(false)}
+//         className="absolute top-4 right-4 text-white/60 hover:text-white"
+//         aria-label="Close"
+//       >
+//         ✕
+//       </button>
+
+//       {/* ✅ Success icon */}
+//       <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-emerald-600 flex items-center justify-center">
+//         <svg
+//           xmlns="http://www.w3.org/2000/svg"
+//           className="h-10 w-10 text-white"
+//           fill="none"
+//           viewBox="0 0 24 24"
+//           stroke="currentColor"
+//           strokeWidth={2}
+//         >
+//           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+//         </svg>
+//       </div>
+
+//       <h2 className="text-xl font-semibold mb-2">🎉 Thank you, {buyerName}!</h2>
+//       <p className="text-white/80 mb-8">
+//         You’ve successfully purchased this prompt!
+//       </p>
+
+//       <div className="flex items-center justify-center gap-4">
+//         {/* ✅ Go to Purchases */}
+//         <button
+//   onClick={() => {
+//     setShowSuccessPopup(false);
+
+//     try {
+//       if (latestPurchase) {
+//         window.dispatchEvent(
+//           new CustomEvent("tokun:purchased", { detail: latestPurchase })
+//         );
+//       }
+//     } catch {}
+
+//     navigate("/purchases?p=purchased", {
+//       state: { refreshPurchases: true },
+//     });
+//   }}
+//   className="w-40 h-11 rounded-lg text-sm font-medium bg-white/10 hover:bg-white/20 transition"
+// >
+//   Go to My Purchases
+// </button>
+
+//         {/* ✅ Back to Marketplace */}
+//         <button
+//           onClick={() => {
+//             setShowSuccessPopup(false);
+//             navigate("/prompt-marketplace");  // 👈 goes to marketplace
+//           }}
+//           className="w-40 h-11 rounded-lg text-sm font-medium text-white"
+//           style={{
+//             background: "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)",
+//           }}
+//         >
+//           Prompt Marketplace
+//         </button>
+//       </div>
+//     </div>
+//   </div>
+// )}
+
+
+// {token && (
+//  <KycGateModal
+//   open={kycOpen}
+//   onClose={() => setKycOpen(false)}
+//   token={token}
+//    apiBase={API_BASE}
+//   //  apiBase="http://localhost:5000"
+//   defaultCountry="IN"
+//   requiredForLabel="buying and uploading prompts"
+//   onVerified={() => {
+//     if (pendingPurchasePrompt) {
+//       const p = pendingPurchasePrompt;
+//       setPendingPurchasePrompt(null);
+//       handlePurchase(p);
+//     }
+//   }}
+// />
+// )}
+
+
+// {categoriesModalOpen && (
+//   <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+//     <div
+//       className="w-full max-w-[620px] rounded-[28px] border border-white/10 bg-[#17171A] p-5 sm:p-6 text-white"
+//       onClick={(e) => e.stopPropagation()}
+//     >
+//       <div className="flex items-start justify-between gap-4">
+//         <div>
+//           <h3 className="text-xl font-semibold">Select Categories</h3>
+//           <p className="mt-1 text-sm text-white/60">
+//             Ek hi baar me multiple categories choose kar sakte ho.
+//           </p>
+//         </div>
+
+//         <button
+//           type="button"
+//           onClick={() => setCategoriesModalOpen(false)}
+//           className="w-10 h-10 rounded-full grid place-items-center bg-white/5 hover:bg-white/10"
+//           aria-label="Close categories modal"
+//         >
+//           <X className="h-5 w-5" />
+//         </button>
+//       </div>
+
+//       <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[320px] overflow-y-auto pr-1">
+//         {categoryOptions.map(({ id, icon: Icon }) => {
+//           const active = draftCategories.includes(id);
+
+//           return (
+//             <button
+//               key={id}
+//               type="button"
+//               onClick={() => toggleDraftCategory(id)}
+//               className={`w-full flex items-center justify-between rounded-2xl px-4 py-3 border transition-colors ${
+//                 active
+//                   ? "bg-white/10 border-white/20"
+//                   : "bg-[#121213] border-white/5 hover:bg-white/5"
+//               }`}
+//             >
+//               <div className="flex items-center gap-3">
+//                 <Icon className="h-4 w-4" />
+//                 <span className="text-sm font-medium">{id}</span>
+//               </div>
+
+//               <span
+//                 className={`w-5 h-5 rounded-full grid place-items-center border ${
+//                   active
+//                     ? "bg-white text-black border-white"
+//                     : "border-white/20 text-transparent"
+//                 }`}
+//               >
+//                 <Check className="h-3.5 w-3.5" />
+//               </span>
+//             </button>
+//           );
+//         })}
+//       </div>
+
+//       <div className="mt-6 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3">
+//         <button
+//           type="button"
+//           onClick={clearCategorySelection}
+//           className="h-[46px] px-4 rounded-full border border-white/10 bg-[#121213] text-white/80 hover:bg-white/5"
+//         >
+//           Clear All
+//         </button>
+
+//         <button
+//           type="button"
+//           onClick={() => setCategoriesModalOpen(false)}
+//           className="h-[46px] px-4 rounded-full border border-white/10 bg-[#121213] text-white hover:bg-white/5"
+//         >
+//           Cancel
+//         </button>
+
+//         <button
+//           type="button"
+//           onClick={applyCategorySelection}
+//           className="h-[46px] px-5 rounded-full text-white font-medium"
+//           style={{ background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)" }}
+//         >
+//           Apply Categories
+//         </button>
+//       </div>
+//     </div>
+//   </div>
+// )}
+
+//     </div>
+//   );
+// };
+
+// export default PromptMarketplacePage;
+
+
+
+
 // src/pages/PromptMarketplacePage.tsx
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -2660,6 +4307,7 @@ const PromptMarketplacePage = () => {
   const currentUserId = user?._id || user?.id || null;
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const [showTopBg, setShowTopBg] = useState(true);
     const [kycOpen, setKycOpen] = useState(false);
 const [pendingPurchasePrompt, setPendingPurchasePrompt] = useState<Prompt | null>(null);
 const [retryPrompt, setRetryPrompt] = useState<Prompt | null>(null);
@@ -2822,6 +4470,44 @@ const [buyerName, setBuyerName] = useState<string>("");
   };
 
   loadCategories();
+}, []);
+
+useEffect(() => {
+  let ticking = false;
+
+  const updateTopBgVisibility = () => {
+    const bgEnd = document.getElementById("marketplace-bg-end");
+
+    if (!bgEnd) {
+      setShowTopBg(true);
+      return;
+    }
+
+    const rect = bgEnd.getBoundingClientRect();
+
+    // Background static rahega jab tak categories block top area tak visible hai.
+    // Categories ke baad lower content clean dark background par rahega.
+    setShowTopBg(rect.bottom > 96);
+  };
+
+  const onScrollOrResize = () => {
+    if (ticking) return;
+
+    ticking = true;
+    window.requestAnimationFrame(() => {
+      updateTopBgVisibility();
+      ticking = false;
+    });
+  };
+
+  updateTopBgVisibility();
+  window.addEventListener("scroll", onScrollOrResize, { passive: true });
+  window.addEventListener("resize", onScrollOrResize);
+
+  return () => {
+    window.removeEventListener("scroll", onScrollOrResize);
+    window.removeEventListener("resize", onScrollOrResize);
+  };
 }, []);
 
 
@@ -3242,21 +4928,24 @@ const savePromptToCollections = async ({
 
 
   return (
+ <div className="dark relative min-h-screen bg-[#07080A] text-foreground overflow-x-hidden">
   <div
-  className="dark min-h-screen bg-background text-foreground relative overflow-hidden"
-  style={{
-    backgroundImage: `url('/icons/mpbg.png')`,
-    backgroundRepeat: "no-repeat",
-    backgroundSize: "1600px auto",      // 👈 slightly contained, not full cover
-    backgroundPosition: "center -180px", // 👈 pushes the wave higher (like your image)
-    backgroundAttachment: "scroll",      // 👈 prevents it from locking during scroll
-  }}
->
+    aria-hidden
+    className={`pointer-events-none fixed inset-0 z-0 overflow-hidden transition-opacity duration-300 ${
+      showTopBg ? "opacity-100" : "opacity-0"
+    }`}
+  >
+    <img
+      src="/icons/mpbg.png"
+      alt="background"
+      className="absolute inset-0 w-full h-screen object-contain object-top select-none"
+    />
+  </div>
 
 
       {/* Header + token usage */}
      {/* 🔹 Full-width compact Header */}
-<div className="w-full bg-transparent  px-4">
+<div className="relative z-20 w-full bg-transparent px-4">
     <Header />
   <Header />
 </div>
@@ -3264,7 +4953,7 @@ const savePromptToCollections = async ({
 
 
       {/* Main Content */}
-      <div className="container mx-auto px-6 pb-16">
+  <div className="relative z-10 container mx-auto px-6 pb-16">
         {/* History Button */}
         {/* <div className="flex justify-between items-center mb-12">
           <Button
@@ -3438,7 +5127,7 @@ const savePromptToCollections = async ({
 
 
 
-          <div className="space-y-4">
+          <div id="marketplace-bg-end" className="space-y-4">
   <div className="flex flex-wrap items-center justify-center gap-3">
     <button
       type="button"
@@ -3817,9 +5506,9 @@ style={{ height: 520, background: "#1C1C1C", borderRadius: 30 }}
         )}
       </div>
 
-      <div className="mt-20">
-        <Footer />
-      </div>
+    <div className="relative z-10 mt-20">
+  <Footer />
+</div>
 
       {/* Save dropdown modal anchored to cop.png */}
       {/* <ModalComponent
@@ -4075,9 +5764,6 @@ style={{ height: 520, background: "#1C1C1C", borderRadius: 30 }}
     </div>
   </div>
 )}
-
-
-
 
     </div>
   );

@@ -500,19 +500,20 @@ const sendMessage = () => {
 
 
   return (
-   <div className="min-h-screen text-white flex flex-col relative overflow-hidden">
-  
-  {/* BACKGROUND IMAGE */}
+  <div className="relative min-h-screen text-white flex flex-col overflow-x-hidden bg-[#07080A]">
+
+{/* STATIC BACKGROUND IMAGE */}
 <img
   src="/icons/mpbg.png"
   alt="background"
-  className="absolute top-0 left-0 w-full h-full object-contain object-top z-0 pointer-events-none"
+  className="fixed inset-0 w-full h-screen object-contain object-top z-0 pointer-events-none select-none"
 />
 
+<div className="relative z-20">
+  <Header />
+</div>
 
-      <Header />
-
-      <main className="flex-1">
+<main className="relative z-10 flex-1">
         <div className="mx-auto max-w-[1280px] px-4 sm:px-6 pt-24 md:pt-28 lg:pt-36 pb-20">
           
           {/* ================= HERO SECTION (ISOLATED) ================= */}
@@ -1532,7 +1533,9 @@ const sendMessage = () => {
   </div>
 )}
 
-      <Footer />
+    <div className="relative z-10">
+  <Footer />
+</div>
     </div>
   );
 }

@@ -703,12 +703,18 @@ const handleResendInvite = async (memberId: string) => {
 
 
   return (
-    <div className="min-h-screen w-full bg-[#07080A] text-white">
+    
+  <div className="relative min-h-screen w-full bg-[#07080A] text-white overflow-x-hidden">
+    <div aria-hidden className="fixed inset-0 z-0 bg-[#07080A]" />
+
+    <div className="relative z-20">
       <Header />
-      <main className="max-w-6xl mx-auto px-4 pt-6 pb-14">
-        <div className="w-full flex justify-center mt-20">
-  <TokenUsageSection />
-</div>
+    </div>
+
+    <main className="relative z-10 max-w-6xl mx-auto px-4 pt-32 sm:pt-36 lg:pt-40 pb-14">
+      <div className="w-full flex justify-center">
+        <TokenUsageSection />
+      </div>
 
         <div className="mt-6 w-full flex justify-center">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -871,7 +877,9 @@ const handleResendInvite = async (memberId: string) => {
         </section>
       </main>
 
-      <Footer />
+     <div className="relative z-10">
+  <Footer />
+</div>
 
       <MemberModal
         open={openModal}

@@ -89,7 +89,7 @@ export default function BlogPage() {
       <Header />
 
       <main className="relative z-10">
-        <section className="container mx-auto px-4 sm:px-6 pt-32 pb-14 text-center">
+       <section className="container mx-auto px-4 sm:px-6 pt-32 sm:pt-36 lg:pt-40 pb-14 text-center">
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}

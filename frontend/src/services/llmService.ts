@@ -4564,11 +4564,21 @@ export interface TokenizerResponse {
   words: number;
 }
 
+// export interface OptimizeResponse {
+//   optimizedText: string;
+//   tokens: number;
+//   words: number;
+//   suggestions: string[];
+//   usage?: OptimizeUsage;
+// }
+
+
 export interface OptimizeResponse {
   optimizedText: string;
   tokens: number;
   words: number;
   suggestions: string[];
+  steps?: { title: string; content: string }[];  // 👈 add karo
   usage?: OptimizeUsage;
 }
 
@@ -4737,11 +4747,12 @@ class LLMService {
       const optimizedCount = await this.countTokens(optimizedText);
 
       return {
-        optimizedText,
-        tokens: optimizedCount.tokens,
-        words: optimizedCount.words,
-        suggestions: Array.isArray(suggestions) ? suggestions : [],
-      };
+  optimizedText,
+  tokens: optimizedCount.tokens,
+  words: optimizedCount.words,
+  suggestions: Array.isArray(suggestions) ? suggestions : [],
+  steps: Array.isArray(data?.steps) ? data.steps : [],  // 👈 add karo
+};
     } catch (error) {
       console.error("Detailed prompt generation error:", error);
       throw error;

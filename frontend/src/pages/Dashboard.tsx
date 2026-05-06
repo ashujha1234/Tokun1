@@ -919,17 +919,25 @@ useEffect(() => {
         sellerUsersRes.json(),
       ]);
 
-      const isPendingUser = (u: any) => {
-        const kyc = String(u?.kycStatus || "");
-        const verified = !!u?.isVerified;
-        return !verified || kyc === "NOT_SUBMITTED" || kyc === "PENDING";
-      };
+      // const isPendingUser = (u: any) => {
+      //   const kyc = String(u?.kycStatus || "");
+      //   const verified = !!u?.isVerified;
+      //   return !verified || kyc === "NOT_SUBMITTED" || kyc === "PENDING";
+      // };
 
-      const isPendingSeller = (s: any) => {
-        const kyc = String(s?.kycStatus || "");
-        const verified = !!s?.verified || !!s?.isVerified;
-        return !verified || kyc === "NOT_SUBMITTED" || kyc === "PENDING";
-      };
+      // const isPendingSeller = (s: any) => {
+      //   const kyc = String(s?.kycStatus || "");
+      //   const verified = !!s?.verified || !!s?.isVerified;
+      //   return !verified || kyc === "NOT_SUBMITTED" || kyc === "PENDING";
+      // };
+
+      const isPendingUser = (u: any) => {
+  return String(u?.kycStatus || "") === "PENDING";
+};
+
+const isPendingSeller = (s: any) => {
+  return String(s?.kycStatus || "") === "PENDING";
+};
 
       const pendingUsers = (usersData?.users || []).filter(isPendingUser).length;
       const pendingOrgSellers = (sellersData?.sellers || []).filter(isPendingSeller).length;
@@ -3713,7 +3721,7 @@ const AccountView = ({
 
       <div className={`${kpiCardBase} p-6`}>
         <div className="text-xs tracking-[0.2em] text-white/60">
-          DIGITAL TOTAL PRODUCTS
+          DIGITAL PRODUCTS
         </div>
         <div className="mt-4 flex items-end justify-between">
           <div className="text-3xl font-semibold">

@@ -35,6 +35,10 @@ const GRADIENT =
 const CARD_FRAME =
   "w-full max-w-[1000px] rounded-[30px] border border-[#282829] bg-[#121213] overflow-hidden";
 
+
+
+
+
 const IdeasStrip = ({
   exampleIdeas,
   activeIndex,
@@ -120,7 +124,7 @@ const goToSmartgenHistory = () => {
   const [smartgenId, setSmartgenId] = useState<string | undefined>(
     smartgenIdProp
   );
-
+const [detailedPromptMeta, setDetailedPromptMeta] = useState<any>(null);
   // save modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const saveBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -473,6 +477,8 @@ const generateDetailedPrompt = async () => {
     const result = await llmService.generateDetailedPrompt(promptToProcess);
 
     setDetailedPrompt(result.optimizedText);
+    setDetailedPromptMeta(result); // 👈 add karo
+
 
     const originalTokens = Math.ceil(promptToProcess.length / 4);
     const tokensUsed =
@@ -680,7 +686,11 @@ const generateDetailedPrompt = async () => {
     {/* Clear */}
     {Boolean(detailedPrompt.trim()) && (
       <button
-        onClick={() => clearPrompts()}
+// Clear button ke onClick mein
+onClick={() => {
+  clearPrompts();
+  setDetailedPromptMeta(null); // 👈 add karo
+}}
         className="h-8 md:h-9 px-3 rounded-full flex items-center justify-center text-white text-xs md:text-sm border border-[#333335] transition-all duration-300 flex-shrink-0"
         style={{ background: "#2C2C2C" }}
         onMouseEnter={(e) =>
@@ -783,7 +793,7 @@ const generateDetailedPrompt = async () => {
               </div>
 
               <div className={`${CARD_FRAME} relative p-4 md:p-5`}>
-     <div className="relative text-white/90 text-sm leading-relaxed pr-4 md:pr-[12rem] pb-24 md:pb-22">
+  <div className="relative text-white/90 text-sm leading-relaxed pr-4 md:pr-[12rem] pb-24 md:pb-22">
   {isEditingDetailed ? (
     <Textarea
       value={editablePrompt}
@@ -791,7 +801,68 @@ const generateDetailedPrompt = async () => {
       className="w-full min-h-[200px] bg-[#1a1a1a] border border-[#333] text-white resize-vertical p-3 rounded-md"
     />
   ) : (
-    <div className="whitespace-pre-line">{detailedPrompt}</div>
+    <div className="space-y-5">
+
+      {/* Step Cards */}
+      {detailedPromptMeta?.steps?.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {detailedPromptMeta.steps.map((step: any, i: number) => (
+            <div
+              key={i}
+              className="rounded-xl border border-[#282829] bg-[#17171A] p-4"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <span
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+                  style={{
+                    background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)",
+                  }}
+                >
+                  {i + 1}
+                </span>
+                <span className="text-white font-semibold text-sm">{step.title}</span>
+              </div>
+              <p className="text-white/70 text-xs leading-relaxed">{step.content}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Full prompt text */}
+     {/* Full prompt text — section-wise rendered */}
+<div className="space-y-4">
+  {detailedPrompt
+    .split(/\n(?=## )/)
+    .filter(Boolean)
+    .map((section, idx) => {
+      const lines = section.trim().split('\n');
+      const heading = lines[0].replace(/^## /, '');
+      const body = lines.slice(1).join('\n').trim();
+      return (
+        <div key={idx} className="rounded-xl border border-[#282829] bg-[#17171A] p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span
+              className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+              style={{
+                background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)",
+              }}
+            >
+              {idx + 1}
+            </span>
+            <span className="text-white font-semibold text-sm">{heading}</span>
+          </div>
+          <div className="text-white/75 text-xs leading-relaxed whitespace-pre-line">
+            {body}
+          </div>
+        </div>
+      );
+    })}
+</div>
+
+      {/* Alternative Variations */}
+      
+
+    </div>
   )}
 </div>
 

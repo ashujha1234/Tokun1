@@ -51,7 +51,7 @@ const jobs = [
 
 export default function CareersPage() {
   return (
-    <div className="min-h-screen bg-[#030406] text-white overflow-hidden">
+    <div className="relative min-h-screen bg-[#030406] text-white overflow-x-hidden">
             <Header />
       <div
         aria-hidden
@@ -63,16 +63,16 @@ export default function CareersPage() {
       />
 
       <main className="relative z-10">
-        <section className="container mx-auto px-4 sm:px-6 pt-28 pb-16 text-center">
+<section className="container mx-auto px-4 sm:px-6 pt-32 sm:pt-36 lg:pt-40 pb-16 text-center">
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45 }}
             className="max-w-4xl mx-auto"
           >
-            <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-2 mb-6">
+            <div className="relative z-20 inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-2.5 mb-6 overflow-visible leading-none">
               <span
-                className="text-sm font-medium bg-clip-text text-transparent"
+                className="block text-sm font-medium leading-none bg-clip-text text-transparent"
                 style={{
                   backgroundImage: "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)",
                 }}

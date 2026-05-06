@@ -603,6 +603,13 @@ router.post("/login/verify", async (req, res) => {
       return res.status(400).json({ success: false, error: "invalid_otp" });
     }
 
+    // mongoose.connect()-=>{
+
+      // app.listen('port',=>{
+        // applyUserPlan.apply()
+        // })
+      // }
+
     // success: clear OTP and create JWT
     user.otpHash = null;
     user.otpExpiresAt = null;

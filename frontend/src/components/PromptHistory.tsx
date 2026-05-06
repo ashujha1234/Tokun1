@@ -3,7 +3,7 @@
 
 // src/pages/PromptHistory.tsx
 import { useEffect, useMemo, useState } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -551,17 +551,21 @@ function PurchasedStatsBar({
     </div>
   );
 }
-
-/* ---------- Empty state ---------- */
 function EmptyStateCard({
   title,
   description,
+  buttonLabel = "Purchase Prompt",
+  icon = "cart",
   onClick,
 }: {
   title: string;
   description: string;
+  buttonLabel?: string;
+  icon?: "cart" | "upload";
   onClick: () => void;
 }) {
+  const Icon = icon === "upload" ? Upload : ShoppingCart;
+
   return (
     <Card
       className="relative overflow-hidden"
@@ -574,27 +578,29 @@ function EmptyStateCard({
       }}
     >
       <CardContent className="h-full p-4">
-        {/* Icon chip (lowered) */}
-        <div className="absolute left-1/2 -translate-x-1/2 top-12 w-10 h-10 rounded-full bg-white/10 grid place-items-center">
-          <ShoppingCart className="h-5 w-5 text-white/80" />
+        {/* Icon chip: bigger + lower */}
+        <div className="absolute left-1/2 -translate-x-1/2 top-20 w-16 h-16 rounded-full bg-white/10 grid place-items-center border border-white/10">
+          <Icon className="h-8 w-8 text-white/85" />
         </div>
 
         {/* Center text */}
         <div className="h-full flex flex-col items-center justify-center text-center px-4">
-          <div className="mt-8" />
+          <div className="mt-14" />
           <p className="text-white/90 text-[15px] font-medium">{title}</p>
-          <p className="text-white/70 text-[12.5px] leading-relaxed mt-3">{description}</p>
+          <p className="text-white/70 text-[12.5px] leading-relaxed mt-3">
+            {description}
+          </p>
         </div>
 
-        {/* CTA — centered */}
-      <button
-  onClick={onClick}
-  className="absolute left-1/2 -translate-x-1/2 bottom-6 h-10 px-6 rounded-[12px] text-white text-[14px] font-medium shadow whitespace-nowrap"
-  style={{ background: GRAD, maxWidth: "90%" }}
->
-  Purchase Prompt
-</button>
-
+        {/* CTA */}
+        <button
+          onClick={onClick}
+          className="absolute left-1/2 -translate-x-1/2 bottom-6 h-10 px-6 rounded-[12px] text-white text-[14px] font-medium shadow whitespace-nowrap"
+          style={{ background: GRAD, maxWidth: "90%" }}
+          type="button"
+        >
+          {buttonLabel}
+        </button>
       </CardContent>
     </Card>
   );
@@ -889,6 +895,7 @@ export default function PromptHistory() {
   const [purchasesLoading, setPurchasesLoading] = useState(false);
   const [purchasesError, setPurchasesError] = useState<string | null>(null);
      const location = useLocation() as any;
+     const navigate = useNavigate();
   // Uploaded: fetched from API
   const [uploadHistory, setUploadHistory] = useState<Prompt[]>([]);
   const [uploadsLoading, setUploadsLoading] = useState<boolean>(false);
@@ -1448,15 +1455,12 @@ useEffect(() => {
               ) : purchaseHistory.length === 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-8">
                   <EmptyStateCard
-                    title="No prompts purchased yet."
-                    description="Visit the marketplace to explore and purchase prompts."
-                    onClick={() =>
-                      toast({
-                        title: "Go to marketplace",
-                        description: "Hook up navigation here.",
-                      })
-                    }
-                  />
+  title="No prompts purchased yet."
+  description="Visit the marketplace to explore and purchase prompts."
+  buttonLabel="Purchase Prompt"
+  icon="cart"
+  onClick={() => navigate("/prompt-marketplace")}
+/>
                 </div>
               ) : (
                   <div className="flex justify-center">
@@ -1497,15 +1501,17 @@ useEffect(() => {
               ) : uploadHistory.length === 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-8">
                   <EmptyStateCard
-                    title="No uploaded prompts yet."
-                    description="Upload your first prompt from the marketplace screen."
-                    onClick={() =>
-                      toast({
-                        title: "Open upload screen",
-                        description: "Hook up navigation to your upload flow.",
-                      })
-                    }
-                  />
+  title="No uploaded prompts yet."
+  description="Upload your first prompt from the marketplace screen."
+  buttonLabel="Upload Prompt"
+  icon="upload"
+  onClick={() =>
+    toast({
+      title: "Upload Prompt",
+      description: "Upload flow will be added later.",
+    })
+  }
+/>
                 </div>
               ) : (
                  <div className="flex justify-center">
