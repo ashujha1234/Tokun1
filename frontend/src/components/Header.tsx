@@ -2703,6 +2703,33 @@ useEffect(() => {
     lineHeight: "100%",
   };
 
+const dropdownTopTextStyle: React.CSSProperties = {
+  fontFamily: "Inter, system-ui, Arial, sans-serif",
+  fontWeight: 400,
+  fontStyle: "normal",
+  fontSize: 16,
+  lineHeight: "100%",
+  letterSpacing: "0%",
+};
+
+const dropdownOptionTextStyle: React.CSSProperties = {
+  fontFamily: "Inter, system-ui, Arial, sans-serif",
+  fontWeight: 400,
+  fontStyle: "normal",
+  fontSize: 14,
+  lineHeight: "100%",
+  letterSpacing: "0%",
+};
+
+const dropdownEmailTextStyle: React.CSSProperties = {
+  fontFamily: "Inter, system-ui, Arial, sans-serif",
+  fontWeight: 400,
+  fontStyle: "normal",
+  fontSize: 12,
+  lineHeight: "100%",
+  letterSpacing: "0%",
+};
+
   const themeBtn = (id: ThemeMode, src: string, alt: string) => (
     <button
       type="button"
@@ -2759,8 +2786,18 @@ const bankSetDefaultUrl = (id: string) =>
 
 
 const goToMyProfile = () => {
-  if (!user?._id) return;
-  navigate(`/profile/${user._id}`);
+  const id = user?._id || user?.id;
+  if (!id) return;
+  navigate(`/profile/${id}`);
+};
+
+const openAccountSettingsPopup = () => {
+  setProfileTab("profile");
+  setProfileOpen(true);
+};
+
+const goToWallet = () => {
+  navigate("/wallet"); // agar route alag hai to yaha change kar dena
 };
 
 
@@ -4076,106 +4113,130 @@ useEffect(() => {
 
   {/* Make the WHOLE content scrollable (scrollbar hidden) */}
   <DropdownMenuContent
-    sideOffset={10}
-    align="end"
-    onCloseAutoFocus={(e) => e.preventDefault()}
-    className="p-3 no-scrollbar overflow-y-auto"
-    style={{
-      width: 260,
-      maxHeight: "85vh",
-      borderRadius: 20,
-      background: "#21212180",
-      backdropFilter: "blur(20px)",
-      WebkitBackdropFilter: "blur(20px)",
-      border: "1px solid rgba(255,255,255,0.10)",
-      color: "#ffffff",
-      fontFamily: "Inter, system-ui, Arial, sans-serif",
-      fontSize: 14,
-    }}
-  >
-    <div className="flex flex-col gap-3">
-      {/* Name / email */}
-     <div className="pt-2 space-y-2">
-  {/* ✅ CLICKABLE NAME */}
-  <button
-    type="button"
-    onMouseDown={(e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!user?._id) return;
-      navigate(`/profile/${user._id}`);
-    }}
-    className="font-semibold text-left hover:underline hover:text-white transition"
-  >
-    {displayName || "Your Name"}
-  </button>
+  sideOffset={10}
+  align="end"
+  onCloseAutoFocus={(e) => e.preventDefault()}
+  className="no-scrollbar overflow-y-auto"
+  style={{
+  width: 240,
+  height: 650,
+  maxHeight: "85vh",
+  padding: 10,
+  borderRadius: 16,
+  background: "#21212180",
+  backdropFilter: "blur(20px)",
+  WebkitBackdropFilter: "blur(20px)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  color: "#ffffff",
+  fontFamily: "Inter, system-ui, Arial, sans-serif",
+  fontWeight: 400,
+  fontStyle: "normal",
+}}
+>
+  <div className="flex flex-col h-full">
+    {/* Name / email */}
+    <div className="space-y-2">
+      <button
+  type="button"
+  onMouseDown={(e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    goToMyProfile();
+  }}
+  className="block text-left text-white hover:underline"
+  style={dropdownTopTextStyle}
+>
+  {displayName || "Your Name"}
+</button>
 
-  {/* EMAIL (unchanged) */}
-  <div className="text-white/70 text-sm">
-    {displayEmail || "your@email.com"}
-  </div>
-
-  {/* ✅ SET UP PROFILE (UNCHANGED & PRESERVED) */}
-  <button
-    type="button"
-    onMouseDown={(e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setProfileOpen(true);
-    }}
-    onClick={(e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    }}
-    className="w-full mt-2 text-white"
-    style={{ height: 40, borderRadius: 12, background: "#313131" }}
-  >
-    Set up profile
-  </button>
+<div className="text-white/70" style={dropdownEmailTextStyle}>
+  {displayEmail || "your@email.com"}
 </div>
 
+      <button
+  type="button"
+  onMouseDown={(e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    goToMyProfile();
+  }}
+  className="w-full mt-2 text-white"
+  style={{
+    ...dropdownTopTextStyle,
+    height: 39,
+    borderRadius: 6,
+    background: "#313131",
+  }}
+>
+  Set up profile
+</button>
+    </div>
 
-      {/* Theme row */}
-      <div className="flex items-center justify-between pt-2">
-        <span>Theme</span>
-        <div
-          className="flex items-center justify-between px-2"
-          style={{ width: 96, height: 36, borderRadius: 18, background: "#313131" }}
-        >
-          {themeBtn("light", "https://cdn.jsdelivr.net/npm/@tabler/icons/icons/sun.svg", "Light")}
-          {themeBtn("dark", "https://cdn.jsdelivr.net/npm/@tabler/icons/icons/moon.svg", "Dark")}
-          {themeBtn("system", "https://cdn.jsdelivr.net/npm/@tabler/icons/icons/device-desktop.svg", "System")}
-        </div>
-      </div>
+    {/* My Wallet */}
+    <button
+  type="button"
+  onMouseDown={(e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    goToWallet();
+  }}
+  className="w-full mt-6 flex items-center justify-center gap-2 text-white"
+  style={{
+    ...dropdownTopTextStyle,
+    height: 38,
+    borderRadius: 6,
+    background: "linear-gradient(270deg,#1A73E8 0%,#FF14EF 100%)",
+  }}
+>
+  <img
+    src="/icons/wallet.svg"
+    alt=""
+    className="w-4 h-4"
+  />
+  <span>My Wallet</span>
+</button>
 
-      {/* Settings */}
-      <div
-        className="py-2 flex items-center gap-2 border-t border-white/10 cursor-pointer"
-        onClick={() => navigate("/settings")}
-      >
-        <Settings className="w-5 h-5" />
-        <span>Settings</span>
-      </div>
+    {/* Settings */}
+   <button
+  type="button"
+  onMouseDown={(e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openAccountSettingsPopup();
+  }}
+  className="w-full mt-6 flex items-center justify-between py-2 text-white border-t border-white/10"
+  style={dropdownTopTextStyle}
+>
+  <span className="flex items-center gap-2">
+    <Settings className="w-5 h-5" />
+    Settings
+  </span>
+  <span className="text-lg leading-none">↗</span>
+</button>
 
-      {/* Lifetime Tokun saved */}
+    {/* Lifetime Tokun saved */}
+    <div className="mt-4">
+     <div className="mb-2 text-center text-white/90" style={dropdownTopTextStyle}>
+  Lifetime Tokun saved
+</div>
+
       <div
         style={{
-          width: 220,
-          height: 120,
+          width: "100%",
+          height: 100,
           background: "#2A2A2A",
-          borderRadius: 16,
-          padding: "10px 0",
+          borderRadius: 6,
+          padding: "8px 0",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "space-between",
         }}
       >
-        <div className="text-sm text-white/85">Lifetime Tokun saved</div>
         <div
           style={{
-            width: 60,
-            height: 60,
+            width: 56,
+            height: 56,
             borderRadius: "50%",
             background:
               "conic-gradient(#FF14EF 0 60deg, #1A73E8 60deg 210deg, #5CE1E6 210deg 360deg)",
@@ -4192,47 +4253,57 @@ useEffect(() => {
               display: "grid",
               placeItems: "center",
               color: "#fff",
-              fontWeight: 600,
-              fontSize: "12px",
+              fontWeight: 500,
+              fontSize: 14,
             }}
           >
             {lifetimeTokunSaved}
           </div>
         </div>
-        <div className="text-xs text-white/70">Total tokun saved</div>
-      </div>
 
-      {/* Links — no inner scrolling; they’re part of the main scroll now */}
-      <div className="grid gap-2 pt-2">
-        {[
-          { label: "Purchase History", onClick: goToPurchaseHistory, icon: "↗" },
-          { label: "Upload History", onClick: goToUploadHistory, icon: "↗" },
-          { label: "Pricing", onClick: () => navigate("/subscription"), icon: "↗" },
-          { label: "Support", onClick: () => navigate("/support"), icon: "↗" },
-          { label: "Admin", onClick: () => navigate("/admin"), icon: "↗" },
-          { label: "Logout", onClick: handleLogout, icon: "↩" },
-        ].map((item, i) => (
-          <button
-            key={item.label}
-            onClick={item.onClick}
-            className={`w-full flex items-center justify-between py-2 whitespace-nowrap ${
-              i !== 0 ? "border-t border-white/10" : ""
-            }`}
-          >
-            <span>{item.label}</span>
-            <span aria-hidden className="pl-3">{item.icon}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Footer */}
-      <div className="border-t border-white/10 flex items-center justify-between pt-2 text-xs text-gray-400">
-        <span>Privacy</span>
-        <span>Terms</span>
-        <span>Copyright</span>
+        <div className="text-xs text-white/70">
+          Total tokun saved till date
+        </div>
       </div>
     </div>
-  </DropdownMenuContent>
+
+    {/* Links */}
+   <div className="grid gap-2 pt-2">
+  {[
+    { label: "Purchase History", onClick: goToPurchaseHistory, icon: "↗" },
+    { label: "Upload History", onClick: goToUploadHistory, icon: "↗" },
+    { label: "Pricing", onClick: () => navigate("/subscription"), icon: "↗" },
+    { label: "Support", onClick: () => navigate("/support"), icon: "↗" },
+    { label: "Admin", onClick: () => navigate("/admin"), icon: "↗" },
+    { label: "Logout", onClick: handleLogout, icon: "↩" },
+  ].map((item) => (
+    <button
+      key={item.label}
+      type="button"
+      onClick={item.onClick}
+      className="w-full flex items-center justify-between py-2 text-left whitespace-nowrap"
+    >
+      <span style={dropdownOptionTextStyle}>{item.label}</span>
+
+      {item.icon && (
+        <span aria-hidden style={dropdownOptionTextStyle}>
+          {item.icon}
+        </span>
+      )}
+    </button>
+  ))}
+</div>
+
+    {/* Footer */}
+    <div className="mt-auto border-t border-white/10 flex items-center justify-between pt-4 text-xs text-gray-400">
+      <span>Privacy</span>
+      <span>•</span>
+      <span>Terms</span>
+      <span>•</span>
+      <span>Copyright</span>
+    </div>
+  </div>
+</DropdownMenuContent>
 </DropdownMenu>
 
         </div>

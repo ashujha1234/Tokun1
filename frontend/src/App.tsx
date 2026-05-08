@@ -35,6 +35,8 @@ import SupportPage from "@/pages/SupportPage";
 import CareersPage from "@/pages/CareersPage";
 import BlogPage from "@/pages/BlogPage";
 import ScrollToTop from "@/components/ScrollToTop";
+import Wallet from "@/pages/Wallet";
+import WithdrawFunds from "@/pages/WithdrawFunds";
 import AdminForgotPassword from "./pages/AdminForgotPassword";
 const queryClient = new QueryClient();
 
@@ -108,6 +110,23 @@ export default function App() {
 />
 <Route path="/profile/:userId" element={<ProfilePage />} />
 <Route path="/chat" element={<ChatPage />} />
+<Route
+  path="/wallet"
+  element={
+    <RequireAuth>
+      <Wallet />
+    </RequireAuth>
+  }
+/>
+
+<Route
+  path="/withdraw"
+  element={
+    <RequireAuth>
+      <WithdrawFunds />
+    </RequireAuth>
+  }
+/>
 
         <Route path="/history" element={<History />} />
            <Route path="/notifications" element={<NotificationsPage />} />

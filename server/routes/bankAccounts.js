@@ -110,4 +110,53 @@ router.post("/set-default/:accountId", requireAuth, async (req, res) => {
   }
 });
 
+
+// -----------------------------
+// Delete bank account
+// -----------------------------
+router.delete("/:accountId", requireAuth, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+
+    const deleted = await BankAccount.findOneAndDelete({
+      _id: accountId,
+      userId: req.user._id,
+    });
+
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        error: "account_not_found",
+      });
+    }
+
+    let newDefaultAccount = null;
+
+    if (deleted.default) {
+      newDefaultAccount = await BankAccount.findOne({
+        userId: req.user._id,
+      }).sort({ createdAt: -1 });
+
+      if (newDefaultAccount) {
+        newDefaultAccount.default = true;
+        await newDefaultAccount.save();
+      }
+    }
+
+    res.json({
+      success: true,
+      deletedAccountId: deleted._id,
+      newDefaultAccount,
+    });
+  } catch (err) {
+    console.error("Delete Bank Account:", err);
+    res.status(500).json({
+      success: false,
+      error: "server_error",
+    });
+  }
+});
+
+
+
 module.exports = router;
