@@ -1206,6 +1206,7 @@
 //   - Replace hardcoded availableToWithdraw / totalEarning / monthlyEarning with API values
 //   - Everything else (bank accounts, modal, form) unchanged
 
+
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
@@ -1243,7 +1244,13 @@ const WithdrawFunds = () => {
 
   const userId = user?._id || user?.id || user?.email || "guest";
   const WALLET_ACCOUNTS_KEY = `tokun_wallet_accounts_${userId}`;
+   
 
+  const WITHDRAW_REQUEST_URL = `${API_BASE}/api/wallet/withdraw/request`;
+
+const [withdrawLoading, setWithdrawLoading] = useState(false);
+const [withdrawError, setWithdrawError] = useState("");
+const [withdrawSuccess, setWithdrawSuccess] = useState("");
   // ── Real wallet data ──
   const [availableToWithdraw, setAvailableToWithdraw] = useState(0);
   const [totalEarning, setTotalEarning] = useState(0);
@@ -1401,10 +1408,79 @@ const WithdrawFunds = () => {
       setSaveLoading(false);
     }
   };
+    
+const handleConfirmWithdrawal = async () => {
+  setWithdrawError("");
+  setWithdrawSuccess("");
+
+  const authToken = getAuthToken();
+
+  if (!authToken) {
+    setWithdrawError("Please login first.");
+    return;
+  }
+
+  if (!selectedAccountId) {
+    setWithdrawError("Please select a bank account.");
+    return;
+  }
+
+  if (!withdrawAmount || Number.isNaN(withdrawAmount)) {
+    setWithdrawError("Please enter withdrawal amount.");
+    return;
+  }
+
+  if (withdrawAmount < 100) {
+    setWithdrawError("Minimum withdrawal amount is ₹100.");
+    return;
+  }
+
+  if (withdrawAmount > availableToWithdraw) {
+    setWithdrawError(`You can withdraw up to ₹${fmt(availableToWithdraw)} only.`);
+    return;
+  }
+
+  try {
+    setWithdrawLoading(true);
+
+    const res = await fetch(WITHDRAW_REQUEST_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      credentials: "include",
+      body: JSON.stringify({
+        amount: withdrawAmount,
+        bankAccountId: selectedAccountId,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || "Could not create withdrawal request.");
+    }
+
+    setWithdrawSuccess("Withdrawal request created successfully.");
+    setAvailableToWithdraw(Number(data.availableBalance || 0));
+    setAmount("");
+
+    setTimeout(() => {
+      navigate("/wallet");
+    }, 1200);
+  } catch (err: any) {
+    setWithdrawError(err?.message || "Withdrawal failed.");
+  } finally {
+    setWithdrawLoading(false);
+  }
+};
+
+
 
   const selectedAccount = useMemo(() => accounts.find((acc) => acc.id === selectedAccountId), [accounts, selectedAccountId]);
   const canConfirmWithdrawal = withdrawAmount > 0 && !isOverBalance && !isBelowMinimum && !!selectedAccount;
-
+  
   return (
     <div className="dark relative min-h-screen bg-[#07080A] text-white overflow-x-hidden">
       <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
@@ -1544,10 +1620,42 @@ const WithdrawFunds = () => {
                       Your withdrawal is secured with end-to-end encryption. Funds are usually available within 1-3 business days.
                     </p>
                   </div>
-                  <button type="button" disabled={!canConfirmWithdrawal} className="mt-8 h-[49px] w-full rounded-[8px] text-white disabled:opacity-50"
-                    style={{ ...confirmButtonTextStyle, background: "linear-gradient(270deg,#1A73E8 0%,#FF14EF 100%)" }}>
-                    Confirm Withdrawal
-                  </button>
+                  {withdrawError && (
+  <div
+    className="mt-5 rounded-[10px] border px-3 py-3 text-sm text-white"
+    style={{
+      background: "#2A1717",
+      borderColor: "rgba(239,68,68,0.35)",
+    }}
+  >
+    {withdrawError}
+  </div>
+)}
+
+{withdrawSuccess && (
+  <div
+    className="mt-5 rounded-[10px] border px-3 py-3 text-sm text-white"
+    style={{
+      background: "#052A1D",
+      borderColor: "rgba(74,222,128,0.35)",
+    }}
+  >
+    {withdrawSuccess}
+  </div>
+)}
+
+<button
+  type="button"
+  disabled={!canConfirmWithdrawal || withdrawLoading}
+  onClick={handleConfirmWithdrawal}
+  className="mt-8 h-[49px] w-full rounded-[8px] text-white disabled:opacity-50"
+  style={{
+    ...confirmButtonTextStyle,
+    background: "linear-gradient(270deg,#1A73E8 0%,#FF14EF 100%)",
+  }}
+>
+  {withdrawLoading ? "Processing..." : "Confirm Withdrawal"}
+</button>
                 </div>
               </aside>
             </div>

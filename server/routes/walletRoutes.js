@@ -585,7 +585,8 @@ const Wallet = require("../models/Wallet");
 const WalletTopup = require("../models/WalletTopup");
 const Razorpay = require("../utils/razorpay");
 const { requireAuth } = require("../utils/auth");
-
+const BankAccount = require("../models/BankAccount");
+const WalletWithdrawal = require("../models/WalletWithdrawal");
 // const getRazorpayKeyId = () => process.env.RAZORPAY_KEY_ID || 'rzp_test_aNNdd7yTcNuzYQ';
 // const getRazorpaySecret = () => process.env.RAZORPAY_KEY_SECRET;
 
@@ -1002,6 +1003,145 @@ router.get("/balance/:userId", async (req, res) => {
     });
   } catch (err) {
     console.error("wallet/balance/:userId error:", err);
+    return res.status(500).json({
+      success: false,
+      error: "server_error",
+      message: err.message,
+    });
+  }
+});
+
+
+/**
+ * POST /api/wallet/withdraw/request
+ *
+ * Body:
+ * {
+ *   "amount": 500,
+ *   "bankAccountId": "..."
+ * }
+ */
+router.post("/withdraw/request", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const amount = Number(req.body.amount);
+    const { bankAccountId } = req.body;
+
+    if (!amount || Number.isNaN(amount) || amount < 100) {
+      return res.status(400).json({
+        success: false,
+        error: "invalid_amount",
+        message: "Minimum withdrawal amount is ₹100",
+      });
+    }
+
+    if (!bankAccountId || !mongoose.Types.ObjectId.isValid(bankAccountId)) {
+      return res.status(400).json({
+        success: false,
+        error: "invalid_bank_account",
+        message: "Please select a valid bank account",
+      });
+    }
+
+    const bankAccount = await BankAccount.findOne({
+      _id: bankAccountId,
+      userId,
+    });
+
+    if (!bankAccount) {
+      return res.status(404).json({
+        success: false,
+        error: "bank_account_not_found",
+      });
+    }
+
+    const wallet = await getOrCreateWallet(userId);
+
+    if (wallet.availableBalance < amount) {
+      return res.status(400).json({
+        success: false,
+        error: "insufficient_balance",
+        message: `You can withdraw up to ₹${wallet.availableBalance}`,
+      });
+    }
+
+    const serviceFee = +(amount * 0.02).toFixed(2);
+    const netAmount = +(amount - serviceFee).toFixed(2);
+
+    if (netAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: "invalid_net_amount",
+      });
+    }
+
+    const withdrawal = await WalletWithdrawal.create({
+      userId,
+      bankAccountId: bankAccount._id,
+      amount,
+      serviceFee,
+      netAmount,
+      status: "Pending",
+      note: `Withdrawal to ${bankAccount.bankName} ending ${String(
+        bankAccount.accountNumber
+      ).slice(-4)}`,
+    });
+
+    wallet.availableBalance -= amount;
+
+    wallet.transactions.unshift({
+      type: "debit",
+      status: "Pending",
+      amount,
+      description: `Withdrawal to ${bankAccount.bankName} ••••${String(
+        bankAccount.accountNumber
+      ).slice(-4)}`,
+      createdAt: new Date(),
+      meta: {
+        source: "withdrawal",
+        withdrawalId: withdrawal._id,
+        bankAccountId: bankAccount._id,
+        serviceFee,
+        netAmount,
+      },
+    });
+
+    await wallet.save();
+
+    return res.json({
+      success: true,
+      message: "withdrawal_requested",
+      availableBalance: wallet.availableBalance,
+      withdrawal,
+    });
+  } catch (err) {
+    console.error("withdraw/request error:", err);
+    return res.status(500).json({
+      success: false,
+      error: "server_error",
+      message: err.message,
+    });
+  }
+});
+
+
+/**
+ * GET /api/wallet/withdraw/history
+ */
+router.get("/withdraw/history", requireAuth, async (req, res) => {
+  try {
+    const withdrawals = await WalletWithdrawal.find({
+      userId: req.user._id,
+    })
+      .sort({ createdAt: -1 })
+      .populate("bankAccountId", "bankName accountNumber ifscCode");
+
+    return res.json({
+      success: true,
+      withdrawals,
+    });
+  } catch (err) {
+    console.error("withdraw/history error:", err);
     return res.status(500).json({
       success: false,
       error: "server_error",
