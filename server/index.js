@@ -1916,6 +1916,7 @@ const sellerRoutes = require("./routes/sellerRoutes");
 const kycRoutes = require("./routes/kycRoutes");
 const activityRoutes = require("./routes/activityRoutes");
 const userAdminRoutes = require("./routes/userAdminRoutes");
+const walletRoutes = require("./routes/walletRoutes")
 const app = express();
 // app.use(cors({
 //   origin: "http://localhost:5173",
@@ -2423,6 +2424,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/seller", sellerRoutes);
 app.use("/api/kyc", kycRoutes);
 app.use("/api/activity", activityRoutes);
+app.use("/api/wallet", walletRoutes);
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "sample.html"));

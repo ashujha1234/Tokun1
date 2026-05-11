@@ -37,6 +37,7 @@ import BlogPage from "@/pages/BlogPage";
 import ScrollToTop from "@/components/ScrollToTop";
 import Wallet from "@/pages/Wallet";
 import WithdrawFunds from "@/pages/WithdrawFunds";
+import AddFunds from "@/pages/AddFunds";
 import AdminForgotPassword from "./pages/AdminForgotPassword";
 const queryClient = new QueryClient();
 
@@ -115,6 +116,14 @@ export default function App() {
   element={
     <RequireAuth>
       <Wallet />
+    </RequireAuth>
+  }
+/>
+<Route
+  path="/add-funds"
+  element={
+    <RequireAuth>
+      <AddFunds />
     </RequireAuth>
   }
 />
