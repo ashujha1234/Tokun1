@@ -10,10 +10,30 @@ const WalletTopupSchema = new mongoose.Schema(
       index: true,
     },
 
+    // Wallet me jitna credit hoga
     amount: {
       type: Number,
       required: true,
       min: 1,
+    },
+
+    // Platform/service fee
+    serviceFee: {
+      type: Number,
+      default: 0,
+    },
+
+    // Razorpay se user se jitna charge hoga
+    debitAmount: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+
+    selectedMethod: {
+      type: String,
+      enum: ["upi", "card", "netbanking"],
+      default: "upi",
     },
 
     currency: {
@@ -43,7 +63,6 @@ const WalletTopupSchema = new mongoose.Schema(
 
     method: {
       type: String,
-      enum: ["card", "upi", "netbanking", "wallet", "unknown"],
       default: "unknown",
     },
   },
