@@ -1021,6 +1021,84 @@ router.get("/balance/:userId", async (req, res) => {
  *   "bankAccountId": "..."
  * }
  */
+
+
+
+
+// ── Yeh block walletRoutes.js mein paste karo ──
+// withdraw/request route ke UPAR lagao
+
+/**
+ * POST /api/wallet/add-fund/bank-transfer
+ * Jab user Card (saved bank account) se add fund kare
+ */
+router.post("/add-fund/bank-transfer", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const amount = Number(req.body.amount);
+    const { bankAccountId } = req.body;
+
+    if (!amount || Number.isNaN(amount) || amount < 100) {
+      return res.status(400).json({
+        success: false,
+        error: "invalid_amount",
+        message: "Minimum amount is ₹100",
+      });
+    }
+
+    if (!bankAccountId || !mongoose.Types.ObjectId.isValid(bankAccountId)) {
+      return res.status(400).json({
+        success: false,
+        error: "invalid_bank_account",
+      });
+    }
+
+    const bankAccount = await BankAccount.findOne({ _id: bankAccountId, userId });
+    if (!bankAccount) {
+      return res.status(404).json({
+        success: false,
+        error: "bank_account_not_found",
+      });
+    }
+
+    // Pending topup record banao
+    const topup = await WalletTopup.create({
+      userId,
+      amount,
+      serviceFee: 0,
+      debitAmount: amount,
+      selectedMethod: "bank_transfer",
+      currency: "INR",
+      razorpayOrderId: null,
+      status: "pending_verification",
+      bankAccountId: bankAccount._id,
+    });
+
+    console.log("BANK TRANSFER REQUEST:", {
+      userId: String(userId),
+      amount,
+      bank: `${bankAccount.bankName} ••••${String(bankAccount.accountNumber).slice(-4)}`,
+      topupId: topup._id,
+    });
+
+    return res.json({
+      success: true,
+      message: "bank_transfer_request_submitted",
+      topupId: topup._id,
+    });
+  } catch (err) {
+    console.error("add-fund/bank-transfer error:", err);
+    return res.status(500).json({
+      success: false,
+      error: "server_error",
+      message: err.message,
+    });
+  }
+});
+
+
+
+
 router.post("/withdraw/request", requireAuth, async (req, res) => {
   try {
     const userId = req.user._id;
