@@ -1075,4 +1075,233 @@ router.get("/balance/:userId", async (req, res) => {
   }
 });
 
+
+/**
+ * ══════════════════════════════════════════════════════
+ * ADMIN ROUTES — Bank Transfer & Withdrawal Approval
+ * Production mein: requireAuth + isAdmin middleware lagao
+ * ══════════════════════════════════════════════════════
+ */
+
+/**
+ * GET /api/wallet/admin/pending-bank-transfers
+ * Saare pending bank transfer transactions
+ */
+router.get("/admin/pending-bank-transfers", requireAuth, async (req, res) => {
+  try {
+    const wallets = await Wallet.find({
+      transactions: {
+        $elemMatch: { "meta.source": "bank_transfer", status: "Pending" }
+      }
+    }).populate("userId", "name email phone");
+
+    const pendingTransfers = [];
+    wallets.forEach((wallet) => {
+      wallet.transactions.forEach((txn) => {
+        if (txn.meta && txn.meta.source === "bank_transfer" && txn.status === "Pending") {
+          pendingTransfers.push({
+            txnId:        String(txn._id),
+            walletId:     String(wallet._id),
+            userId:       wallet.userId,
+            amount:       txn.amount,
+            description:  txn.description,
+            bankAccountId: txn.meta.bankAccountId,
+            createdAt:    txn.createdAt,
+            status:       txn.status,
+          });
+        }
+      });
+    });
+
+    return res.json({ success: true, count: pendingTransfers.length, pendingTransfers });
+  } catch (err) {
+    console.error("admin/pending-bank-transfers error:", err);
+    return res.status(500).json({ success: false, error: "server_error", message: err.message });
+  }
+});
+
+/**
+ * POST /api/wallet/admin/approve-bank-transfer
+ * Bank transfer approve → balance credit
+ * Body: { walletId, txnId }
+ */
+router.post("/admin/approve-bank-transfer", requireAuth, async (req, res) => {
+  try {
+    const { walletId, txnId } = req.body;
+    if (!walletId || !txnId) {
+      return res.status(400).json({ success: false, error: "walletId and txnId required" });
+    }
+
+    const wallet = await Wallet.findById(walletId).populate("userId", "name email");
+    if (!wallet) return res.status(404).json({ success: false, error: "wallet_not_found" });
+
+    const txn = wallet.transactions.id(txnId);
+    if (!txn) return res.status(404).json({ success: false, error: "transaction_not_found" });
+    if (txn.status !== "Pending") {
+      return res.status(400).json({ success: false, error: "transaction_not_pending", currentStatus: txn.status });
+    }
+    if (!txn.meta || txn.meta.source !== "bank_transfer") {
+      return res.status(400).json({ success: false, error: "not_a_bank_transfer" });
+    }
+
+    txn.status = "Completed";
+    wallet.availableBalance += Number(txn.amount || 0);
+    await wallet.save();
+
+    console.log("BANK TRANSFER APPROVED:", { userId: wallet.userId && wallet.userId._id, amount: txn.amount, txnId });
+
+    return res.json({
+      success: true,
+      message: "bank_transfer_approved",
+      userId: wallet.userId && wallet.userId._id,
+      amount: txn.amount,
+      newBalance: wallet.availableBalance,
+    });
+  } catch (err) {
+    console.error("admin/approve-bank-transfer error:", err);
+    return res.status(500).json({ success: false, error: "server_error", message: err.message });
+  }
+});
+
+/**
+ * POST /api/wallet/admin/reject-bank-transfer
+ * Bank transfer reject karo
+ * Body: { walletId, txnId, reason }
+ */
+router.post("/admin/reject-bank-transfer", requireAuth, async (req, res) => {
+  try {
+    const { walletId, txnId, reason } = req.body;
+    if (!walletId || !txnId) {
+      return res.status(400).json({ success: false, error: "walletId and txnId required" });
+    }
+
+    const wallet = await Wallet.findById(walletId);
+    if (!wallet) return res.status(404).json({ success: false, error: "wallet_not_found" });
+
+    const txn = wallet.transactions.id(txnId);
+    if (!txn) return res.status(404).json({ success: false, error: "transaction_not_found" });
+    if (txn.status !== "Pending") {
+      return res.status(400).json({ success: false, error: "transaction_not_pending", currentStatus: txn.status });
+    }
+
+    txn.status = "Failed";
+    txn.description += reason ? " — Rejected: " + reason : " — Rejected by admin";
+    await wallet.save();
+
+    return res.json({ success: true, message: "bank_transfer_rejected" });
+  } catch (err) {
+    console.error("admin/reject-bank-transfer error:", err);
+    return res.status(500).json({ success: false, error: "server_error", message: err.message });
+  }
+});
+
+/**
+ * GET /api/wallet/admin/pending-withdrawals
+ * Saare pending withdrawal requests
+ */
+router.get("/admin/pending-withdrawals", requireAuth, async (req, res) => {
+  try {
+    const withdrawals = await WalletWithdrawal.find({ status: "Pending" })
+      .sort({ createdAt: -1 })
+      .populate("userId", "name email phone")
+      .populate("bankAccountId", "bankName accountNumber ifscCode");
+
+    return res.json({ success: true, count: withdrawals.length, withdrawals });
+  } catch (err) {
+    console.error("admin/pending-withdrawals error:", err);
+    return res.status(500).json({ success: false, error: "server_error", message: err.message });
+  }
+});
+
+/**
+ * POST /api/wallet/admin/approve-withdrawal
+ * Withdrawal approve → Completed
+ * Body: { withdrawalId, utrNumber }
+ */
+router.post("/admin/approve-withdrawal", requireAuth, async (req, res) => {
+  try {
+    const { withdrawalId, utrNumber } = req.body;
+    if (!withdrawalId) return res.status(400).json({ success: false, error: "withdrawalId required" });
+
+    const withdrawal = await WalletWithdrawal.findById(withdrawalId);
+    if (!withdrawal) return res.status(404).json({ success: false, error: "withdrawal_not_found" });
+    if (withdrawal.status !== "Pending") {
+      return res.status(400).json({ success: false, error: "not_pending", currentStatus: withdrawal.status });
+    }
+
+    withdrawal.status     = "Completed";
+    withdrawal.utrNumber  = utrNumber || null;
+    withdrawal.processedAt = new Date();
+    await withdrawal.save();
+
+    // Wallet transaction status update
+    const wallet = await getOrCreateWallet(withdrawal.userId);
+    const txn = wallet.transactions.find(
+      (t) => t.meta && t.meta.withdrawalId && t.meta.withdrawalId.toString() === withdrawalId.toString()
+    );
+    if (txn) { txn.status = "Completed"; await wallet.save(); }
+
+    console.log("WITHDRAWAL APPROVED:", { withdrawalId, amount: withdrawal.amount, utr: utrNumber });
+    return res.json({ success: true, message: "withdrawal_approved", withdrawal });
+  } catch (err) {
+    console.error("admin/approve-withdrawal error:", err);
+    return res.status(500).json({ success: false, error: "server_error", message: err.message });
+  }
+});
+
+/**
+ * POST /api/wallet/admin/reject-withdrawal
+ * Withdrawal reject → balance refund
+ * Body: { withdrawalId, reason }
+ */
+router.post("/admin/reject-withdrawal", requireAuth, async (req, res) => {
+  try {
+    const { withdrawalId, reason } = req.body;
+    if (!withdrawalId) return res.status(400).json({ success: false, error: "withdrawalId required" });
+
+    const withdrawal = await WalletWithdrawal.findById(withdrawalId);
+    if (!withdrawal) return res.status(404).json({ success: false, error: "withdrawal_not_found" });
+    if (withdrawal.status !== "Pending") {
+      return res.status(400).json({ success: false, error: "not_pending", currentStatus: withdrawal.status });
+    }
+
+    withdrawal.status = "Failed";
+    withdrawal.note  += reason ? " — Rejected: " + reason : " — Rejected by admin";
+    await withdrawal.save();
+
+    const wallet = await getOrCreateWallet(withdrawal.userId);
+    wallet.availableBalance += Number(withdrawal.amount || 0);
+
+    const txn = wallet.transactions.find(
+      (t) => t.meta && t.meta.withdrawalId && t.meta.withdrawalId.toString() === withdrawalId.toString()
+    );
+    if (txn) {
+      txn.status = "Failed";
+      txn.description += reason ? " — Rejected: " + reason : " — Rejected";
+    }
+
+    wallet.transactions.unshift({
+      type:        "credit",
+      status:      "Completed",
+      amount:      withdrawal.amount,
+      description: "Withdrawal refunded — " + (reason || "Rejected by admin"),
+      createdAt:   new Date(),
+      meta: { source: "withdrawal_refund", withdrawalId: withdrawal._id },
+    });
+
+    await wallet.save();
+
+    console.log("WITHDRAWAL REJECTED & REFUNDED:", { withdrawalId, amount: withdrawal.amount });
+    return res.json({
+      success: true,
+      message: "withdrawal_rejected_and_refunded",
+      refundedAmount: withdrawal.amount,
+      newBalance: wallet.availableBalance,
+    });
+  } catch (err) {
+    console.error("admin/reject-withdrawal error:", err);
+    return res.status(500).json({ success: false, error: "server_error", message: err.message });
+  }
+});
+
 module.exports = router;

@@ -2413,7 +2413,7 @@
 
 // export default AddFunds;
 
-// src/pages/AddFunds.tsx
+/// src/pages/AddFunds.tsx
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
@@ -2731,24 +2731,12 @@ const AddFunds = () => {
         },
         theme: { color: "#1A73E8" },
 
-        // ── FIX: Razorpay config object se method restrict karo ──
-        // `method` object SDK v1 mein kaam nahi karta agar `config` nahi diya
-        config: {
-          display: {
-            blocks: {
-              preferred: {
-                name:       selectedMethod === "upi" ? "Pay via UPI" : "Pay via Net Banking",
-                instruments: selectedMethod === "upi"
-                  ? [{ method: "upi" }]
-                  : [{ method: "netbanking" }],
-              },
-            },
-            sequence: ["block.preferred"],
-            preferences: {
-              show_default_blocks: false,   // sirf selected method dikhao
-            },
-          },
-        },
+        // ── Razorpay method filter (test + production dono mein kaam karta hai) ──
+        // show_default_blocks:false production-only feature hai, isliye nahi use karte.
+        // Yeh approach test aur live dono mein safe hai.
+        method: selectedMethod === "upi"
+          ? { upi: true,  card: false, netbanking: false, wallet: false, emi: false, paylater: false, cardless_emi: false }
+          : { upi: false, card: false, netbanking: true,  wallet: false, emi: false, paylater: false, cardless_emi: false },
 
         handler: async (response: any) => {
           try {
