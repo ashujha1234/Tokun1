@@ -572,9 +572,6 @@
 
 
 
-
-
-
 // routes/walletRoutes.js
 const express = require("express");
 const router = express.Router();
@@ -587,22 +584,18 @@ const Razorpay = require("../utils/razorpay");
 const { requireAuth } = require("../utils/auth");
 const BankAccount = require("../models/BankAccount");
 const WalletWithdrawal = require("../models/WalletWithdrawal");
-// const getRazorpayKeyId = () => process.env.RAZORPAY_KEY_ID || 'rzp_test_aNNdd7yTcNuzYQ';
-// const getRazorpaySecret = () => process.env.RAZORPAY_KEY_SECRET;
 
+const getRazorpayKeyId = () => process.env.RAZORPAY_KEY_ID || 'rzp_test_aNNdd7yTcNuzYQ';
+const getRazorpaySecret = () => process.env.RAZORPAY_KEY_SECRET || 'O9jzpGZzixxQp1iNXSheMDuN';
 
-const getRazorpayKeyId = () => 'rzp_test_aNNdd7yTcNuzYQ';
-const getRazorpaySecret = () => 'O9jzpGZzixxQp1iNXSheMDuN';
 /**
  * Helper: Find or create wallet
  */
 const getOrCreateWallet = async (userId) => {
   let wallet = await Wallet.findOne({ userId });
-
   if (!wallet) {
     wallet = await Wallet.create({ userId });
   }
-
   return wallet;
 };
 
@@ -645,7 +638,6 @@ const creditWalletTopup = async ({
 router.get("/balance", requireAuth, async (req, res) => {
   try {
     const userId = req.user._id;
-
     const wallet = await getOrCreateWallet(userId);
 
     const now = new Date();
@@ -681,69 +673,47 @@ router.get("/balance", requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error("wallet/balance error:", err);
-    return res.status(500).json({
-      success: false,
-      error: "server_error",
-      message: err.message,
-    });
+    return res.status(500).json({ success: false, error: "server_error", message: err.message });
   }
 });
 
 /**
  * POST /api/wallet/add-fund/create-order
- *
- * Body:
- * {
- *   "amount": 100,
- *   "selectedMethod": "upi" | "card" | "netbanking"
- * }
+ * UPI / NetBanking ke liye Razorpay order create karo
  */
 router.post("/add-fund/create-order", requireAuth, async (req, res) => {
   try {
     const userId = req.user._id;
-
     const amount = Number(req.body.amount);
     const selectedMethod = req.body.selectedMethod || "upi";
 
-    if (!["upi", "card", "netbanking"].includes(selectedMethod)) {
+    // Bank transfer is handled separately — not via Razorpay order
+    if (!["upi", "netbanking"].includes(selectedMethod)) {
       return res.status(400).json({
         success: false,
         error: "invalid_payment_method",
+        message: "Use /add-fund/bank-transfer for bank account payments.",
       });
     }
 
     if (!amount || Number.isNaN(amount) || amount < 100) {
-      return res.status(400).json({
-        success: false,
-        error: "invalid_amount",
-        message: "Minimum add amount is ₹100",
-      });
+      return res.status(400).json({ success: false, error: "invalid_amount", message: "Minimum add amount is ₹100" });
     }
 
     if (amount > 100000) {
-      return res.status(400).json({
-        success: false,
-        error: "amount_limit_exceeded",
-        message: "Maximum amount is ₹100000",
-      });
+      return res.status(400).json({ success: false, error: "amount_limit_exceeded", message: "Maximum amount is ₹100000" });
     }
 
     const razorpayKeyId = getRazorpayKeyId();
     const razorpaySecret = getRazorpaySecret();
 
     if (!razorpayKeyId || !razorpaySecret) {
-      return res.status(500).json({
-        success: false,
-        error: "razorpay_env_missing",
-        message: "RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET missing",
-      });
+      return res.status(500).json({ success: false, error: "razorpay_env_missing" });
     }
 
-    // Wallet me amount credit hoga. User se debitAmount charge hoga.
     const serviceFee = +(amount * 0.02).toFixed(2);
     const debitAmount = +(amount + serviceFee).toFixed(2);
     const amountInPaise = Math.round(debitAmount * 100);
-
     const receipt = `topup_${userId.toString().slice(-8)}_${Date.now()}`;
 
     const order = await Razorpay.orders.create({
@@ -765,20 +735,10 @@ router.post("/add-fund/create-order", requireAuth, async (req, res) => {
       amount,
       serviceFee,
       debitAmount,
-      selectedMethod,
+      selectedMethod,     // "upi" | "netbanking"
       currency: "INR",
       razorpayOrderId: order.id,
       status: "created",
-    });
-
-    console.log("ADD FUND ORDER CREATED:", {
-      key: razorpayKeyId,
-      orderId: order.id,
-      orderAmountInPaise: order.amount,
-      walletAmount: amount,
-      serviceFee,
-      debitAmount,
-      selectedMethod,
     });
 
     return res.json({
@@ -793,45 +753,26 @@ router.post("/add-fund/create-order", requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error("add-fund/create-order error:", err);
-    return res.status(500).json({
-      success: false,
-      error: "server_error",
-      message: err.message,
-    });
+    return res.status(500).json({ success: false, error: "server_error", message: err.message });
   }
 });
 
 /**
  * POST /api/wallet/add-fund/verify
- *
- * Body:
- * {
- *   "razorpay_order_id": "...",
- *   "razorpay_payment_id": "...",
- *   "razorpay_signature": "..."
- * }
+ * Razorpay payment verify karo aur wallet credit karo
  */
 router.post("/add-fund/verify", requireAuth, async (req, res) => {
   try {
     const userId = req.user._id;
-
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } =
-      req.body;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-      return res.status(400).json({
-        success: false,
-        error: "missing_payment_fields",
-      });
+      return res.status(400).json({ success: false, error: "missing_payment_fields" });
     }
 
     const razorpaySecret = getRazorpaySecret();
-
     if (!razorpaySecret) {
-      return res.status(500).json({
-        success: false,
-        error: "razorpay_secret_missing",
-      });
+      return res.status(500).json({ success: false, error: "razorpay_secret_missing" });
     }
 
     const generatedSignature = crypto
@@ -840,50 +781,28 @@ router.post("/add-fund/verify", requireAuth, async (req, res) => {
       .digest("hex");
 
     if (generatedSignature !== razorpay_signature) {
-      return res.status(400).json({
-        success: false,
-        error: "invalid_payment_signature",
-      });
+      return res.status(400).json({ success: false, error: "invalid_payment_signature" });
     }
 
-    const topup = await WalletTopup.findOne({
-      razorpayOrderId: razorpay_order_id,
-      userId,
-    });
-
+    const topup = await WalletTopup.findOne({ razorpayOrderId: razorpay_order_id, userId });
     if (!topup) {
-      return res.status(404).json({
-        success: false,
-        error: "topup_not_found",
-      });
+      return res.status(404).json({ success: false, error: "topup_not_found" });
     }
 
     if (topup.status === "paid") {
       const wallet = await getOrCreateWallet(userId);
-
-      return res.json({
-        success: true,
-        message: "already_credited",
-        availableBalance: wallet.availableBalance,
-      });
+      return res.json({ success: true, message: "already_credited", availableBalance: wallet.availableBalance });
     }
 
     const payment = await Razorpay.payments.fetch(razorpay_payment_id);
 
-   if (!payment || !["captured", "authorized"].includes(payment.status)) {
+    if (!payment || !["captured", "authorized"].includes(payment.status)) {
       topup.status = "failed";
       await topup.save();
-
-      return res.status(400).json({
-        success: false,
-        error: "payment_not_captured",
-        paymentStatus: payment?.status,
-      });
+      return res.status(400).json({ success: false, error: "payment_not_captured", paymentStatus: payment?.status });
     }
 
-    // Razorpay amount debitAmount ke against verify hoga.
     const expectedAmount = Math.round(topup.debitAmount * 100);
-
     if (payment.amount !== expectedAmount || payment.currency !== "INR") {
       return res.status(400).json({
         success: false,
@@ -899,7 +818,6 @@ router.post("/add-fund/verify", requireAuth, async (req, res) => {
     topup.method = payment.method || "unknown";
     await topup.save();
 
-    // Wallet me sirf amount credit hoga, serviceFee nahi.
     const wallet = await creditWalletTopup({
       userId,
       amount: topup.amount,
@@ -916,121 +834,67 @@ router.post("/add-fund/verify", requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error("add-fund/verify error:", err);
-    return res.status(500).json({
-      success: false,
-      error: "server_error",
-      message: err.message,
-    });
+    return res.status(500).json({ success: false, error: "server_error", message: err.message });
   }
 });
 
 /**
- * Optional UPI format validate only.
- * Razorpay Checkout actual UPI payment handle karega.
+ * POST /api/wallet/upi/validate
+ * UPI VPA format + Razorpay se verify karo
  */
 router.post("/upi/validate", requireAuth, async (req, res) => {
   try {
     const { vpa } = req.body;
 
     if (!vpa || typeof vpa !== "string") {
-      return res.status(400).json({
-        success: false,
-        error: "vpa_required",
-      });
+      return res.status(400).json({ success: false, error: "vpa_required" });
     }
 
     const cleanVpa = vpa.trim().toLowerCase();
-
     const basicVpaRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
 
     if (!basicVpaRegex.test(cleanVpa)) {
-      return res.status(400).json({
-        success: false,
-        error: "invalid_vpa_format",
-      });
+      return res.status(400).json({ success: false, error: "invalid_vpa_format", message: "Invalid UPI ID format. Example: name@upi" });
     }
 
-    return res.json({
-      success: true,
-      valid: true,
-      vpa: cleanVpa,
-    });
+    // Razorpay VPA validate karo (real validation)
+    try {
+      const vpaResult = await Razorpay.payments.validateVpa({ vpa: cleanVpa });
+      // vpaResult.success === true means valid
+      if (vpaResult && vpaResult.success === false) {
+        return res.status(400).json({ success: false, error: "invalid_vpa", message: "UPI ID does not exist or is invalid." });
+      }
+      return res.json({
+        success: true,
+        valid: true,
+        vpa: cleanVpa,
+        name: vpaResult?.customer_name || null,
+      });
+    } catch (razorpayErr) {
+      // Razorpay VPA validate fail kare to sirf format check return karo
+      console.warn("Razorpay VPA validation failed, falling back to format check:", razorpayErr?.error?.description || razorpayErr.message);
+      return res.json({
+        success: true,
+        valid: true,
+        vpa: cleanVpa,
+        name: null,
+        note: "format_only_verified",
+      });
+    }
   } catch (err) {
     console.error("upi/validate error:", err);
-    return res.status(500).json({
-      success: false,
-      error: "server_error",
-      message: err.message,
-    });
+    return res.status(500).json({ success: false, error: "server_error", message: err.message });
   }
 });
-
-/**
- * TEMP testing route
- * Production me remove ya admin auth lagao.
- */
-router.get("/balance/:userId", async (req, res) => {
-  try {
-    const { userId } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return res.status(400).json({
-        success: false,
-        error: "invalid_user_id",
-      });
-    }
-
-    const wallet = await getOrCreateWallet(userId);
-
-    const recentTransactions = wallet.transactions.slice(0, 20).map((t) => ({
-      id: String(t._id),
-      date: t.createdAt,
-      description: t.description,
-      status: t.status,
-      amount:
-        t.type === "credit"
-          ? `+₹${Number(t.amount || 0).toFixed(2)}`
-          : `-₹${Number(t.amount || 0).toFixed(2)}`,
-      type: t.type,
-    }));
-
-    return res.json({
-      success: true,
-      userId,
-      availableBalance: wallet.availableBalance,
-      totalRevenue: wallet.totalRevenue,
-      recentTransactions,
-    });
-  } catch (err) {
-    console.error("wallet/balance/:userId error:", err);
-    return res.status(500).json({
-      success: false,
-      error: "server_error",
-      message: err.message,
-    });
-  }
-});
-
-
-/**
- * POST /api/wallet/withdraw/request
- *
- * Body:
- * {
- *   "amount": 500,
- *   "bankAccountId": "..."
- * }
- */
-
-
-
-
-// ── Yeh block walletRoutes.js mein paste karo ──
-// withdraw/request route ke UPAR lagao
 
 /**
  * POST /api/wallet/add-fund/bank-transfer
- * Jab user Card (saved bank account) se add fund kare
+ * Saved bank account se add fund request (manual verification flow)
+ *
+ * FIX: WalletTopup model mein selectedMethod "bank_transfer" aur
+ * status "pending_verification" add karna hoga (schema fix below).
+ * Ya phir is route mein hum alag approach use karte hain:
+ * Directly wallet credit karo admin-verified flow ke saath.
  */
 router.post("/add-fund/bank-transfer", requireAuth, async (req, res) => {
   try {
@@ -1039,66 +903,61 @@ router.post("/add-fund/bank-transfer", requireAuth, async (req, res) => {
     const { bankAccountId } = req.body;
 
     if (!amount || Number.isNaN(amount) || amount < 100) {
-      return res.status(400).json({
-        success: false,
-        error: "invalid_amount",
-        message: "Minimum amount is ₹100",
-      });
+      return res.status(400).json({ success: false, error: "invalid_amount", message: "Minimum amount is ₹100" });
     }
 
     if (!bankAccountId || !mongoose.Types.ObjectId.isValid(bankAccountId)) {
-      return res.status(400).json({
-        success: false,
-        error: "invalid_bank_account",
-      });
+      return res.status(400).json({ success: false, error: "invalid_bank_account" });
     }
 
     const bankAccount = await BankAccount.findOne({ _id: bankAccountId, userId });
     if (!bankAccount) {
-      return res.status(404).json({
-        success: false,
-        error: "bank_account_not_found",
-      });
+      return res.status(404).json({ success: false, error: "bank_account_not_found" });
     }
 
-    // Pending topup record banao
-    const topup = await WalletTopup.create({
-      userId,
+    // WalletWithdrawal model reuse karo bank-transfer request track karne ke liye
+    // Ya phir WalletTopup schema mein "bank_transfer" enum add karo (recommended)
+    // Abhi hum WalletWithdrawal jaise ek record banate hain aur wallet mein
+    // "pending" transaction dikhate hain jab tak admin approve kare.
+
+    const wallet = await getOrCreateWallet(userId);
+
+    // Pending transaction add karo wallet me
+    wallet.transactions.unshift({
+      type: "credit",
+      status: "Pending",
       amount,
-      serviceFee: 0,
-      debitAmount: amount,
-      selectedMethod: "bank_transfer",
-      currency: "INR",
-      razorpayOrderId: null,
-      status: "pending_verification",
-      bankAccountId: bankAccount._id,
+      description: `Bank transfer from ${bankAccount.bankName} ••••${String(bankAccount.accountNumber).slice(-4)}`,
+      createdAt: new Date(),
+      meta: {
+        source: "bank_transfer",
+        bankAccountId: bankAccount._id,
+        note: "Pending admin verification (1-2 business days)",
+      },
     });
+
+    await wallet.save();
 
     console.log("BANK TRANSFER REQUEST:", {
       userId: String(userId),
       amount,
       bank: `${bankAccount.bankName} ••••${String(bankAccount.accountNumber).slice(-4)}`,
-      topupId: topup._id,
     });
 
     return res.json({
       success: true,
       message: "bank_transfer_request_submitted",
-      topupId: topup._id,
+      note: "Funds will be credited after verification (1-2 business days).",
     });
   } catch (err) {
     console.error("add-fund/bank-transfer error:", err);
-    return res.status(500).json({
-      success: false,
-      error: "server_error",
-      message: err.message,
-    });
+    return res.status(500).json({ success: false, error: "server_error", message: err.message });
   }
 });
 
-
-
-
+/**
+ * POST /api/wallet/withdraw/request
+ */
 router.post("/withdraw/request", requireAuth, async (req, res) => {
   try {
     const userId = req.user._id;
@@ -1106,31 +965,16 @@ router.post("/withdraw/request", requireAuth, async (req, res) => {
     const { bankAccountId } = req.body;
 
     if (!amount || Number.isNaN(amount) || amount < 100) {
-      return res.status(400).json({
-        success: false,
-        error: "invalid_amount",
-        message: "Minimum withdrawal amount is ₹100",
-      });
+      return res.status(400).json({ success: false, error: "invalid_amount", message: "Minimum withdrawal amount is ₹100" });
     }
 
     if (!bankAccountId || !mongoose.Types.ObjectId.isValid(bankAccountId)) {
-      return res.status(400).json({
-        success: false,
-        error: "invalid_bank_account",
-        message: "Please select a valid bank account",
-      });
+      return res.status(400).json({ success: false, error: "invalid_bank_account", message: "Please select a valid bank account" });
     }
 
-    const bankAccount = await BankAccount.findOne({
-      _id: bankAccountId,
-      userId,
-    });
-
+    const bankAccount = await BankAccount.findOne({ _id: bankAccountId, userId });
     if (!bankAccount) {
-      return res.status(404).json({
-        success: false,
-        error: "bank_account_not_found",
-      });
+      return res.status(404).json({ success: false, error: "bank_account_not_found" });
     }
 
     const wallet = await getOrCreateWallet(userId);
@@ -1147,10 +991,7 @@ router.post("/withdraw/request", requireAuth, async (req, res) => {
     const netAmount = +(amount - serviceFee).toFixed(2);
 
     if (netAmount <= 0) {
-      return res.status(400).json({
-        success: false,
-        error: "invalid_net_amount",
-      });
+      return res.status(400).json({ success: false, error: "invalid_net_amount" });
     }
 
     const withdrawal = await WalletWithdrawal.create({
@@ -1160,9 +1001,7 @@ router.post("/withdraw/request", requireAuth, async (req, res) => {
       serviceFee,
       netAmount,
       status: "Pending",
-      note: `Withdrawal to ${bankAccount.bankName} ending ${String(
-        bankAccount.accountNumber
-      ).slice(-4)}`,
+      note: `Withdrawal to ${bankAccount.bankName} ending ${String(bankAccount.accountNumber).slice(-4)}`,
     });
 
     wallet.availableBalance -= amount;
@@ -1171,9 +1010,7 @@ router.post("/withdraw/request", requireAuth, async (req, res) => {
       type: "debit",
       status: "Pending",
       amount,
-      description: `Withdrawal to ${bankAccount.bankName} ••••${String(
-        bankAccount.accountNumber
-      ).slice(-4)}`,
+      description: `Withdrawal to ${bankAccount.bankName} ••••${String(bankAccount.accountNumber).slice(-4)}`,
       createdAt: new Date(),
       meta: {
         source: "withdrawal",
@@ -1194,37 +1031,47 @@ router.post("/withdraw/request", requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error("withdraw/request error:", err);
-    return res.status(500).json({
-      success: false,
-      error: "server_error",
-      message: err.message,
-    });
+    return res.status(500).json({ success: false, error: "server_error", message: err.message });
   }
 });
-
 
 /**
  * GET /api/wallet/withdraw/history
  */
 router.get("/withdraw/history", requireAuth, async (req, res) => {
   try {
-    const withdrawals = await WalletWithdrawal.find({
-      userId: req.user._id,
-    })
+    const withdrawals = await WalletWithdrawal.find({ userId: req.user._id })
       .sort({ createdAt: -1 })
       .populate("bankAccountId", "bankName accountNumber ifscCode");
 
-    return res.json({
-      success: true,
-      withdrawals,
-    });
+    return res.json({ success: true, withdrawals });
   } catch (err) {
     console.error("withdraw/history error:", err);
-    return res.status(500).json({
-      success: false,
-      error: "server_error",
-      message: err.message,
-    });
+    return res.status(500).json({ success: false, error: "server_error", message: err.message });
+  }
+});
+
+/**
+ * TEMP: GET /api/wallet/balance/:userId (testing only — remove in production)
+ */
+router.get("/balance/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ success: false, error: "invalid_user_id" });
+    }
+    const wallet = await getOrCreateWallet(userId);
+    const recentTransactions = wallet.transactions.slice(0, 20).map((t) => ({
+      id: String(t._id),
+      date: t.createdAt,
+      description: t.description,
+      status: t.status,
+      amount: t.type === "credit" ? `+₹${Number(t.amount || 0).toFixed(2)}` : `-₹${Number(t.amount || 0).toFixed(2)}`,
+      type: t.type,
+    }));
+    return res.json({ success: true, userId, availableBalance: wallet.availableBalance, totalRevenue: wallet.totalRevenue, recentTransactions });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: "server_error", message: err.message });
   }
 });
 

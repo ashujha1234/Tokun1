@@ -2413,14 +2413,12 @@
 
 // export default AddFunds;
 
-
-
 // src/pages/AddFunds.tsx
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import { Info, Landmark } from "lucide-react";
+import { Info, Landmark, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 declare global {
@@ -2429,6 +2427,7 @@ declare global {
 
 type PaymentMethod = "upi" | "netbanking" | "card";
 type WalletAccount = { id: string; name: string; last4: string; ifsc?: string; };
+type UpiStatus = "idle" | "verifying" | "valid" | "invalid";
 
 const AddFunds = () => {
   const navigate = useNavigate();
@@ -2437,34 +2436,36 @@ const AddFunds = () => {
   const API_BASE = (import.meta as any).env?.VITE_API_URL?.replace(/\/$/, "") || "";
   const fontBase = "Inter, system-ui, Arial, sans-serif";
 
-  const CREATE_ORDER_URL = `${API_BASE}/api/wallet/add-fund/create-order`;
+  const CREATE_ORDER_URL   = `${API_BASE}/api/wallet/add-fund/create-order`;
   const VERIFY_PAYMENT_URL = `${API_BASE}/api/wallet/add-fund/verify`;
   const WALLET_BALANCE_URL = `${API_BASE}/api/wallet/balance`;
-  const BANK_LIST_URL = `${API_BASE}/api/bankaccount`;
-  const BANK_TRANSFER_URL = `${API_BASE}/api/wallet/add-fund/bank-transfer`;
+  const BANK_LIST_URL      = `${API_BASE}/api/bankaccount`;
+  const BANK_TRANSFER_URL  = `${API_BASE}/api/wallet/add-fund/bank-transfer`;
+  const UPI_VALIDATE_URL   = `${API_BASE}/api/wallet/upi/validate`;
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("upi");
-  const [amount, setAmount] = useState("");
-  const [upiId, setUpiId] = useState("");
+  const [amount, setAmount]   = useState("");
+  const [upiId, setUpiId]     = useState("");
+
+  // UPI verification state
+  const [upiStatus, setUpiStatus]   = useState<UpiStatus>("idle");
+  const [upiError, setUpiError]     = useState("");
+  const [upiName, setUpiName]       = useState("");   // customer name from Razorpay
 
   const [availableBalance, setAvailableBalance] = useState(0);
-  const [totalEarning, setTotalEarning] = useState(0);
-  const [monthlyEarning, setMonthlyEarning] = useState(0);
-  const [walletLoading, setWalletLoading] = useState(false);
+  const [totalEarning, setTotalEarning]         = useState(0);
+  const [monthlyEarning, setMonthlyEarning]     = useState(0);
+  const [walletLoading, setWalletLoading]       = useState(false);
 
-  // Saved bank accounts
-  const [accounts, setAccounts] = useState<WalletAccount[]>([]);
+  const [accounts, setAccounts]               = useState<WalletAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
 
-  const [payLoading, setPayLoading] = useState(false);
-  const [paymentError, setPaymentError] = useState("");
+  const [payLoading, setPayLoading]         = useState(false);
+  const [paymentError, setPaymentError]     = useState("");
   const [paymentSuccess, setPaymentSuccess] = useState("");
 
   const userStorageId = user?._id || user?.id || user?.email || "guest";
-  const WALLET_ACCOUNTS_KEY = useMemo(
-    () => `tokun_wallet_accounts_${userStorageId}`,
-    [userStorageId]
-  );
+  const WALLET_ACCOUNTS_KEY = useMemo(() => `tokun_wallet_accounts_${userStorageId}`, [userStorageId]);
 
   const getAuthToken = () =>
     token ||
@@ -2480,10 +2481,7 @@ const AddFunds = () => {
     if (!authToken) return;
     try {
       setWalletLoading(true);
-      const res = await fetch(WALLET_BALANCE_URL, {
-        headers: { Authorization: `Bearer ${authToken}` },
-        credentials: "include",
-      });
+      const res  = await fetch(WALLET_BALANCE_URL, { headers: { Authorization: `Bearer ${authToken}` }, credentials: "include" });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.success) {
         setAvailableBalance(Number(data.availableBalance || 0));
@@ -2500,8 +2498,6 @@ const AddFunds = () => {
   // ── Saved bank accounts fetch ──
   const fetchBankAccounts = async () => {
     const authToken = getAuthToken();
-
-    // Pehle localStorage se load karo (fast)
     try {
       const raw = localStorage.getItem(WALLET_ACCOUNTS_KEY);
       if (raw) {
@@ -2514,18 +2510,13 @@ const AddFunds = () => {
     } catch {}
 
     if (!authToken) return;
-
     try {
-      const res = await fetch(BANK_LIST_URL, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${authToken}` },
-        credentials: "include",
-      });
+      const res  = await fetch(BANK_LIST_URL, { method: "GET", headers: { Authorization: `Bearer ${authToken}` }, credentials: "include" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !Array.isArray(data?.accounts)) return;
 
       const mapped: WalletAccount[] = data.accounts.map((ba: any) => ({
-        id: String(ba?._id || ""),
+        id:   String(ba?._id || ""),
         name: String(ba?.bankName || "Bank Account"),
         last4: String(ba?.accountNumber || "").slice(-4) || "0000",
         ifsc: String(ba?.ifscCode || "").toUpperCase(),
@@ -2543,8 +2534,18 @@ const AddFunds = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  const addAmount = Number(amount || 0);
-  const serviceFee = addAmount > 0 ? +(addAmount * 0.02).toFixed(2) : 0;
+  // Reset UPI status when UPI ID changes
+  useEffect(() => {
+    if (upiStatus !== "idle") {
+      setUpiStatus("idle");
+      setUpiError("");
+      setUpiName("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upiId]);
+
+  const addAmount   = Number(amount || 0);
+  const serviceFee  = addAmount > 0 ? +(addAmount * 0.02).toFixed(2) : 0;
   const debitAmount = addAmount > 0 ? +(addAmount + serviceFee).toFixed(2) : 0;
 
   const fmt = (n: number) => new Intl.NumberFormat("en-IN").format(n);
@@ -2567,16 +2568,59 @@ const AddFunds = () => {
   };
 
   const paymentMethods = [
-    { id: "upi" as PaymentMethod, title: "UPI", subtitle: "Instant", icon: "/icons/upi.svg" },
-    { id: "netbanking" as PaymentMethod, title: "Net Banking", subtitle: "2-3 mins", icon: "/icons/netbanking.svg" },
-    { id: "card" as PaymentMethod, title: "Card", subtitle: "Saved Accounts", icon: "/icons/addcard.svg" },
+    { id: "upi"        as PaymentMethod, title: "UPI",         subtitle: "Instant",         icon: "/icons/upi.svg" },
+    { id: "netbanking" as PaymentMethod, title: "Net Banking",  subtitle: "2-3 mins",        icon: "/icons/netbanking.svg" },
+    { id: "card"       as PaymentMethod, title: "Card",         subtitle: "Saved Accounts",  icon: "/icons/addcard.svg" },
   ];
   const quickAmounts = [100, 200, 500, 2000];
+
+  // ── UPI Verify Handler ──
+  const handleVerifyUpi = async () => {
+    if (!upiId.trim()) {
+      setUpiError("Please enter a UPI ID first.");
+      return;
+    }
+
+    const vpaRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
+    if (!vpaRegex.test(upiId.trim().toLowerCase())) {
+      setUpiStatus("invalid");
+      setUpiError("Invalid UPI ID format. Example: name@upi");
+      setUpiName("");
+      return;
+    }
+
+    try {
+      setUpiStatus("verifying");
+      setUpiError("");
+      setUpiName("");
+
+      const authToken = getAuthToken();
+      const res  = await fetch(UPI_VALIDATE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        credentials: "include",
+        body: JSON.stringify({ vpa: upiId.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data.success || data.error === "invalid_vpa") {
+        setUpiStatus("invalid");
+        setUpiError(data.message || "UPI ID is invalid or does not exist.");
+        return;
+      }
+
+      setUpiStatus("valid");
+      if (data.name) setUpiName(data.name);
+    } catch (err: any) {
+      setUpiStatus("invalid");
+      setUpiError("Could not verify UPI ID. Please try again.");
+    }
+  };
 
   // ── Create Razorpay order ──
   const createAddFundOrder = async () => {
     const authToken = getAuthToken();
-    const res = await fetch(CREATE_ORDER_URL, {
+    const res  = await fetch(CREATE_ORDER_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
       credentials: "include",
@@ -2590,7 +2634,7 @@ const AddFunds = () => {
   // ── Verify Razorpay payment ──
   const verifyAddFundPayment = async (razorpayResponse: any) => {
     const authToken = getAuthToken();
-    const res = await fetch(VERIFY_PAYMENT_URL, {
+    const res  = await fetch(VERIFY_PAYMENT_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
       credentials: "include",
@@ -2607,31 +2651,24 @@ const AddFunds = () => {
     setPaymentSuccess("");
 
     const authToken = getAuthToken();
-    if (!authToken) { setPaymentError("Please login first."); return; }
+    if (!authToken)              { setPaymentError("Please login first."); return; }
     if (!addAmount || Number.isNaN(addAmount)) { setPaymentError("Please enter amount."); return; }
-    if (addAmount < 100) { setPaymentError("Minimum add amount is ₹100."); return; }
-    if (addAmount > 100000) { setPaymentError("Maximum amount is ₹1,00,000 per transaction."); return; }
+    if (addAmount < 100)         { setPaymentError("Minimum add amount is ₹100."); return; }
+    if (addAmount > 100000)      { setPaymentError("Maximum amount is ₹1,00,000 per transaction."); return; }
 
-    // ── CARD flow: saved bank account se ──
+    // ── CARD flow: saved bank account ──
     if (selectedMethod === "card") {
       if (!selectedAccountId) {
         setPaymentError("Please select a saved bank account.");
         return;
       }
-
       try {
         setPayLoading(true);
-        const res = await fetch(BANK_TRANSFER_URL, {
+        const res  = await fetch(BANK_TRANSFER_URL, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${authToken}`,
-          },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
           credentials: "include",
-          body: JSON.stringify({
-            amount: addAmount,
-            bankAccountId: selectedAccountId,
-          }),
+          body: JSON.stringify({ amount: addAmount, bankAccountId: selectedAccountId }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.success) throw new Error(data.message || "Could not process request.");
@@ -2650,15 +2687,22 @@ const AddFunds = () => {
 
     // ── UPI / NetBanking flow: Razorpay ──
     if (!window.Razorpay) {
-      setPaymentError("Razorpay not loaded. Check index.html script tag.");
+      setPaymentError("Razorpay not loaded. Please check your internet connection.");
       return;
     }
 
-    // UPI ID validate karo agar enter kiya
+    // UPI: agar UPI ID enter kiya hai to verified hona chahiye
     if (selectedMethod === "upi" && upiId.trim()) {
-      const vpaRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
-      if (!vpaRegex.test(upiId.trim().toLowerCase())) {
-        setPaymentError("Invalid UPI ID. Example: yourname@upi");
+      if (upiStatus === "idle") {
+        setPaymentError("Please verify your UPI ID before proceeding.");
+        return;
+      }
+      if (upiStatus === "invalid") {
+        setPaymentError("Invalid UPI ID. Please enter a valid UPI ID.");
+        return;
+      }
+      if (upiStatus === "verifying") {
+        setPaymentError("UPI verification in progress. Please wait.");
         return;
       }
     }
@@ -2666,35 +2710,45 @@ const AddFunds = () => {
     try {
       setPayLoading(true);
       const orderData = await createAddFundOrder();
-      console.log("[AddFunds] order:", orderData);
 
       const options: any = {
-        key: orderData.key,
-        amount: orderData.order.amount,
-        currency: orderData.order.currency || "INR",
-        name: "Tokun",
+        key:         orderData.key,
+        amount:      orderData.order.amount,
+        currency:    orderData.order.currency || "INR",
+        name:        "Tokun",
         description: selectedMethod === "upi" ? "Add funds via UPI" : "Add funds via Net Banking",
-        order_id: orderData.order.id,
+        order_id:    orderData.order.id,
         prefill: {
-          name: user?.name || "",
-          email: user?.email || "",
-          contact: user?.phone || user?.mobile || "",
-          // UPI ID prefill karo agar user ne enter kiya
-          ...(selectedMethod === "upi" && upiId.trim()
-            ? { vpa: upiId.trim().toLowerCase() }
-            : {}),
+          name:    user?.name    || "",
+          email:   user?.email   || "",
+          contact: user?.phone   || user?.mobile || "",
+          ...(selectedMethod === "upi" && upiId.trim() ? { vpa: upiId.trim().toLowerCase() } : {}),
         },
         notes: {
-          purpose: "wallet_topup",
+          purpose:        "wallet_topup",
           selectedMethod,
-          walletAmount: String(addAmount),
+          walletAmount:   String(addAmount),
         },
         theme: { color: "#1A73E8" },
 
-        // ── Sirf selected method dikhao Razorpay popup mein ──
-        method: selectedMethod === "upi"
-          ? { upi: true, card: false, netbanking: false, wallet: false, emi: false }
-          : { upi: false, card: false, netbanking: true, wallet: false, emi: false },
+        // ── FIX: Razorpay config object se method restrict karo ──
+        // `method` object SDK v1 mein kaam nahi karta agar `config` nahi diya
+        config: {
+          display: {
+            blocks: {
+              preferred: {
+                name:       selectedMethod === "upi" ? "Pay via UPI" : "Pay via Net Banking",
+                instruments: selectedMethod === "upi"
+                  ? [{ method: "upi" }]
+                  : [{ method: "netbanking" }],
+              },
+            },
+            sequence: ["block.preferred"],
+            preferences: {
+              show_default_blocks: false,   // sirf selected method dikhao
+            },
+          },
+        },
 
         handler: async (response: any) => {
           try {
@@ -2714,11 +2768,8 @@ const AddFunds = () => {
 
       const razorpay = new window.Razorpay(options);
       razorpay.on("payment.failed", (response: any) => {
-        console.error("[AddFunds] payment failed:", response);
         setPaymentError(
-          response?.error?.description ||
-          response?.error?.reason ||
-          "Payment failed. Please try again."
+          response?.error?.description || response?.error?.reason || "Payment failed. Please try again."
         );
         setPayLoading(false);
       });
@@ -2730,6 +2781,9 @@ const AddFunds = () => {
       setPayLoading(false);
     }
   };
+
+  // UPI verify badge color
+  const upiStatusColor = upiStatus === "valid" ? "#4ade80" : upiStatus === "invalid" ? "#f87171" : "#71717A";
 
   return (
     <div className="dark relative min-h-screen bg-[#07080A] text-white overflow-x-hidden">
@@ -2807,9 +2861,9 @@ const AddFunds = () => {
                             onClick={() => { setSelectedMethod(method.id); setPaymentError(""); setPaymentSuccess(""); }}
                             className="flex h-[125px] flex-col items-center justify-center rounded-[10px] border text-center"
                             style={{
-                              background: active ? "rgba(23,23,26,0.72)" : "rgba(255,255,255,0.06)",
-                              borderColor: active ? "#FF14EF" : "rgba(255,255,255,0.08)",
-                              boxShadow: active ? "inset -1px 0 0 #1A73E8" : "none",
+                              background:   active ? "rgba(23,23,26,0.72)" : "rgba(255,255,255,0.06)",
+                              borderColor:  active ? "#FF14EF" : "rgba(255,255,255,0.08)",
+                              boxShadow:    active ? "inset -1px 0 0 #1A73E8" : "none",
                             }}>
                             <img src={method.icon} alt="" style={iconStyle} onError={(e) => { e.currentTarget.style.display = "none"; }} />
                             <p className="mt-5" style={{ fontFamily: fontBase, fontWeight: 700, fontSize: 14, color: "#FFFFFF" }}>{method.title}</p>
@@ -2853,21 +2907,76 @@ const AddFunds = () => {
                       </div>
                     </div>
 
-                    {/* ── UPI ── */}
+                    {/* ── UPI Section ── */}
                     {selectedMethod === "upi" && (
                       <div className="mt-7">
                         <label style={{ fontFamily: fontBase, fontWeight: 700, fontSize: 13, color: "#A1A1AA" }}>
-                          UPI ID <span style={{ color: "rgba(255,255,255,0.35)", fontWeight: 400 }}>(optional)</span>
+                          UPI ID{" "}
+                          <span style={{ color: "rgba(255,255,255,0.35)", fontWeight: 400 }}>(optional — enter to prefill)</span>
                         </label>
-                        <input
-                          value={upiId}
-                          onChange={(e) => { setUpiId(e.target.value); setPaymentError(""); }}
-                          placeholder="yourname@upi"
-                          className="mt-5 w-full px-8 outline-none placeholder:text-white/35"
-                          style={{ width: "min(546px, 100%)", height: 50, borderRadius: 16, background: "#30302E", border: "1px solid #FFFFFF1A", fontFamily: fontBase, fontWeight: 400, fontSize: 20, color: "#FFFFFF" }}
-                        />
+
+                        {/* UPI input + verify button */}
+                        <div className="mt-5 flex items-center gap-3" style={{ width: "min(546px, 100%)" }}>
+                          <div className="relative flex-1">
+                            <input
+                              value={upiId}
+                              onChange={(e) => { setUpiId(e.target.value); setPaymentError(""); }}
+                              placeholder="yourname@upi"
+                              className="w-full px-5 outline-none placeholder:text-white/35"
+                              style={{
+                                height: 50, borderRadius: 16,
+                                background: "#30302E",
+                                border: `1px solid ${upiStatus === "valid" ? "rgba(74,222,128,0.5)" : upiStatus === "invalid" ? "rgba(248,113,113,0.5)" : "#FFFFFF1A"}`,
+                                fontFamily: fontBase, fontWeight: 400, fontSize: 18, color: "#FFFFFF",
+                                paddingRight: upiStatus !== "idle" ? "40px" : "16px",
+                              }}
+                            />
+                            {/* Status icon inside input */}
+                            {upiStatus === "valid" && (
+                              <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5" style={{ color: "#4ade80" }} />
+                            )}
+                            {upiStatus === "invalid" && (
+                              <XCircle className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5" style={{ color: "#f87171" }} />
+                            )}
+                            {upiStatus === "verifying" && (
+                              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 animate-spin" style={{ color: "#71717A" }} />
+                            )}
+                          </div>
+
+                          {/* Verify Button */}
+                          <button
+                            type="button"
+                            onClick={handleVerifyUpi}
+                            disabled={!upiId.trim() || upiStatus === "verifying"}
+                            className="h-[50px] shrink-0 rounded-[12px] px-5 text-white disabled:opacity-40 transition-opacity"
+                            style={{
+                              background: upiStatus === "valid"
+                                ? "linear-gradient(270deg,#4ade80 0%,#22c55e 100%)"
+                                : "linear-gradient(270deg,#FF14EF 0%,#1A73E8 100%)",
+                              fontFamily: fontBase, fontWeight: 700, fontSize: 13,
+                            }}
+                          >
+                            {upiStatus === "verifying" ? "Verifying..." : upiStatus === "valid" ? "✓ Verified" : "Verify UPI"}
+                          </button>
+                        </div>
+
+                        {/* UPI status messages */}
+                        {upiStatus === "valid" && (
+                          <div className="mt-3 flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4" style={{ color: "#4ade80" }} />
+                            <span style={{ fontFamily: fontBase, fontWeight: 500, fontSize: 13, color: "#4ade80" }}>
+                              UPI ID verified{upiName ? ` — ${upiName}` : ""}
+                            </span>
+                          </div>
+                        )}
+                        {upiStatus === "invalid" && upiError && (
+                          <p className="mt-3" style={{ fontFamily: fontBase, fontWeight: 400, fontSize: 13, color: "#f87171" }}>
+                            {upiError}
+                          </p>
+                        )}
+
                         <p className="mt-3" style={{ fontFamily: fontBase, fontWeight: 400, fontSize: 12, color: "rgba(255,255,255,0.4)" }}>
-                          UPI ID chhod sakte ho — Razorpay checkout mein Google Pay, PhonePe, BHIM sab options milenge.
+                          UPI ID optional hai — Razorpay checkout mein Google Pay, PhonePe, BHIM sab options milenge.
                         </p>
                       </div>
                     )}
@@ -2911,9 +3020,9 @@ const AddFunds = () => {
                                   onClick={() => { setSelectedAccountId(account.id); setPaymentError(""); }}
                                   className="flex h-[80px] items-center gap-4 rounded-[12px] border px-4 text-left transition-all"
                                   style={{
-                                    background: active ? "rgba(23,23,26,0.72)" : "rgba(255,255,255,0.05)",
+                                    background:  active ? "rgba(23,23,26,0.72)" : "rgba(255,255,255,0.05)",
                                     borderColor: active ? "#FF14EF" : "rgba(255,255,255,0.10)",
-                                    boxShadow: active ? "inset -1px 0 0 #1A73E8" : "none",
+                                    boxShadow:   active ? "inset -1px 0 0 #1A73E8" : "none",
                                   }}>
                                   <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#1A73E8]/20">
                                     <Landmark className="h-5 w-5 text-[#1A73E8]" />
@@ -3007,7 +3116,8 @@ const AddFunds = () => {
                     disabled={
                       !addAmount ||
                       payLoading ||
-                      (selectedMethod === "card" && !selectedAccountId)
+                      (selectedMethod === "card" && !selectedAccountId) ||
+                      (selectedMethod === "upi" && upiId.trim() !== "" && (upiStatus === "invalid" || upiStatus === "verifying"))
                     }
                     onClick={handleConfirmAddFunds}
                     className="mt-8 h-[49px] w-full rounded-[8px] text-white disabled:opacity-50"
