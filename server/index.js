@@ -1922,24 +1922,24 @@ const app = express();
 //   origin: "http://localhost:5173",
 //   credentials: true,
 // }));
-const allowedOrigins = [
-  "http://localhost:5173",
-    "https://gray-pebble-06934421e.6.azurestaticapps.net",
-  process.env.FRONTEND_URL,
-].filter(Boolean);
+// const allowedOrigins = [
+//   "http://localhost:5173",
+//     "https://gray-pebble-06934421e.6.azurestaticapps.net",
+//   process.env.FRONTEND_URL,
+// ].filter(Boolean);
 
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("CORS not allowed"));
-    }
-  },
-  credentials: true,
-}));
+// app.use(cors({
+//   origin: function (origin, callback) {
+//     if (!origin || allowedOrigins.includes(origin)) {
+//       callback(null, true);
+//     } else {
+//       callback(new Error("CORS not allowed"));
+//     }
+//   },
+//   credentials: true,
+// }));
 
-app.options("*", cors()); // preflight
+// app.options("*", cors()); // preflight
 
 // server/index.js — top pe, app banane ke baad TURANT
 
@@ -1962,6 +1962,37 @@ app.options("*", cors()); // preflight
 //   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 //   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
 // }));
+
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "https://gray-pebble-06934421e.6.azurestaticapps.net",
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    console.log("CORS blocked origin:", origin);
+    return callback(new Error("CORS not allowed: " + origin));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
+
+
+
 
 // // ✅ Preflight ke liye — SABSE ZAROORI
 // app.options("*", cors());
