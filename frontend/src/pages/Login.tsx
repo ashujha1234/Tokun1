@@ -482,7 +482,7 @@ import { ArrowLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/use-toast";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API_BASE = import.meta.env.VITE_API_URL ;
 console.log("[ENV] API_BASE =", API_BASE);
 
 const Login = () => {

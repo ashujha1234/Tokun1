@@ -13969,7 +13969,9 @@ import {
   FileText,
   ShieldAlert,
   User,
-  ShoppingCart
+  ShoppingCart,
+  Wallet ,
+  RefreshCcw,CheckCircle
 } from "lucide-react";
 
 import {
@@ -13988,6 +13990,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+
 } from "recharts";
 
 import {
@@ -13999,13 +14002,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 // ✅ ADD reports here
-type NavKey =
-  | "dashboard"
-  | "sellers"
-  | "products"
-  | "reports"
-  | "analytics"
-  | "account";
+type NavKey = "dashboard" | "sellers" | "products" | "reports" | "analytics" | "account" | "withdrawals";
 
 const kpiCardBase =
   "rounded-2xl bg-gradient-to-b from-white/[0.06] to-white/[0.03] border border-white/10 shadow-[0_8px_40px_rgba(0,0,0,0.35)]";
@@ -14160,7 +14157,7 @@ const useMediaQuery = (query: string) => {
   return matches;
 };
 
-const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5002").replace(/\/$/, "");
 
 const PROMPTS_BASE = `${API_BASE}/api/prompt`;
 const SELLERS_BASE = `${API_BASE}/api/seller`;
@@ -17491,6 +17488,1008 @@ const SellerProfileView = ({
   );
 };
 
+
+// ─── WithdrawalsView Component ────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────
+
+
+
+// ─── Types ───────────────────────────────────────────────────
+type WithdrawalRow = {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userAvatar?: string;
+  bankName: string;
+  accountLast4: string;
+  ifscCode?: string;
+  amount: number;
+  serviceFee: number;
+  netAmount: number;
+  status: "Pending" | "Completed" | "Failed" | "Rejected";
+  note?: string;
+  createdAt: string;
+  processedAt?: string;
+};
+
+type WithdrawalSummary = {
+  pending: {
+    count: number;
+    totalAmount: number;
+    totalServiceFee: number;
+    totalNetAmount: number;
+  };
+  approved: {
+    count: number;
+    totalAmount: number;
+    totalServiceFee: number;
+    totalNetAmount: number;
+  };
+  rejected: {
+    count: number;
+    totalAmount: number;
+    totalServiceFee: number;
+    totalNetAmount: number;
+  };
+  all: {
+    count: number;
+    totalAmount: number;
+    totalServiceFee: number;
+    totalNetAmount: number;
+  };
+};
+
+const emptyWithdrawalSummary: WithdrawalSummary = {
+  pending: {
+    count: 0,
+    totalAmount: 0,
+    totalServiceFee: 0,
+    totalNetAmount: 0,
+  },
+  approved: {
+    count: 0,
+    totalAmount: 0,
+    totalServiceFee: 0,
+    totalNetAmount: 0,
+  },
+  rejected: {
+    count: 0,
+    totalAmount: 0,
+    totalServiceFee: 0,
+    totalNetAmount: 0,
+  },
+  all: {
+    count: 0,
+    totalAmount: 0,
+    totalServiceFee: 0,
+    totalNetAmount: 0,
+  },
+};
+
+const WithdrawalsView = () => {
+  const [rows, setRows] = useState<WithdrawalRow[]>([]);
+  const [summary, setSummary] = useState<WithdrawalSummary>(
+    emptyWithdrawalSummary
+  );
+
+  const [loading, setLoading] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "Pending" | "Completed" | "Failed"
+  >("Pending");
+
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const [confirmPopup, setConfirmPopup] = useState<{
+    type: "approve" | "reject";
+    row: WithdrawalRow;
+  } | null>(null);
+
+  const [rejectReason, setRejectReason] = useState("");
+
+  const WITHDRAW_PENDING_URL = `${API_BASE}/api/wallet/admin/pending-withdrawals`;
+  const WITHDRAW_ALL_URL = `${API_BASE}/api/wallet/admin/all-withdrawals`;
+  const WITHDRAW_SUMMARY_URL = `${API_BASE}/api/wallet/admin/withdrawal-summary`;
+  const WITHDRAW_APPROVE_URL = `${API_BASE}/api/wallet/admin/approve-withdrawal`;
+  const WITHDRAW_REJECT_URL = `${API_BASE}/api/wallet/admin/reject-withdrawal`;
+
+  const fmtInr = (n: number) =>
+    `₹${Number(n || 0).toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+
+  const formatDateTime = (dateLike?: string) => {
+    if (!dateLike) return "—";
+
+    const d = new Date(dateLike);
+    if (Number.isNaN(d.getTime())) return "—";
+
+    return d.toLocaleString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const getStatusTone = (status: WithdrawalRow["status"]) => {
+    if (status === "Pending") {
+      return "bg-amber-500/15 text-amber-200 border-amber-500/25";
+    }
+
+    if (status === "Completed") {
+      return "bg-emerald-500/15 text-emerald-200 border-emerald-500/25";
+    }
+
+    return "bg-red-500/15 text-red-200 border-red-500/25";
+  };
+
+  const getStatusLabel = (status: WithdrawalRow["status"]) => {
+    if (status === "Completed") return "Approved";
+    if (status === "Failed" || status === "Rejected") return "Rejected";
+    return "Pending";
+  };
+
+  const mapWithdrawal = (w: any): WithdrawalRow => ({
+    id: String(w._id || w.id || ""),
+    userId: String(w.userId?._id || w.userId || ""),
+    userName: w.userId?.name || "Unknown",
+    userEmail: w.userId?.email || "—",
+    userAvatar: w.userId?.avatarUrl || w.userId?.avatar || "",
+    bankName: w.bankAccountId?.bankName || "Bank",
+    accountLast4:
+      String(w.bankAccountId?.accountNumber || "").slice(-4) || "0000",
+    ifscCode: w.bankAccountId?.ifscCode || "",
+    amount: Number(w.amount || 0),
+    serviceFee: Number(w.serviceFee || 0),
+    netAmount: Number(w.netAmount || 0),
+    status: (w.status as WithdrawalRow["status"]) || "Pending",
+    note: w.note || "",
+    createdAt: w.createdAt || new Date().toISOString(),
+    processedAt: w.processedAt || "",
+  });
+
+  const fetchWithdrawalSummary = async () => {
+    try {
+      setSummaryLoading(true);
+
+      const token = getToken();
+
+      const res = await fetch(WITHDRAW_SUMMARY_URL, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data?.success) {
+        throw new Error(
+          data?.message || data?.error || "Failed to load summary"
+        );
+      }
+
+      setSummary(data.summary || emptyWithdrawalSummary);
+    } catch (e) {
+      console.error("fetchWithdrawalSummary error:", e);
+      setSummary(emptyWithdrawalSummary);
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
+  const fetchWithdrawals = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      setActionError(null);
+
+      const token = getToken();
+
+      const url =
+        statusFilter === "Pending" ? WITHDRAW_PENDING_URL : WITHDRAW_ALL_URL;
+
+      const res = await fetch(url, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data?.success) {
+        throw new Error(
+          data?.message || data?.error || "Failed to load withdrawals"
+        );
+      }
+
+      const mapped = (data.withdrawals || []).map(mapWithdrawal);
+
+      setRows(mapped);
+      setPage(1);
+    } catch (e: any) {
+      console.error("fetchWithdrawals error:", e);
+      setError(e?.message || "Failed to load withdrawals");
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshAll = async () => {
+    await Promise.all([fetchWithdrawals(), fetchWithdrawalSummary()]);
+  };
+
+  useEffect(() => {
+    refreshAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter]);
+
+  const handleApprove = async (row: WithdrawalRow) => {
+    try {
+      setActionLoading(row.id);
+      setActionError(null);
+
+      const token = getToken();
+
+      const res = await fetch(WITHDRAW_APPROVE_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          withdrawalId: row.id,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || data?.error || "Approve failed");
+      }
+
+      setConfirmPopup(null);
+      await refreshAll();
+    } catch (e: any) {
+      console.error("handleApprove error:", e);
+      setActionError(e?.message || "Action failed");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleReject = async (row: WithdrawalRow) => {
+    try {
+      setActionLoading(row.id);
+      setActionError(null);
+
+      const token = getToken();
+
+      const res = await fetch(WITHDRAW_REJECT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          withdrawalId: row.id,
+          reason: rejectReason.trim() || undefined,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || data?.error || "Reject failed");
+      }
+
+      setConfirmPopup(null);
+      setRejectReason("");
+      await refreshAll();
+    } catch (e: any) {
+      console.error("handleReject error:", e);
+      setActionError(e?.message || "Action failed");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+
+    let list = [...rows];
+
+    if (statusFilter !== "all") {
+      list = list.filter((r) => {
+        if (statusFilter === "Failed") {
+          return r.status === "Failed" || r.status === "Rejected";
+        }
+
+        return r.status === statusFilter;
+      });
+    }
+
+    if (q) {
+      list = list.filter(
+        (r) =>
+          r.userName.toLowerCase().includes(q) ||
+          r.userEmail.toLowerCase().includes(q) ||
+          r.bankName.toLowerCase().includes(q) ||
+          r.ifscCode?.toLowerCase().includes(q) ||
+          r.id.toLowerCase().includes(q) ||
+          String(r.amount).includes(q) ||
+          String(r.netAmount).includes(q)
+      );
+    }
+
+    list.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    return list;
+  }, [rows, statusFilter, query]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, query]);
+
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const startIndex = (safePage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, total);
+  const pageRows = filtered.slice(startIndex, startIndex + pageSize);
+
+  const StatCard = ({
+    label,
+    value,
+    helper,
+    tone,
+  }: {
+    label: string;
+    value: string | number;
+    helper: string;
+    tone: "amber" | "emerald" | "red" | "sky" | "fuchsia";
+  }) => {
+    const toneMap = {
+      amber: "text-amber-300",
+      emerald: "text-emerald-300",
+      red: "text-red-300",
+      sky: "text-sky-300",
+      fuchsia: "text-fuchsia-300",
+    };
+
+    return (
+      <div className={`${kpiCardBase} p-6`}>
+        <div className="text-xs tracking-[0.2em] text-white/60">{label}</div>
+
+        <div className="mt-4 text-3xl font-semibold">
+          {summaryLoading ? "..." : value}
+        </div>
+
+        <div className={`mt-3 text-sm ${toneMap[tone]}`}>{helper}</div>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      {confirmPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0F1117] p-6 shadow-2xl">
+            <h2 className="text-lg font-semibold text-white">
+              {confirmPopup.type === "approve"
+                ? "Approve Withdrawal?"
+                : "Reject Withdrawal?"}
+            </h2>
+
+            <p className="mt-3 text-sm text-white/65 leading-relaxed">
+              {confirmPopup.type === "approve"
+                ? `Approve ${fmtInr(
+                    confirmPopup.row.netAmount
+                  )} payout to ${confirmPopup.row.userName}?`
+                : `Reject withdrawal of ${fmtInr(
+                    confirmPopup.row.amount
+                  )} for ${
+                    confirmPopup.row.userName
+                  }? Amount will be refunded to their wallet.`}
+            </p>
+
+            {confirmPopup.type === "reject" && (
+              <div className="mt-4">
+                <label className="text-xs text-white/60">
+                  Rejection reason optional
+                </label>
+
+                <input
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="e.g. Bank details mismatch"
+                  className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-black/30 px-4 text-sm text-white outline-none placeholder:text-white/35"
+                />
+              </div>
+            )}
+
+            {actionError && (
+              <div className="mt-3 text-xs text-red-400">{actionError}</div>
+            )}
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => {
+                  setConfirmPopup(null);
+                  setActionError(null);
+                  setRejectReason("");
+                }}
+                disabled={actionLoading === confirmPopup.row.id}
+                className="h-11 flex-1 rounded-xl border border-white/10 bg-white/[0.04] text-sm text-white/80 hover:bg-white/[0.07] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={() =>
+                  confirmPopup.type === "approve"
+                    ? handleApprove(confirmPopup.row)
+                    : handleReject(confirmPopup.row)
+                }
+                disabled={actionLoading === confirmPopup.row.id}
+                className={[
+                  "h-11 flex-1 rounded-xl text-sm font-medium text-white disabled:opacity-60",
+                  confirmPopup.type === "approve"
+                    ? "bg-emerald-500 hover:opacity-90"
+                    : "bg-red-500 hover:opacity-90",
+                ].join(" ")}
+              >
+                {actionLoading === confirmPopup.row.id
+                  ? "Processing..."
+                  : confirmPopup.type === "approve"
+                  ? "Yes, Approve"
+                  : "Yes, Reject"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="mt-2 md:mt-0">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="text-center md:text-left">
+            <div className="flex items-center justify-center gap-3 md:justify-start">
+              <h1 className="text-[24px] font-semibold leading-[1.1] md:text-[34px]">
+                Withdrawal Requests
+              </h1>
+
+              {summary.pending.count > 0 && (
+                <span className="rounded-full border border-amber-500/25 bg-amber-500/15 px-3 py-1 text-xs font-medium text-amber-200">
+                  {summary.pending.count} Pending
+                </span>
+              )}
+            </div>
+
+            <p className="mt-2 text-sm text-white/60">
+              Pending, approved, rejected withdrawals aur total payout amount
+              yahan manage karo.
+            </p>
+          </div>
+
+          <button
+            onClick={refreshAll}
+            disabled={loading || summaryLoading}
+            className="h-9 self-start rounded-xl border border-white/10 bg-white/[0.04] px-4 text-sm text-white/80 hover:bg-white/[0.07] disabled:opacity-50"
+          >
+            ↺ Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      <section className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="PENDING REQUESTS"
+          value={summary.pending.count}
+          helper={`${fmtInr(summary.pending.totalAmount)} pending`}
+          tone="amber"
+        />
+
+        <StatCard
+          label="APPROVED REQUESTS"
+          value={summary.approved.count}
+          helper={`${fmtInr(summary.approved.totalNetAmount)} paid out`}
+          tone="emerald"
+        />
+
+        <StatCard
+          label="REJECTED REQUESTS"
+          value={summary.rejected.count}
+          helper={`${fmtInr(summary.rejected.totalAmount)} rejected/refunded`}
+          tone="red"
+        />
+
+        <StatCard
+          label="TOTAL WITHDRAWALS"
+          value={summary.all.count}
+          helper={`${fmtInr(summary.all.totalAmount)} requested total`}
+          tone="fuchsia"
+        />
+      </section>
+
+      {/* Amount Details */}
+      <section className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-3">
+        <div className={`${kpiCardBase} p-5`}>
+          <div className="text-xs tracking-[0.18em] text-white/50">
+            PENDING NET PAYOUT
+          </div>
+
+          <div className="mt-3 text-2xl font-semibold text-amber-200">
+            {fmtInr(summary.pending.totalNetAmount)}
+          </div>
+
+          <div className="mt-2 text-xs text-white/45">
+            Fee: {fmtInr(summary.pending.totalServiceFee)}
+          </div>
+        </div>
+
+        <div className={`${kpiCardBase} p-5`}>
+          <div className="text-xs tracking-[0.18em] text-white/50">
+            APPROVED GROSS AMOUNT
+          </div>
+
+          <div className="mt-3 text-2xl font-semibold text-emerald-200">
+            {fmtInr(summary.approved.totalAmount)}
+          </div>
+
+          <div className="mt-2 text-xs text-white/45">
+            Fee collected: {fmtInr(summary.approved.totalServiceFee)}
+          </div>
+        </div>
+
+        <div className={`${kpiCardBase} p-5`}>
+          <div className="text-xs tracking-[0.18em] text-white/50">
+            REJECTED/REFUNDED AMOUNT
+          </div>
+
+          <div className="mt-3 text-2xl font-semibold text-red-200">
+            {fmtInr(summary.rejected.totalAmount)}
+          </div>
+
+          <div className="mt-2 text-xs text-white/45">
+            Returned to wallet on reject
+          </div>
+        </div>
+      </section>
+
+      {/* Filters */}
+      <section className={`${kpiCardBase} mt-6 p-4`}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="h-11 w-full rounded-xl border border-white/10 bg-black/30 pl-10 pr-3 text-sm text-white placeholder:text-white/35 focus:border-white/20 focus:outline-none"
+              placeholder="Search by user name, email, bank, IFSC, amount, or withdrawal ID..."
+            />
+          </div>
+
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {(["all", "Pending", "Completed", "Failed"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                className={[
+                  "h-10 whitespace-nowrap rounded-xl border px-4 text-sm",
+                  statusFilter === s
+                    ? s === "Pending"
+                      ? "border-amber-500/30 bg-amber-500/20 text-amber-200"
+                      : s === "Completed"
+                      ? "border-emerald-500/30 bg-emerald-500/20 text-emerald-200"
+                      : s === "Failed"
+                      ? "border-red-500/30 bg-red-500/20 text-red-200"
+                      : "border-transparent bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] text-white"
+                    : "border-white/10 bg-white/[0.03] text-white/70 hover:text-white",
+                ].join(" ")}
+              >
+                {s === "all"
+                  ? "All"
+                  : s === "Completed"
+                  ? "Approved"
+                  : s === "Failed"
+                  ? "Rejected"
+                  : s}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Desktop View */}
+      <div className="hidden md:block">
+        <section className={`${kpiCardBase} mt-6 p-4 xl:p-5`}>
+          {loading && (
+            <div className="text-sm text-white/70">Loading withdrawals...</div>
+          )}
+
+          {!!error && !loading && (
+            <div className="text-sm text-red-400">{error}</div>
+          )}
+
+          {!loading && !error && (
+            <>
+              <div className="space-y-3">
+                {pageRows.map((r) => (
+                  <div
+                    key={r.id}
+                    className="rounded-2xl border border-white/10 bg-white/[0.025] px-4 py-3"
+                  >
+                    <div className="grid grid-cols-[1.15fr_0.85fr_0.85fr_0.65fr_0.85fr_190px] items-center gap-2 xl:gap-3">
+                      {/* User */}
+                      <div className="min-w-0">
+                        <div className="text-[9px] uppercase tracking-[0.14em] text-white/35">
+                          User
+                        </div>
+
+                        <div className="mt-2 flex min-w-0 items-center gap-2">
+                          <img
+                            src={
+                              r.userAvatar ||
+                              "https://i.pravatar.cc/80?img=12"
+                            }
+                            alt={r.userName}
+                            className="h-8 w-8 shrink-0 rounded-full border border-white/10 object-cover"
+                          />
+
+                          <div className="min-w-0">
+                            <div className="truncate text-[13px] font-medium text-white/90">
+                              {r.userName}
+                            </div>
+
+                            <div className="truncate text-[11px] text-white/45">
+                              {r.userEmail}
+                            </div>
+
+                            <div className="truncate text-[9px] text-white/30">
+                              ID: {r.id.slice(-8)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Bank */}
+                      <div className="min-w-0">
+                        <div className="text-[9px] uppercase tracking-[0.14em] text-white/35">
+                          Bank
+                        </div>
+
+                        <div className="mt-2 truncate text-[13px] text-white/85">
+                          {r.bankName}
+                        </div>
+
+                        <div className="text-[11px] text-white/45">
+                          •••• {r.accountLast4}
+                        </div>
+
+                        <div className="truncate text-[9px] text-white/35">
+                          IFSC: {r.ifscCode || "—"}
+                        </div>
+                      </div>
+
+                      {/* Amount */}
+                      <div className="min-w-0">
+                        <div className="text-[9px] uppercase tracking-[0.14em] text-white/35">
+                          Amount
+                        </div>
+
+                        <div className="mt-2 truncate text-[13px] font-semibold text-white">
+                          {fmtInr(r.amount)}
+                        </div>
+
+                        <div className="truncate text-[9px] text-white/45">
+                          Fee: {fmtInr(r.serviceFee)}
+                        </div>
+
+                        <div className="truncate text-[9px] text-emerald-300">
+                          Net: {fmtInr(r.netAmount)}
+                        </div>
+                      </div>
+
+                      {/* Status */}
+                      <div className="min-w-0">
+                        <div className="text-[9px] uppercase tracking-[0.14em] text-white/35">
+                          Status
+                        </div>
+
+                        <div className="mt-2">
+                          <span
+                            className={[
+                              "inline-flex rounded-full border px-2 py-1 text-[10px] font-medium",
+                              getStatusTone(r.status),
+                            ].join(" ")}
+                          >
+                            {getStatusLabel(r.status)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Requested */}
+                      <div className="min-w-0">
+                        <div className="text-[9px] uppercase tracking-[0.14em] text-white/35">
+                          Requested
+                        </div>
+
+                        <div className="mt-2 text-[11px] leading-4 text-white/65">
+                          {formatDateTime(r.createdAt)}
+                        </div>
+
+                        {r.processedAt && (
+                          <div className="mt-1 truncate text-[9px] text-white/35">
+                            Processed: {formatDateTime(r.processedAt)}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="min-w-0">
+                        <div className="text-right text-[9px] uppercase tracking-[0.14em] text-white/35">
+                          Actions
+                        </div>
+
+                        <div className="mt-2 flex items-center justify-end gap-2">
+                          {r.status === "Pending" ? (
+                            <>
+                              <button
+                                onClick={() =>
+                                  setConfirmPopup({
+                                    type: "approve",
+                                    row: r,
+                                  })
+                                }
+                                disabled={actionLoading === r.id}
+                                className="h-8 w-[86px] shrink-0 rounded-lg border border-emerald-500/30 bg-emerald-500/20 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/30 disabled:opacity-50"
+                              >
+                                ✓ Approve
+                              </button>
+
+                              <button
+                                onClick={() =>
+                                  setConfirmPopup({
+                                    type: "reject",
+                                    row: r,
+                                  })
+                                }
+                                disabled={actionLoading === r.id}
+                                className="h-8 w-[76px] shrink-0 rounded-lg border border-red-500/25 bg-red-500/15 text-[11px] font-medium text-red-300 hover:bg-red-500/25 disabled:opacity-50"
+                              >
+                                ✕ Reject
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-xs italic text-white/40">
+                              {r.status === "Completed"
+                                ? "Paid out"
+                                : "Refunded"}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {pageRows.length === 0 && (
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-8 text-center text-sm text-white/60">
+                    {statusFilter === "Pending"
+                      ? "No pending withdrawal requests."
+                      : "No withdrawal requests found."}
+                  </div>
+                )}
+              </div>
+
+              {total > 0 && (
+                <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-sm text-white/60">
+                    Showing {total === 0 ? 0 : startIndex + 1} to {endIndex} of{" "}
+                    {total} withdrawals
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      disabled={safePage <= 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      className="h-9 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm hover:bg-white/[0.06] disabled:opacity-40"
+                    >
+                      Previous
+                    </button>
+
+                    <span className="text-xs text-white/50">
+                      Page {safePage} / {totalPages}
+                    </span>
+
+                    <button
+                      disabled={safePage >= totalPages}
+                      onClick={() =>
+                        setPage((p) => Math.min(totalPages, p + 1))
+                      }
+                      className="h-9 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm hover:bg-white/[0.06] disabled:opacity-40"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      </div>
+
+      {/* Mobile Cards */}
+      <div className="mt-6 space-y-4 md:hidden">
+        {loading && <div className="text-sm text-white/70">Loading...</div>}
+
+        {!!error && !loading && (
+          <div className="text-sm text-red-400">{error}</div>
+        )}
+
+        {!loading &&
+          !error &&
+          pageRows.map((r) => (
+            <div key={r.id} className={`${kpiCardBase} p-5`}>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <img
+                    src={r.userAvatar || "https://i.pravatar.cc/80?img=12"}
+                    alt={r.userName}
+                    className="h-10 w-10 shrink-0 rounded-full border border-white/10 object-cover"
+                  />
+
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-white/90">
+                      {r.userName}
+                    </div>
+
+                    <div className="truncate text-xs text-white/50">
+                      {r.userEmail}
+                    </div>
+                  </div>
+                </div>
+
+                <span
+                  className={[
+                    "shrink-0 rounded-full border px-3 py-1 text-xs font-medium",
+                    getStatusTone(r.status),
+                  ].join(" ")}
+                >
+                  {getStatusLabel(r.status)}
+                </span>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-white/45">
+                    Amount
+                  </div>
+
+                  <div className="mt-1 text-base font-semibold text-white">
+                    {fmtInr(r.amount)}
+                  </div>
+
+                  <div className="text-xs text-white/40">
+                    Fee: {fmtInr(r.serviceFee)}
+                  </div>
+
+                  <div className="text-xs text-emerald-300">
+                    Net: {fmtInr(r.netAmount)}
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <div className="text-[11px] uppercase tracking-wide text-white/45">
+                    Bank
+                  </div>
+
+                  <div className="mt-1 text-sm text-white/80">
+                    {r.bankName}
+                  </div>
+
+                  <div className="text-xs text-white/40">
+                    •••• {r.accountLast4}
+                  </div>
+
+                  <div className="text-xs text-white/35">
+                    {r.ifscCode || "—"}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 text-xs text-white/40">
+                Requested: {formatDateTime(r.createdAt)}
+              </div>
+
+              {r.status === "Pending" && (
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={() =>
+                      setConfirmPopup({
+                        type: "approve",
+                        row: r,
+                      })
+                    }
+                    disabled={actionLoading === r.id}
+                    className="h-11 flex-1 rounded-xl border border-emerald-500/30 bg-emerald-500/20 text-sm font-medium text-emerald-200 hover:bg-emerald-500/30 disabled:opacity-50"
+                  >
+                    ✓ Approve
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      setConfirmPopup({
+                        type: "reject",
+                        row: r,
+                      })
+                    }
+                    disabled={actionLoading === r.id}
+                    className="h-11 flex-1 rounded-xl border border-red-500/25 bg-red-500/15 text-sm font-medium text-red-300 hover:bg-red-500/25 disabled:opacity-50"
+                  >
+                    ✕ Reject
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+
+        {!loading && !error && pageRows.length === 0 && (
+          <div className="py-8 text-center text-sm text-white/60">
+            {statusFilter === "Pending"
+              ? "No pending requests."
+              : "No withdrawals found."}
+          </div>
+        )}
+
+        {total > pageSize && (
+          <div className="flex items-center justify-between pt-2">
+            <button
+              disabled={safePage <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="h-9 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm disabled:opacity-40"
+            >
+              Previous
+            </button>
+
+            <div className="text-xs text-white/60">
+              Page {safePage} / {totalPages}
+            </div>
+
+            <button
+              disabled={safePage >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              className="h-9 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+};
 const AccountView = ({
   adminName,
   adminEmail,
@@ -17752,7 +18751,7 @@ const AccountView = ({
                 />
 
                 <NavItem id="reports" label="Reports" icon={<ShieldAlert className="h-4 w-4" />} />
-
+                 <NavItem id="withdrawals" label="Withdrawals" icon={<Wallet className="h-4 w-4" />} />
               </nav>
             </div>
 
@@ -18616,6 +19615,10 @@ const AccountView = ({
             <p className="text-white/60 mt-2">Coming soon…</p>
           </div>
         )}
+
+{active === "withdrawals" && <WithdrawalsView />}
+
+
         {active === "account" && (
           <AccountView
             adminName={adminName}
@@ -18705,6 +19708,10 @@ const AccountView = ({
     </div>
   </div>
 )}
+
+
+
+
     </div>
   );
 };

@@ -411,3 +411,18 @@ body {
 }
 
 
+.counter-offer-textarea::placeholder {
+  color: #52525B;
+  font-family: Inter, sans-serif;
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.counter-offer-number-input::placeholder {
+  color: #27272A;
+  font-family: Inter, sans-serif;
+  font-weight: 700;
+  font-size: 22px;
+  line-height: 100%;
+}

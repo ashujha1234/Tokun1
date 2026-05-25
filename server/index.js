@@ -1914,6 +1914,8 @@ const invoiceRoute = require("./routes/invoice.route");
 const adminRoutes = require("./routes/adminRoutes");
 const sellerRoutes = require("./routes/sellerRoutes");
 const kycRoutes = require("./routes/kycRoutes");
+const hireRoutes = require("./routes/hire.routes");
+
 const activityRoutes = require("./routes/activityRoutes");
 const userAdminRoutes = require("./routes/userAdminRoutes");
 const walletRoutes = require("./routes/walletRoutes")
@@ -1922,24 +1924,30 @@ const app = express();
 //   origin: "http://localhost:5173",
 //   credentials: true,
 // }));
-// const allowedOrigins = [
-//   "http://localhost:5173",
-//     "https://gray-pebble-06934421e.6.azurestaticapps.net",
-//   process.env.FRONTEND_URL,
-// ].filter(Boolean);
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://gray-pebble-06934421e.6.azurestaticapps.net",
+  process.env.FRONTEND_URL,
+].filter(Boolean);
 
-// app.use(cors({
-//   origin: function (origin, callback) {
-//     if (!origin || allowedOrigins.includes(origin)) {
-//       callback(null, true);
-//     } else {
-//       callback(new Error("CORS not allowed"));
-//     }
-//   },
-//   credentials: true,
-// }));
+const corsOptions = {
+  origin: function (origin, callback) {
+    console.log("CORS Origin:", origin);
 
-// app.options("*", cors()); // preflight
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error("CORS not allowed: " + origin));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 
 // server/index.js — top pe, app banane ke baad TURANT
 
@@ -1962,37 +1970,6 @@ const app = express();
 //   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 //   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
 // }));
-
-
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
-  "https://gray-pebble-06934421e.6.azurestaticapps.net",
-  process.env.FRONTEND_URL,
-].filter(Boolean);
-
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-
-    console.log("CORS blocked origin:", origin);
-    return callback(new Error("CORS not allowed: " + origin));
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-};
-
-app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
-
-
-
-
 
 // // ✅ Preflight ke liye — SABSE ZAROORI
 // app.options("*", cors());
@@ -2456,6 +2433,7 @@ app.use("/api/seller", sellerRoutes);
 app.use("/api/kyc", kycRoutes);
 app.use("/api/activity", activityRoutes);
 app.use("/api/wallet", walletRoutes);
+app.use("/api/hire", hireRoutes);
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "sample.html"));

@@ -213,14 +213,15 @@ async function handleDownloadInvoice() {
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="
-            bg-[#17171A] text-white p-0 border-none
-            w-[95vw] sm:w-[90vw] md:w-[85vw] lg:w-[1200px]
-            rounded-[32px]
-            max-h-[95vh]
-            overflow-hidden
-          "
-        >
+  className="
+    !z-[999999]
+    bg-[#17171A] text-white p-0 border-none
+    w-[95vw] sm:w-[90vw] md:w-[85vw] lg:w-[1200px]
+    rounded-[32px]
+    max-h-[95vh]
+    overflow-hidden
+  "
+>
           {/* =================== MEDIA BANNER =================== */}
         
 <div

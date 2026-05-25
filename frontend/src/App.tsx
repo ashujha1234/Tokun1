@@ -38,6 +38,7 @@ import ScrollToTop from "@/components/ScrollToTop";
 import Wallet from "@/pages/Wallet";
 import WithdrawFunds from "@/pages/WithdrawFunds";
 import AddFunds from "@/pages/AddFunds";
+import SelfDash from "@/pages/self-dash";
 import AdminForgotPassword from "./pages/AdminForgotPassword";
 const queryClient = new QueryClient();
 
@@ -163,6 +164,7 @@ export default function App() {
 />
  <Route path="/saved" element={<SavedCollection />} />
  <Route path="/admin" element={<Admin />} />
+ <Route path="/self-dash" element={<SelfDash />} />
               {/* other */}
               <Route path="/prompt-library" element={<PromptLibraryPage />} />
              // ✅ App.tsx — protect the marketplace route so direct hits also require login
