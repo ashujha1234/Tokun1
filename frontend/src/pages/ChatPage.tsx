@@ -3591,53 +3591,137 @@ function WorkSubmittedCard({
               </div>
 
               <div style={{ display: "grid", gap: 8 }}>
-                {data.deliverables.map((d: any, i: number) => (
-                  <a
-                    key={i}
-                    href={getFileUrl(d.url)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      borderRadius: 10,
-                      background: "rgba(0,0,0,0.22)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      padding: "10px 12px",
-                      color: "#FFFFFF",
-                      textDecoration: "none",
-                    }}
-                  >
-                    <span style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-                      <span style={{ fontSize: 15 }}>📎</span>
+  {data.deliverables.map((d: any, i: number) => {
+    const fileUrl = getFileUrl(d.url);
 
-                      <span
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          fontSize: 13,
-                          color: "#EDE9FE",
-                        }}
-                      >
-                        {d.name || d.description || "Project file"}
-                      </span>
-                    </span>
+    const handleDownload = async (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
 
-                    <span
-                      style={{
-                        flexShrink: 0,
-                        fontSize: 10,
-                        color: "rgba(255,255,255,0.38)",
-                      }}
-                    >
-                      {formatFileSize(Number(d.size || 0))}
-                    </span>
-                  </a>
-                ))}
-              </div>
+      try {
+        const res = await fetch(fileUrl);
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = d.name || d.description || `file-${i + 1}`;
+
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        URL.revokeObjectURL(blobUrl);
+      } catch {
+        window.open(fileUrl, "_blank");
+      }
+    };
+
+    return (
+      <div
+        key={i}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          borderRadius: 10,
+          background: "rgba(0,0,0,0.22)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          padding: "10px 12px",
+          color: "#FFFFFF",
+        }}
+      >
+        <span
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 9,
+            minWidth: 0,
+            flex: 1,
+          }}
+        >
+          <span style={{ fontSize: 15 }}>📎</span>
+
+          <span
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              fontSize: 13,
+              color: "#EDE9FE",
+            }}
+          >
+            {d.name || d.description || "Project file"}
+          </span>
+        </span>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexShrink: 0,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 10,
+              color: "rgba(255,255,255,0.38)",
+            }}
+          >
+            {formatFileSize(Number(d.size || 0))}
+          </span>
+
+          <a
+            href={fileUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            title="View"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 28,
+              height: 28,
+              borderRadius: 6,
+              background: "rgba(192,132,252,0.12)",
+              border: "1px solid rgba(192,132,252,0.22)",
+              color: "#C084FC",
+              fontSize: 13,
+              textDecoration: "none",
+              cursor: "pointer",
+            }}
+          >
+            👁
+          </a>
+
+          <button
+            onClick={handleDownload}
+            title="Download"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 28,
+              height: 28,
+              borderRadius: 6,
+              background: "rgba(25,230,108,0.10)",
+              border: "1px solid rgba(25,230,108,0.22)",
+              color: "#19E66C",
+              fontSize: 16,
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            ↓
+          </button>
+        </div>
+      </div>
+    );
+  })}
+</div>
 
               {data?.note && (
                 <div
