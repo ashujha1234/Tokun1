@@ -1090,8 +1090,7 @@
 
 
 
-
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Header from "@/components/Header";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -1199,6 +1198,107 @@ function resolveCategory(...sources: any[]): string {
   }
   return "General";
 }
+
+
+const formatShortDate = (value?: string) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+};
+
+const formatProjectStatus = (status?: string) => {
+  switch (status) {
+    case "PENDING_ACCEPTANCE":
+      return "New Request";
+    case "ACCEPTED_WAITING_PAYMENT":
+      return "Waiting Payment";
+    case "FUNDED":
+      return "Funded";
+    case "IN_PROGRESS":
+      return "In Progress";
+    case "WORK_SUBMITTED":
+      return "Submitted";
+    case "REVISION_REQUESTED":
+      return "Revision";
+    case "COMPLETED":
+      return "Completed";
+    default:
+      return "Active";
+  }
+};
+
+const getProjectProgress = (status?: string) => {
+  switch (status) {
+    case "ACCEPTED_WAITING_PAYMENT":
+      return 12;
+    case "FUNDED":
+      return 28;
+    case "IN_PROGRESS":
+      return 55;
+    case "WORK_SUBMITTED":
+      return 85;
+    case "REVISION_REQUESTED":
+      return 70;
+    case "COMPLETED":
+      return 100;
+    default:
+      return 0;
+  }
+};
+
+const getProjectStatusStyle = (status?: string): React.CSSProperties => {
+  switch (status) {
+    case "ACCEPTED_WAITING_PAYMENT":
+      return {
+        border: "1px solid rgba(250,188,78,0.28)",
+        background: "rgba(250,188,78,0.12)",
+        color: "#FABC4E",
+      };
+    case "FUNDED":
+      return {
+        border: "1px solid rgba(25,230,108,0.28)",
+        background: "rgba(25,230,108,0.10)",
+        color: "#19E66C",
+      };
+    case "IN_PROGRESS":
+      return {
+        border: "1px solid rgba(192,132,252,0.28)",
+        background: "rgba(192,132,252,0.12)",
+        color: "#C084FC",
+      };
+    case "WORK_SUBMITTED":
+      return {
+        border: "1px solid rgba(26,115,232,0.35)",
+        background: "rgba(26,115,232,0.14)",
+        color: "#7DB0FF",
+      };
+    case "REVISION_REQUESTED":
+      return {
+        border: "1px solid rgba(255,130,80,0.32)",
+        background: "rgba(255,130,80,0.12)",
+        color: "#FF9B6A",
+      };
+    case "COMPLETED":
+      return {
+        border: "1px solid rgba(25,230,108,0.32)",
+        background: "rgba(25,230,108,0.12)",
+        color: "#19E66C",
+      };
+    default:
+      return {
+        border: "1px solid rgba(255,255,255,0.12)",
+        background: "rgba(255,255,255,0.06)",
+        color: "#A1A1AA",
+      };
+  }
+};
+
+
 
 /* ─── WhiteIcon ─────────────────────────────────────────── */
 const WhiteIcon = ({
@@ -1663,6 +1763,8 @@ const SelfDash = () => {
   const [purchasesLoading, setPurchasesLoading] = useState(false);
   const [purchasesError, setPurchasesError] = useState<string | null>(null);
   const [proposalOpen, setProposalOpen] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<any | null>(null);
+const [acceptingRequestId, setAcceptingRequestId] = useState<string | number | null>(null);
   /* ── Uploaded state ── */
   const [uploadHistory, setUploadHistory] = useState<Prompt[]>([]);
   const [uploadsLoading, setUploadsLoading] = useState(false);
@@ -1672,6 +1774,132 @@ const SelfDash = () => {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsPrompt, setDetailsPrompt] = useState<MarketplacePrompt | null>(null);
   const [playingVideo, setPlayingVideo] = useState<number | string | null>(null);
+   
+
+// Existing useEffects ke saath
+const [hireEarnings, setHireEarnings] = useState<{
+  totalEarnings: number;
+  totalDeals: number;
+  totalProjects?: number;
+  activeRequests?: number;
+  requests: any[];
+  projects: any[];
+  deals: any[];
+}>({
+  totalEarnings: 0,
+  totalDeals: 0,
+  totalProjects: 0,
+  activeRequests: 0,
+  requests: [],
+  projects: [],
+  deals: [],
+});
+
+const fetchHireEarnings = async () => {
+  if (!token) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/hire/my/earnings`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.error || "Failed to fetch hire earnings");
+    }
+
+    setHireEarnings({
+      totalEarnings: Number(data.totalEarnings || 0),
+      totalDeals: Number(data.totalDeals || 0),
+      totalProjects: Number(data.totalProjects || data.totalDeals || 0),
+      activeRequests: Number(data.activeRequests || 0),
+      requests: Array.isArray(data.requests) ? data.requests : [],
+      projects: Array.isArray(data.projects) ? data.projects : [],
+      deals: Array.isArray(data.deals) ? data.deals : [],
+    });
+  } catch (err) {
+    console.error("Hire earnings fetch failed:", err);
+  }
+};
+
+useEffect(() => {
+  fetchHireEarnings();
+}, [token]);
+
+
+useEffect(() => {
+  const handleStorage = (e: StorageEvent) => {
+    if (e.key === "tokun:lastRelease") {
+      fetchHireEarnings();
+    }
+  };
+  window.addEventListener("storage", handleStorage);
+  return () => window.removeEventListener("storage", handleStorage);
+}, [token]);
+
+
+
+const handleAcceptRequest = async (item: any) => {
+  const dealId = item?.id || item?.raw?._id;
+
+  if (!dealId) {
+    toast({
+      title: "Deal missing",
+      description: "Request deal id nahi mil raha.",
+      variant: "destructive",
+    });
+    return;
+  }
+
+  if (!token) {
+    toast({
+      title: "Login required",
+      description: "Please login again.",
+      variant: "destructive",
+    });
+    return;
+  }
+
+  try {
+    setAcceptingRequestId(dealId);
+
+    const res = await fetch(`${API_BASE}/api/hire/${dealId}/accept`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.error || "Failed to accept proposal");
+    }
+
+    toast({
+      title: "Project accepted",
+      description: "Request Active Projects mein move ho gaya.",
+    });
+
+    await fetchHireEarnings();
+    setActiveTab("dashboard");
+  } catch (err: any) {
+    toast({
+      title: "Accept failed",
+      description: err?.message || "Could not accept request.",
+      variant: "destructive",
+    });
+  } finally {
+    setAcceptingRequestId(null);
+  }
+};
+
+
+
+
+
 
   const onToggleVideo = (id: number | string) => setPlayingVideo((prev) => (prev === id ? null : id));
   const openDetails = (p: Prompt) => {
@@ -1845,6 +2073,19 @@ const SelfDash = () => {
   const totalPurchasedBill = purchaseHistory.reduce((sum, p) => sum + (p.price || 0), 0);
   const totalEarningsINR = uploadHistory.reduce((sum, p) => sum + ((p.sales ?? 0) * (p.price ?? 0)), 0);
 
+
+
+
+
+
+
+
+
+
+
+
+
+
   /* ── Calendar ── */
   const year = calendarMonth.getFullYear();
   const month = calendarMonth.getMonth();
@@ -1853,25 +2094,87 @@ const SelfDash = () => {
 
   /* ── Stats data ── */
   const stats = [
-    { title: "TOTAL PROJECTS", value: "42", badge: "+4", badgeColor: "#DDB7FF" },
-    { title: "ACTIVE REQUESTS", value: "12", badge: "+1", badgeColor: "#19E66C" },
-    { title: "EARNINGS", value: "₹2.5 L", badge: "+19%", badgeColor: "#DDB7FF" },
-    { title: "SUCCESS RATE", value: "94.2%", badge: "94.8%", badgeColor: "#19E66C" },
-  ];
+  {
+    title: "ACTIVE REQUESTS",
+    value: String(hireEarnings.activeRequests || 0),
+    badge: `+${hireEarnings.activeRequests || 0}`,
+    badgeColor: "#19E66C",
+  },
+  {
+    title: "EARNINGS",
+    value: `₹${(totalEarningsINR + hireEarnings.totalEarnings).toLocaleString()}`,
+    badge: "+19%",
+    badgeColor: "#DDB7FF",
+  },
+  {
+    title: "TOTAL PROJECTS",
+    value: String(hireEarnings.totalProjects ?? hireEarnings.totalDeals ?? 0),
+    badge: `+${hireEarnings.totalProjects ?? hireEarnings.totalDeals ?? 0}`,
+    badgeColor: "#DDB7FF",
+  },
+  {
+    title: "SUCCESS RATE",
+    value: "94.2%",
+    badge: "94.8%",
+    badgeColor: "#19E66C",
+  },
+];
 
-  const activeProjects = [
-    { title: "FinTech App Redesign", status: "IN PROGRESS", start: "Oct 3", finish: "Oct 24", progress: 24 },
-    { title: "AI Powered Editing Tool", status: "PENDING REVIEW", start: "Oct 3", finish: "Oct 24", progress: 100 },
-  ];
+const activeProjects = (hireEarnings.projects || []).map((project: any, index: number) => {
+  const amount = Number(project.amount || project.budget || 0);
+  const status = project.status || "ACCEPTED_WAITING_PAYMENT";
 
-  const allRequests = Array.from({ length: 24 }).map((_, index) => ({
-    id: index + 1,
-    title: "Enterprise CMS",
-    user: "Sarah Jenkins",
-    time: "2h ago",
-    price: "₹27k",
-    desc: "Looking for a full-stack developer to...",
-  }));
+ return {
+  id: project._id || index + 1,
+  title: project.title || "Active Project",
+  user: project.clientName || project.clientId?.name || "Client",
+  price: INR(amount),
+  budget: amount,
+  status,
+  statusText: formatProjectStatus(status),
+  start: formatShortDate(project.acceptedAt || project.createdAt),
+  finish: formatShortDate(project.deliveryDate),
+  progress: getProjectProgress(status),
+  desc: project.description || "Project accepted from client. Work progress will appear here.",
+  description: project.description || "",
+  deliveryDate: project.deliveryDate,
+  createdAt: project.createdAt,
+  acceptedAt: project.acceptedAt,
+
+  fundsStatus: project.fundsStatus,
+  paymentStatus: project.paymentStatus,
+  workStartedAt: project.workStartedAt,
+  workSubmittedAt: project.workSubmittedAt,
+  deliverables: project.deliverables || [],
+  submissionNote: project.submissionNote || "",
+  revisions: project.revisions || [],
+
+  raw: project,
+};
+});
+
+const allRequests = (hireEarnings.requests || []).map((request: any, index: number) => {
+  const amount = Number(request.amount || request.budget || 0);
+  const status = request.status || "PENDING_ACCEPTANCE";
+
+  return {
+    id: request._id || index + 1,
+    title: request.title || "Project Request",
+    user: request.clientName || request.clientId?.name || "Client",
+    price: INR(amount),
+    budget: amount,
+    status,
+    statusText: formatProjectStatus(status),
+    time: formatShortDate(request.createdAt),
+    desc: request.description || "Client sent you a project request.",
+    description: request.description || "",
+    deliveryDate: request.deliveryDate,
+    createdAt: request.createdAt,
+    raw: request,
+  };
+});
+
+ 
 
   /* ── Nav button ── */
   const navItemStyle: React.CSSProperties = {
@@ -1900,28 +2203,177 @@ const SelfDash = () => {
   };
 
   /* ── Request Card ── */
-  const RequestCard = ({ item }: { item: any }) => (
-    <div style={{ borderRadius: 16, background: "#FFFFFF05", border: "1px solid #FFFFFF0F", padding: "16px 12px 18px", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
+const RequestCard = ({ item }: { item: any }) => {
+  const isAccepting = acceptingRequestId === item.id;
+
+  return (
+    <div
+      style={{
+        borderRadius: 16,
+        background: "#FFFFFF05",
+        border: "1px solid #FFFFFF0F",
+        padding: "16px 12px 18px",
+        boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
         <div style={{ minWidth: 0 }}>
-          <h3 style={{ margin: 0, fontFamily: "Inter, sans-serif", fontWeight: 800, fontSize: 14, lineHeight: "100%", color: "#FFFFFF" }}>{item.title}</h3>
-          <p style={{ margin: "5px 0 0", fontFamily: "Inter, sans-serif", fontWeight: 400, fontSize: 11, lineHeight: "100%", color: "#71717A" }}>{item.user} • {item.time}</p>
+          <h3
+            style={{
+              margin: 0,
+              fontFamily: "Inter, sans-serif",
+              fontWeight: 800,
+              fontSize: 14,
+              lineHeight: "100%",
+              color: "#FFFFFF",
+            }}
+          >
+            {item.title}
+          </h3>
+
+          <p
+            style={{
+              margin: "5px 0 0",
+              fontFamily: "Inter, sans-serif",
+              fontWeight: 400,
+              fontSize: 11,
+              lineHeight: "100%",
+              color: "#71717A",
+            }}
+          >
+            {item.user} • {item.time}
+          </p>
         </div>
-        <span style={{ fontFamily: "Inter, sans-serif", fontWeight: 800, fontSize: 12, lineHeight: "100%", color: "#DDB7FF", flexShrink: 0 }}>{item.price}</span>
+
+        <span
+          style={{
+            fontFamily: "Inter, sans-serif",
+            fontWeight: 800,
+            fontSize: 12,
+            lineHeight: "100%",
+            color: "#DDB7FF",
+            flexShrink: 0,
+          }}
+        >
+          {item.price}
+        </span>
       </div>
-      <p style={{ margin: "9px 0 0", fontFamily: "Inter, sans-serif", fontWeight: 400, fontSize: 12, lineHeight: "16px", color: "#71717A" }}>{item.desc}</p>
+
+      <p
+        style={{
+          margin: "9px 0 0",
+          fontFamily: "Inter, sans-serif",
+          fontWeight: 400,
+          fontSize: 12,
+          lineHeight: "16px",
+          color: "#71717A",
+        }}
+      >
+        {item.desc}
+      </p>
+
+      <div style={{ marginTop: 10 }}>
+        <span
+          style={{
+            height: 22,
+            padding: "0 10px",
+            borderRadius: 999,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontFamily: "Inter, sans-serif",
+            fontWeight: 800,
+            fontSize: 9,
+            lineHeight: "100%",
+            letterSpacing: "0.8px",
+            ...getProjectStatusStyle(item.status),
+          }}
+        >
+          {item.statusText || formatProjectStatus(item.status)}
+        </span>
+      </div>
+
       <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 6, width: "100%" }}>
-        <button type="button" style={{ flex: 1, minWidth: 0, height: 35, borderRadius: 8, border: "none", background: GRADIENT, color: "#FFFFFF", fontFamily: "Inter, sans-serif", fontWeight: 400, fontSize: 12, lineHeight: "100%", whiteSpace: "nowrap", overflow: "hidden", cursor: "pointer", boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center" }}>Accept Proposal</button>
-        <button type="button" style={{ flex: 1, minWidth: 0, height: 35, borderRadius: 8, border: "1px solid #FFFFFF0D", background: "#202020", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, fontFamily: "Inter, sans-serif", fontWeight: 400, fontSize: 12, lineHeight: "100%", whiteSpace: "nowrap", overflow: "hidden", cursor: "pointer", boxSizing: "border-box" }}>
+        <button
+          type="button"
+          disabled={isAccepting}
+          onClick={() => handleAcceptRequest(item)}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            height: 35,
+            borderRadius: 8,
+            border: "none",
+            background: GRADIENT,
+            color: "#FFFFFF",
+            fontFamily: "Inter, sans-serif",
+            fontWeight: 400,
+            fontSize: 12,
+            lineHeight: "100%",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            cursor: isAccepting ? "not-allowed" : "pointer",
+            opacity: isAccepting ? 0.6 : 1,
+            boxSizing: "border-box",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {isAccepting ? "Accepting..." : "Accept Proposal"}
+        </button>
+
+        <button
+          type="button"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            height: 35,
+            borderRadius: 8,
+            border: "1px solid #FFFFFF0D",
+            background: "#202020",
+            color: "#FFFFFF",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 7,
+            fontFamily: "Inter, sans-serif",
+            fontWeight: 400,
+            fontSize: 12,
+            lineHeight: "100%",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            cursor: "pointer",
+            boxSizing: "border-box",
+          }}
+        >
           <WhiteIcon src="/icons/counter.svg" size={13} />
           Counter Offer
         </button>
-        <button type="button" style={{ width: 35, height: 35, flexShrink: 0, borderRadius: 8, border: "none", background: GRADIENT, display: "grid", placeItems: "center", cursor: "pointer", boxSizing: "border-box" }}>
+
+        <button
+          type="button"
+          style={{
+            width: 35,
+            height: 35,
+            flexShrink: 0,
+            borderRadius: 8,
+            border: "none",
+            background: GRADIENT,
+            display: "grid",
+            placeItems: "center",
+            cursor: "pointer",
+            boxSizing: "border-box",
+          }}
+        >
           <WhiteIcon src="/icons/crass.svg" size={14} />
         </button>
       </div>
     </div>
   );
+};
 
   /* ══ TAB CONTENTS ══════════════════════════════════════ */
 
@@ -1946,46 +2398,222 @@ const SelfDash = () => {
             <button type="button" style={{ fontFamily: "Inter, sans-serif", fontWeight: 800, fontSize: 12, lineHeight: "100%", letterSpacing: "1.5px", color: "#C084FC" }}>VIEW ALL</button>
           </div>
           <div className="mt-4 h-px w-full bg-white/10" />
-          <div className="mt-4 space-y-5">
-          {activeProjects.map((project) => (
-  <div
-    key={project.title}
-    onClick={() => setProposalOpen(true)}
-    style={{
-      borderRadius: 16,
-      background: "rgba(0,0,0,0.22)",
-      border: "1px solid rgba(255,255,255,0.10)",
-      padding: "22px 16px",
-      boxSizing: "border-box",
-      cursor: "pointer",
-    }}
-  >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <h3 style={{ margin: 0, fontFamily: "Inter, sans-serif", fontWeight: 800, fontSize: 18, lineHeight: "120%", color: "#FFFFFF" }}>{project.title}</h3>
-                  <span className="w-fit" style={{ height: 24, padding: "0 13px", borderRadius: 999, border: project.status === "IN PROGRESS" ? "1px solid rgba(250,188,78,0.28)" : "1px solid rgba(255,255,255,0.12)", background: project.status === "IN PROGRESS" ? "rgba(250,188,78,0.12)" : "rgba(255,255,255,0.06)", color: project.status === "IN PROGRESS" ? "#FABC4E" : "#A1A1AA", display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, sans-serif", fontWeight: 800, fontSize: 10, lineHeight: "100%", letterSpacing: "1px" }}>{project.status}</span>
-                </div>
-                <div className="mt-7 flex items-center gap-2">
-                  <Clock3 size={20} color="#C084FC" />
-                  <p style={{ margin: 0, fontFamily: "Inter, sans-serif", fontWeight: 800, fontSize: 12, lineHeight: "100%", letterSpacing: "2px", color: "#C084FC" }}>EXECUTION TIMELINE</p>
-                </div>
-                <div className="mt-4 h-[6px] max-w-[520px] overflow-hidden rounded-full" style={{ background: "#18181B80", border: "1px solid #FFFFFF1A" }}>
-                  <div style={{ width: `${project.progress}%`, height: "100%", borderRadius: 999, background: "#D9A6FF" }} />
-                </div>
-                <div className="mt-3 flex max-w-[520px] items-center justify-between" style={{ fontFamily: "Inter, sans-serif", fontWeight: 400, fontSize: 13, lineHeight: "100%", color: "#C9C2CE" }}>
-                  <span>Start: {project.start}</span>
-                  <span>Finish: {project.finish}</span>
-                </div>
-              </div>
-            ))}
+         
+<div className="mt-4 space-y-5">
+  {activeProjects.length > 0 ? (
+    activeProjects.map((project) => {
+      const statusStyle = getProjectStatusStyle(project.status);
+
+      return (
+        <div
+          key={project.id}
+          onClick={() => {
+  setSelectedProject(project);
+  setProposalOpen(true);
+}}
+          style={{
+            borderRadius: 16,
+            background: "rgba(0,0,0,0.22)",
+            border: "1px solid rgba(255,255,255,0.10)",
+            padding: "22px 16px",
+            boxSizing: "border-box",
+            cursor: "pointer",
+          }}
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div style={{ minWidth: 0 }}>
+              <h3
+                style={{
+                  margin: 0,
+                  fontFamily: "Inter, sans-serif",
+                  fontWeight: 800,
+                  fontSize: 18,
+                  lineHeight: "120%",
+                  color: "#FFFFFF",
+                }}
+              >
+                {project.title}
+              </h3>
+
+              <p
+                style={{
+                  margin: "7px 0 0",
+                  fontFamily: "Inter, sans-serif",
+                  fontWeight: 400,
+                  fontSize: 12,
+                  lineHeight: "100%",
+                  color: "#71717A",
+                }}
+              >
+                Client: {project.user} • {project.price}
+              </p>
+            </div>
+
+            <span
+              className="w-fit"
+              style={{
+                height: 24,
+                padding: "0 13px",
+                borderRadius: 999,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontFamily: "Inter, sans-serif",
+                fontWeight: 800,
+                fontSize: 10,
+                lineHeight: "100%",
+                letterSpacing: "1px",
+                ...statusStyle,
+              }}
+            >
+              {project.statusText}
+            </span>
           </div>
+
+          <p
+            style={{
+              margin: "14px 0 0",
+              fontFamily: "Inter, sans-serif",
+              fontWeight: 400,
+              fontSize: 13,
+              lineHeight: "18px",
+              color: "#8F8996",
+            }}
+          >
+            {project.desc}
+          </p>
+
+          <div className="mt-7 flex items-center gap-2">
+            <Clock3 size={20} color="#C084FC" />
+            <p
+              style={{
+                margin: 0,
+                fontFamily: "Inter, sans-serif",
+                fontWeight: 800,
+                fontSize: 12,
+                lineHeight: "100%",
+                letterSpacing: "2px",
+                color: "#C084FC",
+              }}
+            >
+              EXECUTION TIMELINE
+            </p>
+          </div>
+
+          <div
+            className="mt-4 h-[6px] max-w-[520px] overflow-hidden rounded-full"
+            style={{
+              background: "#18181B80",
+              border: "1px solid #FFFFFF1A",
+            }}
+          >
+            <div
+              style={{
+                width: `${project.progress}%`,
+                height: "100%",
+                borderRadius: 999,
+                background: "#D9A6FF",
+              }}
+            />
+          </div>
+
+          <div
+            className="mt-3 flex max-w-[520px] items-center justify-between"
+            style={{
+              fontFamily: "Inter, sans-serif",
+              fontWeight: 400,
+              fontSize: 13,
+              lineHeight: "100%",
+              color: "#C9C2CE",
+            }}
+          >
+            <span>Start: {project.start}</span>
+            <span>Finish: {project.finish}</span>
+          </div>
+        </div>
+      );
+    })
+  ) : (
+    <div
+      style={{
+        borderRadius: 16,
+        background: "rgba(0,0,0,0.22)",
+        border: "1px dashed rgba(255,255,255,0.14)",
+        padding: "32px 18px",
+        boxSizing: "border-box",
+        textAlign: "center",
+      }}
+    >
+      <div
+        style={{
+          width: 48,
+          height: 48,
+          margin: "0 auto",
+          borderRadius: 16,
+          background: "rgba(192,132,252,0.10)",
+          border: "1px solid rgba(192,132,252,0.20)",
+          display: "grid",
+          placeItems: "center",
+        }}
+      >
+        <Clock3 size={22} color="#C084FC" />
+      </div>
+
+      <h3
+        style={{
+          margin: "14px 0 0",
+          fontFamily: "Inter, sans-serif",
+          fontWeight: 800,
+          fontSize: 17,
+          color: "#FFFFFF",
+        }}
+      >
+        No active projects yet
+      </h3>
+
+      <p
+        style={{
+          margin: "8px auto 0",
+          maxWidth: 360,
+          fontFamily: "Inter, sans-serif",
+          fontWeight: 400,
+          fontSize: 13,
+          lineHeight: "19px",
+          color: "#71717A",
+        }}
+      >
+        done
+      </p>
+    </div>
+  )}
+</div>
+
+
         </div>
         <div className="hidden bg-white/20 lg:block" style={{ width: 1 }} />
         <div className="flex flex-col gap-0">
           <div className="flex items-center justify-between mb-4">
             <h2 style={{ margin: 0, fontFamily: "Inter, sans-serif", fontWeight: 800, fontSize: 21, lineHeight: "100%", color: "#FFFFFF" }}>New Requests</h2>
-            <span className="rounded-full bg-white/10 px-2 py-1" style={{ fontFamily: "Inter, sans-serif", fontWeight: 800, fontSize: 11, lineHeight: "100%", color: "#FFFFFF" }}>+1</span>
+          <span
+  className="rounded-full bg-white/10 px-2 py-1"
+  style={{
+    fontFamily: "Inter, sans-serif",
+    fontWeight: 800,
+    fontSize: 11,
+    lineHeight: "100%",
+    color: "#FFFFFF",
+  }}
+>
+  +{hireEarnings.activeRequests || 0}
+</span>
           </div>
-          <RequestCard item={allRequests[0]} />
+      {allRequests.length > 0 ? (
+  <RequestCard item={allRequests[0]} />
+) : (
+  <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-5 text-white/45">
+    No new project requests yet.
+  </div>
+)}
         </div>
       </div>
     </>
@@ -1994,7 +2622,7 @@ const SelfDash = () => {
   /* Requests */
   const RequestsContent = () => {
     const PER_PAGE = 8;
-    const TOTAL_PAGES = Math.ceil(allRequests.length / PER_PAGE);
+ const TOTAL_PAGES = Math.max(1, Math.ceil(allRequests.length / PER_PAGE));
     const [page, setPage] = useState(1);
     const pageItems = allRequests.slice((page - 1) * PER_PAGE, page * PER_PAGE);
     const btnBase: React.CSSProperties = { width: 34, height: 34, borderRadius: 6, fontFamily: "Inter, sans-serif", fontWeight: 400, fontSize: 14, lineHeight: "100%", display: "grid", placeItems: "center", cursor: "pointer" };
@@ -2008,7 +2636,13 @@ const SelfDash = () => {
         </div>
         <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-            {pageItems.map((item) => <RequestCard key={item.id} item={item} />)}
+      {pageItems.length > 0 ? (
+  pageItems.map((item) => <RequestCard key={item.id} item={item} />)
+) : (
+  <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-5 text-white/45">
+    No new project requests yet.
+  </div>
+)}
           </div>
         </div>
         <div className="mt-3 flex shrink-0 items-center justify-center gap-2 pb-1">
@@ -2189,18 +2823,30 @@ const SelfDash = () => {
           {statLabel2}
         </p>
 
-        <div
-          className="mt-2 text-[26px] font-extrabold leading-none text-white"
-          style={{ fontFamily: "Inter, sans-serif" }}
-        >
-          {statVal2}
-        </div>
+       {promptsTab === "uploaded" ? (
+  <>
+    <div className="mt-2 text-[26px] font-extrabold leading-none text-white">
+      ₹{(totalEarningsINR + hireEarnings.totalEarnings).toLocaleString()}
+    </div>
 
-        <p className="mt-2 text-xs text-white/40">
-          {promptsTab === "purchased"
-            ? "Total amount spent"
-            : "Total prompt revenue"}
-        </p>
+    <p className="mt-2 text-xs text-white/40">
+      Prompts: ₹{totalEarningsINR.toLocaleString()} + Hire: ₹{hireEarnings.totalEarnings.toLocaleString()}
+    </p>
+  </>
+) : (
+  <>
+    <div
+      className="mt-2 text-[26px] font-extrabold leading-none text-white"
+      style={{ fontFamily: "Inter, sans-serif" }}
+    >
+      {statVal2}
+    </div>
+
+    <p className="mt-2 text-xs text-white/40">
+      Total amount spent
+    </p>
+  </>
+)}
       </div>
 
       <div
@@ -2430,13 +3076,18 @@ const SelfDash = () => {
 )}
 
 
-{proposalOpen && (
-  <ProposalDetailModal
-    open={proposalOpen}
-    onClose={() => setProposalOpen(false)}
-  />
+{proposalOpen && selectedProject && (
+ <ProposalDetailModal
+  open={proposalOpen}
+  project={selectedProject}
+  token={token}
+  onSubmitted={fetchHireEarnings}
+  onClose={() => {
+    setProposalOpen(false);
+    setSelectedProject(null);
+  }}
+/>
 )}
-
 
 
 
@@ -2451,168 +3102,540 @@ const SelfDash = () => {
 };
 
 
-
-
 function ProposalDetailModal({
   open,
+  project,
+  token,
+  onSubmitted,
   onClose,
 }: {
   open: boolean;
+  project: any;
+  token?: string;
+  onSubmitted?: () => void | Promise<void>;
   onClose: () => void;
 }) {
-  if (!open) return null;
+  if (!open || !project) return null;
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [submittingWork, setSubmittingWork] = useState(false);
+
+  const raw = project.raw || {};
+
+  const rawDealId = project?.id || raw?._id;
+  const dealId =
+    rawDealId && typeof rawDealId === "object" && rawDealId._id
+      ? String(rawDealId._id)
+      : rawDealId
+      ? String(rawDealId)
+      : "";
+
+  const currentStatus = project?.status || raw?.status;
+
+  const canSubmitWork = [
+    "FUNDED",
+    "IN_PROGRESS",
+    "REVISION_REQUESTED",
+    "WORK_SUBMITTED",
+  ].includes(currentStatus);
+
+  const title = project.title || raw.title || "Active Project";
+
+  const description =
+    project.description ||
+    project.desc ||
+    raw.description ||
+    "Project details will appear here.";
+
+  const budgetText =
+    project.price || INR(Number(project.budget || raw.amount || raw.budget || 0));
+
+  const targetDate = project.finish || formatShortDate(raw.deliveryDate);
+  const startDate = project.start || "Today";
+  const progress = Number(project.progress || getProjectProgress(currentStatus));
+
+  const handleAttachFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    setSelectedFiles((prev) => [...prev, ...files].slice(0, 10));
+    e.target.value = "";
+  };
+
+  const handleSubmitWork = async () => {
+    if (!token) {
+      toast({
+        title: "Login required",
+        description: "Please login again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!dealId) {
+      toast({
+        title: "Deal missing",
+        description: "Project id nahi mil raha.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!canSubmitWork) {
+      toast({
+        title: "Cannot submit yet",
+        description: "Client payment ke baad hi project submit ho sakta hai.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!selectedFiles.length) {
+      toast({
+        title: "Attach files",
+        description: "Submit karne ke liye pehle files attach karo.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setSubmittingWork(true);
+
+      const uploadedFiles: any[] = [];
+
+      for (const file of selectedFiles) {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const uploadRes = await fetch(`${API_BASE}/api/hire/${dealId}/upload-work-file`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        });
+
+        const uploadData = await uploadRes.json().catch(() => ({}));
+
+        if (!uploadRes.ok || !uploadData?.success) {
+          throw new Error(uploadData?.error || `Failed to upload ${file.name}`);
+        }
+
+        uploadedFiles.push({
+          url: uploadData.file.url,
+          name: uploadData.file.name,
+          description: uploadData.file.name,
+          size: uploadData.file.size,
+          mimeType: uploadData.file.mimeType,
+        });
+      }
+
+      const submitRes = await fetch(`${API_BASE}/api/hire/${dealId}/submit-work`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          note: "",
+          deliverables: uploadedFiles,
+        }),
+      });
+
+      const submitData = await submitRes.json().catch(() => ({}));
+
+      if (!submitRes.ok || !submitData?.success) {
+        throw new Error(submitData?.error || "Failed to submit files");
+      }
+
+      toast({
+        title: "Files submitted",
+        description: "Client ko chat mein project files review ke liye bhej di gayi.",
+      });
+
+      await onSubmitted?.();
+      onClose();
+    } catch (err: any) {
+      toast({
+        title: "Submit failed",
+        description: err?.message || "Could not submit files.",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmittingWork(false);
+    }
+  };
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center px-3"
+      className="fixed inset-0 bg-black/60 backdrop-blur-md"
       style={{ zIndex: 2147483647 }}
       onClick={onClose}
     >
       <div
-        className="
-          relative w-full max-w-[590px]
-          bg-[#202020]
-          rounded-[24px]
-          text-white
-          px-5 sm:px-7
-          py-5
-          border border-white/5
-        "
+        className="text-white shadow-[0_35px_100px_rgba(0,0,0,0.65)]"
+        style={{
+          position: "absolute",
+          top: 102,
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: 675,
+          height: 877,
+          maxWidth: "calc(100vw - 24px)",
+          maxHeight: "calc(100vh - 120px)",
+          borderRadius: 30,
+          background: "#202020",
+          opacity: 1,
+          padding: "30px 50px",
+          overflowY: "auto",
+          boxSizing: "border-box",
+          fontFamily: "Inter, sans-serif",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close */}
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-4 top-4 text-white/35 hover:text-white transition-colors"
+          style={{
+            position: "absolute",
+            right: 18,
+            top: 17,
+            width: 28,
+            height: 28,
+            display: "grid",
+            placeItems: "center",
+            border: "none",
+            background: "transparent",
+            color: "rgba(255,255,255,0.30)",
+            cursor: "pointer",
+          }}
         >
-          <X size={20} />
+          <X size={22} />
         </button>
 
-        {/* Header */}
-        <div className="text-[#C783FF] text-[10px] font-semibold tracking-[3px] uppercase">
-          Proposal #23456
+        {/* Proposal number */}
+        <div
+          style={{
+            fontWeight: 800,
+            fontSize: 11,
+            lineHeight: "100%",
+            letterSpacing: "3.5px",
+            color: "#C783FF",
+            textTransform: "uppercase",
+          }}
+        >
+          Proposal #{String(project.id || "").slice(-6) || "23456"}
         </div>
 
-        <h2 className="mt-2 text-[25px] sm:text-[30px] leading-[1.05] font-bold text-[#F3EAF9] pr-7">
-          Nexus Dashboard Redesign
+        {/* Title */}
+        <h2
+          style={{
+            margin: "14px 0 0",
+            fontWeight: 800,
+            fontSize: 38,
+            lineHeight: "105%",
+            color: "#F3EAF9",
+            letterSpacing: "-1.4px",
+          }}
+        >
+          {title}
         </h2>
 
-        {/* Summary */}
-        <div className="mt-5 rounded-[22px] border border-white/10 bg-[#242424] px-5 py-5">
-          <div className="text-[#C783FF] text-[10px] font-semibold tracking-[2.5px] uppercase">
+        {/* Proposal Summary */}
+        <div
+          style={{
+            marginTop: 27,
+            width: "100%",
+            minHeight: 152,
+            borderRadius: 28,
+            padding: "30px 31px",
+            background:
+              "linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.025))",
+            border: "1px solid rgba(255,255,255,0.11)",
+            boxSizing: "border-box",
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 800,
+              fontSize: 12,
+              lineHeight: "100%",
+              letterSpacing: "3px",
+              color: "#C783FF",
+              textTransform: "uppercase",
+            }}
+          >
             Proposal Summary
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-4">
-            <div className="rounded-[14px] bg-[#333333] border border-white/5 px-4 py-3">
-              <div className="text-white/30 text-[8px] uppercase tracking-[1.8px] font-semibold">
+          <div
+            style={{
+              marginTop: 18,
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 22,
+            }}
+          >
+            <div
+              style={{
+                height: 60,
+                borderRadius: 15,
+                background: "#333333",
+                border: "1px solid rgba(255,255,255,0.05)",
+                padding: "13px 16px",
+                boxSizing: "border-box",
+              }}
+            >
+              <div
+                style={{
+                  fontWeight: 800,
+                  fontSize: 8,
+                  lineHeight: "100%",
+                  letterSpacing: "1.8px",
+                  color: "rgba(255,255,255,0.28)",
+                  textTransform: "uppercase",
+                }}
+              >
                 Total Budget
               </div>
-              <div className="mt-1 text-[18px] font-bold text-white">
-                ₹4,500.00
+
+              <div
+                style={{
+                  marginTop: 9,
+                  fontWeight: 800,
+                  fontSize: 22,
+                  lineHeight: "100%",
+                  color: "#FFFFFF",
+                }}
+              >
+                {budgetText}
               </div>
             </div>
 
-            <div className="rounded-[14px] bg-[#333333] border border-white/5 px-4 py-3">
-              <div className="text-white/30 text-[8px] uppercase tracking-[1.8px] font-semibold">
+            <div
+              style={{
+                height: 60,
+                borderRadius: 15,
+                background: "#333333",
+                border: "1px solid rgba(255,255,255,0.05)",
+                padding: "13px 16px",
+                boxSizing: "border-box",
+              }}
+            >
+              <div
+                style={{
+                  fontWeight: 800,
+                  fontSize: 8,
+                  lineHeight: "100%",
+                  letterSpacing: "1.8px",
+                  color: "rgba(255,255,255,0.28)",
+                  textTransform: "uppercase",
+                }}
+              >
                 Target Date
               </div>
-              <div className="mt-1 text-[18px] font-bold text-white">
-                Oct 24,2026
+
+              <div
+                style={{
+                  marginTop: 9,
+                  fontWeight: 800,
+                  fontSize: 22,
+                  lineHeight: "100%",
+                  color: "#FFFFFF",
+                }}
+              >
+                {targetDate}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Overview */}
-        <div className="mt-5">
-          <div className="flex items-center gap-2 text-[#C783FF]">
-            <FileText size={15} />
-            <span className="text-[11px] font-semibold tracking-[2.5px] uppercase">
+        {/* Project Overview */}
+        <div style={{ marginTop: 32 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <FileText size={17} color="#C783FF" />
+
+            <span
+              style={{
+                fontWeight: 800,
+                fontSize: 12,
+                lineHeight: "100%",
+                letterSpacing: "3px",
+                color: "#C783FF",
+                textTransform: "uppercase",
+              }}
+            >
               Project Overview
             </span>
           </div>
 
-          <div className="mt-3 text-[#CFC3D4] text-[13px] leading-[1.25] space-y-2.5">
-            <p>
-              The Nexus Dashboard Redesign aims to modernize the current user
-              experience by implementing a high-performance, glassmorphic UI system.
-              This proposal covers the end-to-end transformation of the primary data
-              visualization modules and user management workflows.
-            </p>
-
-            <p>
-              Key focuses include reducing cognitive load through improved information
-              architecture, optimizing mobile responsiveness, and integrating a more
-              robust component library that aligns with the new brand identity.
-            </p>
-
-            <p>
-              The solution will leverage cutting-edge design tokens to ensure scalability
-              across the enterprise ecosystem, providing a unified visual language for all
-              future product iterations.
-            </p>
+          <div
+            style={{
+              marginTop: 19,
+              fontWeight: 400,
+              fontSize: 16,
+              lineHeight: "18px",
+              color: "#CFC3D4",
+              whiteSpace: "pre-line",
+            }}
+          >
+            {description}
           </div>
         </div>
 
-        {/* Timeline */}
-        <div className="mt-5 rounded-[14px] bg-[#1D1D1D] border border-white/10 px-4 py-3.5">
-          <div className="flex items-center gap-2 text-[#C783FF]">
-            <Clock3 size={17} />
-            <span className="text-[10px] font-semibold tracking-[2.5px] uppercase">
+        {/* Execution Timeline */}
+        <div
+          style={{
+            marginTop: 31,
+            width: "100%",
+            minHeight: 112,
+            borderRadius: 15,
+            background: "#1D1D1D",
+            border: "1px solid rgba(255,255,255,0.10)",
+            padding: "15px 16px",
+            boxSizing: "border-box",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Clock3 size={18} color="#C783FF" />
+
+            <span
+              style={{
+                fontWeight: 800,
+                fontSize: 12,
+                lineHeight: "100%",
+                letterSpacing: "2.5px",
+                color: "#C783FF",
+                textTransform: "uppercase",
+              }}
+            >
               Execution Timeline
             </span>
           </div>
 
-          <div className="mt-4 h-1.5 rounded-full bg-[#4A4250] overflow-hidden">
-            <div className="h-full w-[25%] rounded-full bg-[#D5A0FF]" />
+          <div
+            style={{
+              marginTop: 20,
+              height: 8,
+              overflow: "hidden",
+              borderRadius: 999,
+              background: "#4A4250",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${Math.max(2, Math.min(progress, 100))}%`,
+                borderRadius: 999,
+                background: "#D5A0FF",
+              }}
+            />
           </div>
 
-          <div className="mt-2 flex items-center justify-between text-[#D8CDD9] text-[10px]">
-            <span>Start: Today</span>
-            <span>Finish: Oct 24</span>
+          <div
+            style={{
+              marginTop: 13,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              fontWeight: 400,
+              fontSize: 12,
+              lineHeight: "100%",
+              color: "#D8CDD9",
+            }}
+          >
+            <span>Start: {startDate}</span>
+            <span>Finish: {targetDate}</span>
           </div>
         </div>
 
-        {/* Buttons */}
-        <div className="mt-5 flex items-center justify-center gap-3">
+        {/* Bottom buttons */}
+        <div
+          style={{
+            marginTop: 32,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 14,
+          }}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            hidden
+            onChange={handleAttachFiles}
+          />
+
           <button
             type="button"
-            className="
-              h-[44px] w-[160px]
-              rounded-[8px]
-              bg-[#242424]
-              border border-white/10
-              text-white
-              text-[14px]
-              flex items-center justify-center gap-2
-              hover:bg-[#2E2E2E]
-              transition-colors
-            "
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!canSubmitWork || submittingWork}
+            style={{
+              width: 180,
+              height: 49,
+              borderRadius: 8,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "#242424",
+              color: "#FFFFFF",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 12,
+              fontWeight: 400,
+              fontSize: 16,
+              cursor: !canSubmitWork || submittingWork ? "not-allowed" : "pointer",
+              opacity: !canSubmitWork || submittingWork ? 0.55 : 1,
+            }}
           >
-            <Link2 size={16} />
-            Attach Files
+            <Link2 size={17} />
+            {selectedFiles.length > 0
+              ? `${selectedFiles.length} File${selectedFiles.length > 1 ? "s" : ""}`
+              : "Attach Files"}
           </button>
 
           <button
             type="button"
-            className="
-              h-[44px] w-[170px]
-              rounded-[8px]
-              text-white
-              text-[14px]
-              bg-gradient-to-r from-[#F014EF] to-[#1A73E8]
-              hover:opacity-90
-              transition-opacity
-            "
+            onClick={handleSubmitWork}
+            disabled={!canSubmitWork || submittingWork}
+            style={{
+              width: 190,
+              height: 49,
+              borderRadius: 8,
+              border: "none",
+              background: GRADIENT,
+              color: "#FFFFFF",
+              fontWeight: 400,
+              fontSize: 16,
+              cursor: !canSubmitWork || submittingWork ? "not-allowed" : "pointer",
+              opacity: !canSubmitWork || submittingWork ? 0.55 : 1,
+            }}
           >
-            Submit Files
+            {submittingWork ? "Submitting..." : "Submit Files"}
           </button>
         </div>
+
+        {selectedFiles.length > 0 && (
+          <div
+            style={{
+              marginTop: 12,
+              textAlign: "center",
+              fontSize: 11,
+              lineHeight: "16px",
+              color: "rgba(255,255,255,0.35)",
+            }}
+          >
+            {selectedFiles.map((file) => file.name).join(", ")}
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
+
 
 export default SelfDash;

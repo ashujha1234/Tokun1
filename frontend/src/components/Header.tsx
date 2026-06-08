@@ -2651,13 +2651,13 @@ const userPlanColor =
 const [pendingUpload, setPendingUpload] = useState(false);
 const [pendingCheckout, setPendingCheckout] = useState(false);
 const [hideHeader, setHideHeader] = useState(false);
-useEffect(() => {
-  // Chat page par header hide mat karo
-  if (location.pathname === "/chat") return;
-  const onScroll = () => setHideHeader(window.scrollY > 10);
-  window.addEventListener("scroll", onScroll, { passive: true });
-  return () => window.removeEventListener("scroll", onScroll);
-}, [location.pathname]);
+// useEffect(() => {
+//   // Chat page par header hide mat karo
+//   if (location.pathname === "/chat") return;
+//   const onScroll = () => setHideHeader(window.scrollY > 10);
+//   window.addEventListener("scroll", onScroll, { passive: true });
+//   return () => window.removeEventListener("scroll", onScroll);
+// }, [location.pathname]);
 const toastTimerRef = useRef<number | null>(null);
 
 type Notif = { id: string; title: string; body: string; date: string; unread: boolean };
@@ -3770,10 +3770,10 @@ useEffect(() => {
     <>
     
 <header
-  className={`fixed top-0 left-0 right-0 z-50 flex justify-center pointer-events-none transition-all duration-300 ${
-    hideHeader ? "-translate-y-full opacity-0" : "translate-y-0 opacity-100"
-  }`}
+  className="sticky top-0 left-0 right-0 z-50 flex justify-center pointer-events-none"
 >
+
+
   <div className="pointer-events-auto w-full max-w-[1180px] text-white px-4 sm:px-6 py-2 flex items-center justify-between">
   
         {/* Brand */}
@@ -4174,6 +4174,9 @@ useEffect(() => {
 </button>
     </div>
 
+
+
+
     {/* My Wallet */}
    <button
   type="button"
@@ -4197,6 +4200,33 @@ useEffect(() => {
     className="w-4 h-4 shrink-0"
   />
   <span>My Wallet</span>
+</button>
+
+{/* Dashboard Button */}
+
+
+
+{/* Dashboard Button */}
+<button
+  type="button"
+  onClick={(e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigate("/self-dash");
+  }}
+  className="w-full mt-6 flex shrink-0 items-center justify-center gap-2 text-white"
+  style={{
+    fontFamily: "Inter",
+    fontWeight: 400,
+    fontSize: 16,
+    height: 38,
+    minHeight: 38,
+    borderRadius: 6,
+    background: "#313131",
+  }}
+>
+  <img src="/icons/self.svg" alt="" className="w-4 h-4 shrink-0" />
+  <span>Dashboard</span>
 </button>
 
     {/* Settings */}
@@ -4273,7 +4303,7 @@ useEffect(() => {
     {/* Links */}
  <div className="grid shrink-0 gap-2 pt-2">
   {[
-    { label: "Dashboard", onClick: () => navigate("/self-dash"), icon: "↗" },
+
     { label: "Purchase History", onClick: goToPurchaseHistory, icon: "↗" },
     { label: "Upload History", onClick: goToUploadHistory, icon: "↗" },
     { label: "Pricing", onClick: () => navigate("/subscription"), icon: "↗" },
@@ -5208,7 +5238,7 @@ style={{
 }}
   />
 )}
-
+b 
 
 </>
   );

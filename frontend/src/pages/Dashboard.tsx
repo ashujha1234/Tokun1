@@ -14000,9 +14000,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import EscrowAdminDashboard from "./EscrowAdminDashboard";
 
 // ✅ ADD reports here
-type NavKey = "dashboard" | "sellers" | "products" | "reports" | "analytics" | "account" | "withdrawals";
+type NavKey = "dashboard" | "sellers" | "products" | "reports" | "analytics" | "account" | "withdrawals" | "escrow";
 
 const kpiCardBase =
   "rounded-2xl bg-gradient-to-b from-white/[0.06] to-white/[0.03] border border-white/10 shadow-[0_8px_40px_rgba(0,0,0,0.35)]";
@@ -18708,8 +18709,6 @@ const AccountView = ({
 
 
 
-
-
   return (
     <div className="min-h-screen w-full bg-[#07080B] text-white font-inter">
       {/* Top Nav */}
@@ -18773,24 +18772,27 @@ const AccountView = ({
       <ChevronDown className="h-4 w-4 text-white/70" />
     </button>
   </DropdownMenuTrigger>
-
-  <DropdownMenuContent
-    align="end"
-    className="w-44 rounded-xl border border-white/10 bg-[#0B0D12] text-white shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
+<DropdownMenuContent
+  align="end"
+  className="w-44 rounded-xl border border-white/10 bg-[#0B0D12] text-white shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
+>
+  <DropdownMenuItem
+    onClick={() => setActive("account")}
+    className="cursor-pointer focus:bg-white/[0.06]"
   >
-    <DropdownMenuItem
-      onClick={() => setActive("account")}
-      className="cursor-pointer focus:bg-white/[0.06]"
-    >
-      Account
-    </DropdownMenuItem>
+    Account
+  </DropdownMenuItem>
 
-    <DropdownMenuSeparator className="bg-white/10" />
+  <DropdownMenuSeparator className="bg-white/10" />
 
-    {/* Optional (if you want later)
-    <DropdownMenuItem onClick={logout}>Logout</DropdownMenuItem>
-    */}
-  </DropdownMenuContent>
+  <DropdownMenuItem
+    onClick={() => setActive("escrow")}
+    className="cursor-pointer focus:bg-white/[0.06]"
+  >
+    Escrow
+  </DropdownMenuItem>
+</DropdownMenuContent>
+
 </DropdownMenu>
 
 
@@ -19628,6 +19630,10 @@ const AccountView = ({
             pendingInvite={3}
           />
         )}
+
+{active === "escrow" && <EscrowAdminDashboard />}
+
+
       </div>
     </main>
   </div>

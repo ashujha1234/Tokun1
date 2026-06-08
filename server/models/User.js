@@ -189,6 +189,14 @@ sellerReviewsCount: { type: Number, default: 0 },
 sellerRefundRate: { type: Number, default: 0 },
 sellerRefundThreshold: { type: Number, default: 5 },
 
+
+// RazorpayX payout setup
+razorpayContactId: { type: String, default: null },
+razorpayFundAccountId: { type: String, default: null },
+
+// Escrow / seller earnings stats
+totalEarnings: { type: Number, default: 0 },
+completedDeals: { type: Number, default: 0 },
 // models/seller
 sellerStatus: { type: String, default: "ACTIVE" },
 isDeleted: { type: Boolean, default: false },

@@ -173,27 +173,28 @@ const NotificationSchema = new mongoose.Schema(
       ref: "User",
     },
 
-    type: {
-      type: String,
-      enum: [
-        "TM_REQUEST",
-        "ORG_SUGGEST",
-        "ORG_SHARE",
-        "ORG_SHARE_PURCHASED",
-        "COLLAB_INVITE",
+   type: {
+  type: String,
+  enum: [
+    "TM_REQUEST",
+    "ORG_SUGGEST",
+    "ORG_SHARE",
+    "ORG_SHARE_PURCHASED",
+    "COLLAB_INVITE",
 
-        // Hire flow
-        "HIRE_PROPOSAL_ACCEPTED",
-        "HIRE_PAYMENT_REQUIRED",
-        "HIRE_PAYMENT_DONE",
-        "HIRE_WORK_STARTED",
-        "HIRE_WORK_COMPLETED",
-        "HIRE_PAYMENT_RELEASED",
-        "HIRE_COUNTER_OFFER",
-      ],
-      required: true,
-    },
-
+    // Hire flow
+    "HIRE_PROPOSAL_ACCEPTED",
+    "HIRE_PAYMENT_REQUIRED",
+    "HIRE_PAYMENT_DONE",
+    "HIRE_WORK_STARTED",
+    "HIRE_WORK_SUBMITTED",
+    "HIRE_WORK_COMPLETED",
+    "HIRE_REVISION_REQUESTED",
+    "HIRE_PAYMENT_RELEASED",
+    "HIRE_COUNTER_OFFER",
+  ],
+  required: true,
+},
     promptId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Prompt",

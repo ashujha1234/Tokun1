@@ -207,20 +207,17 @@ const filteredPrompts: Prompt[] = promptsWithImages.filter((p) => {
   };
 
   return (
-  <div className="dark min-h-screen bg-background text-foreground">
+ <div className="dark min-h-screen bg-background text-foreground">
     
     {/* Header */}
-    <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8">
+    <div className="sticky top-0 z-50">
       <Header />
-        <Header />
     </div>
-
-  
 
     <div className="container mx-auto px-4 sm:px-6 pb-16">
         
    {/* Heading */}
-<div className="flex flex-col items-center text-center mt-16 sm:mt-20 lg:mt-24 mb-8">
+<div className="flex flex-col items-center text-center mt-6 mb-8">
   <div className="flex justify-center w-full mb-3 sm:mb-4">
     <TokenUsageSection className="mt-0 mb-0" />
   </div>

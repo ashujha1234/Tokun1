@@ -4825,7 +4825,7 @@ const filteredPrompts = prompts.filter((p) => {
       <div className="min-h-screen bg-[#07080A] text-white">
         <div className="container mx-auto px-6 py-8">
           <Header />
-            <Header />
+        
           <div className="flex items-center gap-4 mb-8">
             <Button
               variant="ghost"
@@ -4945,15 +4945,13 @@ const savePromptToCollections = async ({
 
       {/* Header + token usage */}
      {/* 🔹 Full-width compact Header */}
-<div className="relative z-20 w-full bg-transparent px-4">
-    <Header />
+<div className="fixed top-0 left-0 right-0 z-[999]">
   <Header />
 </div>
 
-
-
       {/* Main Content */}
-  <div className="relative z-10 container mx-auto px-6 pb-16">
+<div className="relative z-10 container mx-auto px-6 pt-24 md:pt-28 pb-16">
+
         {/* History Button */}
         {/* <div className="flex justify-between items-center mb-12">
           <Button
@@ -5020,7 +5018,7 @@ const savePromptToCollections = async ({
   </p>
 </div> */}
 
-          <div className="mt-20 sm:mt-20 md:mt-28 flex flex-col items-center text-center mb-12 px-4">
+                    <div className="mt-8 sm:mt-10 flex flex-col items-center text-center mb-12 px-4">
   {/* Prompt */}
   <h1 className="text-white font-bold leading-tight 
     text-[36px] sm:text-[48px] md:text-[64px]">

@@ -3346,11 +3346,16 @@ const sendMessage = () => {
   alt="background"
   className="fixed inset-0 w-full h-screen object-contain object-top z-0 pointer-events-none select-none"
 />
-{!openHirePopup && !openMessagePopup && !openServicePopup && !openBookPopup && !openCreateServicePopup && !openDocModal && (
-  <div className="relative z-20">
-    <Header />
-  </div>
-)}
+{!openHirePopup &&
+  !openMessagePopup &&
+  !openServicePopup &&
+  !openBookPopup &&
+  !openCreateServicePopup &&
+  !openDocModal && (
+    <div className="fixed top-0 left-0 right-0 z-[999]">
+      <Header />
+    </div>
+  )}
 
 <main className="relative z-10 flex-1">
         <div className="mx-auto max-w-[1280px] px-4 sm:px-6 pt-24 md:pt-28 lg:pt-36 pb-20">

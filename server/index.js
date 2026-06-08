@@ -1915,6 +1915,7 @@ const adminRoutes = require("./routes/adminRoutes");
 const sellerRoutes = require("./routes/sellerRoutes");
 const kycRoutes = require("./routes/kycRoutes");
 const hireRoutes = require("./routes/hire.routes");
+const adminEscrowRouter = require("./routes/adminEscrow");
 
 const activityRoutes = require("./routes/activityRoutes");
 const userAdminRoutes = require("./routes/userAdminRoutes");
@@ -2434,6 +2435,8 @@ app.use("/api/kyc", kycRoutes);
 app.use("/api/activity", activityRoutes);
 app.use("/api/wallet", walletRoutes);
 app.use("/api/hire", hireRoutes);
+app.use("/api/admin/escrow", adminEscrowRouter);
+
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "sample.html"));

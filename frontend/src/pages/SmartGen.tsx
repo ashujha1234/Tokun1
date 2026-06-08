@@ -51,15 +51,14 @@ useEffect(() => {
   );
 }
 
- 
-  return (
+   return (
     <div className="dark min-h-screen text-foreground" style={{ backgroundColor: "#030406" }}>
-      <div className="container mx-auto px-4 py-6">
+      
         <Header />
- 
-       <Header />
+     
+      <div className="container mx-auto px-4 pt-6">
 
-<div className="pt-20 md:pt-24 lg:pt-28 flex justify-center">
+<div className="pt-4 flex justify-center">
   <TokenUsageSection />
 </div>
 

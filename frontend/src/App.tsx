@@ -38,6 +38,8 @@ import ScrollToTop from "@/components/ScrollToTop";
 import Wallet from "@/pages/Wallet";
 import WithdrawFunds from "@/pages/WithdrawFunds";
 import AddFunds from "@/pages/AddFunds";
+import EscrowAdminDashboard from "@/pages/EscrowAdminDashboard";
+
 import SelfDash from "@/pages/self-dash";
 import AdminForgotPassword from "./pages/AdminForgotPassword";
 const queryClient = new QueryClient();
@@ -191,6 +193,7 @@ export default function App() {
 <Route path="/admin-login" element={< AdminLogin/>} />
 <Route path="/admin-forgot-password" element={<AdminForgotPassword />} />
 <Route path="/admin/dashboard" element={<Dashboard />} />
+<Route path="/admin/escrow" element={<EscrowAdminDashboard />} />
 
 <Route
   path="/purchases"

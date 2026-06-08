@@ -322,17 +322,14 @@ export default function PromptOptimizationPage() {
   if (isLoading) return null;
 
   return (
-    <div className="dark min-h-screen" style={{ backgroundColor: "#030406" }}>
-      <div className="container mx-auto px-4 py-6">
-
+   <div className="dark min-h-screen" style={{ backgroundColor: "#030406" }}>
+      <div className="sticky top-0 z-50">
         <Header />
-          <Header />
-        {/* Header Section */}
-      <Header />
+      </div>
+      <div className="container mx-auto px-4 pt-6">
 
-{/* Header Section */}
-{/* Header Section */}
-<div className="mt-20 sm:mt-24 lg:mt-28 text-center">
+<div className="pt-4 text-center">
+
   <h2
     className="text-[22px] sm:text-[28px] lg:text-[32px] font-semibold text-white mb-2 sm:mb-3"
     style={{ fontFamily: "Inter" }}

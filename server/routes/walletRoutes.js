@@ -2044,11 +2044,6 @@ const WalletWithdrawal = require("../models/WalletWithdrawal");
 const getRazorpayKeyId = () => process.env.RAZORPAY_KEY_ID;
 const getRazorpaySecret = () => process.env.RAZORPAY_KEY_SECRET;
 
-// ─────────────────────────────────────────────────────────────
-// Razorpay official test UPI IDs — real VPA validation mein
-// ye "not registered" deta hai, isliye bypass karte hain.
-// Live mode mein ye IDs use nahi hoti, koi issue nahi.
-// ─────────────────────────────────────────────────────────────
 const RAZORPAY_TEST_VPAS = {
   "success@razorpay": "Test Success User",
   "failure@razorpay": "Test Failure User",
@@ -2063,11 +2058,7 @@ const getOrCreateWallet = async (userId) => {
   return wallet;
 };
 
-// ─────────────────────────────────────────────────────────────
-// Helper: Credit wallet after successful top-up
-// Note: add-fund totalRevenue mein count nahi hota —
-//       sirf seller earnings totalRevenue badhaate hain
-// ─────────────────────────────────────────────────────────────
+
 const creditWalletTopup = async ({ userId, amount, topupId, razorpayPaymentId, method }) => {
   const wallet = await getOrCreateWallet(userId);
   wallet.availableBalance += amount;
@@ -2312,16 +2303,7 @@ router.post("/add-fund/verify", requireAuth, async (req, res) => {
   }
 });
 
-// ══════════════════════════════════════════════════════════════
-// POST /api/wallet/upi/validate
-//
-// FIX (Test + Live dono mein kaam karta hai):
-//   1. Razorpay test VPAs (success@razorpay etc.) ko API se
-//      validate nahi karte — direct bypass karo
-//   2. Live mode mein real validateVpa call hoti hai
-//   3. "not registered" / BAD_REQUEST = invalid VPA
-//   4. Network error = format-only fallback (payment block mat karo)
-// ══════════════════════════════════════════════════════════════
+
 router.post("/upi/validate", requireAuth, async (req, res) => {
   try {
     const { vpa } = req.body;
@@ -2493,13 +2475,7 @@ router.post("/add-fund/create-qr", requireAuth, async (req, res) => {
   }
 });
 
-// ══════════════════════════════════════════════════════════════
-// GET /api/wallet/add-fund/qr-status/:qrId
-//
-// Frontend polling route — har 3 second mein call hota hai
-// Razorpay QR Code ke liye aaye payments check karta hai
-// Payment milte hi wallet credit karta hai (idempotent)
-// ══════════════════════════════════════════════════════════════
+
 router.get("/add-fund/qr-status/:qrId", requireAuth, async (req, res) => {
   try {
     const { qrId } = req.params;
@@ -2557,9 +2533,7 @@ router.get("/add-fund/qr-status/:qrId", requireAuth, async (req, res) => {
   }
 });
 
-// ══════════════════════════════════════════════════════════════
-// POST /api/wallet/add-fund/bank-transfer
-// ══════════════════════════════════════════════════════════════
+
 router.post("/add-fund/bank-transfer", requireAuth, async (req, res) => {
   try {
     const userId = req.user._id;
@@ -2730,16 +2704,7 @@ router.get("/balance/:userId", async (req, res) => {
 });
 
 
-// ══════════════════════════════════════════════════════════════
-// ADMIN ROUTES
-// TEMP: testing ke liye auth removed
-// Production mein requireAuth + requireAdmin wapas lagana
-// ══════════════════════════════════════════════════════════════
 
-
-// ══════════════════════════════════════════════════════════════
-// GET /api/wallet/admin/pending-bank-transfers
-// ══════════════════════════════════════════════════════════════
 router.get("/admin/pending-bank-transfers", async (req, res) => {
   try {
     const wallets = await Wallet.find({

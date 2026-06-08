@@ -8684,7 +8684,7 @@ import { MdKeyboardArrowDown, MdKeyboardArrowRight } from "react-icons/md";
 import { motion, animate, useMotionValue, useMotionTemplate } from "framer-motion";
 import Footer from "@/components/Footer";
 import SubscriptionModal from "@/components/SubscriptionModal";
-import { Settings, ChevronDown } from "lucide-react";
+import { Settings, ChevronDown,User } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { MessageCircleHeart, X } from "lucide-react";
 import { GlobeSection, FAQSection , TickerSection } from "@/components/GlobeAndFAQ_components";
@@ -8850,11 +8850,12 @@ export default function Landing({
   const go = (path?: string) => path && navigate(path);
 const handleGetStarted = () => {
   if (isAuthenticated) {
-    go(routes.dashboard);
+    go(routes.app);        // ← dashboard ki jagah app
   } else {
     go(routes.signup || "/signup");
   }
 };
+
   // Steps
   const [activeStep, setActiveStep] = useState(0);
   const [hoveredStep, setHoveredStep] = useState<number | null>(null);
@@ -8887,7 +8888,8 @@ const closeSplit = () => {
 
 
  
-
+const [profileOpen, setProfileOpen] = useState(false);
+const [profileTab, setProfileTab] = useState<"profile" | "bank" | "billing">("profile");
   // const [current, setCurrent] = useState(0);
   const [activeButton, setActiveButton] = useState<"left" | "right" | null>(null);
   const { isAuthenticated } = useAuth();
@@ -9344,7 +9346,8 @@ useEffect(() => {
 
 
 
-const HOW_IT_WORKS_NUMBER_COLOR = "#252526";
+const HOW_IT_WORKS_NUMBER_COLOR = "#3a3a3c";
+
 
 const HOW_IT_WORKS_STEPS = [
   {
@@ -9379,7 +9382,7 @@ const HOW_IT_WORKS_STEPS = [
     <motion.section
       id="landing-root"
       style={{ backgroundColor: "#030406" }}
-    className="relative min-h-screen overflow-x-hidden text-gray-200 bg-[#030406]"
+   className="relative min-h-screen text-gray-200 bg-[#030406]"
     >
       {/* Fixed top background: static while scrolling, hidden after What We Offer */}
       <div
@@ -9400,7 +9403,9 @@ const HOW_IT_WORKS_STEPS = [
       </div>
 
       {/* HEADER */}
-<header className="relative z-20 w-full">
+<header className="sticky top-0 z-50 w-full relative">
+
+
   <div className="px-4 md:px-6 lg:px-8 py-4 lg:py-6">
     <div className="container mx-auto flex items-center justify-between">
 
@@ -9451,11 +9456,237 @@ const HOW_IT_WORKS_STEPS = [
   </span>
 </button>
           </>
-        ) : (
-          <DropdownMenu>
-            <AccountMenu />
-          </DropdownMenu>
-        )}
+       ) : (
+  <DropdownMenu>
+    <DropdownMenuTrigger asChild>
+      <button
+        type="button"
+        aria-label="Account menu"
+        title={fullName}
+        className="group inline-flex items-center gap-2 px-2 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#2C2C2C] text-white whitespace-nowrap"
+      >
+        {/* NAME + PLAN → hidden on mobile */}
+        <div className="hidden sm:flex items-center gap-2">
+
+          {/* PRO PLAN */}
+          {user?.plan === "pro" && (
+            <>
+              <span className="truncate font-semibold bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] text-transparent bg-clip-text">
+                Hello, {fullName}
+              </span>
+              <LuBadgeCheck
+                className="w-[22px] h-[22px]"
+                style={{ stroke: "url(#proGradient)", strokeWidth: 2, fill: "none" }}
+              />
+              <svg width="0" height="0">
+                <defs>
+                  <linearGradient id="proGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#FF14EF" />
+                    <stop offset="100%" stopColor="#1A73E8" />
+                  </linearGradient>
+                </defs>
+              </svg>
+            </>
+          )}
+
+          {/* ENTERPRISE PLAN */}
+          {user?.plan === "enterprise" && (
+            <>
+              <span className="truncate font-semibold bg-gradient-to-r from-[#FACC15] to-[#CA8A04] text-transparent bg-clip-text">
+                Hello, {fullName}
+              </span>
+              <LuBadgeCheck
+                className="w-[22px] h-[22px]"
+                style={{ stroke: "url(#enterpriseGradient)", strokeWidth: 2, fill: "none" }}
+              />
+              <svg width="0" height="0">
+                <defs>
+                  <linearGradient id="enterpriseGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#FACC15" />
+                    <stop offset="100%" stopColor="#CA8A04" />
+                  </linearGradient>
+                </defs>
+              </svg>
+            </>
+          )}
+
+          {/* FREE PLAN */}
+          {(!user?.plan || user?.plan === "free") && (
+            <>
+              <span className="truncate font-semibold text-white">
+                Hello, {fullName}
+              </span>
+              <span className="px-2 py-0.5 text-xs rounded-md bg-gray-700 text-gray-300">
+                FREE
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* DROPDOWN ICON → always visible */}
+        <span className="shrink-0 grid place-items-center rounded-full bg-white/95 w-6 h-6">
+          <ChevronDown className="w-3.5 h-3.5 text-black" />
+        </span>
+      </button>
+    </DropdownMenuTrigger>
+
+    <DropdownMenuContent
+      sideOffset={10}
+      align="end"
+      onCloseAutoFocus={(e) => e.preventDefault()}
+      className="no-scrollbar overflow-y-auto"
+      style={{
+        width: 240,
+        height: 650,
+        maxHeight: "85vh",
+        padding: 10,
+        borderRadius: 16,
+        background: "#21212180",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        border: "1px solid rgba(255,255,255,0.10)",
+        color: "#ffffff",
+        fontFamily: "Inter, system-ui, Arial, sans-serif",
+        fontWeight: 400,
+        fontStyle: "normal",
+      }}
+    >
+      <div className="flex flex-col h-full">
+        {/* Name / email */}
+        <div className="space-y-2">
+          <button
+            type="button"
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); navigate(routes.profile || "/profile"); }}
+            className="block text-left text-white hover:underline"
+            style={{ fontFamily: "Inter", fontWeight: 400, fontSize: 16, lineHeight: "100%" }}
+          >
+            {displayName || "Your Name"}
+          </button>
+          <div className="text-white/70" style={{ fontFamily: "Inter", fontWeight: 400, fontSize: 12, lineHeight: "100%" }}>
+            {displayEmail || "your@email.com"}
+          </div>
+          <button
+            type="button"
+            // Landing.tsx mein Set up profile button ka onMouseDown
+onMouseDown={(e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  const id = user?._id || user?.id;
+  if (id) {
+    navigate(`/profile/${id}`);
+  } else {
+    navigate(routes.profile || "/profile");
+  }
+}}
+            className="w-full mt-2 text-white"
+            style={{ fontFamily: "Inter", fontWeight: 400, fontSize: 16, lineHeight: "100%", height: 39, borderRadius: 6, background: "#313131" }}
+          >
+            Set up profile
+          </button>
+        </div>
+
+
+
+          {/* My Wallet */}
+        <button
+          type="button"
+          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); navigate("/wallet"); }}
+          className="w-full mt-6 flex shrink-0 items-center justify-center gap-2 text-white"
+          style={{ fontFamily: "Inter", fontWeight: 400, fontSize: 16, height: 38, minHeight: 38, borderRadius: 6, background: "linear-gradient(270deg,#1A73E8 0%,#FF14EF 100%)" }}
+        >
+          <img src="/icons/wallet.svg" alt="" className="w-4 h-4 shrink-0" />
+          <span>My Wallet</span>
+        </button>
+
+        
+
+        {/* Dashboard Button */}
+<button
+  type="button"
+  onMouseDown={(e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  navigate("/self-dash");
+}}
+
+  className="w-full mt-6 flex shrink-0 items-center justify-center gap-2 text-white"
+  style={{
+    fontFamily: "Inter",
+    fontWeight: 400,
+    fontSize: 16,
+    height: 38,
+    minHeight: 38,
+    borderRadius: 6,
+    background: "#313131",
+  }}
+>
+  <img src="/icons/self.svg" alt="" className="w-4 h-4 shrink-0" />
+  <span>Dashboard</span>
+</button>
+
+
+      
+
+        {/* Settings */}
+       {/* Settings */}
+<button
+  type="button"
+  onClick={() => { setProfileOpen(true); setProfileTab("profile"); }}
+  className="w-full mt-6 flex items-center justify-between py-2 text-white border-t border-white/10"
+  style={{ fontFamily: "Inter", fontWeight: 400, fontSize: 16 }}
+>
+  <span className="flex items-center gap-2">
+    <Settings className="w-5 h-5" />
+    Settings
+  </span>
+  <span className="text-lg leading-none">↗</span>
+</button>
+
+        {/* Lifetime Tokun saved */}
+        <div className="mt-4">
+          <div className="mb-2 text-center text-white/90" style={{ fontFamily: "Inter", fontWeight: 400, fontSize: 16 }}>
+            Lifetime Tokun saved
+          </div>
+          <div style={{ width: "100%", height: 100, background: "#2A2A2A", borderRadius: 6, padding: "8px 0", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ width: 56, height: 56, borderRadius: "50%", background: "conic-gradient(#FF14EF 0 60deg, #1A73E8 60deg 210deg, #5CE1E6 210deg 360deg)", display: "grid", placeItems: "center" }}>
+              <div style={{ width: 40, height: 40, borderRadius: "50%", background: "#2A2A2A", display: "grid", placeItems: "center", color: "#fff", fontWeight: 500, fontSize: 14 }}>
+                {user?.lifetimeTokunSaved ?? 150}
+              </div>
+            </div>
+            <div className="text-xs text-white/70">Total tokun saved till date</div>
+          </div>
+        </div>
+
+        {/* Links */}
+        <div className="grid shrink-0 gap-2 pt-2">
+          {[
+
+            { label: "Purchase History", onClick: () => navigate("/prompty-history?p=purchased"), icon: "↗" },
+            { label: "Upload History",   onClick: () => navigate("/prompty-history?p=uploaded"), icon: "↗" },
+            { label: "Pricing",          onClick: () => navigate("/subscription"), icon: "↗" },
+            { label: "Support",          onClick: () => navigate("/support"), icon: "↗" },
+            { label: "Logout",           onClick: handleLogout, icon: "↩" },
+          ].map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              onClick={item.onClick}
+              className="w-full flex items-center justify-between py-2 text-left whitespace-nowrap"
+            >
+              <span style={{ fontFamily: "Inter", fontWeight: 400, fontSize: 14 }}>{item.label}</span>
+              <span aria-hidden style={{ fontFamily: "Inter", fontWeight: 400, fontSize: 14 }}>{item.icon}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="mt-auto border-t border-white/10 flex items-center justify-between pt-4 text-xs text-gray-400">
+          <span>Privacy</span><span>•</span><span>Terms</span><span>•</span><span>Copyright</span>
+        </div>
+      </div>
+    </DropdownMenuContent>
+  </DropdownMenu>
+)}
       </div>
     </div>
   </div>
@@ -10095,19 +10326,20 @@ const HOW_IT_WORKS_STEPS = [
                   {/* Number - same as How It Works */}
                   <span
                     className="absolute top-3 right-3"
-                    style={{
+                  style={{
                       width: 26,
                       height: 24,
                       opacity: 1,
                       fontFamily: "Inter, ui-sans-serif, system-ui",
-                      fontWeight: 500,
+                      fontWeight: 800,
                       fontStyle: "normal",
                       fontSize: 20,
                       lineHeight: "100%",
                       letterSpacing: "0%",
                       textAlign: "right",
-                      color: "#252526",
+                      color: "#3a3a3c",
                     }}
+
                   >
                     {String(i + 1).padStart(2, "0")}
                   </span>
@@ -10260,13 +10492,13 @@ const HOW_IT_WORKS_STEPS = [
                         height: 24,
                         opacity: 1,
                         fontFamily: "Inter, ui-sans-serif, system-ui",
-                        fontWeight: 500,
+                        fontWeight: 800,
                         fontStyle: "normal",
-                        fontSize: 20,
+                        fontSize: 22,
                         lineHeight: "100%",
                         letterSpacing: "0%",
                         textAlign: "right",
-                        color: "#252526",
+                        color: "#3a3a3c",
                       }}
                     >
                       {String(i + 1).padStart(2, "0")}
@@ -10556,7 +10788,9 @@ const HOW_IT_WORKS_STEPS = [
 </div>
 
         {/* HOW IT WORKS + PRODUCT DEMO */}
-        <div className="mt-28" style={{ borderWidth: "1px 0 1px 0", borderStyle: "solid", borderColor: "#171717", background: "#08090B" }}>
+           <div className="mt-28 mx-4 md:mx-8 lg:mx-16" style={{ border: "1px solid #171717", borderRadius: 28, background: "#08090B", paddingBottom: "80px", overflow: "hidden" }}>
+
+
           <div className="pt-16 flex justify-center mb-8">
             <div className="p-[1px] rounded-full" style={{ background: "linear-gradient(90deg, #1A73E8 0%, #FF14EF 100%)" }}>
               <div className="px-5 py-2 rounded-full bg-black">
@@ -10725,7 +10959,7 @@ const HOW_IT_WORKS_STEPS = [
                 height: 24,
                 opacity: 1,
                 fontFamily: "Inter, ui-sans-serif, system-ui",
-                fontWeight: 500,
+                fontWeight: 800,
                 fontStyle: "normal",
                 fontSize: 20,
                 lineHeight: "100%",
@@ -10780,7 +11014,8 @@ const HOW_IT_WORKS_STEPS = [
 </div>
    
      {/* Product Demo */}
-<div className="mt-28 relative overflow-hidden">
+<div className="mt-16 relative overflow-hidden">
+
 
   <div className="container mx-auto px-6 text-center">
 
@@ -10797,13 +11032,8 @@ const HOW_IT_WORKS_STEPS = [
     <div className="relative w-full max-w-[1200px] mx-auto">
 
       {/* Glow background */}
-      <div
-        className="absolute inset-0 blur-[120px] opacity-40"
-        style={{
-          background:
-            "radial-gradient(circle at center, rgba(255,20,239,0.35) 0%, rgba(26,115,232,0.35) 100%)",
-        }}
-      />
+           <div className="hidden" />
+
 
       {/* Laptop with 3D animation */}
       <motion.div
@@ -11120,6 +11350,139 @@ const HOW_IT_WORKS_STEPS = [
 
 
         {showFooter && <Footer />}
+      {profileOpen && (
+  <div role="dialog" aria-modal="true" className="fixed inset-0 z-[1000] grid place-items-center">
+    <div
+      className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+      onClick={() => setProfileOpen(false)}
+    />
+    <div
+      className="relative w-[96vw] md:w-[min(96vw,900px)] max-h-[90vh] rounded-2xl text-white shadow-2xl overflow-hidden"
+      style={{ background: "#17171A", fontFamily: "Inter", fontWeight: 400 }}
+    >
+      <button
+        aria-label="Close"
+        onClick={() => setProfileOpen(false)}
+        className="absolute right-2 top-2 grid place-items-center rounded-full bg-black/60 hover:bg-black/80 transition h-8 w-8 z-10"
+      >
+        <X className="w-4 h-4 text-white/90" />
+      </button>
+
+      <div className="flex flex-col md:grid md:grid-cols-[240px,1fr] max-h-[90vh] overflow-hidden">
+        {/* Left nav */}
+        <aside
+          className="no-scrollbar overflow-x-auto md:overflow-y-auto md:pt-5 flex md:flex-col flex-row"
+          style={{ background: "#17171A", borderBottom: "1px solid #1C1C1C" }}
+        >
+          {[
+            { id: "profile", label: "Profile", Icon: User },
+            { id: "bank", label: "Bank Account", Icon: Landmark },
+            { id: "billing", label: "Billing information", Icon: CreditCard },
+          ].map((item) => {
+            const active = profileTab === (item.id as typeof profileTab);
+            return (
+              <button
+                key={item.id}
+                onClick={() => setProfileTab(item.id as typeof profileTab)}
+                className="flex items-center gap-2 px-4 py-3 md:px-5 md:py-4 text-left whitespace-nowrap md:w-full shrink-0"
+                style={{
+                  background: active ? "#1C1C1C" : "transparent",
+                  color: active ? "#ffffff" : "rgba(255,255,255,0.78)",
+                  borderBottom: active ? "2px solid #FF14EF" : "2px solid transparent",
+                }}
+              >
+                <item.Icon className="w-5 h-5" />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </aside>
+
+        {/* Right content */}
+        <section className="no-scrollbar overflow-y-auto p-6 md:p-8" style={{ maxHeight: "90vh" }}>
+          <div className="mb-6">
+            <button
+              type="button"
+              className="inline-flex items-center justify-center gap-2 text-white"
+              style={{
+                width: 169, height: 40, borderRadius: 6,
+                background: "linear-gradient(270deg,#FF14EF 0%,#1A73E8 100%)",
+              }}
+            >
+              <User className="w-4 h-4" />
+              <span className="text-sm font-medium">Individual</span>
+            </button>
+          </div>
+
+          {/* Profile Tab */}
+          {profileTab === "profile" && (
+            <div className="space-y-6">
+              <div>
+                <label className="block mb-2 text-white/80 text-sm">Full Name</label>
+                <input
+                  disabled
+                  value={displayName || ""}
+                  className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white/80 placeholder-white/40 outline-none"
+                  placeholder="Your name"
+                />
+              </div>
+              <div>
+                <label className="block mb-2 text-white/80 text-sm">Email</label>
+                <input
+                  disabled
+                  value={displayEmail || ""}
+                  className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white/70 placeholder-white/40 outline-none"
+                  placeholder="you@example.com"
+                />
+              </div>
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-white/80">Delete account</span>
+                <button
+                  type="button"
+                  className="px-5 py-2 rounded-md text-red-400 border border-red-500/80 hover:bg-red-500/10 transition"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Bank Tab */}
+          {profileTab === "bank" && (
+            <div className="flex flex-col gap-4 rounded-xl border border-white/10 p-6" style={{ background: "#17171A" }}>
+              <h3 className="text-[22px]">Bank Account</h3>
+              <p className="text-white/70">Please add bank account.</p>
+              <button
+                type="button"
+                onClick={() => navigate("/wallet")}
+                className="rounded-md px-4 py-2 text-white w-fit"
+                style={{ background: "linear-gradient(270deg,#FF14EF 0%,#1A73E8 100%)" }}
+              >
+                Manage in Wallet
+              </button>
+            </div>
+          )}
+
+          {/* Billing Tab */}
+          {profileTab === "billing" && (
+            <div className="space-y-5">
+              <h3 className="text-[22px] mb-2">My Billing information</h3>
+              <div className="rounded-md overflow-hidden">
+                <div className="grid grid-cols-[2fr,1fr,120px] items-center bg-[#1F1F22] px-4 py-3 text-white/80">
+                  <span>Item</span>
+                  <span>Date</span>
+                  <span className="text-right">Status</span>
+                </div>
+                <div className="text-center text-white/50 py-8">No billing records</div>
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  </div>
+)}
+        
 
         {/* Floating Action Button */}
         {/* Floating Action Button */}
