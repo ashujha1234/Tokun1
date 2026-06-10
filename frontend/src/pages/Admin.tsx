@@ -707,9 +707,9 @@ const handleResendInvite = async (memberId: string) => {
   <div className="relative min-h-screen w-full bg-[#07080A] text-white overflow-x-hidden">
     <div aria-hidden className="fixed inset-0 z-0 bg-[#07080A]" />
 
-    <div className="relative z-20">
-      <Header />
-    </div>
+    <div className="fixed top-0 left-0 right-0 z-[999]">
+  <Header />
+</div>
 
     <main className="relative z-10 max-w-6xl mx-auto px-4 pt-32 sm:pt-36 lg:pt-40 pb-14">
       <div className="w-full flex justify-center">

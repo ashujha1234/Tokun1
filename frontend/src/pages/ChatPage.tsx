@@ -3094,8 +3094,9 @@ import Header from "@/components/Header";
 import { socket } from "@/lib/socket";
 import { useAuth } from "@/contexts/AuthContext";
 import { FiVideo, FiInfo, FiSend } from "react-icons/fi";
-import { Search, Trash2, X, Plus, ArrowLeft } from "lucide-react";
+import { Search, Trash2, X, Plus, ArrowLeft,ShieldAlert } from "lucide-react";
 import { useAgoraCall } from "@/hooks/useAgoraCall";
+import { ReportModal } from "@/components/ReportModal";
 
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 const GRADIENT = "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)";
@@ -3395,6 +3396,7 @@ function RevisionReasonPopup({
 }
 
 
+
 function WorkSubmittedCard({
   data,
   isMine,
@@ -3404,68 +3406,136 @@ function WorkSubmittedCard({
   isMine?: boolean;
   token?: string;
 }) {
-  const [actionState, setActionState] = useState<"idle" | "approving" | "revising" | "done">("idle");
+  const [actionState, setActionState] = useState<
+    "idle" | "approving" | "revising" | "done"
+  >("idle");
   const [result, setResult] = useState<"approved" | "revision" | null>(null);
   const [revisionOpen, setRevisionOpen] = useState(false);
-
+  const [reportOpen, setReportOpen] = useState(false);
+  // ── Load real deal status on mount so refresh works correctly ─────────────
   const dealId = data?.hireDealId || data?.dealId;
 
+  useEffect(() => {
+    if (!dealId || !token) return;
+    fetch(`${API_BASE}/api/hire/${dealId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d?.success || !d?.deal) return;
+        const deal = d.deal;
+        if (
+          deal.status === "COMPLETED" &&
+          deal.fundsStatus === "RELEASED_TO_FREELANCER"
+        ) {
+          setResult("approved");
+          setActionState("done");
+        } else if (deal.status === "REVISION_REQUESTED") {
+          setResult("revision");
+          setActionState("done");
+        }
+      })
+      .catch(() => {
+        // silently ignore — card still works without pre-loaded status
+      });
+  }, [dealId, token]);
+
+  const isApproved = actionState === "done" && result === "approved";
+
+  // ── Approve ───────────────────────────────────────────────────────────────
   const handleApprove = async () => {
-    if (!token || !dealId) return;
-
+    if (!token) {
+      alert("Please login again.");
+      return;
+    }
+    if (!dealId) {
+      alert("Deal ID missing. Please refresh and try again.");
+      return;
+    }
     setActionState("approving");
-
     try {
       const res = await fetch(`${API_BASE}/api/hire/${dealId}/approve-work`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
       });
-
       const d = await res.json().catch(() => ({}));
-
-      if (!res.ok || !d?.success) {
-        throw new Error(d?.error || "Approve failed");
-      }
-
+      if (!res.ok || !d?.success) throw new Error(d?.error || "Approval failed");
       setResult("approved");
       setActionState("done");
     } catch (err: any) {
-      alert(err?.message || "Approve failed");
+      alert(err?.message || "Could not approve. Please try again.");
       setActionState("idle");
     }
   };
 
+  // ── Revision ──────────────────────────────────────────────────────────────
   const handleRevisionSubmit = async (reason: string) => {
-  if (!token || !dealId) return;
-  setActionState("revising");
-  try {
-    const res = await fetch(`${API_BASE}/api/hire/${dealId}/request-revision`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ reason: reason || "Revision requested" }),
-    });
-    const d = await res.json().catch(() => ({}));
-    if (!res.ok || !d?.success) throw new Error(d?.error || "Revision request failed");
+    if (!token || !dealId) return;
+    setActionState("revising");
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/hire/${dealId}/request-revision`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ reason: reason || "Revision requested" }),
+        }
+      );
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d?.success)
+        throw new Error(d?.error || "Revision request failed");
+      setRevisionOpen(false);
+      setResult("revision");
+      setActionState("done");
+    } catch (err: any) {
+      alert(err?.message || "Revision request failed");
+      setActionState("idle");
+    }
+  };
 
-    // ← ADD THIS: emit a plain text message so freelancer sees the reason in chat
-    socket.emit("send-message", {
-      conversationId: data?.hireDealId || data?.dealId,
-      text: `↺ Revision requested: "${reason || "Please review and resubmit."}"`,
-    });
+  // ── Download helper (fetch + blob so auth header can be sent if needed) ───
+  const handleDownload = async (
+    e: React.MouseEvent,
+    fileUrl: string,
+    fileName: string
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const res = await fetch(fileUrl, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Download failed");
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = fileName || "work-file";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      // Fallback: open in new tab
+      window.open(fileUrl, "_blank");
+    }
+  };
 
-    setRevisionOpen(false);
-    setResult("revision");
-    setActionState("done");
-  } catch (err: any) {
-    alert(err?.message || "Revision request failed");
-    setActionState("idle");
-  }
-};
+  // ── Preview helper ────────────────────────────────────────────────────────
+  // Static files served by Express don't need auth — just open in new tab.
+  // If your backend requires auth for /uploads, swap this for a fetch+blob
+  // approach similar to handleDownload above but without the download attribute.
+  const handlePreview = (e: React.MouseEvent, fileUrl: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.open(fileUrl, "_blank", "noopener,noreferrer");
+  };
 
   const PURPLE = "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)";
 
@@ -3483,6 +3553,7 @@ function WorkSubmittedCard({
             "0 20px 60px rgba(0,0,0,0.35), 0 0 0 1px rgba(192,132,252,0.15)",
         }}
       >
+        {/* ── Top bar ── */}
         <div
           style={{
             height: 50,
@@ -3511,7 +3582,6 @@ function WorkSubmittedCard({
             >
               📦
             </span>
-
             <span
               style={{
                 fontWeight: 600,
@@ -3523,7 +3593,6 @@ function WorkSubmittedCard({
               WORK SUBMITTED
             </span>
           </div>
-
           <span
             style={{
               height: 24,
@@ -3538,11 +3607,18 @@ function WorkSubmittedCard({
               fontSize: 10,
             }}
           >
-            {result === "approved" ? "APPROVED" : result === "revision" ? "REVISION" : "REVIEW"}
+            {result === "approved"
+              ? "APPROVED"
+              : result === "revision"
+              ? "REVISION"
+              : "REVIEW"}
           </span>
         </div>
 
-        <div style={{ padding: "20px 24px 24px", boxSizing: "border-box" }}>
+        {/* ── Body ── */}
+        <div
+          style={{ padding: "20px 24px 24px", boxSizing: "border-box" }}
+        >
           <h3
             style={{
               margin: "0 0 6px",
@@ -3553,7 +3629,6 @@ function WorkSubmittedCard({
           >
             {data?.title || "Project"}
           </h3>
-
           <p
             style={{
               margin: "0 0 20px",
@@ -3565,6 +3640,7 @@ function WorkSubmittedCard({
             {data?.message || "Work has been submitted for review."}
           </p>
 
+          {/* ── Files ── */}
           {data?.deliverables?.length > 0 && (
             <div
               style={{
@@ -3575,7 +3651,14 @@ function WorkSubmittedCard({
                 marginBottom: 20,
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 10,
+                }}
+              >
                 <span style={{ fontSize: 18 }}>📁</span>
                 <p
                   style={{
@@ -3588,141 +3671,172 @@ function WorkSubmittedCard({
                 >
                   PROJECT FILES
                 </p>
+                {/* Show lock badge for client before approval */}
+                {!isApproved && !isMine && (
+                  <span
+                    style={{
+                      marginLeft: "auto",
+                      fontSize: 9,
+                      fontWeight: 700,
+                      letterSpacing: "0.8px",
+                      color: "rgba(250,188,78,0.9)",
+                      background: "rgba(250,188,78,0.12)",
+                      border: "1px solid rgba(250,188,78,0.25)",
+                      borderRadius: 999,
+                      padding: "3px 8px",
+                    }}
+                  >
+                    🔒 APPROVE TO DOWNLOAD
+                  </span>
+                )}
               </div>
 
               <div style={{ display: "grid", gap: 8 }}>
-  {data.deliverables.map((d: any, i: number) => {
-    const fileUrl = getFileUrl(d.url);
+                {data.deliverables.map((d: any, i: number) => {
+                  // Build correct file URL
+                  const fileUrl = d.url?.startsWith("http")
+                    ? d.url
+                    : `${API_BASE}${d.url}`;
 
-    const handleDownload = async (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
+                  const fileName =
+                    d.name || d.description || `file-${i + 1}`;
 
-      try {
-        const res = await fetch(fileUrl);
-        const blob = await res.blob();
-        const blobUrl = URL.createObjectURL(blob);
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        borderRadius: 10,
+                        background: "rgba(0,0,0,0.22)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        padding: "10px 12px",
+                        color: "#FFFFFF",
+                      }}
+                    >
+                      {/* File name */}
+                      <span
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 9,
+                          minWidth: 0,
+                          flex: 1,
+                        }}
+                      >
+                        <span style={{ fontSize: 15 }}>📎</span>
+                        <span
+                          style={{
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            fontSize: 13,
+                            color: "#EDE9FE",
+                          }}
+                        >
+                          {fileName}
+                        </span>
+                      </span>
 
-        const link = document.createElement("a");
-        link.href = blobUrl;
-        link.download = d.name || d.description || `file-${i + 1}`;
+                      {/* Actions */}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {/* File size */}
+                        <span
+                          style={{
+                            fontSize: 10,
+                            color: "rgba(255,255,255,0.38)",
+                          }}
+                        >
+                          {d.size
+                            ? d.size < 1024 * 1024
+                              ? `${(d.size / 1024).toFixed(1)} KB`
+                              : `${(d.size / 1024 / 1024).toFixed(2)} MB`
+                            : ""}
+                        </span>
 
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+                        {/* ── PREVIEW — always available for everyone ── */}
+                        <button
+                          onClick={(e) => handlePreview(e, fileUrl)}
+                          title="Preview file"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: 28,
+                            height: 28,
+                            borderRadius: 6,
+                            background: "rgba(192,132,252,0.12)",
+                            border: "1px solid rgba(192,132,252,0.22)",
+                            color: "#C084FC",
+                            fontSize: 13,
+                            cursor: "pointer",
+                            background: "none",
+                          }}
+                        >
+                          👁
+                        </button>
 
-        URL.revokeObjectURL(blobUrl);
-      } catch {
-        window.open(fileUrl, "_blank");
-      }
-    };
+                        {/* ── DOWNLOAD — only after approve OR for freelancer ── */}
+                        {isApproved || isMine ? (
+                          <button
+                            onClick={(e) =>
+                              handleDownload(e, fileUrl, fileName)
+                            }
+                            title="Download file"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              width: 28,
+                              height: 28,
+                              borderRadius: 6,
+                              background: "rgba(25,230,108,0.10)",
+                              border: "1px solid rgba(25,230,108,0.22)",
+                              color: "#19E66C",
+                              fontSize: 16,
+                              cursor: "pointer",
+                              fontWeight: 700,
+                            }}
+                          >
+                            ↓
+                          </button>
+                        ) : (
+                          /* Locked download for client before approval */
+                          <div
+                            title="Download unlocks after you approve and release payment"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              width: 28,
+                              height: 28,
+                              borderRadius: 6,
+                              background: "rgba(255,255,255,0.04)",
+                              border: "1px solid rgba(255,255,255,0.10)",
+                              color: "rgba(255,255,255,0.22)",
+                              fontSize: 13,
+                              cursor: "not-allowed",
+                            }}
+                          >
+                            🔒
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
 
-    return (
-      <div
-        key={i}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          borderRadius: 10,
-          background: "rgba(0,0,0,0.22)",
-          border: "1px solid rgba(255,255,255,0.08)",
-          padding: "10px 12px",
-          color: "#FFFFFF",
-        }}
-      >
-        <span
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 9,
-            minWidth: 0,
-            flex: 1,
-          }}
-        >
-          <span style={{ fontSize: 15 }}>📎</span>
-
-          <span
-            style={{
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              fontSize: 13,
-              color: "#EDE9FE",
-            }}
-          >
-            {d.name || d.description || "Project file"}
-          </span>
-        </span>
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            flexShrink: 0,
-          }}
-        >
-          <span
-            style={{
-              fontSize: 10,
-              color: "rgba(255,255,255,0.38)",
-            }}
-          >
-            {formatFileSize(Number(d.size || 0))}
-          </span>
-
-          <a
-            href={fileUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            title="View"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 28,
-              height: 28,
-              borderRadius: 6,
-              background: "rgba(192,132,252,0.12)",
-              border: "1px solid rgba(192,132,252,0.22)",
-              color: "#C084FC",
-              fontSize: 13,
-              textDecoration: "none",
-              cursor: "pointer",
-            }}
-          >
-            👁
-          </a>
-
-          <button
-            onClick={handleDownload}
-            title="Download"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 28,
-              height: 28,
-              borderRadius: 6,
-              background: "rgba(25,230,108,0.10)",
-              border: "1px solid rgba(25,230,108,0.22)",
-              color: "#19E66C",
-              fontSize: 16,
-              cursor: "pointer",
-              fontWeight: 700,
-            }}
-          >
-            ↓
-          </button>
-        </div>
-      </div>
-    );
-  })}
-</div>
-
+              {/* Submission note */}
               {data?.note && (
                 <div
                   style={{
@@ -3740,9 +3854,33 @@ function WorkSubmittedCard({
                   {data.note}
                 </div>
               )}
+
+              {/* Auto-release notice for client */}
+              {!isMine && !isApproved && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    borderRadius: 8,
+                    background: "rgba(26,115,232,0.08)",
+                    border: "1px solid rgba(26,115,232,0.15)",
+                    padding: "8px 12px",
+                    fontSize: 11,
+                    color: "rgba(255,255,255,0.45)",
+                    lineHeight: "17px",
+                  }}
+                >
+                  ⏱ Payment auto-releases to freelancer in{" "}
+                  <strong style={{ color: "rgba(255,255,255,0.65)" }}>
+                    72 hours
+                  </strong>{" "}
+                  if no action is taken. Preview files, then approve or request
+                  revision.
+                </div>
+              )}
             </div>
           )}
 
+          {/* ── Client action buttons ── */}
           {!isMine && actionState !== "done" && (
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button
@@ -3753,15 +3891,19 @@ function WorkSubmittedCard({
                   height: 48,
                   border: "none",
                   borderRadius: 8,
-                  background: "linear-gradient(90deg, #19E66C 0%, #0BA84A 100%)",
+                  background:
+                    "linear-gradient(90deg, #19E66C 0%, #0BA84A 100%)",
                   color: "#fff",
-                  cursor: actionState !== "idle" ? "not-allowed" : "pointer",
+                  cursor:
+                    actionState !== "idle" ? "not-allowed" : "pointer",
                   fontWeight: 600,
                   fontSize: 14,
                   opacity: actionState !== "idle" ? 0.6 : 1,
                 }}
               >
-                {actionState === "approving" ? "Approving..." : "✓ Approve & Release Payment"}
+                {actionState === "approving"
+                  ? "Releasing Payment..."
+                  : "✓ Approve & Release Payment"}
               </button>
 
               <button
@@ -3774,7 +3916,8 @@ function WorkSubmittedCard({
                   background: "#202020",
                   border: "1px solid rgba(192,132,252,0.22)",
                   color: "rgba(255,255,255,0.75)",
-                  cursor: actionState !== "idle" ? "not-allowed" : "pointer",
+                  cursor:
+                    actionState !== "idle" ? "not-allowed" : "pointer",
                   fontWeight: 400,
                   fontSize: 14,
                   opacity: actionState !== "idle" ? 0.6 : 1,
@@ -3785,6 +3928,7 @@ function WorkSubmittedCard({
             </div>
           )}
 
+          {/* ── Result states ── */}
           {actionState === "done" && result === "approved" && (
             <div
               style={{
@@ -3800,7 +3944,7 @@ function WorkSubmittedCard({
                 fontSize: 14,
               }}
             >
-              ✓ Approved! Payment released to freelancer
+              ✓ Payment Released — Files unlocked for download
             </div>
           )}
 
@@ -3819,10 +3963,11 @@ function WorkSubmittedCard({
                 fontSize: 14,
               }}
             >
-              ↺ Revision requested
+              ↺ Revision requested — Freelancer will resubmit
             </div>
           )}
 
+          {/* Freelancer view */}
           {isMine && (
             <div
               style={{
@@ -3838,10 +3983,50 @@ function WorkSubmittedCard({
                 fontSize: 13,
               }}
             >
-              ⏳ Waiting for client review...
+              ⏳ Waiting for client review — Payment auto-releases in 72 hours
             </div>
           )}
         </div>
+
+
+{/* Report button */}
+          {dealId && (
+            <>
+              <button
+                type="button"
+                onClick={() => setReportOpen(true)}
+                style={{
+                  marginTop: 10,
+                  width: "100%",
+                  height: 36,
+                  borderRadius: 8,
+                  border: "1px solid rgba(239,68,68,0.25)",
+                  background: "rgba(239,68,68,0.06)",
+                  color: "rgba(239,68,68,0.70)",
+                  fontWeight: 500,
+                  fontSize: 12,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 7,
+                }}
+              >
+                <ShieldAlert size={13} />
+                Report an Issue
+              </button>
+
+              <ReportModal
+                open={reportOpen}
+                onClose={() => setReportOpen(false)}
+                dealId={dealId}
+                token={token}
+              />
+            </>
+          )}
+
+
+
       </div>
 
       <RevisionReasonPopup
@@ -4569,12 +4754,35 @@ function HireCard({
   const [showProposalPopup, setShowProposalPopup] = useState(false);
   const [acceptLoading, setAcceptLoading] = useState(false);
   const dealId = data?.hireDealId || data?.dealId || data?._id;
-
+ 
+  // ── On mount, check real deal status from API ──
+  useEffect(() => {
+    if (!dealId || !token) return;
+    fetch(`${API_BASE}/api/hire/${dealId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d?.success || !d?.deal) return;
+        const s = d.deal.status;
+        if (
+          s === "ACCEPTED_WAITING_PAYMENT" ||
+          s === "FUNDED" ||
+          s === "IN_PROGRESS" ||
+          s === "WORK_SUBMITTED" ||
+          s === "COMPLETED"
+        ) {
+          setStatus("ACCEPTED");
+        }
+      })
+      .catch(() => {});
+  }, [dealId, token]);
+ 
   const handleAcceptProposal = async () => {
     try {
       if (acceptLoading || status === "ACCEPTED") return;
       if (!token) { alert("Login required. Please login again."); return; }
-      if (!dealId) { alert("Hire deal id missing. Please create HireDeal when sending hire card."); return; }
+      if (!dealId) { alert("Hire deal id missing."); return; }
       setAcceptLoading(true);
       const res = await fetch(`${API_BASE}/api/hire/${dealId}/accept`, {
         method: "POST",
@@ -4584,18 +4792,15 @@ function HireCard({
       if (!res.ok || !result?.success) throw new Error(result?.error || "Failed to accept proposal");
       setStatus("ACCEPTED");
       setShowProposalPopup(false);
-      socket.emit("send-message", {
-        conversationId, senderId,
-        text: `✅ Proposal accepted: ${data?.title || data?.projectTitle || "Project Proposal"}`,
-      });
     } catch (err: any) {
-      console.error("Accept proposal error:", err);
       alert(err?.message || "Failed to accept proposal");
     } finally {
       setAcceptLoading(false);
     }
   };
-
+ 
+  const isAccepted = status === "ACCEPTED";
+ 
   return (
     <>
       <div
@@ -4607,14 +4812,26 @@ function HireCard({
             <img src="/icons/proposal.svg" alt="" style={{ width: 16, height: 16, objectFit: "contain", flexShrink: 0 }} />
             <span style={{ fontWeight: 600, fontSize: 11, letterSpacing: "2.4px", color: "#FFFFFF" }}>PROJECT PROPOSAL</span>
           </div>
-          <span style={{ height: 24, padding: "0 14px", borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#FABC4E1A", border: "1px solid #FABC4E33", color: "#FABC4E", fontWeight: 700, fontSize: 10 }}>
-            {status}
+          <span style={{
+            height: 24, padding: "0 14px", borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center",
+            background: isAccepted ? "rgba(25,230,108,0.18)" : "#FABC4E1A",
+            border: isAccepted ? "1px solid rgba(25,230,108,0.35)" : "1px solid #FABC4E33",
+            color: isAccepted ? "#19E66C" : "#FABC4E",
+            fontWeight: 700, fontSize: 10,
+          }}>
+            {isAccepted ? "ACCEPTED" : status}
           </span>
         </div>
+ 
         <div style={{ background: "#292929", padding: "20px 24px 24px", boxSizing: "border-box" }}>
-          <h3 style={{ margin: 0, fontWeight: 400, fontSize: 20, lineHeight: "28px", color: "#FFFFFF" }}>{data?.title || data?.projectTitle || "Project Proposal"}</h3>
-          <p style={{ margin: "6px 0 32px", fontWeight: 400, fontSize: 13, lineHeight: "16px", color: "rgba(255,255,255,0.55)" }}>{data?.description || data?.projectDetails || "Project details will appear here."}</p>
-          <div style={{ display: "flex", gap: 16, marginBottom: 32, flexWrap: "wrap" }}>
+          <h3 style={{ margin: 0, fontWeight: 400, fontSize: 20, lineHeight: "28px", color: "#FFFFFF" }}>
+            {data?.title || data?.projectTitle || "Project Proposal"}
+          </h3>
+          <p style={{ margin: "6px 0 24px", fontWeight: 400, fontSize: 13, lineHeight: "16px", color: "rgba(255,255,255,0.55)" }}>
+            {data?.description || data?.projectDetails || "Project details will appear here."}
+          </p>
+ 
+          <div style={{ display: "flex", gap: 16, marginBottom: isAccepted ? 0 : 32, flexWrap: "wrap" }}>
             <div style={{ flex: "1 1 120px", borderRadius: 16, background: "#343434", border: "1px solid #FFFFFF0D", padding: "10px 16px 12px", boxSizing: "border-box" }}>
               <p style={{ margin: 0, fontWeight: 700, fontSize: 9, letterSpacing: "1.6px", color: "rgba(255,255,255,0.35)" }}>TOTAL BUDGET</p>
               <p style={{ margin: "4px 0 0", fontWeight: 700, fontSize: 20, lineHeight: "1.2", color: "#FFFFFF" }}>₹{Number(data?.budget || 0).toLocaleString("en-IN")}.00</p>
@@ -4624,34 +4841,58 @@ function HireCard({
               <p style={{ margin: "4px 0 0", fontWeight: 700, fontSize: 20, lineHeight: "1.2", color: "#FFFFFF" }}>{formatProposalDate(data?.targetDate)}</p>
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <button disabled={acceptLoading || status === "ACCEPTED"} onClick={(e) => { e.stopPropagation(); handleAcceptProposal(); }}
-              style={{ flex: "1 1 140px", height: 48, border: "none", borderRadius: 8, background: TOP_GRADIENT, color: "#FFFFFF", cursor: acceptLoading || status === "ACCEPTED" ? "not-allowed" : "pointer", opacity: acceptLoading || status === "ACCEPTED" ? 0.6 : 1, fontWeight: 400, fontSize: 15 }}>
-              {acceptLoading ? "Accepting..." : status === "ACCEPTED" ? "Accepted" : "Accept Proposal"}
-            </button>
-            <button onClick={(e) => { e.stopPropagation(); setShowCounterPopup(true); }}
-              style={{ flex: "1 1 130px", height: 48, borderRadius: 8, background: "#202020", border: "1px solid #FFFFFF0D", color: "#FFFFFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontWeight: 400, fontSize: 15 }}>
-              <img src="/icons/counter.svg" alt="" style={{ width: 18, height: 18, objectFit: "contain", flexShrink: 0 }} />
-              Counter Offer
-            </button>
-            <button onClick={(e) => { e.stopPropagation(); }}
-              style={{ width: 48, height: 48, flexShrink: 0, borderRadius: 8, border: "none", background: TOP_GRADIENT, color: "#FFFFFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <img src="/icons/crass.svg" alt="" style={{ width: 14, height: 14, objectFit: "contain" }} />
-            </button>
-          </div>
+ 
+          {/* ── Show buttons only if NOT accepted ── */}
+          {!isAccepted && (
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
+              <button
+                disabled={acceptLoading}
+                onClick={(e) => { e.stopPropagation(); handleAcceptProposal(); }}
+                style={{ flex: "1 1 140px", height: 48, border: "none", borderRadius: 8, background: TOP_GRADIENT, color: "#FFFFFF", cursor: acceptLoading ? "not-allowed" : "pointer", opacity: acceptLoading ? 0.6 : 1, fontWeight: 400, fontSize: 15 }}
+              >
+                {acceptLoading ? "Accepting..." : "Accept Proposal"}
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowCounterPopup(true); }}
+                style={{ flex: "1 1 130px", height: 48, borderRadius: 8, background: "#202020", border: "1px solid #FFFFFF0D", color: "#FFFFFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontWeight: 400, fontSize: 15 }}
+              >
+                <img src="/icons/counter.svg" alt="" style={{ width: 18, height: 18, objectFit: "contain", flexShrink: 0 }} />
+                Counter Offer
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); }}
+                style={{ width: 48, height: 48, flexShrink: 0, borderRadius: 8, border: "none", background: TOP_GRADIENT, color: "#FFFFFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              >
+                <img src="/icons/crass.svg" alt="" style={{ width: 14, height: 14, objectFit: "contain" }} />
+              </button>
+            </div>
+          )}
+ 
+          {/* ── Accepted state banner ── */}
+          {isAccepted && (
+            <div style={{ marginTop: 16, height: 44, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(25,230,108,0.07)", border: "1px solid rgba(25,230,108,0.18)", color: "rgba(25,230,108,0.8)", fontWeight: 600, fontSize: 13 }}>
+              ✓ Proposal Accepted — Waiting for payment
+            </div>
+          )}
         </div>
       </div>
-
+ 
       {showProposalPopup && (
-        <ProjectProposalDetailsPopup data={data} status={status} acceptLoading={acceptLoading}
-          onClose={() => setShowProposalPopup(false)} onAccept={handleAcceptProposal}
-          onReject={() => { setShowProposalPopup(false); }}
+        <ProjectProposalDetailsPopup
+          data={data}
+          status={status}
+          acceptLoading={acceptLoading}
+          onClose={() => setShowProposalPopup(false)}
+          onAccept={handleAcceptProposal}
+          onReject={() => setShowProposalPopup(false)}
           onCounter={() => { setShowProposalPopup(false); setShowCounterPopup(true); }}
         />
       )}
-
+ 
       {showCounterPopup && (
-        <CounterOfferPopup data={data} onClose={() => setShowCounterPopup(false)}
+        <CounterOfferPopup
+          data={data}
+          onClose={() => setShowCounterPopup(false)}
           onSubmit={(payload) => {
             socket.emit("send-message", {
               conversationId, senderId,
@@ -4665,6 +4906,8 @@ function HireCard({
     </>
   );
 }
+ 
+
 
 function ProjectProposalDetailsPopup({
   data, status, acceptLoading, onClose, onAccept, onReject, onCounter,
@@ -4954,15 +5197,22 @@ export default function Chat() {
     return () => window.removeEventListener("message", listener);
   }, []);
 
-  const startMeetCall = async () => {
-    if (!activeConvo) return;
-    const res = await fetch(`${API_BASE}/api/google-meet/create`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ summary: `Meeting with ${activeConvo.otherUser?.name || "User"}` }) });
-    const data = await res.json();
-    if (data.error === "google_not_connected") { connectGoogle(); return; }
-    if (!data?.meetLink) return;
-    socket.emit("send-message", { conversationId: activeConvo._id, senderId: user._id, text: `📞 Google Meet: ${data.meetLink}` });
-    window.open(data.meetLink, "_blank");
-  };
+const startMeetCall = () => {
+  if (!activeConvo || !user?._id) return;
+  
+  const roomId = `tokun-${activeConvo._id}`;
+  const meetUrl = `https://meet.jit.si/${roomId}`;
+  
+  // Sirf chat mein link bhejo
+  socket.emit("send-message", {
+    conversationId: activeConvo._id,
+    senderId: user._id,
+    text: `📞 Video Call join karo: ${meetUrl}`,
+  });
+  
+  // Apna browser bhi open karo
+  window.open(meetUrl, "_blank", "noopener,noreferrer");
+};
 
   const renderMessageText = (text: string) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;

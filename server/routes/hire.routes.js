@@ -350,7 +350,7 @@ const path = require("path");
 const fs = require("fs");
 const User = require("../models/User");
 const router = express.Router();
-
+const Wallet = require("../models/Wallet");
 const { requireAuth } = require("../utils/auth");
 const HireDeal = require("../models/HireDeal");
 const Notification = require("../models/Notification");
@@ -362,7 +362,11 @@ const razorpay = new Razorpay({
 });
 
 
-
+const getOrCreateWallet = async (userId) => {
+  let wallet = await Wallet.findOne({ userId });
+  if (!wallet) wallet = await Wallet.create({ userId });
+  return wallet;
+};
 // ─── Work file upload setup ─────────────────────────────
 const workUploadDir = path.join(__dirname, "../uploads/hire-work");
 
@@ -894,88 +898,117 @@ router.post("/:dealId/start-work", requireAuth, async (req, res) => {
 });
 
 // ─── 3. Approve Work + Release Payment ───
+
 router.post("/:dealId/approve-work", requireAuth, async (req, res) => {
   try {
     const deal = await HireDeal.findById(req.params.dealId)
       .populate("clientId", "name email")
-      .populate("freelancerId", "name email razorpayFundAccountId");
-
-    if (!deal) return res.status(404).json({ success: false, error: "Deal not found" });
+      .populate("freelancerId", "name email");
+ 
+    if (!deal)
+      return res.status(404).json({ success: false, error: "Deal not found" });
+ 
     if (String(deal.clientId._id) !== String(req.user._id))
-      return res.status(403).json({ success: false, error: "Only client can approve" });
+      return res
+        .status(403)
+        .json({ success: false, error: "Only client can approve" });
+ 
     if (deal.status !== "WORK_SUBMITTED")
-      return res.status(400).json({ success: false, error: `Cannot approve. Status: ${deal.status}` });
+      return res.status(400).json({
+        success: false,
+        error: `Cannot approve. Current status: ${deal.status}`,
+      });
+ 
     if (deal.fundsStatus !== "HELD_BY_TOKUN")
-      return res.status(400).json({ success: false, error: "Funds not in escrow" });
-    if (!deal.freelancerId.razorpayFundAccountId)
-      return res.status(400).json({ success: false, error: "Freelancer bank details missing" });
-
-    // Razorpay Payout
-    const payout = await razorpay.payouts.create({
-      account_number: process.env.RAZORPAY_ACCOUNT_NUMBER,
-      fund_account_id: deal.freelancerId.razorpayFundAccountId,
-      amount: Math.round(deal.freelancerAmount * 100),
-      currency: deal.currency || "INR",
-      mode: "IMPS",
-      purpose: "payout",
-      narration: `Tokun: ${deal.title}`,
-      reference_id: `tokun_${deal._id}_${Date.now()}`,
-      queue_if_low_balance: false,
+      return res
+        .status(400)
+        .json({ success: false, error: "Funds not in escrow" });
+ 
+    const payoutAmount = Number(deal.freelancerAmount || 0);
+ 
+    if (!payoutAmount || payoutAmount <= 0)
+      return res
+        .status(400)
+        .json({ success: false, error: "Invalid payout amount" });
+ 
+    // ── Credit freelancer Tokun Wallet ──────────────────────────────────────
+    const wallet = await getOrCreateWallet(deal.freelancerId._id);
+    wallet.availableBalance = (wallet.availableBalance || 0) + payoutAmount;
+    wallet.totalRevenue = (wallet.totalRevenue || 0) + payoutAmount;
+ 
+    wallet.transactions.unshift({
+      type: "credit",
+      status: "Completed",
+      amount: payoutAmount,
+      description: `Escrow released: ${deal.title || "Hire Deal"}`,
+      createdAt: new Date(),
+      meta: {
+        source: "escrow_release",
+        hireDealId: String(deal._id),
+        clientName: deal.clientId?.name || "",
+        clientId: deal.clientId?._id || null,
+      },
     });
-
+ 
+    await wallet.save();
+ 
+    // ── Update deal ─────────────────────────────────────────────────────────
     deal.status = "COMPLETED";
     deal.fundsStatus = "RELEASED_TO_FREELANCER";
     deal.approvedAt = new Date();
-    deal.razorpayPayoutId = payout.id;
     await deal.save();
-
-    // ── Freelancer earnings update ──
+ 
+    // ── Update freelancer user stats ────────────────────────────────────────
     await User.findByIdAndUpdate(deal.freelancerId._id, {
       $inc: {
-        totalEarnings: deal.freelancerAmount,
+        totalEarnings: payoutAmount,
         completedDeals: 1,
       },
     });
-
-    // Notification to freelancer
+ 
+    // ── Notify freelancer ───────────────────────────────────────────────────
     await Notification.create({
       senderId: deal.clientId._id,
       senderName: deal.clientId.name,
       receiverUserId: deal.freelancerId._id,
       type: "HIRE_PAYMENT_RELEASED",
       hireDealId: deal._id,
-      amount: deal.freelancerAmount,
-      message: `${deal.clientId.name} ne approve kar diya! ₹${deal.freelancerAmount} transfer ho gaya.`,
+      amount: payoutAmount,
+      message: `${deal.clientId.name} approved your work! ₹${payoutAmount} has been credited to your Tokun Wallet. You can withdraw to your bank anytime.`,
       meta: {
         title: deal.title,
-        amount: deal.freelancerAmount,
+        amount: payoutAmount,
         fundsStatus: "RELEASED_TO_FREELANCER",
       },
     });
-
-    // Chat message
+ 
+    // ── Chat message ────────────────────────────────────────────────────────
     await Message.create({
       conversationId: deal.chatId,
       sender: req.user._id,
       text: `ESCROW_RELEASED::${JSON.stringify({
         hireDealId: String(deal._id),
         title: deal.title,
-        amount: deal.freelancerAmount,
+        amount: payoutAmount,
         status: "COMPLETED",
-        message: `✅ Payment released! ₹${deal.freelancerAmount} Ashutosh ke bank mein transfer ho gaya.`,
+        message: `✅ Payment released! ₹${payoutAmount} has been credited to freelancer's Tokun Wallet.`,
       })}`,
       readBy: [req.user._id],
     });
-
-    return res.json({ success: true, message: "Work approved and payment released", deal, payout });
+ 
+    return res.json({
+      success: true,
+      message: `₹${payoutAmount} credited to freelancer's Tokun Wallet`,
+      deal,
+      walletBalance: wallet.availableBalance,
+    });
   } catch (err) {
     console.error("approve-work error:", err);
-    if (err?.error?.description)
-      return res.status(400).json({ success: false, error: `Payout failed: ${err.error.description}` });
-    return res.status(500).json({ success: false, error: "Failed to approve work" });
+    return res
+      .status(500)
+      .json({ success: false, error: err?.message || "Failed to approve work" });
   }
 });
-
 // ─── 4. Request Revision ───
 router.post("/:dealId/request-revision", requireAuth, async (req, res) => {
   try {

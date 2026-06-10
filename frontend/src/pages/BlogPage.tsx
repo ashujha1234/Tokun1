@@ -76,20 +76,24 @@ const categories = [
 
 export default function BlogPage() {
   return (
-    <div className="min-h-screen bg-[#030406] text-white overflow-hidden">
+    <div className="relative min-h-screen bg-[#030406] text-white overflow-x-hidden">
+      {/* Sticky / fixed Header */}
+      <div className="fixed top-0 left-0 right-0 z-[999]">
+        <Header />
+      </div>
+
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_40%_at_50%_12%,rgba(255,20,239,0.14),rgba(0,0,0,0))]"
       />
+
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(35%_25%_at_75%_20%,rgba(26,115,232,0.16),rgba(0,0,0,0))]"
       />
 
-      <Header />
-
       <main className="relative z-10">
-       <section className="container mx-auto px-4 sm:px-6 pt-32 sm:pt-36 lg:pt-40 pb-14 text-center">
+        <section className="container mx-auto px-4 sm:px-6 pt-20 sm:pt-24 lg:pt-28 pb-10 text-center">
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
@@ -100,7 +104,8 @@ export default function BlogPage() {
               <span
                 className="text-sm font-medium bg-clip-text text-transparent"
                 style={{
-                  backgroundImage: "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)",
+                  backgroundImage:
+                    "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)",
                 }}
               >
                 BLOG
@@ -112,7 +117,8 @@ export default function BlogPage() {
               <span
                 className="block bg-clip-text text-transparent"
                 style={{
-                  backgroundImage: "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)",
+                  backgroundImage:
+                    "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)",
                 }}
               >
                 the TOKUN promptverse
@@ -120,13 +126,14 @@ export default function BlogPage() {
             </h1>
 
             <p className="mt-6 text-white/75 text-base sm:text-lg leading-relaxed max-w-3xl mx-auto">
-              Explore prompt engineering tips, workflow improvements, product ideas,
-              and practical strategies to get better outcomes from AI systems.
+              Explore prompt engineering tips, workflow improvements, product
+              ideas, and practical strategies to get better outcomes from AI
+              systems.
             </p>
           </motion.div>
         </section>
 
-        <section className="container mx-auto px-4 sm:px-6 pb-10">
+        <section className="container mx-auto px-4 sm:px-6 pb-8">
           <div className="flex flex-wrap justify-center gap-3">
             {categories.map((item) => (
               <button
@@ -143,7 +150,10 @@ export default function BlogPage() {
         <section className="container mx-auto px-4 sm:px-6 pb-12">
           <div
             className="rounded-[32px] p-[1px]"
-            style={{ background: "linear-gradient(135deg, #FF14EF 0%, #1A73E8 100%)" }}
+            style={{
+              background:
+                "linear-gradient(135deg, #FF14EF 0%, #1A73E8 100%)",
+            }}
           >
             <div className="rounded-[31px] bg-[#08090B] p-6 sm:p-8 md:p-10">
               <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-8 items-center">
@@ -163,10 +173,12 @@ export default function BlogPage() {
 
                   <div className="flex flex-wrap items-center gap-4 text-sm text-white/60 mb-6">
                     <span>{featuredPost.category}</span>
+
                     <span className="inline-flex items-center gap-2">
                       <CalendarDays className="h-4 w-4" />
                       {featuredPost.date}
                     </span>
+
                     <span className="inline-flex items-center gap-2">
                       <Clock3 className="h-4 w-4" />
                       {featuredPost.readTime}
@@ -176,7 +188,8 @@ export default function BlogPage() {
                   <Button
                     className="h-11 px-6 rounded-full text-white"
                     style={{
-                      background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)",
+                      background:
+                        "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)",
                     }}
                   >
                     Read Article
@@ -186,16 +199,19 @@ export default function BlogPage() {
 
                 <div className="relative">
                   <div className="absolute inset-0 rounded-[28px] blur-3xl opacity-40 bg-[radial-gradient(circle_at_center,rgba(255,20,239,0.35),rgba(26,115,232,0.2),transparent)]" />
+
                   <div className="relative rounded-[28px] border border-white/10 bg-[#0B0D11] p-8 min-h-[260px] flex items-center justify-center">
                     <div className="text-center">
                       <div
                         className="text-5xl sm:text-6xl font-bold bg-clip-text text-transparent"
                         style={{
-                          backgroundImage: "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)",
+                          backgroundImage:
+                            "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)",
                         }}
                       >
                         TOKUN
                       </div>
+
                       <p className="mt-3 text-white/60 text-sm sm:text-base">
                         Prompt thinking for modern AI workflows
                       </p>
@@ -210,8 +226,10 @@ export default function BlogPage() {
         <section className="container mx-auto px-4 sm:px-6 py-10">
           <div className="mb-10">
             <h2 className="text-3xl sm:text-4xl font-bold">Latest posts</h2>
+
             <p className="mt-3 text-white/70 max-w-2xl">
-              Fresh articles designed to help users create stronger prompts and better AI systems.
+              Fresh articles designed to help users create stronger prompts and
+              better AI systems.
             </p>
           </div>
 
@@ -221,14 +239,20 @@ export default function BlogPage() {
                 key={post.title}
                 whileHover={{ y: -6 }}
                 className="group rounded-[30px] p-[1px]"
-                style={{ background: "linear-gradient(180deg, #333333 0%, #12141A 100%)" }}
+                style={{
+                  background:
+                    "linear-gradient(180deg, #333333 0%, #12141A 100%)",
+                }}
               >
                 <div className="rounded-[29px] bg-[#08090B] p-6 h-full transition-colors duration-300 group-hover:bg-[#0B0D11]">
                   <div className="mb-4 flex items-center justify-between gap-3">
                     <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/75">
                       {post.category}
                     </span>
-                    <span className="text-xs text-white/50">{post.readTime}</span>
+
+                    <span className="text-xs text-white/50">
+                      {post.readTime}
+                    </span>
                   </div>
 
                   <h3 className="text-xl font-semibold mb-3 leading-snug">
@@ -241,6 +265,7 @@ export default function BlogPage() {
 
                   <div className="mt-auto flex items-center justify-between text-sm text-white/55">
                     <span>{post.date}</span>
+
                     <Link
                       to="/blog"
                       className="inline-flex items-center gap-2 text-white/80 transition-colors hover:text-white"
@@ -258,12 +283,19 @@ export default function BlogPage() {
         <section className="container mx-auto px-4 sm:px-6 py-16">
           <div
             className="rounded-[32px] p-[1px]"
-            style={{ background: "linear-gradient(135deg, #FF14EF 0%, #1A73E8 100%)" }}
+            style={{
+              background:
+                "linear-gradient(135deg, #FF14EF 0%, #1A73E8 100%)",
+            }}
           >
             <div className="rounded-[31px] bg-[#08090B] px-6 py-10 sm:px-10 text-center">
-              <h2 className="text-3xl sm:text-4xl font-bold">Stay updated with TOKUN</h2>
+              <h2 className="text-3xl sm:text-4xl font-bold">
+                Stay updated with TOKUN
+              </h2>
+
               <p className="mt-4 text-white/70 max-w-2xl mx-auto">
-                Get product news, workflow tips, and prompt strategy updates delivered to your inbox.
+                Get product news, workflow tips, and prompt strategy updates
+                delivered to your inbox.
               </p>
 
               <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3 max-w-xl mx-auto">
@@ -272,10 +304,12 @@ export default function BlogPage() {
                   placeholder="Enter your email"
                   className="w-full sm:flex-1 h-12 px-5 rounded-full bg-transparent border border-white/20 text-white placeholder:text-white/45 outline-none focus:border-white/40"
                 />
+
                 <Button
                   className="w-full sm:w-auto h-12 px-6 rounded-full text-white"
                   style={{
-                    background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)",
+                    background:
+                      "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)",
                   }}
                 >
                   Subscribe

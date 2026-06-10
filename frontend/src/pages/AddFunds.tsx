@@ -10839,6 +10839,9 @@ const AddFunds = () => {
     WalletTransaction[]
   >([]);
 
+  const [txnPage, setTxnPage] = useState(1);
+const TXN_PER_PAGE = 5;
+
   const [payLoading, setPayLoading] = useState(false);
   const [paymentError, setPaymentError] = useState("");
   const [paymentSuccess, setPaymentSuccess] = useState("");
@@ -11707,235 +11710,6 @@ const AddFunds = () => {
                       </div>
                     </div>
 
-                    {selectedMethod === "upi" && (
-                      <div className="mt-7">
-                        <div
-                          className="rounded-[14px] border border-white/10 p-5 mb-6"
-                          style={{
-                            background: "rgba(255,255,255,0.04)",
-                          }}
-                        >
-                          <p
-                            style={{
-                              fontFamily: fontBase,
-                              fontWeight: 700,
-                              fontSize: 14,
-                              color: "#FFFFFF",
-                            }}
-                          >
-                            UPI — including QR Scan
-                          </p>
-
-                          <p
-                            className="mt-2"
-                            style={{
-                              fontFamily: fontBase,
-                              fontWeight: 400,
-                              fontSize: 13,
-                              color: "rgba(255,255,255,0.5)",
-                              lineHeight: "20px",
-                            }}
-                          >
-                            Razorpay checkout mein UPI ID enter karo ya built-in
-                            QR scan karo.
-                          </p>
-
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            {[
-                              "Google Pay",
-                              "PhonePe",
-                              "BHIM",
-                              "Paytm",
-                              "UPI QR",
-                            ].map((app) => (
-                              <span
-                                key={app}
-                                className="rounded-[6px] px-3 py-1 text-xs"
-                                style={{
-                                  background: "rgba(255,255,255,0.08)",
-                                  color: "rgba(255,255,255,0.6)",
-                                  fontFamily: fontBase,
-                                }}
-                              >
-                                {app}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-
-                        <label
-                          style={{
-                            fontFamily: fontBase,
-                            fontWeight: 700,
-                            fontSize: 13,
-                            color: "#A1A1AA",
-                          }}
-                        >
-                          UPI ID{" "}
-                          <span
-                            style={{
-                              color: "rgba(255,255,255,0.35)",
-                              fontWeight: 400,
-                            }}
-                          >
-                            optional
-                          </span>
-                        </label>
-
-                        {import.meta.env?.MODE !== "production" && (
-                          <div
-                            className="mt-3 rounded-[10px] border border-white/10 px-4 py-3"
-                            style={{
-                              background: "rgba(255,255,255,0.04)",
-                            }}
-                          >
-                            <p
-                              style={{
-                                fontFamily: fontBase,
-                                fontWeight: 600,
-                                fontSize: 12,
-                                color: "#C084FC",
-                              }}
-                            >
-                              Test Mode UPI IDs:
-                            </p>
-
-                            <p
-                              className="mt-1"
-                              style={{
-                                fontFamily: fontBase,
-                                fontWeight: 400,
-                                fontSize: 12,
-                                color: "rgba(255,255,255,0.5)",
-                              }}
-                            >
-                              ✅ Success:{" "}
-                              <code className="text-white">
-                                success@razorpay
-                              </code>{" "}
-                              ❌ Failure:{" "}
-                              <code className="text-white">
-                                failure@razorpay
-                              </code>
-                            </p>
-                          </div>
-                        )}
-
-                        <div
-                          className="mt-5 flex items-center gap-3"
-                          style={{ width: "min(546px, 100%)" }}
-                        >
-                          <div className="relative flex-1">
-                            <input
-                              value={upiId}
-                              onChange={(e) => {
-                                setUpiId(e.target.value);
-                                setPaymentError("");
-                              }}
-                              placeholder="yourname@upi"
-                              className="w-full px-5 outline-none placeholder:text-white/35"
-                              style={{
-                                height: 50,
-                                borderRadius: 16,
-                                background: "#30302E",
-                                border: `1px solid ${
-                                  upiStatus === "valid"
-                                    ? "rgba(74,222,128,0.5)"
-                                    : upiStatus === "invalid"
-                                    ? "rgba(248,113,113,0.5)"
-                                    : "#FFFFFF1A"
-                                }`,
-                                fontFamily: fontBase,
-                                fontWeight: 400,
-                                fontSize: 18,
-                                color: "#FFFFFF",
-                                paddingRight:
-                                  upiStatus !== "idle" ? "40px" : "16px",
-                              }}
-                            />
-
-                            {upiStatus === "valid" && (
-                              <CheckCircle2
-                                className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5"
-                                style={{ color: "#4ade80" }}
-                              />
-                            )}
-
-                            {upiStatus === "invalid" && (
-                              <XCircle
-                                className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5"
-                                style={{ color: "#f87171" }}
-                              />
-                            )}
-
-                            {upiStatus === "verifying" && (
-                              <Loader2
-                                className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 animate-spin"
-                                style={{ color: "#71717A" }}
-                              />
-                            )}
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={handleVerifyUpi}
-                            disabled={
-                              !upiId.trim() || upiStatus === "verifying"
-                            }
-                            className="h-[50px] shrink-0 rounded-[12px] px-5 text-white disabled:opacity-40 transition-opacity"
-                            style={{
-                              background:
-                                upiStatus === "valid"
-                                  ? "linear-gradient(270deg,#4ade80 0%,#22c55e 100%)"
-                                  : "linear-gradient(270deg,#FF14EF 0%,#1A73E8 100%)",
-                              fontFamily: fontBase,
-                              fontWeight: 700,
-                              fontSize: 13,
-                            }}
-                          >
-                            {upiStatus === "verifying"
-                              ? "Verifying..."
-                              : upiStatus === "valid"
-                              ? "✓ Verified"
-                              : "Verify UPI"}
-                          </button>
-                        </div>
-
-                        {upiStatus === "valid" && (
-                          <div className="mt-3 flex items-center gap-2">
-                            <CheckCircle2
-                              className="h-4 w-4 shrink-0"
-                              style={{ color: "#4ade80" }}
-                            />
-
-                            <span
-                              style={{
-                                fontFamily: fontBase,
-                                fontWeight: 500,
-                                fontSize: 13,
-                                color: "#4ade80",
-                              }}
-                            >
-                              UPI ID verified{upiName ? ` — ${upiName}` : ""}
-                            </span>
-                          </div>
-                        )}
-
-                        {upiStatus === "invalid" && upiError && (
-                          <p
-                            className="mt-3"
-                            style={{
-                              fontFamily: fontBase,
-                              fontWeight: 400,
-                              fontSize: 13,
-                              color: "#f87171",
-                            }}
-                          >
-                            {upiError}
-                          </p>
-                        )}
-                      </div>
-                    )}
 
                     {selectedMethod === "netbanking" && (
                       <div
@@ -12083,116 +11857,133 @@ const AddFunds = () => {
                 >
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_75%_20%,rgba(26,115,232,0.18),transparent_50%)]" />
 
-                  <div className="relative z-10 p-8">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <h3
-                          style={{
-                            fontFamily: fontBase,
-                            fontWeight: 700,
-                            fontSize: 18,
-                            color: "#FFFFFF",
-                          }}
-                        >
-                          Recent Wallet Transactions
-                        </h3>
+                 <div className="relative z-10 p-8">
+  <div className="flex items-center justify-between gap-4">
+    <h3
+      style={{
+        fontFamily: fontBase,
+        fontWeight: 700,
+        fontSize: 18,
+        color: "#FFFFFF",
+      }}
+    >
+      Recent Wallet Transactions
+    </h3>
 
-                        <p className="mt-1 text-xs text-white/45">
-                          Admin approval ke baad pending withdrawal yahin
-                          Successful dikhna chahiye.
-                        </p>
-                      </div>
+    <button
+      type="button"
+      onClick={fetchWallet}
+      disabled={walletLoading}
+      className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white/70 hover:bg-white/[0.07] disabled:opacity-50"
+    >
+      <RefreshCcw
+        className={`h-3.5 w-3.5 ${walletLoading ? "animate-spin" : ""}`}
+      />
+      Refresh
+    </button>
+  </div>
 
-                      <button
-                        type="button"
-                        onClick={fetchWallet}
-                        disabled={walletLoading}
-                        className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white/70 hover:bg-white/[0.07] disabled:opacity-50"
-                      >
-                        <RefreshCcw
-                          className={`h-3.5 w-3.5 ${
-                            walletLoading ? "animate-spin" : ""
-                          }`}
-                        />
-                        Refresh
-                      </button>
-                    </div>
+  <div className="mt-5 space-y-3">
+    {walletLoading && recentTransactions.length === 0 && (
+      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/60">
+        Loading transactions...
+      </div>
+    )}
 
-                    <div className="mt-5 space-y-3">
-                      {walletLoading && recentTransactions.length === 0 && (
-                        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/60">
-                          Loading transactions...
-                        </div>
-                      )}
+    {!walletLoading && recentTransactions.length === 0 && (
+      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/60">
+        No wallet transactions found.
+      </div>
+    )}
 
-                      {!walletLoading && recentTransactions.length === 0 && (
-                        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/60">
-                          No wallet transactions found.
-                        </div>
-                      )}
+    {recentTransactions.slice(0, txnPage * TXN_PER_PAGE).map((txn) => (
+      <div
+        key={txn.id}
+        className="flex items-start justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+      >
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-white/90">
+            {getTxnTitle(txn)}
+          </div>
 
-                      {recentTransactions.map((txn) => (
-                        <div
-                          key={txn.id}
-                          className="flex items-start justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4"
-                        >
-                          <div className="min-w-0">
-                            <div className="text-sm font-semibold text-white/90">
-                              {getTxnTitle(txn)}
-                            </div>
+          <div className="mt-1 text-xs text-white/45">
+            {txn.description || "Wallet transaction"}
+          </div>
 
-                            <div className="mt-1 text-xs text-white/45">
-                              {txn.description || "Wallet transaction"}
-                            </div>
+          <div className="mt-1 text-xs text-white/35">
+            {formatDate(txn.date)}
+          </div>
 
-                            <div className="mt-1 text-xs text-white/35">
-                              {formatDate(txn.date)}
-                            </div>
+          {txn.utrNumber && (
+            <div className="mt-1 text-xs text-emerald-300">
+              UTR: {txn.utrNumber}
+            </div>
+          )}
 
-                            {txn.utrNumber && (
-                              <div className="mt-1 text-xs text-emerald-300">
-                                UTR: {txn.utrNumber}
-                              </div>
-                            )}
+          {txn.source === "withdrawal" &&
+            txn.netAmount !== null &&
+            txn.netAmount !== undefined && (
+              <div className="mt-1 text-xs text-white/35">
+                Net payout: ₹{Number(txn.netAmount || 0).toFixed(2)}
+                {txn.serviceFee !== null &&
+                  txn.serviceFee !== undefined &&
+                  ` • Fee: ₹${Number(txn.serviceFee || 0).toFixed(2)}`}
+              </div>
+            )}
+        </div>
 
-                            {txn.source === "withdrawal" &&
-                              txn.netAmount !== null &&
-                              txn.netAmount !== undefined && (
-                                <div className="mt-1 text-xs text-white/35">
-                                  Net payout: ₹
-                                  {Number(txn.netAmount || 0).toFixed(2)}
-                                  {txn.serviceFee !== null &&
-                                    txn.serviceFee !== undefined &&
-                                    ` • Fee: ₹${Number(
-                                      txn.serviceFee || 0
-                                    ).toFixed(2)}`}
-                                </div>
-                              )}
-                          </div>
+        <div className="shrink-0 text-right">
+          <div
+            className={
+              txn.type === "credit"
+                ? "text-sm font-bold text-emerald-300"
+                : "text-sm font-bold text-red-300"
+            }
+          >
+            {txn.amount}
+          </div>
 
-                          <div className="shrink-0 text-right">
-                            <div
-                              className={
-                                txn.type === "credit"
-                                  ? "text-sm font-bold text-emerald-300"
-                                  : "text-sm font-bold text-red-300"
-                              }
-                            >
-                              {txn.amount}
-                            </div>
+          <span
+            className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-medium ${getTxnStatusClass(txn)}`}
+          >
+            {getTxnStatusLabel(txn)}
+          </span>
+        </div>
+      </div>
+    ))}
 
-                            <span
-                              className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-medium ${getTxnStatusClass(
-                                txn
-                              )}`}
-                            >
-                              {getTxnStatusLabel(txn)}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+    {/* Load more / Show less */}
+    {recentTransactions.length > TXN_PER_PAGE && (
+      <div className="flex items-center justify-between pt-1">
+        <span className="text-xs text-white/35">
+          Showing {Math.min(txnPage * TXN_PER_PAGE, recentTransactions.length)} of {recentTransactions.length}
+        </span>
+
+        <div className="flex gap-2">
+          {txnPage * TXN_PER_PAGE < recentTransactions.length && (
+            <button
+              type="button"
+              onClick={() => setTxnPage((p) => p + 1)}
+              className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-xs text-white/70 hover:bg-white/[0.07]"
+            >
+              Load more
+            </button>
+          )}
+
+          {txnPage > 1 && (
+            <button
+              type="button"
+              onClick={() => setTxnPage(1)}
+              className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-xs text-white/70 hover:bg-white/[0.07]"
+            >
+              Show less
+            </button>
+          )}
+        </div>
+      </div>
+    )}
+  </div>
+</div>
                 </div>
               </div>
 

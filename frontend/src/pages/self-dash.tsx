@@ -1090,6 +1090,8 @@
 
 
 
+
+
 import { useState, useEffect, useMemo, useRef } from "react";
 import Header from "@/components/Header";
 import { useAuth } from "@/contexts/AuthContext";
@@ -1148,6 +1150,31 @@ const formatDashboardDate = (value: string) => {
 type DashTab = "dashboard" | "requests" | "prompts" | "subscription";
 type PromptsTab = "purchased" | "uploaded";
 type PlanKey = "Free" | "Pro" | "Enterprise";
+
+type ServerPlanKey = "free" | "pro";
+type BillingCycle = "monthly" | "yearly";
+
+const CREATE_USER_ORDER_URL = `${API_BASE}/api/plans/subscribe/order/create/user`;
+const VERIFY_USER_PAYMENT_URL = `${API_BASE}/api/plans/subscribe/verify/verifypayment`;
+
+const CREATE_ORG_ORDER_URL = `${API_BASE}/api/plans/subscribe/order/create/org`;
+const VERIFY_ORG_PAYMENT_URL = VERIFY_USER_PAYMENT_URL;
+
+const toServerPlanKey = (ui: PlanKey): ServerPlanKey | null =>
+  ui === "Free" ? "free" : ui === "Pro" ? "pro" : null;
+
+const toBillingCycle = (annual: boolean): BillingCycle =>
+  annual ? "yearly" : "monthly";
+
+const getAuthToken = () =>
+  localStorage.getItem("auth_token") ||
+  sessionStorage.getItem("auth_token") ||
+  localStorage.getItem("token") ||
+  sessionStorage.getItem("token") ||
+  "";
+
+
+
 
 /* ─── Prompt type ───────────────────────────────────────── */
 type Prompt = {
@@ -1493,8 +1520,8 @@ function SubscriptionsSection({
   onUpgrade,
 }: {
   user: any;
-  onRenew: () => void;
-  onUpgrade: () => void;
+  onRenew: (plan: PlanKey, annual: boolean) => void;
+  onUpgrade: (plan: PlanKey, annual: boolean) => void;
 }) {
   const [annual, setAnnual] = useState(false);
   const [selected, setSelected] = useState<PlanKey>("Pro");
@@ -1519,12 +1546,13 @@ function SubscriptionsSection({
         planName={currentPlan}
         expiryDate={user?.currentPeriodEnd}
         subtitle="Your active subscription details"
-        onRenew={onRenew}
-        onUpgrade={onUpgrade}
+        onRenew={() => onRenew(selected, annual)}
+        onUpgrade={() => onUpgrade(selected, annual)}
       />
 
       <div className="mt-6 mb-5 flex items-center justify-center gap-4 text-[12px]">
         <span className="leading-none text-white/80">Billed monthly</span>
+
         <Switch
           id="billing-sub-tab"
           checked={annual}
@@ -1537,6 +1565,7 @@ function SubscriptionsSection({
           ].join(" ")}
           style={annual ? { background: GRAD } : { background: "#17171A" }}
         />
+
         <span className="leading-none text-white/80">
           Billed yearly <span className="text-white/50">(Save up to 20%)</span>
         </span>
@@ -1547,17 +1576,24 @@ function SubscriptionsSection({
           <PlanCard
             selected={selected === "Free"}
             onSelect={() => setSelected("Free")}
-            onChoose={() => { setSelected("Free"); onUpgrade(); }}
+            onChoose={() => {
+              setSelected("Free");
+              onUpgrade("Free", annual);
+            }}
             title="Free"
             subtitle="(Individuals)"
             price={priceFor("Free")}
             tokens={tokens.Free}
             extras={[{ label: "Extra Tokens Feature", value: "No" }]}
           />
+
           <PlanCard
             selected={selected === "Pro"}
             onSelect={() => setSelected("Pro")}
-            onChoose={() => { setSelected("Pro"); onUpgrade(); }}
+            onChoose={() => {
+              setSelected("Pro");
+              onUpgrade("Pro", annual);
+            }}
             title="Pro"
             subtitle="(Individuals)"
             price={priceFor("Pro")}
@@ -1569,10 +1605,14 @@ function SubscriptionsSection({
               { label: "Extra Token Price", value: "₹200" },
             ]}
           />
+
           <PlanCard
             selected={selected === "Enterprise"}
             onSelect={() => setSelected("Enterprise")}
-            onChoose={() => { setSelected("Enterprise"); onUpgrade(); }}
+            onChoose={() => {
+              setSelected("Enterprise");
+              onUpgrade("Enterprise", annual);
+            }}
             title="Enterprise"
             subtitle="(Organization)"
             price={priceFor("Enterprise")}
@@ -1585,6 +1625,7 @@ function SubscriptionsSection({
           />
         </div>
       </div>
+
       <p className="text-center text-[11px] mt-5 text-white/40">
         {annual ? "Billed yearly (Save up to 20%)" : " "}
       </p>
@@ -1775,7 +1816,276 @@ const [acceptingRequestId, setAcceptingRequestId] = useState<string | number | n
   const [detailsPrompt, setDetailsPrompt] = useState<MarketplacePrompt | null>(null);
   const [playingVideo, setPlayingVideo] = useState<number | string | null>(null);
    
+const [creatingPlan, setCreatingPlan] = useState(false);
 
+const ensureRazorpay = () =>
+  new Promise<void>((resolve, reject) => {
+    if ((window as any).Razorpay) return resolve();
+
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("razorpay_script_load_failed"));
+    document.body.appendChild(script);
+  });
+
+const openCheckout = ({
+  key,
+  order,
+}: {
+  key: string;
+  order: any;
+}) => {
+  return new Promise<{
+    razorpay_payment_id: string;
+    razorpay_order_id: string;
+    razorpay_signature: string;
+  }>((resolve, reject) => {
+    const rzp = new (window as any).Razorpay({
+      key,
+      order_id: order.id,
+      name: "Tokun.ai",
+      description: "Subscription Payment",
+      prefill: {
+        name: user?.name || "Tokun User",
+        email: user?.email || "user@example.com",
+        contact: user?.phone || "9999999999",
+      },
+      notes: order.notes || {},
+      handler: (response: any) => {
+        resolve(response);
+      },
+      modal: {
+        ondismiss: () => reject(new Error("checkout_dismissed")),
+      },
+    });
+
+    rzp.open();
+  });
+};
+
+const verifyUserPayment = async (payload: {
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  razorpay_signature: string;
+}) => {
+  const res = await fetch(VERIFY_USER_PAYMENT_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      paymentId: payload.razorpay_payment_id,
+      orderId: payload.razorpay_order_id,
+      signature: payload.razorpay_signature,
+    }),
+    credentials: "include",
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok || !data?.success) {
+    throw new Error(data?.error || `verify_failed_${res.status}`);
+  }
+
+  return data;
+};
+
+const startUserSubscriptionPurchase = async (
+  plan: PlanKey,
+  annual: boolean
+) => {
+  const planKey = toServerPlanKey(plan);
+
+  if (!planKey) {
+    toast({
+      title: "Invalid plan",
+      description: "Enterprise plan uses organization checkout.",
+      variant: "destructive",
+    });
+    return;
+  }
+
+  if (creatingPlan) return;
+
+  setCreatingPlan(true);
+
+  try {
+    const authToken = token || getAuthToken();
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
+
+    const res = await fetch(CREATE_USER_ORDER_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        planKey,
+        billingCycle: toBillingCycle(annual),
+      }),
+      credentials: "include",
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.error || `create_order_failed_${res.status}`);
+    }
+
+    if (data?.free === true || data?.message === "no_payment_required") {
+      toast({
+        title: "Plan updated",
+        description: "Free plan activated successfully.",
+      });
+      return;
+    }
+
+    await ensureRazorpay();
+
+    const checkoutRes = await openCheckout({
+      key: data.key,
+      order: data.order,
+    });
+
+    await verifyUserPayment(checkoutRes);
+
+    toast({
+      title: "Payment successful",
+      description: `${plan} plan activated successfully.`,
+    });
+  } catch (err: any) {
+    if (err?.message === "checkout_dismissed") {
+      toast({
+        title: "Checkout closed",
+        description: "Payment was not completed.",
+      });
+    } else {
+      toast({
+        title: "Subscription failed",
+        description: err?.message || "Could not start subscription payment.",
+        variant: "destructive",
+      });
+    }
+  } finally {
+    setCreatingPlan(false);
+  }
+};
+
+const startEnterpriseSubscriptionPurchase = async (annual: boolean) => {
+  if (creatingPlan) return;
+
+  const authToken = token || getAuthToken();
+
+  if (!authToken) {
+    toast({
+      title: "Login required",
+      description: "Please login again.",
+      variant: "destructive",
+    });
+    return;
+  }
+
+  const orgId = user?.orgId || null;
+
+  if (!orgId) {
+    toast({
+      title: "Organization missing",
+      description: "We could not find your Organization ID.",
+      variant: "destructive",
+    });
+    return;
+  }
+
+  setCreatingPlan(true);
+
+  try {
+    const res = await fetch(CREATE_ORG_ORDER_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({
+        orgId,
+        billingCycle: toBillingCycle(annual),
+        planKey: "enterprise",
+      }),
+      credentials: "include",
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.error || `create_org_order_failed_${res.status}`);
+    }
+
+    await ensureRazorpay();
+
+    const checkoutRes = await openCheckout({
+      key: data.key,
+      order: data.order,
+    });
+
+    const verifyRes = await fetch(VERIFY_ORG_PAYMENT_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({
+        paymentId: checkoutRes.razorpay_payment_id,
+        orderId: checkoutRes.razorpay_order_id,
+        signature: checkoutRes.razorpay_signature,
+      }),
+      credentials: "include",
+    });
+
+    const verifyJson = await verifyRes.json().catch(() => ({}));
+
+    if (!verifyRes.ok || !verifyJson?.success) {
+      throw new Error(
+        verifyJson?.error || `verify_org_failed_${verifyRes.status}`
+      );
+    }
+
+    toast({
+      title: "Payment successful",
+      description: "Enterprise plan activated successfully.",
+    });
+  } catch (err: any) {
+    if (err?.message === "checkout_dismissed") {
+      toast({
+        title: "Checkout closed",
+        description: "Payment was not completed.",
+      });
+    } else {
+      toast({
+        title: "Enterprise checkout failed",
+        description: err?.message || "Could not complete enterprise payment.",
+        variant: "destructive",
+      });
+    }
+  } finally {
+    setCreatingPlan(false);
+  }
+};
+
+const startSubscriptionPurchase = async (
+  plan: PlanKey,
+  annual: boolean
+) => {
+  if (plan === "Enterprise") {
+    await startEnterpriseSubscriptionPurchase(annual);
+    return;
+  }
+
+  await startUserSubscriptionPurchase(plan, annual);
+};
 // Existing useEffects ke saath
 const [hireEarnings, setHireEarnings] = useState<{
   totalEarnings: number;
@@ -1845,10 +2155,11 @@ const handleAcceptRequest = async (item: any) => {
 
   if (!dealId) {
     toast({
-      title: "Deal missing",
-      description: "Request deal id nahi mil raha.",
-      variant: "destructive",
-    });
+  title: "Deal not found",
+  description: "Could not find the request deal ID. Please refresh.",
+  variant: "destructive",
+});
+
     return;
   }
 
@@ -1878,10 +2189,10 @@ const handleAcceptRequest = async (item: any) => {
       throw new Error(data?.error || "Failed to accept proposal");
     }
 
-    toast({
-      title: "Project accepted",
-      description: "Request Active Projects mein move ho gaya.",
-    });
+   toast({
+  title: "Project accepted",
+  description: "Request moved to Active Projects.",
+});
 
     await fetchHireEarnings();
     setActiveTab("dashboard");
@@ -2077,7 +2388,77 @@ const handleAcceptRequest = async (item: any) => {
 
 
 
+const normalizeStatus = (status?: string) =>
+  String(status || "").trim().toUpperCase();
 
+const getHireDealId = (item: any, index: number, prefix: string) =>
+  String(
+    item?._id ||
+      item?.id ||
+      item?.dealId ||
+      item?.raw?._id ||
+      `${prefix}-${index}`
+  );
+
+const allHireDealMap = new Map<string, any>();
+
+[
+  ...(hireEarnings.requests || []),
+  ...(hireEarnings.projects || []),
+  ...(hireEarnings.deals || []),
+].forEach((item, index) => {
+  const id = getHireDealId(item, index, "hire");
+  allHireDealMap.set(id, item);
+});
+
+const allHireDeals = Array.from(allHireDealMap.values());
+
+const isAcceptedDeal = (deal: any) => {
+  const status = normalizeStatus(deal?.status);
+
+  return (
+    [
+      "ACCEPTED_WAITING_PAYMENT",
+      "FUNDED",
+      "IN_PROGRESS",
+      "WORK_SUBMITTED",
+      "REVISION_REQUESTED",
+      "COMPLETED",
+      "DELIVERED",
+    ].includes(status) ||
+    !!deal?.acceptedAt ||
+    !!deal?.workStartedAt ||
+    !!deal?.workSubmittedAt ||
+    !!deal?.completedAt
+  );
+};
+
+const isDeliveredDeal = (deal: any) => {
+  const status = normalizeStatus(deal?.status);
+
+  return (
+    ["COMPLETED", "DELIVERED", "PAYMENT_RELEASED", "RELEASED"].includes(
+      status
+    ) ||
+    !!deal?.completedAt ||
+    !!deal?.releasedAt ||
+    !!deal?.paymentReleasedAt
+  );
+};
+
+const totalRequestsAccepted = allHireDeals.filter(isAcceptedDeal).length;
+const totalRequestsDelivered = allHireDeals.filter(isDeliveredDeal).length;
+
+const calculatedSuccessRate =
+  totalRequestsAccepted > 0
+    ? Math.round((totalRequestsDelivered / totalRequestsAccepted) * 1000) / 10
+    : 0;
+
+const successRateLabel = `${calculatedSuccessRate}%`;
+const successRateBadge =
+  totalRequestsAccepted > 0
+    ? `${totalRequestsDelivered}/${totalRequestsAccepted}`
+    : "0/0";
 
 
 
@@ -2112,12 +2493,17 @@ const handleAcceptRequest = async (item: any) => {
     badge: `+${hireEarnings.totalProjects ?? hireEarnings.totalDeals ?? 0}`,
     badgeColor: "#DDB7FF",
   },
-  {
-    title: "SUCCESS RATE",
-    value: "94.2%",
-    badge: "94.8%",
-    badgeColor: "#19E66C",
-  },
+ {
+  title: "SUCCESS RATE",
+  value: successRateLabel,
+  badge: successRateBadge,
+  badgeColor:
+    calculatedSuccessRate >= 70
+      ? "#19E66C"
+      : calculatedSuccessRate >= 40
+      ? "#FABC4E"
+      : "#FF6B6B",
+},
 ];
 
 const activeProjects = (hireEarnings.projects || []).map((project: any, index: number) => {
@@ -2890,19 +3276,34 @@ const RequestCard = ({ item }: { item: any }) => {
   };
 
   /* Subscription */
-  const SubscriptionContent = () => (
-    <div className="relative z-10">
-      <h2 style={{ margin: 0, fontFamily: "Inter, sans-serif", fontWeight: 800, fontSize: 22, lineHeight: "100%", color: "#FFFFFF" }}>
-        My Subscription
-      </h2>
-      <SubscriptionsSection
-        user={user}
-        onRenew={() => toast({ title: "Renew", description: "Renew flow goes here." })}
-        onUpgrade={() => toast({ title: "Upgrade plan", description: "Upgrade flow goes here." })}
-      />
-    </div>
-  );
+ const SubscriptionContent = () => (
+  <div className="relative z-10">
+    <h2
+      style={{
+        margin: 0,
+        fontFamily: "Inter, sans-serif",
+        fontWeight: 800,
+        fontSize: 22,
+        lineHeight: "100%",
+        color: "#FFFFFF",
+      }}
+    >
+      My Subscription
+    </h2>
 
+    <SubscriptionsSection
+      user={user}
+      onRenew={(plan, annual) => startSubscriptionPurchase(plan, annual)}
+      onUpgrade={(plan, annual) => startSubscriptionPurchase(plan, annual)}
+    />
+
+    {creatingPlan && (
+      <p className="mt-4 text-center text-xs text-white/50">
+        Opening payment checkout...
+      </p>
+    )}
+  </div>
+);
   /* ══ RENDER ════════════════════════════════════════════ */
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#07080A] text-white">
@@ -3175,28 +3576,31 @@ function ProposalDetailModal({
 
     if (!dealId) {
       toast({
-        title: "Deal missing",
-        description: "Project id nahi mil raha.",
-        variant: "destructive",
-      });
+  title: "Deal not found",
+  description: "Project ID is missing. Please refresh and try again.",
+  variant: "destructive",
+});
+
       return;
     }
 
     if (!canSubmitWork) {
-      toast({
-        title: "Cannot submit yet",
-        description: "Client payment ke baad hi project submit ho sakta hai.",
-        variant: "destructive",
-      });
+     toast({
+  title: "Cannot submit yet",
+  description: "Project can only be submitted after client payment is received.",
+  variant: "destructive",
+});
+
       return;
     }
 
     if (!selectedFiles.length) {
       toast({
-        title: "Attach files",
-        description: "Submit karne ke liye pehle files attach karo.",
-        variant: "destructive",
-      });
+  title: "No files attached",
+  description: "Please attach files before submitting.",
+  variant: "destructive",
+});
+
       return;
     }
 
@@ -3251,9 +3655,9 @@ function ProposalDetailModal({
       }
 
       toast({
-        title: "Files submitted",
-        description: "Client ko chat mein project files review ke liye bhej di gayi.",
-      });
+  title: "Files submitted",
+  description: "Project files sent to client for review in chat.",
+});
 
       await onSubmitted?.();
       onClose();

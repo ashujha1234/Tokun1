@@ -1916,10 +1916,11 @@ const sellerRoutes = require("./routes/sellerRoutes");
 const kycRoutes = require("./routes/kycRoutes");
 const hireRoutes = require("./routes/hire.routes");
 const adminEscrowRouter = require("./routes/adminEscrow");
-
+require('./cron/autoReleaseEscrow');
 const activityRoutes = require("./routes/activityRoutes");
 const userAdminRoutes = require("./routes/userAdminRoutes");
 const walletRoutes = require("./routes/walletRoutes")
+const reportRoutes = require("./routes/report");
 const app = express();
 // app.use(cors({
 //   origin: "http://localhost:5173",
@@ -2436,6 +2437,8 @@ app.use("/api/activity", activityRoutes);
 app.use("/api/wallet", walletRoutes);
 app.use("/api/hire", hireRoutes);
 app.use("/api/admin/escrow", adminEscrowRouter);
+app.use("/api/report", reportRoutes);
+
 
 
 app.get("/", (req, res) => {
