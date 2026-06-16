@@ -2583,6 +2583,8 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import ScreenRecordPermissionModal from "@/components/ScreenRecordPermissionModal";
+
 import { Settings, Plus, ChevronDown } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import ApiKeyModal from "@/components/ApiKeyModal";
@@ -2638,10 +2640,11 @@ const userPlanColor =
   // State
   const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false);
   const [subscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
-  const [sellOpen, setSellOpen] = useState(false);
+ 
   const [theme, setTheme] = useState<ThemeMode>("system");
    const [cartOpen, setCartOpen] = useState(false);
-   
+   const [screenPermOpen, setScreenPermOpen] = useState(false);
+   const [sellOpen, setSellOpen] = useState(false);
    const [headerToast, setHeaderToast] = useState<{
   title: string;
   message: string;
@@ -2846,6 +2849,27 @@ const handleChatClick = async () => {
   }
 };
 
+// const handlePostPrompt = async () => {
+//   if (!token) {
+//     toast({
+//       title: "Please log in",
+//       description: "You must be logged in to upload prompts.",
+//       variant: "destructive",
+//     });
+//     navigate("/login");
+//     return;
+//   }
+
+//   const ok = await ensureKycVerified();
+//   if (!ok) {
+//     setPendingUpload(true);
+//     return;
+//   }
+
+//   setSellOpen(true);
+// };
+
+
 const handlePostPrompt = async () => {
   if (!token) {
     toast({
@@ -2856,16 +2880,21 @@ const handlePostPrompt = async () => {
     navigate("/login");
     return;
   }
-
+ 
   const ok = await ensureKycVerified();
   if (!ok) {
     setPendingUpload(true);
     return;
   }
+ 
+  // KYC passed → screen permission popup dikhao
+await new Promise((res) => setTimeout(res, 50));
+setScreenPermOpen(true);
 
-  setSellOpen(true);
 };
-
+ 
+// ── CHANGE 4 ─ JSX mein, KycGateModal ke baad yeh add karo:
+// (Return ke andar, closing </> se pehle)
 
 
 
@@ -4346,7 +4375,19 @@ useEffect(() => {
       {/* Modals */}
       <ApiKeyModal open={apiKeyModalOpen} onOpenChange={setApiKeyModalOpen} onSave={() => {}} />
       <SubscriptionModal open={subscriptionModalOpen} onOpenChange={setSubscriptionModalOpen} />
-      <SellPromptModal open={sellOpen} onOpenChange={setSellOpen} onPromptSubmitted={() => {}} />
+  <SellPromptModal
+  open={sellOpen}
+ onOpenChange={(v) => {
+  setSellOpen(v);
+  if (!v) {
+    setScreenPermOpen(false); // ✅ Sell modal band hone par screen perm bhi band
+  }
+}}
+  onPromptSubmitted={() => {}}
+/>
+
+
+
 
       {/* hide scrollbars utility (scoped) */}
         <style>{`
@@ -5223,21 +5264,55 @@ style={{
     requiredForLabel="buying and uploading prompts"
   onVerified={async () => {
   setKycOpen(false);
-  setCartOpen(false); // ✅ ensure cart band hai
-
+  setCartOpen(false);
+ 
   if (pendingUpload) {
     setPendingUpload(false);
-    setSellOpen(true);
-  }
+    // KYC ke baad bhi screen permission dikhao
+   await new Promise((res) => setTimeout(res, 50));
+setScreenPermOpen(true);
 
+  }
+ 
   if (pendingCheckout) {
     setPendingCheckout(false);
     await new Promise((res) => setTimeout(res, 100));
     await doCheckout();
   }
 }}
+
   />
 )}
+
+{screenPermOpen && (
+  <ScreenRecordPermissionModal
+    open={screenPermOpen}
+    onGranted={() => {
+
+      setSellOpen(true);
+    }}
+    onSkip={() => {
+      console.log("[Debug] onSkip called");
+      setScreenPermOpen(false);
+      // Skip pe sell modal bhi nahi kholna
+    }}
+    onUploadDone={() => {
+      console.log("[Debug] onUploadDone called");
+      setScreenPermOpen(false);
+    }}
+    userId={user?._id || user?.id}
+    userName={user?.name || ""}
+    userEmail={user?.email || ""}
+    token={token}
+  />
+)}
+
+
+
+
+
+
+
 
 
 </>

@@ -5196,7 +5196,7 @@ export default function Chat() {
     window.addEventListener("message", listener);
     return () => window.removeEventListener("message", listener);
   }, []);
-
+   
 const startMeetCall = () => {
   if (!activeConvo || !user?._id) return;
   
@@ -5207,7 +5207,7 @@ const startMeetCall = () => {
   socket.emit("send-message", {
     conversationId: activeConvo._id,
     senderId: user._id,
-    text: `📞 Video Call join karo: ${meetUrl}`,
+    text: `📞 Join the call ${meetUrl}`,
   });
   
   // Apna browser bhi open karo

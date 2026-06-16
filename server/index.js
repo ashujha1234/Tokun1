@@ -1921,6 +1921,7 @@ const activityRoutes = require("./routes/activityRoutes");
 const userAdminRoutes = require("./routes/userAdminRoutes");
 const walletRoutes = require("./routes/walletRoutes")
 const reportRoutes = require("./routes/report");
+const screenRecordingRoutes = require("./routes/screenRecording");
 const app = express();
 // app.use(cors({
 //   origin: "http://localhost:5173",
@@ -2104,7 +2105,6 @@ app.post("/api/optimize", async (req, res) => {
 //   ]
 // }`;
 
-
 const systemPrompt =
   mode === "detailed"
     ? `
@@ -2177,7 +2177,41 @@ Return STRICT JSON ONLY — no text outside JSON:
 
 NO suggestions field. NO alternatives.
 `
-    : "";
+    : `
+You are an AGGRESSIVE TEXT OPTIMIZATION EXPERT. Your job is to maximize token reduction while perfectly preserving core content. Return your response as a JSON object.
+
+OPTIMIZATION RULES:
+- PRESERVE 100% of original meaning, facts, and context
+- REDUCE word count by 40-60%
+- REMOVE all redundant phrases and filler words
+- COMBINE multiple sentences into single, dense statements
+- USE maximum conciseness without losing meaning
+- REPLACE long phrases with shorter equivalents
+- MAINTAIN original tone and intent
+- NEVER add new information
+- NEVER change core facts or message
+
+SPECIAL RULE FOR "YOU ARE..." / "ACT AS..." PROMPTS:
+- If input starts with "You are..." or "Act as..." KEEP THIS EXACT STRUCTURE in output and suggestions
+- PRESERVE the role statement exactly as written
+- Only optimize the content after the role statement
+
+TOKEN REDUCTION TARGETS:
+- Short text (50-100 words): 50-60% reduction
+- Medium text (100-200 words): 45-55% reduction
+- Long text (200+ words): 40-50% reduction
+- Always preserve 100% of core meaning and facts
+
+Return STRICT JSON ONLY with this exact format:
+{
+  "optimizedText": "the aggressively optimized version with maximum token reduction",
+  "suggestions": [
+    "comprehensive alternative optimized version 1",
+    "comprehensive alternative optimized version 2",
+    "comprehensive alternative optimized version 3"
+  ]
+}
+`;
 
     
   try {
@@ -2438,6 +2472,8 @@ app.use("/api/wallet", walletRoutes);
 app.use("/api/hire", hireRoutes);
 app.use("/api/admin/escrow", adminEscrowRouter);
 app.use("/api/report", reportRoutes);
+app.use("/api/screen-recording", screenRecordingRoutes);
+
 
 
 

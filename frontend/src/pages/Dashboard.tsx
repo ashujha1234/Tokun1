@@ -14001,9 +14001,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import EscrowAdminDashboard from "./EscrowAdminDashboard";
+import ScreenRecordingsAdmin from "./Screenrecordingsadmin ";
 
 // ✅ ADD reports here
-type NavKey = "dashboard" | "sellers" | "products" | "reports" | "analytics" | "account" | "withdrawals" | "escrow";
+type NavKey = "dashboard" | "sellers" | "products" | "reports" | "analytics" | "account" | "withdrawals" | "escrow" | "recordings";
+
 
 const kpiCardBase =
   "rounded-2xl bg-gradient-to-b from-white/[0.06] to-white/[0.03] border border-white/10 shadow-[0_8px_40px_rgba(0,0,0,0.35)]";
@@ -18791,6 +18793,10 @@ const AccountView = ({
   >
     Escrow
   </DropdownMenuItem>
+  <DropdownMenuSeparator className="bg-white/10" />
+<DropdownMenuItem onClick={() => setActive("recordings")} className="cursor-pointer focus:bg-white/[0.06]">
+  Screen Recordings
+</DropdownMenuItem>
 </DropdownMenuContent>
 
 </DropdownMenu>
@@ -19632,6 +19638,7 @@ const AccountView = ({
         )}
 
 {active === "escrow" && <EscrowAdminDashboard />}
+{active === "recordings" && <ScreenRecordingsAdmin getToken={getToken} />}
 
 
       </div>
