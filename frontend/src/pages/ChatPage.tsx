@@ -3097,7 +3097,7 @@ import { FiVideo, FiInfo, FiSend } from "react-icons/fi";
 import { Search, Trash2, X, Plus, ArrowLeft,ShieldAlert } from "lucide-react";
 import { useAgoraCall } from "@/hooks/useAgoraCall";
 import { ReportModal } from "@/components/ReportModal";
-
+import NdaButton from "@/components/NdaCard";
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 const GRADIENT = "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)";
 
@@ -4522,6 +4522,7 @@ border: "1px solid rgba(74,222,128,0.10)",
                     </>
                   )}
                 </button>
+              {/* Escrow info div ke baad */}
 
                 {/* Decline */}
                 <button
@@ -4560,6 +4561,7 @@ border: "1px solid rgba(74,222,128,0.10)",
         )}
 
         {/* ── Freelancer ko sirf status dikhao ── */}
+     {/* ── Freelancer ko sirf status dikhao ── */}
         {isMine && (
           <div
             style={{
@@ -4578,6 +4580,16 @@ border: "1px solid rgba(74,222,128,0.10)",
           >
             ⏳ Waiting for client payment...
           </div>
+        )}
+
+        {/* ── NDA — accept hote hi DONO (client + freelancer) ko dikhega ── */}
+        {dealId && (
+          <NdaButton
+            dealId={dealId}
+            token={token}
+            apiBase={API_BASE}
+            fallback={data}
+          />
         )}
       </div>
     </div>

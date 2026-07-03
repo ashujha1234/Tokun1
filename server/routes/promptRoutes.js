@@ -11,10 +11,31 @@ const Category=require("../models/Category");
 const {requireKycVerified} = require("../middleware/requireKycVerified")
 const { requireAuth }  = require("../utils/auth");
 const { logActivity } = require("../utils/activityLogger");
+const crypto = require("crypto");
+const sharp = require("sharp");
 
+function makePromptHash(text) {
+  return crypto.createHash("sha256").update(text || "", "utf8").digest("hex");
+}
 
+async function watermarkImage(buffer) {
+  const meta = await sharp(buffer).metadata();
+  const w = meta.width || 800;
+  const fontSize = Math.max(20, Math.floor(w / 18));
 
+  const wm = Buffer.from(
+    `<svg width="${w}" height="${fontSize + 20}">
+      <text x="12" y="${fontSize}" font-size="${fontSize}"
+            fill="rgba(255,255,255,0.45)" font-family="Arial" font-weight="bold">
+        Tokun.ai
+      </text>
+    </svg>`
+  );
 
+  return sharp(buffer)
+    .composite([{ input: wm, gravity: "southeast" }])
+    .toBuffer();
+}
 
 // --- Multer setup (local disk) ---
 // const storage = multer.diskStorage({
@@ -186,6 +207,27 @@ router.post(
       }
 
       /* ================= MAIN ATTACHMENT ================= */
+      // const file = req.files.attachment[0];
+
+      // const fileType = file.mimetype.startsWith("image/")
+      //   ? "image"
+      //   : file.mimetype.startsWith("video/")
+      //   ? "video"
+      //   : null;
+
+      // if (!fileType) {
+      //   return res.status(400).json({
+      //     success: false,
+      //     error: "only_image_or_video_allowed",
+      //   });
+      // }
+
+      // const attachmentUrl = await uploadToAzure(
+      //   file.buffer,
+      //   file.originalname,
+      //   "prompt-attachments"
+      // );
+       /* ================= MAIN ATTACHMENT ================= */
       const file = req.files.attachment[0];
 
       const fileType = file.mimetype.startsWith("image/")
@@ -201,11 +243,23 @@ router.post(
         });
       }
 
+      // watermark sirf image pe
+      let bufferToUpload = file.buffer;
+      if (fileType === "image") {
+        try {
+          bufferToUpload = await watermarkImage(file.buffer);
+        } catch (e) {
+          console.error("watermark failed, original upload:", e.message);
+          bufferToUpload = file.buffer;
+        }
+      }
+
       const attachmentUrl = await uploadToAzure(
-        file.buffer,
+        bufferToUpload,
         file.originalname,
         "prompt-attachments"
       );
+
 
       const attachment = {
         filename: file.originalname,
@@ -273,6 +327,7 @@ router.post(
         categories: categoryIds,
         attachment,
         uploadCode,
+                promptHash: makePromptHash(promptText),   
       });
 
       // ✅ YE ADD KARO YAHAN

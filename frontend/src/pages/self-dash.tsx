@@ -1112,6 +1112,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/use-toast";
 import DetailsPrompt, { MarketplacePrompt } from "../components/historyDetail";
+import NdaButton from "@/components/NdaCard";
 
 const GRADIENT = "linear-gradient(270deg,#FF14EF 0%, #1A73E8 100%)";
 const GRAD = "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)";
@@ -3488,6 +3489,8 @@ const RequestCard = ({ item }: { item: any }) => {
     setSelectedProject(null);
   }}
 />
+
+
 )}
 
 
@@ -4033,6 +4036,18 @@ function ProposalDetailModal({
             }}
           >
             {selectedFiles.map((file) => file.name).join(", ")}
+          </div>
+        )}
+        {/* ── NDA (project accept hone ke baad download) ── */}
+        {dealId && (
+          <div style={{ marginTop: 16, display: "flex", justifyContent: "center" }}>
+            <NdaButton
+              dealId={dealId}
+              token={token}
+              apiBase={API_BASE}
+              fallback={project}
+              variant="compact"
+            />
           </div>
         )}
       </div>

@@ -14002,6 +14002,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import EscrowAdminDashboard from "./EscrowAdminDashboard";
 import ScreenRecordingsAdmin from "./Screenrecordingsadmin ";
+import AdminSellerMessageModal from "@/components/AdminSellerMessageModal";
 
 // ✅ ADD reports here
 type NavKey = "dashboard" | "sellers" | "products" | "reports" | "analytics" | "account" | "withdrawals" | "escrow" | "recordings";
@@ -17289,6 +17290,9 @@ const SellerProfileView = ({
   error: string | null;
   onBack: () => void;
 }) => {
+
+
+    const [messageOpen, setMessageOpen] = useState(false);
   return (
     <>
       {/* Title */}
@@ -17329,10 +17333,13 @@ const SellerProfileView = ({
 
 {/* ✅ Actions: mobile = 3 equal buttons, desktop = row */}
 <div className="w-full lg:w-auto grid grid-cols-3 gap-3">
-  <button className="h-11 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] text-sm inline-flex items-center justify-center gap-2">
-    <MessageSquare className="h-4 w-4 text-sky-300" />
-    <span className="hidden sm:inline">Message</span>
-  </button>
+  <button
+  onClick={() => setMessageOpen(true)}
+  className="h-11 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] text-sm inline-flex items-center justify-center gap-2"
+>
+  <MessageSquare className="h-4 w-4 text-sky-300" />
+  <span className="hidden sm:inline">Message</span>
+</button>
 
   <button className="h-11 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] text-sm inline-flex items-center justify-center gap-2">
     <Download className="h-4 w-4 text-white/80" />
@@ -17487,6 +17494,12 @@ const SellerProfileView = ({
           </div>
         </div>
       </section>
+      <AdminSellerMessageModal
+        open={messageOpen}
+        seller={seller}
+        onClose={() => setMessageOpen(false)}
+      />
+
     </>
   );
 };

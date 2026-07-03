@@ -386,7 +386,7 @@ const { requireAuth } = require("../utils/auth");
 const { requireKycVerified } = require("../utils/requireKycVerified");
 const { logActivity } = require("../utils/activityLogger");
 const crypto = require("crypto");
-
+const { embedWatermark, extractWatermark } = require("../utils/nvisibleWatermark");
 
 // POST /api/purchase/create-order/:promptId
 router.post("/create-order/:promptId", requireAuth, requireKycVerified, async (req, res) => {
@@ -505,14 +505,15 @@ router.post("/verify/:promptId", requireAuth, async (req, res) => {
       razorpayPaymentId,
       razorpayOrderId,
       paymentStatus: "SUCCESS",
-      promptSnapshot: {
+     promptSnapshot: {
         title: prompt.title,
         description: prompt.description,
-        promptText: prompt.promptText,
+        promptText: embedWatermark(prompt.promptText, String(req.user._id)), // ← marked
         attachment: prompt.attachment,
         uploadCode: prompt.uploadCode,
         originalPrice: prompt.price,
       },
+
     });
 
     // Mark exclusive prompt as sold
@@ -658,5 +659,19 @@ router.get("/analytics/sales", async (req, res) => {
   }
 });
 
+// POST /api/purchase/trace-leak   body: { leakedText: "..." }
+router.post("/trace-leak", requireAuth, async (req, res) => {
+  try {
+    // TODO: admin-only check yahaan laga lena
+    const buyerId = extractWatermark(req.body.leakedText || "");
+    if (!buyerId) {
+      return res.json({ success: true, buyerId: null, message: "no_watermark_found" });
+    }
+    return res.json({ success: true, buyerId });
+  } catch (err) {
+    console.error("trace-leak error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
 
 module.exports = router;

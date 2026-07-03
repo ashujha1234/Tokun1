@@ -32,6 +32,8 @@ const PromptSchema = new mongoose.Schema(
     flagged: { type: Boolean, default: false },
      exclusive: { type: Boolean, default: false },   // ✅ new
      sold: { type: Boolean, default: false },  
+     promptHash: { type: String, default: "", index: true },  
+
 
     tokun_price: { type: Number, default: 0 }, // <-- new field
     ratings: [ratingSchema],      // <--- store user ratings

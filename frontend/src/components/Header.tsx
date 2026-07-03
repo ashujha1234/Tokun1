@@ -2869,7 +2869,6 @@ const handleChatClick = async () => {
 //   setSellOpen(true);
 // };
 
-
 const handlePostPrompt = async () => {
   if (!token) {
     toast({
@@ -2880,18 +2879,18 @@ const handlePostPrompt = async () => {
     navigate("/login");
     return;
   }
- 
+
   const ok = await ensureKycVerified();
   if (!ok) {
     setPendingUpload(true);
     return;
   }
- 
-  // KYC passed → screen permission popup dikhao
-await new Promise((res) => setTimeout(res, 50));
-setScreenPermOpen(true);
 
+  // KYC passed → seedha Sell modal kholo (screen perm hata diya)
+  setSellOpen(true);
 };
+
+
  
 // ── CHANGE 4 ─ JSX mein, KycGateModal ke baad yeh add karo:
 // (Return ke andar, closing </> se pehle)
@@ -5266,12 +5265,9 @@ style={{
   setKycOpen(false);
   setCartOpen(false);
  
-  if (pendingUpload) {
+if (pendingUpload) {
     setPendingUpload(false);
-    // KYC ke baad bhi screen permission dikhao
-   await new Promise((res) => setTimeout(res, 50));
-setScreenPermOpen(true);
-
+    setSellOpen(true);   // pehle yahan setScreenPermOpen(true) tha
   }
  
   if (pendingCheckout) {

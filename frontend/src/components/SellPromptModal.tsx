@@ -1460,7 +1460,6 @@ export default function SellPromptModal({
   const [catsLoading, setCatsLoading] = useState(false);
   const [catsError, setCatsError] = useState<string | null>(null);
 
-  const recordingTime = useRecordingTimer(open);
 
   const fieldBase =
     "w-full h-[44px] rounded-lg bg-[#131419] border border-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/10";
@@ -1661,19 +1660,19 @@ export default function SellPromptModal({
         </DialogTrigger>
       )}
 
-      <DialogContent
-        className="bg-[#17171A] text-white border border-white/10 w-[min(96vw,720px)] h-[100vh] md:h-[95vh] rounded-none md:rounded-2xl p-0 overflow-hidden flex flex-col"
-        style={contentStyle}
-      >
+     <DialogContent
+  className="bg-[#17171A] text-white border border-white/10 w-[min(96vw,720px)] h-[100vh] md:h-[95vh] rounded-none md:rounded-2xl p-0 overflow-hidden flex flex-col z-[1100]"
+  style={contentStyle}
+>
         {/* Header */}
-        <DialogHeader className="px-6 pt-5 pb-0">
-          <div className="flex items-center justify-between gap-3">
-            <DialogTitle className="text-lg md:text-xl font-semibold leading-tight">
-              Upload Your Prompt to Marketplace
-            </DialogTitle>
-            <RecordingPill time={recordingTime} />
-          </div>
-        </DialogHeader>
+      <DialogHeader className="px-6 pt-5 pb-0">
+  <div className="flex items-center justify-between gap-3">
+    <DialogTitle className="text-lg md:text-xl font-semibold leading-tight">
+      Upload Your Prompt to Marketplace
+    </DialogTitle>
+    {/* <RecordingPill time={recordingTime} />  ← yeh hata diya */}
+  </div>
+</DialogHeader>
 
         {/* Form body */}
         <form onSubmit={handleSubmit} className="no-scrollbar flex-1 overflow-y-auto px-6 pb-6 space-y-6 pt-4">
