@@ -121,7 +121,7 @@ export default function CareersPage() {
                 }}
                 onClick={() => {
                   window.location.href =
-                    "mailto:careers@tokun.ai?subject=Career%20Application";
+                    "mailto:careers@tokun.world?subject=Career%20Application";
                 }}
               >
                 Apply Now
@@ -247,7 +247,7 @@ export default function CareersPage() {
                               "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)",
                           }}
                           onClick={() => {
-                            window.location.href = `mailto:careers@tokun.ai?subject=${encodeURIComponent(
+                            window.location.href = `mailto:careers@tokun.world?subject=${encodeURIComponent(
                               `Application for ${job.title}`
                             )}`;
                           }}

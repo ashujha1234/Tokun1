@@ -338,6 +338,11 @@ const HireDealSchema = new mongoose.Schema(
     approvedAt: Date,
     releasedAt: Date,
 
+    ndaClientUrl: { type: String, default: "" },
+    ndaFreelancerUrl: { type: String, default: "" },
+    ndaClientSignedAt: Date,
+    ndaFreelancerSignedAt: Date,
+
     deliverables: {
       type: [DeliverableSchema],
       default: [],

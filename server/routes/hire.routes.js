@@ -542,6 +542,58 @@ router.post("/:dealId/upload-work-file", requireAuth, uploadWorkFile.single("fil
   }
 });
 
+// ─── NDA UPLOAD ────────────────────────────────────────────────────────────────
+const ndaUploadDir = path.join(__dirname, "../uploads/nda");
+if (!fs.existsSync(ndaUploadDir)) fs.mkdirSync(ndaUploadDir, { recursive: true });
+
+const ndaStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, ndaUploadDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname || ".pdf");
+    cb(null, `nda-${Date.now()}${ext}`);
+  },
+});
+const uploadNdaFile = multer({ storage: ndaStorage, limits: { fileSize: 20 * 1024 * 1024 } });
+
+router.post("/:dealId/upload-nda", requireAuth, uploadNdaFile.single("nda"), async (req, res) => {
+  try {
+    const deal = await HireDeal.findById(req.params.dealId);
+    if (!deal) return res.status(404).json({ success: false, error: "Deal not found" });
+
+    const userId = String(req.user._id);
+    const isClient = String(deal.clientId) === userId;
+    const isFreelancer = String(deal.freelancerId) === userId;
+
+    if (!isClient && !isFreelancer)
+      return res.status(403).json({ success: false, error: "Not part of this deal" });
+
+    if (!req.file) return res.status(400).json({ success: false, error: "No file uploaded" });
+
+    const fileUrl = `/uploads/nda/${req.file.filename}`;
+    const now = new Date();
+
+    if (isClient) {
+      deal.ndaClientUrl = fileUrl;
+      deal.ndaClientSignedAt = now;
+    } else {
+      deal.ndaFreelancerUrl = fileUrl;
+      deal.ndaFreelancerSignedAt = now;
+    }
+
+    await deal.save();
+
+    return res.json({
+      success: true,
+      role: isClient ? "client" : "freelancer",
+      url: fileUrl,
+      bothSigned: !!(deal.ndaClientUrl && deal.ndaFreelancerUrl),
+    });
+  } catch (err) {
+    console.error("upload-nda error:", err);
+    return res.status(500).json({ success: false, error: "Failed to upload NDA" });
+  }
+});
+
 // ─── ACCEPT PROPOSAL ───────────────────────────────────────────────────────────
 router.post("/:dealId/accept", requireAuth, async (req, res) => {
   try {

@@ -105,7 +105,7 @@ useEffect(() => {
       {showSubscriptionPopup && (
   <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
     <div className="bg-[#0D0D0E] border border-white/20 rounded-xl p-6 w-[350px] text-white text-center shadow-2xl">
-      <h2 className="text-2xl font-semibold mb-3">Welcome to Tokun.ai!</h2>
+      <h2 className="text-2xl font-semibold mb-3">Welcome to Tokun.world!</h2>
       <p className="text-sm mb-6">
         Your organization account is created.  
         Please choose a subscription plan to continue.

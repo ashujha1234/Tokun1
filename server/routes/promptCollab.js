@@ -1058,7 +1058,7 @@ const finalMessage = `${senderName} invited you to collaborate on a prompt in To
     // 3️⃣ Send email invite
     try {
           const inviteUrl =
-  `${process.env.SITE_URL || "https://tokun.ai"}/prompt-optimizer?sessionId=${encodeURIComponent(sessionId)}`;
+  `${process.env.SITE_URL || "https://tokun.world"}/prompt-optimizer?sessionId=${encodeURIComponent(sessionId)}`;
  // 👈 nice UX: direct collab link
       const html = inviteCollaborativeTemplate
         .replace(/{{Name}}/g, name || receiverUser.name || "there")

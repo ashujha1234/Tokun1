@@ -8,6 +8,10 @@ const AdminConversation = require("../models/AdminConversation");
 const AdminMessage = require("../models/AdminMessage");
 const User = require("../models/User");
 
+// ✅ Normal chat models — admin ka message inko mein mirror karenge
+const Conversation = require("../models/Conversation");
+const Message = require("../models/Message");
+
 const { requireAuth } = require("../utils/auth");
 
 const uploadToAzure = require("../utils/uploadToAzure");
@@ -90,12 +94,8 @@ const resolveSellerUser = async (sellerOrUserId) => {
   const sellerDoc = await Seller.findById(sellerOrUserId).lean();
   if (!sellerDoc) return null;
 
-  const possibleUserIds = [
-    sellerDoc.userId,
-    sellerDoc.user,
-    sellerDoc.owner,
-    sellerDoc.createdBy,
-  ].filter(Boolean);
+  // sirf actual seller-user fields (userId / user)
+  const possibleUserIds = [sellerDoc.userId, sellerDoc.user].filter(Boolean);
 
   for (const possibleId of possibleUserIds) {
     const realUserId = getId(possibleId);
@@ -109,10 +109,11 @@ const resolveSellerUser = async (sellerOrUserId) => {
     }
   }
 
-  // Case 3: fallback by email
+  // Case 3: fallback by email (admin ko skip)
   if (sellerDoc.email) {
     const emailUser = await User.findOne({
       email: String(sellerDoc.email).trim().toLowerCase(),
+      isAdmin: { $ne: true },
     }).select("name email avatar avatarUrl role userType isAdmin");
 
     if (emailUser) return emailUser;
@@ -121,23 +122,19 @@ const resolveSellerUser = async (sellerOrUserId) => {
   return null;
 };
 
+// ✅ Race-safe: upsert se duplicate-key crash nahi hoga
 const getOrCreateConversation = async ({ adminId, sellerUserId }) => {
-  let conversation = await AdminConversation.findOne({
-    adminId,
-    sellerId: sellerUserId,
-  });
-
-  if (!conversation) {
-    conversation = await AdminConversation.create({
-      adminId,
-      sellerId: sellerUserId,
-      participants: [adminId, sellerUserId],
-      lastMessage: "",
-      updatedAt: new Date(),
-    });
-  }
-
-  return conversation;
+  return AdminConversation.findOneAndUpdate(
+    { adminId, sellerId: sellerUserId },
+    {
+      $setOnInsert: {
+        adminId,
+        sellerId: sellerUserId,
+        participants: [adminId, sellerUserId],
+      },
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
 };
 
 const emitAdminMessage = (req, conversation, message, receiverId) => {
@@ -171,6 +168,99 @@ const emitAdminMessage = (req, conversation, message, receiverId) => {
 };
 
 /* =====================================================
+   ✅ Admin ke liye ek "chat user" (User doc) ensure karo,
+   taaki seller ke normal inbox mein "Tokun Admin" naam
+   dikhe (Unknown nahi). Email se dhoondhta hai — baar-baar
+   naya user nahi banata.
+
+   NOTE: agar admin ka email pehle se kisi NORMAL user ka hai,
+   to yahan ek dedicated email use karo (jaise admin-bot@tokun.world)
+   taaki galat user "Tokun Admin" na ban jaye.
+===================================================== */
+const ADMIN_CHAT_NAME = "Tokun Admin";
+
+const getAdminChatUser = async (adminUser) => {
+  const adminEmail = String(adminUser?.email || "admin@tokun.world").toLowerCase();
+
+  let chatUser = await User.findOne({ email: adminEmail });
+
+  if (!chatUser) {
+    chatUser = await User.create({
+      name: ADMIN_CHAT_NAME,
+      email: adminEmail,
+      isVerified: true,
+      role: "Admin",
+      avatarUrl: "/icons/admin-avatar.png", // apna avatar path ya null
+    });
+  } else if (chatUser.name !== ADMIN_CHAT_NAME) {
+    // naam force set — hamesha "Tokun Admin" dikhe
+    chatUser.name = ADMIN_CHAT_NAME;
+    await chatUser.save();
+  }
+
+  return chatUser;
+};
+
+/* =====================================================
+   ✅ MIRROR: admin ka message normal /api/chat system
+   mein bhi daalo, taaki seller ko apne normal inbox
+   (Chat.tsx) mein "Tokun Admin" ke naam se dikhe.
+===================================================== */
+const mirrorToUserChat = async (req, { adminUser, sellerUserId, text, attachment }) => {
+  try {
+    // ✅ Admin ka chat-user (User doc) — "Tokun Admin"
+    const adminChatUser = await getAdminChatUser(adminUser);
+    const adminChatUserId = adminChatUser._id;
+
+    // admin(chat-user) + seller ke beech normal conversation dhoondho ya banao
+    let convo = await Conversation.findOne({
+      participants: { $all: [adminChatUserId, sellerUserId] },
+    });
+
+    if (!convo) {
+      convo = await Conversation.create({
+        participants: [adminChatUserId, sellerUserId],
+      });
+    }
+
+    const message = await Message.create({
+      conversationId: convo._id,
+      sender: adminChatUserId,
+      readBy: [adminChatUserId],
+      ...(text ? { text } : {}),
+      ...(attachment ? { attachment } : {}),
+    });
+
+    // conversation ka last message update
+    convo.lastMessage = text || attachment?.name || "";
+    convo.lastSender = adminChatUserId;
+    convo.updatedAt = new Date();
+    await convo.save();
+
+    // Chat.tsx jis shape ko expect karta hai wahi banao (naam populate hoga)
+    const populated = await Message.findById(message._id).populate(
+      "sender",
+      "name avatar avatarUrl role"
+    );
+
+    // ✅ Chat.tsx "new-message" event pe sunta hai
+    const io = req.app.get("io");
+    if (io) {
+      // aapka socket server "join-chat" pe socket.join(String(conversationId)) karta hai
+      io.to(String(convo._id)).emit("new-message", populated);
+      // fallback: seller ke personal room mein bhi
+      io.to(String(sellerUserId)).emit("new-message", populated);
+    }
+
+    return { conversation: convo, message: populated };
+  } catch (err) {
+    // Mirror fail ho to bhi admin flow break nahi hona chahiye
+    console.error("mirrorToUserChat error:", err);
+    return null;
+  }
+};
+
+/* =====================================================
    ADMIN: CREATE / GET SELLER CONVERSATION
    POST /api/admin-message/admin/conversation/:sellerId
 ===================================================== */
@@ -196,10 +286,11 @@ router.post("/admin/conversation/:sellerId", requireAuth, async (req, res) => {
       });
     }
 
+    // Agar admin khud resolve ho gaya, to id/link galat hai
     if (String(sellerUser._id) === String(adminId)) {
       return res.status(400).json({
         success: false,
-        error: "You cannot message yourself",
+        error: "You cannot message yourself (id/link issue).",
       });
     }
 
@@ -438,6 +529,13 @@ router.post("/admin/send", requireAuth, async (req, res) => {
 
     emitAdminMessage(req, conversation, message, receiverId);
 
+    // 🔽 normal chat inbox mein bhi mirror karo ("Tokun Admin" ke naam se)
+    await mirrorToUserChat(req, {
+      adminUser: req.user,
+      sellerUserId: receiverId,
+      text: cleanText,
+    });
+
     res.json({
       success: true,
       conversation,
@@ -508,17 +606,19 @@ router.post(
         "admin-message-attachments"
       );
 
+      const attachment = {
+        url: azureUrl,
+        name: req.file.originalname,
+        type: req.file.mimetype.startsWith("image") ? "image" : "file",
+      };
+
       const created = await AdminMessage.create({
         conversationId: conversation._id,
         sender: adminId,
         receiver: receiverId,
         senderType: "admin",
         text: "",
-        attachment: {
-          url: azureUrl,
-          name: req.file.originalname,
-          type: req.file.mimetype.startsWith("image") ? "image" : "file",
-        },
+        attachment,
         readBy: [adminId],
       });
 
@@ -532,6 +632,13 @@ router.post(
         .populate("receiver", "name email avatar avatarUrl role userType");
 
       emitAdminMessage(req, conversation, message, receiverId);
+
+      // 🔽 normal chat inbox mein bhi mirror karo ("Tokun Admin" ke naam se)
+      await mirrorToUserChat(req, {
+        adminUser: req.user,
+        sellerUserId: receiverId,
+        attachment,
+      });
 
       res.json({
         success: true,

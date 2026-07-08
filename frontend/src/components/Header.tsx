@@ -786,7 +786,7 @@
 // //       key: import.meta.env.VITE_RAZORPAY_KEY_ID,
 // //       amount: order.amount,
 // //       currency: order.currency,
-// //       name: "Tokun.ai",
+// //       name: "Tokun.world",
 // //       description: "Prompt Checkout",
 // //       order_id: order.id,
 // //       handler: async (response: any) => {
@@ -936,7 +936,7 @@
 //       key: import.meta.env.VITE_RAZORPAY_KEY_ID,
 //       amount: order.amount,
 //       currency: order.currency,
-//       name: "Tokun.ai",
+//       name: "Tokun.world",
 //       description: "Prompt Checkout",
 //       order_id: order.id,
 //       handler: async (response: any) => {
@@ -1176,7 +1176,7 @@
 //   >
 //    <img
 //   src="/icons/Tokun.png"
-//   alt="Tokun.ai Logo"
+//   alt="Tokun.world Logo"
 //   className="
 //     h-12
 //     sm:h-14
@@ -2585,7 +2585,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import ScreenRecordPermissionModal from "@/components/ScreenRecordPermissionModal";
 
-import { Settings, Plus, ChevronDown } from "lucide-react";
+import { Settings, Plus, ChevronDown, Wallet, LayoutDashboard, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import ApiKeyModal from "@/components/ApiKeyModal";
 import SubscriptionModal from "@/components/SubscriptionModal";
@@ -2685,9 +2685,6 @@ useEffect(() => {
     return "User";
   }, [displayName, displayEmail]);
 
-  // Stats (example)
-  const lifetimeTokunSaved = (user as any)?.lifetimeTokunSaved ?? 150;
-
   // Nav helpers
   const handleBrandClick = () => navigate(user ? "/app" : "/");
   const goToSaved = () => navigate("/saved");
@@ -2708,32 +2705,6 @@ useEffect(() => {
     lineHeight: "100%",
   };
 
-const dropdownTopTextStyle: React.CSSProperties = {
-  fontFamily: "Inter, system-ui, Arial, sans-serif",
-  fontWeight: 400,
-  fontStyle: "normal",
-  fontSize: 16,
-  lineHeight: "100%",
-  letterSpacing: "0%",
-};
-
-const dropdownOptionTextStyle: React.CSSProperties = {
-  fontFamily: "Inter, system-ui, Arial, sans-serif",
-  fontWeight: 400,
-  fontStyle: "normal",
-  fontSize: 14,
-  lineHeight: "100%",
-  letterSpacing: "0%",
-};
-
-const dropdownEmailTextStyle: React.CSSProperties = {
-  fontFamily: "Inter, system-ui, Arial, sans-serif",
-  fontWeight: 400,
-  fontStyle: "normal",
-  fontSize: 12,
-  lineHeight: "100%",
-  letterSpacing: "0%",
-};
 
   const themeBtn = (id: ThemeMode, src: string, alt: string) => (
     <button
@@ -3425,7 +3396,7 @@ const markAllRead = () => setNotifs(prev => prev.map(n => ({ ...n, read: true })
 //       key: import.meta.env.VITE_RAZORPAY_KEY_ID,
 //       amount: order.amount,
 //       currency: order.currency,
-//       name: "Tokun.ai",
+//       name: "Tokun.world",
 //       description: "Prompt Checkout",
 //       order_id: order.id,
 //       handler: async (response: any) => {
@@ -3575,7 +3546,7 @@ const doCheckout = async () => {
       key: import.meta.env.VITE_RAZORPAY_KEY_ID,
       amount: order.amount,
       currency: order.currency,
-      name: "Tokun.ai",
+      name: "Tokun.world",
       description: "Prompt Checkout",
       order_id: order.id,
       handler: async (response: any) => {
@@ -3815,7 +3786,7 @@ useEffect(() => {
   >
    <img
   src="/icons/Tokun.png"
-  alt="Tokun.ai Logo"
+  alt="Tokun.world Logo"
   className="
     h-12
     sm:h-14
@@ -4141,231 +4112,137 @@ useEffect(() => {
   </button>
 </DropdownMenuTrigger>
 
-  {/* Make the WHOLE content scrollable (scrollbar hidden) */}
   <DropdownMenuContent
-  sideOffset={10}
-  align="end"
-  onCloseAutoFocus={(e) => e.preventDefault()}
-  className="no-scrollbar overflow-y-auto"
-  style={{
-  width: 240,
-  height: 650,
-  maxHeight: "85vh",
-  padding: 10,
-  borderRadius: 16,
-  background: "#21212180",
-  backdropFilter: "blur(20px)",
-  WebkitBackdropFilter: "blur(20px)",
-  border: "1px solid rgba(255,255,255,0.10)",
-  color: "#ffffff",
-  fontFamily: "Inter, system-ui, Arial, sans-serif",
-  fontWeight: 400,
-  fontStyle: "normal",
-}}
->
-  <div className="flex flex-col h-full">
-    {/* Name / email */}
-    <div className="space-y-2">
-      <button
-  type="button"
-  onMouseDown={(e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    goToMyProfile();
-  }}
-  className="block text-left text-white hover:underline"
-  style={dropdownTopTextStyle}
->
-  {displayName || "Your Name"}
-</button>
-
-<div className="text-white/70" style={dropdownEmailTextStyle}>
-  {displayEmail || "your@email.com"}
-</div>
-
-      <button
-  type="button"
-  onMouseDown={(e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    goToMyProfile();
-  }}
-  className="w-full mt-2 text-white"
-  style={{
-    ...dropdownTopTextStyle,
-    height: 39,
-    borderRadius: 6,
-    background: "#313131",
-  }}
->
-  Set up profile
-</button>
-    </div>
-
-
-
-
-    {/* My Wallet */}
-   <button
-  type="button"
-  onMouseDown={(e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    goToWallet();
-  }}
-  className="w-full mt-6 flex shrink-0 items-center justify-center gap-2 text-white"
-  style={{
-    ...dropdownTopTextStyle,
-    height: 38,
-    minHeight: 38,
-    borderRadius: 6,
-    background: "linear-gradient(270deg,#1A73E8 0%,#FF14EF 100%)",
-  }}
->
-  <img
-    src="/icons/wallet.svg"
-    alt=""
-    className="w-4 h-4 shrink-0"
-  />
-  <span>My Wallet</span>
-</button>
-
-{/* Dashboard Button */}
-
-
-
-{/* Dashboard Button */}
-<button
-  type="button"
-  onClick={(e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    navigate("/self-dash");
-  }}
-  className="w-full mt-6 flex shrink-0 items-center justify-center gap-2 text-white"
-  style={{
-    fontFamily: "Inter",
-    fontWeight: 400,
-    fontSize: 16,
-    height: 38,
-    minHeight: 38,
-    borderRadius: 6,
-    background: "#313131",
-  }}
->
-  <img src="/icons/self.svg" alt="" className="w-4 h-4 shrink-0" />
-  <span>Dashboard</span>
-</button>
-
-    {/* Settings */}
-   <button
-  type="button"
-  onMouseDown={(e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    openAccountSettingsPopup();
-  }}
-  className="w-full mt-6 flex items-center justify-between py-2 text-white border-t border-white/10"
-  style={dropdownTopTextStyle}
->
-  <span className="flex items-center gap-2">
-    <Settings className="w-5 h-5" />
-    Settings
-  </span>
-  <span className="text-lg leading-none">↗</span>
-</button>
-
-    {/* Lifetime Tokun saved */}
-    <div className="mt-4">
-     <div className="mb-2 text-center text-white/90" style={dropdownTopTextStyle}>
-  Lifetime Tokun saved
-</div>
-
-      <div
-        style={{
-          width: "100%",
-          height: 100,
-          background: "#2A2A2A",
-          borderRadius: 6,
-          padding: "8px 0",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: "50%",
-            background:
-              "conic-gradient(#FF14EF 0 60deg, #1A73E8 60deg 210deg, #5CE1E6 210deg 360deg)",
-            display: "grid",
-            placeItems: "center",
-          }}
-        >
-          <div
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: "50%",
-              background: "#2A2A2A",
-              display: "grid",
-              placeItems: "center",
-              color: "#fff",
-              fontWeight: 500,
-              fontSize: 14,
-            }}
-          >
-            {lifetimeTokunSaved}
-          </div>
-        </div>
-
-        <div className="text-xs text-white/70">
-          Total tokun saved till date
-        </div>
+    sideOffset={10}
+    align="end"
+    onCloseAutoFocus={(e) => e.preventDefault()}
+    style={{
+      width: 230,
+      padding: 8,
+      borderRadius: 16,
+      background: "rgba(20,18,30,0.92)",
+      backdropFilter: "blur(20px)",
+      WebkitBackdropFilter: "blur(20px)",
+      border: "1px solid rgba(255,255,255,0.10)",
+      boxShadow: "0 30px 80px rgba(0,0,0,0.6)",
+      color: "#fff",
+      fontFamily: "Inter, system-ui, sans-serif",
+    }}
+  >
+    {/* Name + email */}
+    <div style={{ padding: "8px 10px 12px" }}>
+      <div style={{ fontSize: 15, fontWeight: 600, color: "#fff" }}>
+        {displayName || "Your Name"}
+      </div>
+      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", marginTop: 2 }}>
+        {displayEmail || ""}
       </div>
     </div>
 
-    {/* Links */}
- <div className="grid shrink-0 gap-2 pt-2">
-  {[
+    {/* Primary items — with icons */}
+    {[
+      { label: "Set up profile", icon: User,            onClick: goToMyProfile },
+      { label: "My Wallet",      icon: Wallet,          onClick: goToWallet },
+      { label: "Dashboard",      icon: LayoutDashboard, onClick: () => navigate("/self-dash") },
+      { label: "My Feedback",    icon: MessageCircle,   onClick: () => navigate("/my-feedback") },
+      { label: "Settings",       icon: Settings,        onClick: openAccountSettingsPopup },
+    ].map(({ label, icon: Icon, onClick }) => (
+      <button
+        key={label}
+        type="button"
+        onClick={onClick}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "10px 10px",
+          borderRadius: 10,
+          background: "transparent",
+          border: "none",
+          color: "#fff",
+          cursor: "pointer",
+          fontSize: 14,
+          textAlign: "left",
+          transition: "background 0.18s",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)"
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "transparent"
+        }}
+      >
+        <Icon size={16} />
+        {label}
+      </button>
+    ))}
 
-    { label: "Purchase History", onClick: goToPurchaseHistory, icon: "↗" },
-    { label: "Upload History", onClick: goToUploadHistory, icon: "↗" },
-    { label: "Pricing", onClick: () => navigate("/subscription"), icon: "↗" },
-    { label: "Support", onClick: () => navigate("/support"), icon: "↗" },
-    { label: "Admin", onClick: () => navigate("/admin"), icon: "↗" },
-    { label: "Logout", onClick: handleLogout, icon: "↩" },
-  ].map((item) => (
+    <div style={{ height: 1, background: "rgba(255,255,255,0.08)", margin: "6px 4px" }} />
+
+    {/* Secondary items — no icons */}
+    {[
+      { label: "Purchase History", onClick: goToPurchaseHistory },
+      { label: "Upload History",   onClick: goToUploadHistory },
+      { label: "Pricing",          onClick: () => navigate("/subscription") },
+      { label: "Support",          onClick: () => navigate("/support") },
+      { label: "Admin",            onClick: () => navigate("/admin") },
+    ].map(({ label, onClick }) => (
+      <button
+        key={label}
+        type="button"
+        onClick={onClick}
+        style={{
+          width: "100%",
+          textAlign: "left",
+          padding: "9px 10px",
+          borderRadius: 10,
+          background: "transparent",
+          border: "none",
+          color: "rgba(255,255,255,0.85)",
+          cursor: "pointer",
+          fontSize: 14,
+          transition: "background 0.18s",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)"
+          e.currentTarget.style.color = "#fff"
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "transparent"
+          e.currentTarget.style.color = "rgba(255,255,255,0.85)"
+        }}
+      >
+        {label}
+      </button>
+    ))}
+
+    {/* Logout */}
     <button
-      key={item.label}
       type="button"
-      onClick={item.onClick}
-      className="w-full flex items-center justify-between py-2 text-left whitespace-nowrap"
+      onClick={handleLogout}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 10px",
+        marginTop: 4,
+        borderRadius: 10,
+        background: "transparent",
+        border: "none",
+        color: "#ff6b6b",
+        cursor: "pointer",
+        fontSize: 14,
+        textAlign: "left",
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,107,107,0.08)")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
     >
-      <span style={dropdownOptionTextStyle}>{item.label}</span>
-
-      {item.icon && (
-        <span aria-hidden style={dropdownOptionTextStyle}>
-          {item.icon}
-        </span>
-      )}
+      <LogOut size={16} />
+      Logout
     </button>
-  ))}
-</div>
-
-    {/* Footer */}
-    <div className="mt-auto border-t border-white/10 flex items-center justify-between pt-4 text-xs text-gray-400">
-      <span>Privacy</span>
-      <span>•</span>
-      <span>Terms</span>
-      <span>•</span>
-      <span>Copyright</span>
-    </div>
-  </div>
-</DropdownMenuContent>
+  </DropdownMenuContent>
 </DropdownMenu>
 
         </div>

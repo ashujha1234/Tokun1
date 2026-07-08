@@ -1140,6 +1140,11 @@ import { toast } from "@/components/ui/use-toast";
 import DetailsPrompt from "@/components/DetailsPrompt";
 import HirePaymentPopup from "@/components/HirePaymentPopup";
 import { useNavigate } from "react-router-dom";
+import {
+  Bell, Users, CreditCard, CheckCircle2, Share2, Zap,
+  RotateCcw, UserPlus, Briefcase, PartyPopper, BadgeDollarSign,
+  BellOff, ArrowLeft,
+} from "lucide-react";
 
 type Notif = {
   _id: string;
@@ -1416,288 +1421,366 @@ export default function NotificationsPage() {
     }
   };
 
+  /* ─── helpers ─── */
+
+  const timeAgo = (dateStr?: string) => {
+    if (!dateStr) return "";
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return "just now";
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    const d = Math.floor(h / 24);
+    if (d < 7) return `${d}d ago`;
+    return new Date(dateStr).toLocaleDateString();
+  };
+
+  const typeConfig: Record<string, { icon: ReactNode; accent: string; label: string }> = {
+    COLLAB_INVITE:          { icon: <Users size={18} />,          accent: "#a855f7", label: "Collaboration" },
+    HIRE_PAYMENT_REQUIRED:  { icon: <CreditCard size={18} />,     accent: "#f59e0b", label: "Payment Required" },
+    HIRE_PAYMENT_DONE:      { icon: <CheckCircle2 size={18} />,   accent: "#10b981", label: "Payment Done" },
+    HIRE_PROPOSAL_ACCEPTED: { icon: <Briefcase size={18} />,      accent: "#3b82f6", label: "Proposal Accepted" },
+    HIRE_WORK_STARTED:      { icon: <Zap size={18} />,            accent: "#6366f1", label: "Work Started" },
+    HIRE_WORK_COMPLETED:    { icon: <PartyPopper size={18} />,    accent: "#10b981", label: "Work Completed" },
+    HIRE_PAYMENT_RELEASED:  { icon: <BadgeDollarSign size={18} />,accent: "#10b981", label: "Payment Released" },
+    HIRE_COUNTER_OFFER:     { icon: <RotateCcw size={18} />,      accent: "#f59e0b", label: "Counter Offer" },
+    TM_REQUEST:             { icon: <UserPlus size={18} />,       accent: "#38bdf8", label: "Team Request" },
+    ORG_SUGGEST:            { icon: <Share2 size={18} />,         accent: "#1A73E8", label: "Suggested" },
+    ORG_SHARE:              { icon: <Share2 size={18} />,         accent: "#1A73E8", label: "Shared" },
+    ORG_SHARE_PURCHASED:    { icon: <Share2 size={18} />,         accent: "#1A73E8", label: "Org Purchase" },
+    DEFAULT:                { icon: <Bell size={18} />,           accent: "#6b7280", label: "Notification" },
+  };
+
+  const getTypeConfig = (type: string) => typeConfig[type] ?? typeConfig.DEFAULT;
+
   const renderPromptImage = (path?: string) => {
     if (path) {
       const src = path.startsWith("http") ? path : `${API_BASE}${path}`;
-
-      return (
-        <img
-          src={src}
-          alt="Prompt"
-          className="w-full h-full object-cover"
-        />
-      );
+      return <img src={src} alt="Prompt" className="w-full h-full object-cover" />;
     }
-
-    return (
-      <img
-        src="/icons/pm2.png"
-        alt="Prompt"
-        className="w-full h-full object-cover"
-      />
-    );
+    return <img src="/icons/pm2.png" alt="Prompt" className="w-full h-full object-cover" />;
   };
 
-  const SenderBlock = (props: { name?: string; email?: string }) => (
-    <div className="mt-3">
-      <div className="text-sm font-semibold text-white">
-        {props.name || "Unknown Sender"}
-      </div>
-      <div className="text-xs text-white/50">{props.email || ""}</div>
-    </div>
-  );
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const tabBtn = (id: typeof tab, label: string) => (
+  const TabPill = ({ id, label, count }: { id: typeof tab; label: string; count?: number }) => (
     <button
-      key={id}
       onClick={() => setTab(id)}
-      className={`relative pb-2 text-sm ${
-        tab === id ? "text-white" : "text-white/80 hover:text-white"
-      }`}
-      style={{
-        borderBottom: tab === id ? "2px solid #A855F7" : "2px solid transparent",
-      }}
+      style={
+        tab === id
+          ? { background: "linear-gradient(135deg,#7c3aed,#2563eb)", border: "1px solid transparent" }
+          : { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }
+      }
+      className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium text-white transition-all duration-200 hover:scale-[1.03]"
     >
       {label}
+      {count != null && count > 0 && (
+        <span
+          className="flex items-center justify-center rounded-full text-[10px] font-bold min-w-[18px] h-[18px] px-1"
+          style={{ background: tab === id ? "rgba(255,255,255,0.25)" : "rgba(239,68,68,0.85)" }}
+        >
+          {count}
+        </span>
+      )}
     </button>
   );
 
-  const renderCard = (opts: {
-    key: string | number;
+  const NotifCard = (opts: {
+    id: string | number;
+    type?: string;
     message?: string;
     title?: string;
     attachmentPath?: string;
     senderName?: string;
     senderEmail?: string;
+    createdAt?: string;
     prompt?: any;
     actionButton?: ReactNode;
     unread?: boolean;
-  }) => (
-    <div
-      key={opts.key}
-      className={`flex items-start gap-4 py-5 ${
-        opts.unread ? "bg-white/[0.03] rounded-xl px-3" : ""
-      }`}
-    >
+  }) => {
+    const cfg = getTypeConfig(opts.type ?? "DEFAULT");
+    return (
       <div
-        className="shrink-0 rounded-lg overflow-hidden bg-white/10"
-        style={{ width: 64, height: 64 }}
+        key={opts.id}
+        style={{
+          background: opts.unread ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.025)",
+          border: `1px solid ${opts.unread ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.07)"}`,
+          borderLeft: `3px solid ${cfg.accent}`,
+          borderRadius: 16,
+          marginBottom: 10,
+          padding: "18px 20px",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          transition: "background 0.2s",
+        }}
       >
-        {renderPromptImage(opts.attachmentPath)}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        {opts.message && (
-          <div className="text-sm text-white/90 font-semibold mb-1">
-            {opts.message}
+        <div className="flex items-start gap-4">
+          {/* Type icon badge */}
+          <div
+            className="shrink-0 flex items-center justify-center rounded-xl"
+            style={{
+              width: 44, height: 44,
+              background: `${cfg.accent}22`,
+              border: `1px solid ${cfg.accent}44`,
+              color: cfg.accent,
+            }}
+          >
+            {cfg.icon}
           </div>
-        )}
 
-        {opts.title && (
-          <div className="text-[15px] mt-1 font-medium">
-            {opts.title}
+          {/* Content */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span
+                  className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                  style={{ background: `${cfg.accent}20`, color: cfg.accent }}
+                >
+                  {cfg.label}
+                </span>
+                {opts.unread && (
+                  <span className="w-2 h-2 rounded-full bg-purple-400 inline-block" />
+                )}
+              </div>
+              <span className="text-xs text-white/40 shrink-0">{timeAgo(opts.createdAt)}</span>
+            </div>
+
+            {opts.message && (
+              <p className="text-sm text-white/90 font-semibold leading-snug mb-1">{opts.message}</p>
+            )}
+            {opts.title && (
+              <p className="text-[13px] text-white/60 mt-0.5">{opts.title}</p>
+            )}
+
+            {/* Sender */}
+            {(opts.senderName || opts.senderEmail) && (
+              <div className="flex items-center gap-2 mt-3">
+                <div
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                  style={{ background: cfg.accent }}
+                >
+                  {(opts.senderName?.[0] ?? "?").toUpperCase()}
+                </div>
+                <div>
+                  <span className="text-xs font-semibold text-white/80">{opts.senderName || "Unknown"}</span>
+                  {opts.senderEmail && (
+                    <span className="text-xs text-white/40 ml-2">{opts.senderEmail}</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Prompt thumbnail + actions */}
+            {(opts.prompt || opts.actionButton) && (
+              <div className="flex items-center gap-3 mt-4 flex-wrap">
+                {opts.attachmentPath && (
+                  <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-white/10 border border-white/10">
+                    {renderPromptImage(opts.attachmentPath)}
+                  </div>
+                )}
+                {opts.prompt && (
+                  <button
+                    onClick={() => openPromptDetails(opts.prompt)}
+                    className="px-4 py-1.5 rounded-lg text-white text-xs font-semibold transition-opacity hover:opacity-80"
+                    style={{ background: "linear-gradient(135deg,#FF14EF,#1A73E8)" }}
+                  >
+                    View Prompt
+                  </button>
+                )}
+                {opts.actionButton}
+              </div>
+            )}
           </div>
-        )}
-
-        <SenderBlock name={opts.senderName} email={opts.senderEmail} />
-
-        <div className="mt-3 flex items-center gap-2 flex-wrap">
-          {opts.prompt && (
-            <button
-              onClick={() => openPromptDetails(opts.prompt)}
-              className="px-4 py-2 rounded-md text-white text-sm bg-gradient-to-r from-[#FF14EF] to-[#1A73E8]"
-            >
-              View
-            </button>
-          )}
-
-          {opts.actionButton}
         </div>
       </div>
-    </div>
+    );
+  };
+
+  const actionBtn = (label: string, onClick: () => void, variant: "primary" | "ghost" = "primary") => (
+    <button
+      onClick={onClick}
+      className="px-4 py-1.5 rounded-lg text-white text-xs font-semibold transition-opacity hover:opacity-80"
+      style={
+        variant === "primary"
+          ? { background: "linear-gradient(135deg,#FF14EF,#1A73E8)" }
+          : { background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)" }
+      }
+    >
+      {label}
+    </button>
   );
 
   const renderNotificationItem = (n: Notif) => {
+    const base = {
+      id: n._id,
+      type: n.type,
+      createdAt: n.createdAt,
+      unread: !n.read,
+      senderName: n.senderName || n.senderId?.name,
+      senderEmail: n.senderEmail || n.senderId?.email,
+    };
+
     if (n.type === "COLLAB_INVITE") {
-      return renderCard({
-        key: n._id,
+      return NotifCard({
+        ...base,
         message: n.message || "You have a collaboration invite",
         title: "Prompt Optimizer Collaboration",
-        attachmentPath: "/icons/collab.png",
-        senderName: n.senderName || n.senderId?.name || "Collaborator",
-        senderEmail: n.senderEmail || n.senderId?.email || "",
+        attachmentPath: undefined,
         prompt: null,
-        unread: !n.read,
-        actionButton: (
-          <button
-            onClick={() => acceptInvite(n.sessionId || "")}
-            className="px-4 py-2 rounded-md text-white text-sm bg-gradient-to-r from-[#FF14EF] to-[#1A73E8]"
-          >
-            Accept & Join
-          </button>
-        ),
+        actionButton: actionBtn("Accept & Join", () => acceptInvite(n.sessionId || "")),
       });
     }
 
     if (n.type === "HIRE_PAYMENT_REQUIRED") {
-      return renderCard({
-        key: n._id,
-        message:
-          n.message ||
-          "Hire proposal accepted. Payment is required to start work.",
-        title: n.meta?.title || "Hire Payment Required",
-        attachmentPath: "/icons/payment.png",
-        senderName:
-          n.senderName ||
-          n.senderId?.name ||
-          n.meta?.freelancerName ||
-          "Freelancer",
-        senderEmail:
-          n.senderEmail ||
-          n.senderId?.email ||
-          n.meta?.freelancerEmail ||
-          "",
+      return NotifCard({
+        ...base,
+        message: n.message || "Hire proposal accepted. Payment required to start work.",
+        title: n.meta?.title,
+        senderName: base.senderName || n.meta?.freelancerName || "Freelancer",
+        senderEmail: base.senderEmail || n.meta?.freelancerEmail,
         prompt: null,
-        unread: !n.read,
-        actionButton: (
-          <button
-            onClick={() => openHirePaymentPopup(n)}
-            className="px-4 py-2 rounded-md text-white text-sm bg-gradient-to-r from-[#FF14EF] to-[#1A73E8]"
-          >
-            View & Pay
-          </button>
-        ),
+        actionButton: actionBtn("View & Pay", () => openHirePaymentPopup(n)),
       });
     }
 
     if (n.type === "HIRE_PAYMENT_DONE") {
-      return renderCard({
-        key: n._id,
-        message:
-          n.message ||
-          "Payment has been made. Amount is safely held by Tokun.",
-        title: n.meta?.title || "Hire Payment Done",
-        attachmentPath: "/icons/payment.png",
-        senderName: n.senderName || n.senderId?.name || "Client",
-        senderEmail: n.senderEmail || n.senderId?.email || "",
+      return NotifCard({
+        ...base,
+        message: n.message || "Payment made. Amount is safely held by Tokun.",
+        title: n.meta?.title,
+        senderName: base.senderName || "Client",
         prompt: null,
-        unread: !n.read,
-        actionButton: (
-          <button
-            onClick={() => markNotificationRead(n._id)}
-            className="px-4 py-2 rounded-md text-white text-sm bg-white/10 hover:bg-white/20"
-          >
-            Mark Read
-          </button>
-        ),
+        actionButton: actionBtn("Mark Read", () => markNotificationRead(n._id), "ghost"),
       });
     }
 
-    return renderCard({
-      key: n._id,
+    return NotifCard({
+      ...base,
       message: n.message,
       title: n.promptId?.title,
       attachmentPath: n.promptId?.attachment?.path,
-      senderName: n.senderName || n.senderId?.name || "Organization",
-      senderEmail: n.senderEmail || n.senderId?.email || "",
+      senderName: base.senderName || "Organization",
+      senderEmail: base.senderEmail,
       prompt: n.promptId,
-      unread: !n.read,
     });
   };
+
+  const EmptyState = ({ text }: { text: string }) => (
+    <div className="flex flex-col items-center justify-center py-20 gap-4">
+      <div
+        className="w-16 h-16 rounded-2xl flex items-center justify-center"
+        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
+      >
+        <BellOff size={28} className="text-white/30" />
+      </div>
+      <p className="text-white/40 text-sm">{text}</p>
+    </div>
+  );
 
   return (
     <>
       <Header />
 
-      <main className="text-white pt-24 md:pt-28">
-        <div className="max-w-3xl mx-auto px-4 md:px-6 py-10">
-          <div className="flex items-center justify-between mb-6">
+      <main
+        className="text-white pt-16 md:pt-20 min-h-screen"
+        style={{ background: "linear-gradient(180deg,rgba(10,5,30,0) 0%,transparent 100%)" }}
+      >
+        <div className="max-w-2xl mx-auto px-4 md:px-6 py-10">
+
+          {/* ── Page header ── */}
+          <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-3">
               <button
-                onClick={() => navigate("/smartgen")}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-white/80 hover:text-white hover:bg-white/10 transition"
-                aria-label="Back to SmartGen"
-                title="Back to SmartGen"
+                onClick={() => navigate(-1)}
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-white/70 hover:text-white transition"
+                style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }}
+                aria-label="Back"
               >
-                <FaCaretLeft className="text-white text-lg -ml-1" />
-                <span className="text-sm font-medium">Back</span>
+                <ArrowLeft size={16} />
               </button>
-
-              <h1 className="text-2xl font-semibold">Notifications</h1>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+                  Notifications
+                  {unreadCount > 0 && (
+                    <span
+                      className="text-xs font-bold px-2 py-0.5 rounded-full"
+                      style={{ background: "rgba(239,68,68,0.85)" }}
+                    >
+                      {unreadCount}
+                    </span>
+                  )}
+                </h1>
+                <p className="text-xs text-white/40 mt-0.5">Stay updated on your activity</p>
+              </div>
             </div>
 
-            {notifications.some((n) => !n.read) && (
+            {unreadCount > 0 && (
               <button
                 onClick={markAllRead}
-                className="text-sm text-white/70 hover:text-white"
+                className="flex items-center gap-1.5 text-xs font-semibold text-white/60 hover:text-white transition px-3 py-1.5 rounded-lg"
+                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
               >
-                ✓ Mark all as Read
+                <CheckCircle2 size={13} />
+                Mark all read
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-6 mb-6">
-            {tabBtn("all", "All")}
-            {tabBtn("shared", "Shared with me")}
-            {tabBtn("unread", "Unread")}
+          {/* ── Pill tabs ── */}
+          <div className="flex items-center gap-2 mb-6 flex-wrap">
+            <TabPill id="all" label="All" count={notifications.length} />
+            <TabPill id="shared" label="Shared" count={sharedPrompts.length} />
+            <TabPill id="unread" label="Unread" count={unreadCount} />
           </div>
 
+          {/* ── Loading skeleton ── */}
           {loading && (
-            <div className="text-white/60 mb-3 text-sm">Loading...</div>
-          )}
-
-          {tab === "all" && (
-            <div className="divide-y divide-white/10">
-              {notifications.map((n) => renderNotificationItem(n))}
-
-              {!notifications.length && !loading && (
-                <div className="py-16 text-center text-white/60">
-                  No notifications here.
-                </div>
-              )}
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="h-24 rounded-2xl animate-pulse"
+                  style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+                />
+              ))}
             </div>
           )}
 
-          {tab === "shared" && (
-            <div className="divide-y divide-white/10">
+          {/* ── All ── */}
+          {!loading && tab === "all" && (
+            <div>
+              {notifications.map((n) => renderNotificationItem(n))}
+              {!notifications.length && <EmptyState text="No notifications yet." />}
+            </div>
+          )}
+
+          {/* ── Shared with me ── */}
+          {!loading && tab === "shared" && (
+            <div>
               {sharedPrompts.map((item: any, idx) => {
                 const prompt = item?.promptId || item?.prompt || {};
-
-                return renderCard({
-                  key: idx,
+                return NotifCard({
+                  id: idx,
+                  type: "ORG_SHARE",
                   message: item?.message,
                   title: prompt?.title,
                   attachmentPath: prompt?.attachment?.path,
-                  senderName:
-                    item?.senderName ||
-                    item?.senderId?.name ||
-                    item?.sharedBy ||
-                    "Organization",
-                  senderEmail:
-                    item?.senderEmail || item?.senderId?.email || "",
+                  senderName: item?.senderName || item?.senderId?.name || item?.sharedBy || "Organization",
+                  senderEmail: item?.senderEmail || item?.senderId?.email,
+                  createdAt: item?.createdAt || item?.sharedAt,
                   prompt,
                 });
               })}
-
-              {!sharedPrompts.length && (
-                <div className="py-16 text-center text-white/60">
-                  No shared prompts yet.
-                </div>
-              )}
+              {!sharedPrompts.length && <EmptyState text="No shared prompts yet." />}
             </div>
           )}
 
-          {tab === "unread" && (
-            <div className="divide-y divide-white/10">
-              {notifications
-                .filter((n) => !n.read)
-                .map((n) => renderNotificationItem(n))}
-
-              {!notifications.filter((n) => !n.read).length && (
-                <div className="py-16 text-center text-white/60">
-                  No unread notifications.
-                </div>
-              )}
+          {/* ── Unread ── */}
+          {!loading && tab === "unread" && (
+            <div>
+              {notifications.filter((n) => !n.read).map((n) => renderNotificationItem(n))}
+              {!unreadCount && <EmptyState text="You're all caught up!" />}
             </div>
           )}
         </div>

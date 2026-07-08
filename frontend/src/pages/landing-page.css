@@ -530,7 +530,7 @@ body.is-loading { overflow: hidden; }
 .hero__ctas {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 28px;
   flex-wrap: wrap;
   justify-content: center;
   margin-bottom: 64px;
@@ -723,7 +723,7 @@ body.is-loading { overflow: hidden; }
   .hero__stat { padding: 16px 24px; flex: 1 1 40%; }
   .hero__stat-divider { display: none; }
   .hero__stats { gap: 8px; }
-  .hero__ctas { flex-direction: column; width: 100%; }
+  .hero__ctas { flex-direction: column; width: 100%; gap: 20px; }
   .hero-btn { width: 100%; justify-content: center; }
   .hero__fab { bottom: 20px; right: 20px; width: 44px; height: 44px; }
 }
@@ -1846,6 +1846,8 @@ body.is-loading { overflow: hidden; }
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25), 0 0 32px color-mix(in srgb, var(--card-accent) 10%, transparent);
   transform: translateY(-2px);
 }
+
+.t-marquee-card__stars { display: flex; gap: 2px; margin-bottom: 10px; }
 
 .t-marquee-card__quote {
   margin: 0 0 22px;

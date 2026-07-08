@@ -3,47 +3,100 @@ const multer = require("multer");
 const path = require("path");
 const Feedback = require("../models/Feedback");
 const Sentiment = require("sentiment");
-
+const { sendEmail } = require("../utils/SendEmail");
+const { buildOtpEmailHtml } = require("../utils/otpemailtemplate");
 
 const router = express.Router();
 const sentiment = new Sentiment();
 
+// In-memory OTP store: email -> { otp, expiresAt, verified }
+const otpStore = new Map();
 
-// setup multer (for profile picture upload)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/feedback"),
   filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
+    cb(null, Date.now() + "-" + Math.random().toString(36).slice(2) + path.extname(file.originalname));
   },
 });
 const upload = multer({ storage });
 
-// POST /api/feedback -> Add feedback
-router.post("/", upload.single("profilePicture"), async (req, res) => {
+// POST /api/feedback/send-otp
+router.post("/send-otp", async (req, res) => {
   try {
-    const { experience, name, role, orgOrCompany, rating } = req.body;
+    const { email, name } = req.body;
+    if (!email) return res.status(400).json({ success: false, error: "email_required" });
 
-    if (!experience || !name || !rating) {
-      return res.status(400).json({ success: false, error: "Missing required fields" });
+    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+
+    otpStore.set(email.toLowerCase(), { otp, expiresAt, verified: false });
+
+    const html = buildOtpEmailHtml({ name: name || "there", otp });
+    await sendEmail({
+      to: email,
+      subject: "Tokun Feedback – Your OTP",
+      html,
+      text: `Your OTP for Tokun feedback is: ${otp}. It expires in 5 minutes.`,
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("send-otp error:", err);
+    res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+// POST /api/feedback/verify-otp
+router.post("/verify-otp", (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) return res.status(400).json({ success: false, error: "email_and_otp_required" });
+
+  const record = otpStore.get(email.toLowerCase());
+  if (!record) return res.status(400).json({ success: false, error: "otp_not_found" });
+  if (Date.now() > record.expiresAt) {
+    otpStore.delete(email.toLowerCase());
+    return res.status(400).json({ success: false, error: "otp_expired" });
+  }
+  if (record.otp !== String(otp)) return res.status(400).json({ success: false, error: "otp_invalid" });
+
+  record.verified = true;
+  res.json({ success: true });
+});
+
+// POST /api/feedback
+router.post("/", upload.array("screenshots", 5), async (req, res) => {
+  try {
+    const { experience, name, email, role, rating, issue } = req.body;
+
+    if (!experience || !name || !email || !rating) {
+      return res.status(400).json({ success: false, error: "missing_required_fields" });
     }
 
-      // Run sentiment analysis
+    const record = otpStore.get(email.toLowerCase());
+    if (!record || !record.verified) {
+      return res.status(403).json({ success: false, error: "email_not_verified" });
+    }
+
     const result = sentiment.analyze(experience);
     let sentimentLabel = "neutral";
     if (result.score > 0) sentimentLabel = "positive";
     else if (result.score < 0) sentimentLabel = "negative";
 
+    const screenshots = (req.files || []).map(f => `/uploads/feedback/${f.filename}`);
+
     const feedback = new Feedback({
       experience,
       name,
+      email: email.toLowerCase(),
       role,
-      orgOrCompany,
       rating,
-      profilePicture: req.file ? `/uploads/feedback/${req.file.filename}` : null,
+      issue: issue || "",
+      screenshots,
       sentiment: sentimentLabel,
     });
 
     await feedback.save();
+    otpStore.delete(email.toLowerCase()); // clear after use
     res.json({ success: true, feedback });
   } catch (err) {
     console.error("Add feedback error:", err);
@@ -51,46 +104,62 @@ router.post("/", upload.single("profilePicture"), async (req, res) => {
   }
 });
 
-// GET /api/feedback -> Fetch all feedback
+// GET /api/feedback/my?email=user@example.com
+router.get("/my", async (req, res) => {
+  try {
+    const { email } = req.query;
+    if (!email) return res.status(400).json({ success: false, error: "email_required" });
+    const feedbacks = await Feedback.find({ email: email.toLowerCase() }).sort({ createdAt: -1 });
+    res.json({ success: true, feedbacks });
+  } catch (err) {
+    res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+// DELETE /api/feedback/:id (admin)
+router.delete("/:id", async (req, res) => {
+  try {
+    await Feedback.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+// PATCH /api/feedback/:id/status (admin)
+router.patch("/:id/status", async (req, res) => {
+  try {
+    const { status } = req.body;
+    const fb = await Feedback.findByIdAndUpdate(req.params.id, { status }, { new: true });
+    res.json({ success: true, feedback: fb });
+  } catch (err) {
+    res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+// GET /api/feedback (admin)
 router.get("/", async (req, res) => {
   try {
     const feedbacks = await Feedback.find().sort({ createdAt: -1 });
     res.json({ success: true, feedbacks });
   } catch (err) {
-    console.error("Get feedback error:", err);
     res.status(500).json({ success: false, error: "server_error" });
   }
 });
-
 
 // GET /api/feedback/top
 router.get("/top", async (req, res) => {
   try {
-    // Step 1: Get positive feedbacks (limit 5)
-    let positives = await Feedback.find({ sentiment: "positive" })
-      .sort({ createdAt: -1 })
-      .limit(5);
-
-    // Step 2: If less than 5, fill with neutral
+    let positives = await Feedback.find({ sentiment: "positive" }).sort({ createdAt: -1 }).limit(5);
     if (positives.length < 5) {
       const needed = 5 - positives.length;
-      const neutrals = await Feedback.find({ sentiment: "neutral" })
-        .sort({ createdAt: -1 })
-        .limit(needed);
-
+      const neutrals = await Feedback.find({ sentiment: "neutral" }).sort({ createdAt: -1 }).limit(needed);
       positives = positives.concat(neutrals);
     }
-
-    res.json({
-      success: true,
-      count: positives.length,
-      feedbacks: positives,
-    });
+    res.json({ success: true, count: positives.length, feedbacks: positives });
   } catch (err) {
-    console.error("Get top feedback error:", err);
     res.status(500).json({ success: false, error: "server_error" });
   }
 });
-
 
 module.exports = router;

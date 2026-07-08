@@ -4492,7 +4492,7 @@
 
 // // //       {/* Footer */}
 // // //       <footer className="mt-10 pb-8 text-center text-xs text-white/35">
-// // //         © 2020 – 2026 Tokun.ai | All Rights Reserved
+// // //         © 2020 – 2026 Tokun.world | All Rights Reserved
 // // //       </footer>
 // // //       <MobileBottomNav />
 
@@ -9081,7 +9081,7 @@
 
 // //       {/* Footer */}
 // //       <footer className="mt-10 pb-8 text-center text-xs text-white/35">
-// //         © 2020 – 2026 Tokun.ai | All Rights Reserved
+// //         © 2020 – 2026 Tokun.world | All Rights Reserved
 // //       </footer>
 // //       <MobileBottomNav />
 
@@ -13861,7 +13861,7 @@
 
 //       {/* Footer */}
 //       <footer className="mt-10 pb-8 text-center text-xs text-white/35">
-//         © 2020 – 2026 Tokun.ai | All Rights Reserved
+//         © 2020 – 2026 Tokun.world | All Rights Reserved
 //       </footer>
 //       <MobileBottomNav />
 
@@ -14005,7 +14005,7 @@ import ScreenRecordingsAdmin from "./Screenrecordingsadmin ";
 import AdminSellerMessageModal from "@/components/AdminSellerMessageModal";
 
 // ✅ ADD reports here
-type NavKey = "dashboard" | "sellers" | "products" | "reports" | "analytics" | "account" | "withdrawals" | "escrow" | "recordings";
+type NavKey = "dashboard" | "sellers" | "products" | "reports" | "analytics" | "account" | "withdrawals" | "escrow" | "recordings" | "feedback";
 
 
 const kpiCardBase =
@@ -18766,6 +18766,7 @@ const AccountView = ({
 
                 <NavItem id="reports" label="Reports" icon={<ShieldAlert className="h-4 w-4" />} />
                  <NavItem id="withdrawals" label="Withdrawals" icon={<Wallet className="h-4 w-4" />} />
+                 <NavItem id="feedback" label="Feedback" icon={<MessageSquare className="h-4 w-4" />} />
               </nav>
             </div>
 
@@ -19638,6 +19639,7 @@ const AccountView = ({
         )}
 
 {active === "withdrawals" && <WithdrawalsView />}
+{active === "feedback" && <FeedbackView />}
 
 
         {active === "account" && (
@@ -19661,7 +19663,7 @@ const AccountView = ({
 
       {/* Footer */}
       <footer className="mt-10 pb-8 text-center text-xs text-white/35">
-        © 2020 – 2026 Tokun.ai | All Rights Reserved
+        © 2020 – 2026 Tokun.world | All Rights Reserved
       </footer>
       <MobileBottomNav />
 
@@ -19741,5 +19743,127 @@ const AccountView = ({
     </div>
   );
 };
+
+/* =====================================================================
+   FeedbackView — Admin sees all feedback, can mark resolved / delete
+   ===================================================================== */
+function FeedbackView() {
+  const [feedbacks, setFeedbacks] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [filter, setFilter] = React.useState<"all"|"pending"|"reviewed"|"resolved">("all");
+  const [sentFilter, setSentFilter] = React.useState<"all"|"positive"|"neutral"|"negative">("all");
+
+  const fetchFeedbacks = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/feedback`);
+      const data = await res.json();
+      if (data.success) setFeedbacks(data.feedbacks);
+    } catch {}
+    setLoading(false);
+  };
+
+  React.useEffect(() => { fetchFeedbacks(); }, []);
+
+  const updateStatus = async (id: string, status: string) => {
+    await fetch(`${API_BASE}/api/feedback/${id}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    setFeedbacks(prev => prev.map(f => f._id === id ? { ...f, status } : f));
+  };
+
+  const deleteFeedback = async (id: string) => {
+    if (!window.confirm("Delete this feedback?")) return;
+    await fetch(`${API_BASE}/api/feedback/${id}`, { method: "DELETE" });
+    setFeedbacks(prev => prev.filter(f => f._id !== id));
+  };
+
+  const shown = feedbacks.filter(f => {
+    const statusOk = filter === "all" || (f.status || "pending") === filter;
+    const sentOk = sentFilter === "all" || f.sentiment === sentFilter;
+    return statusOk && sentOk;
+  });
+
+  const sentColor: Record<string,string> = { positive:"#4ade80", neutral:"#facc15", negative:"#f87171" };
+  const statusColor: Record<string,string> = { pending:"#facc15", reviewed:"#60a5fa", resolved:"#4ade80" };
+  const stars = (n: number) => "★".repeat(n) + "☆".repeat(5 - n);
+
+  return (
+    <div style={{ padding: "0 0 40px" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24, flexWrap:"wrap", gap:12 }}>
+        <div>
+          <h2 style={{ color:"#fff", fontWeight:800, fontSize:22, margin:0 }}>User Feedback</h2>
+          <p style={{ color:"rgba(255,255,255,0.4)", fontSize:13, margin:"4px 0 0" }}>{feedbacks.length} total responses</p>
+        </div>
+        <button onClick={fetchFeedbacks} style={{ padding:"8px 18px", background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:10, color:"#fff", fontSize:13, cursor:"pointer" }}>Refresh</button>
+      </div>
+
+      {/* Filters */}
+      <div style={{ display:"flex", gap:8, marginBottom:20, flexWrap:"wrap" }}>
+        {(["all","pending","reviewed","resolved"] as const).map(s => (
+          <button key={s} onClick={() => setFilter(s)} style={{ padding:"6px 14px", borderRadius:20, fontSize:12, fontWeight:700, cursor:"pointer", border:"none", background: filter===s ? "linear-gradient(135deg,#7c3aed,#2563eb)" : "rgba(255,255,255,0.06)", color: filter===s ? "#fff" : "rgba(255,255,255,0.5)", textTransform:"capitalize" }}>{s}</button>
+        ))}
+        <div style={{ width:1, background:"rgba(255,255,255,0.1)", margin:"0 4px" }} />
+        {(["all","positive","neutral","negative"] as const).map(s => (
+          <button key={s} onClick={() => setSentFilter(s)} style={{ padding:"6px 14px", borderRadius:20, fontSize:12, fontWeight:700, cursor:"pointer", border:"none", background: sentFilter===s ? "rgba(139,92,246,0.25)" : "rgba(255,255,255,0.06)", color: sentFilter===s ? "#a78bfa" : "rgba(255,255,255,0.5)", textTransform:"capitalize" }}>{s}</button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div style={{ color:"rgba(255,255,255,0.4)", textAlign:"center", padding:48 }}>Loading…</div>
+      ) : shown.length === 0 ? (
+        <div style={{ color:"rgba(255,255,255,0.3)", textAlign:"center", padding:48 }}>No feedback found.</div>
+      ) : (
+        <div style={{ display:"grid", gap:16 }}>
+          {shown.map(fb => (
+            <div key={fb._id} style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:16, padding:"18px 20px" }}>
+              <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:12, flexWrap:"wrap", marginBottom:12 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                  <div style={{ width:42, height:42, borderRadius:"50%", background:"linear-gradient(135deg,#7c3aed,#2563eb)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:16, color:"#fff", flexShrink:0 }}>
+                    {(fb.name||"?")[0].toUpperCase()}
+                  </div>
+                  <div>
+                    <p style={{ margin:0, fontWeight:700, fontSize:15, color:"#fff" }}>{fb.name}</p>
+                    <p style={{ margin:0, fontSize:12, color:"rgba(255,255,255,0.45)" }}>{fb.email}{fb.role ? ` · ${fb.role}` : ""}</p>
+                  </div>
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                  <span style={{ fontSize:12, color: sentColor[fb.sentiment]||"#fff", background:"rgba(255,255,255,0.06)", padding:"3px 10px", borderRadius:20, fontWeight:700, textTransform:"capitalize" }}>{fb.sentiment}</span>
+                  <span style={{ fontSize:12, color: statusColor[fb.status||"pending"], background:"rgba(255,255,255,0.06)", padding:"3px 10px", borderRadius:20, fontWeight:700, textTransform:"capitalize" }}>{fb.status||"pending"}</span>
+                  <span style={{ color:"#facc15", fontSize:14, letterSpacing:2 }}>{stars(fb.rating)}</span>
+                </div>
+              </div>
+
+              <p style={{ margin:"0 0 8px", fontSize:14, color:"rgba(255,255,255,0.75)", lineHeight:1.6 }}>{fb.experience}</p>
+
+              {fb.issue && <p style={{ margin:"0 0 8px", fontSize:13, color:"#f87171", background:"rgba(239,68,68,0.08)", padding:"6px 10px", borderRadius:8 }}>⚠ Issue: {fb.issue}</p>}
+
+              {fb.screenshots?.length > 0 && (
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:8 }}>
+                  {fb.screenshots.map((s: string, i: number) => <a key={i} href={s} target="_blank" rel="noreferrer" style={{ fontSize:12, color:"#60a5fa", textDecoration:"underline" }}>Screenshot {i+1}</a>)}
+                </div>
+              )}
+
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:12, flexWrap:"wrap", gap:8 }}>
+                <span style={{ fontSize:11, color:"rgba(255,255,255,0.3)" }}>{new Date(fb.createdAt).toLocaleString()}</span>
+                <div style={{ display:"flex", gap:8 }}>
+                  {(fb.status||"pending") !== "reviewed" && (
+                    <button onClick={() => updateStatus(fb._id,"reviewed")} style={{ padding:"6px 14px", fontSize:12, fontWeight:700, borderRadius:8, border:"none", background:"rgba(96,165,250,0.15)", color:"#60a5fa", cursor:"pointer" }}>Mark Reviewed</button>
+                  )}
+                  {(fb.status||"pending") !== "resolved" && (
+                    <button onClick={() => updateStatus(fb._id,"resolved")} style={{ padding:"6px 14px", fontSize:12, fontWeight:700, borderRadius:8, border:"none", background:"rgba(74,222,128,0.12)", color:"#4ade80", cursor:"pointer" }}>Resolve</button>
+                  )}
+                  <button onClick={() => deleteFeedback(fb._id)} style={{ padding:"6px 14px", fontSize:12, fontWeight:700, borderRadius:8, border:"none", background:"rgba(239,68,68,0.12)", color:"#f87171", cursor:"pointer" }}>Delete</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default Dashboard;

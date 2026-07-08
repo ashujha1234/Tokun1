@@ -702,7 +702,7 @@
 // //       <div className="flex items-center gap-2 sm:gap-3 min-w-0">
 // //         <img
 // //   src="/icons/Tokun.png"
-// //   alt="Tokun.ai Logo"
+// //   alt="Tokun.world Logo"
 // //   className="h-16 sm:h-20 md:h-24 lg:h-28 w-auto object-contain transition-transform duration-200 hover:scale-105"
 // // />
 // //       </div>
@@ -3592,7 +3592,7 @@
 // //       <div className="flex items-center gap-2 sm:gap-3 min-w-0">
 // //         <img
 // //   src="/icons/Tokun.png"
-// //   alt="Tokun.ai Logo"
+// //   alt="Tokun.world Logo"
 // //   className="h-16 sm:h-20 md:h-24 lg:h-28 w-auto object-contain transition-transform duration-200 hover:scale-105"
 // // />
 // //       </div>
@@ -6484,7 +6484,7 @@
 //       <div className="flex items-center gap-2 sm:gap-3 min-w-0">
 //         <img
 //   src="/icons/Tokun.png"
-//   alt="Tokun.ai Logo"
+//   alt="Tokun.world Logo"
 //   className="h-16 sm:h-20 md:h-24 lg:h-28 w-auto object-contain transition-transform duration-200 hover:scale-105"
 // />
 //       </div>
@@ -9413,7 +9413,7 @@
 //       <div className="flex items-center gap-2 sm:gap-3 min-w-0">
 //         <img
 //   src="/icons/Tokun.png"
-//   alt="Tokun.ai Logo"
+//   alt="Tokun.world Logo"
 //   className="h-16 sm:h-20 md:h-24 lg:h-28 w-auto object-contain transition-transform duration-200 hover:scale-105"
 // />
 //       </div>
@@ -11955,14 +11955,7 @@
 //   );
 // }
 
-/* ============================================================
-   TOKUN — Landing Page (single file)
-   Saare sections + loading screen ek hi component file mein.
-   Deps: react, framer-motion, lucide-react, react-router-dom,
-         three, @react-three/fiber, @react-three/drei  (globe ke liye)
-   Logo image: /public/icons/Tokun.png
-   Globe model: /public/models/airports_around_the_world.glb
-   ============================================================ */
+
 
 import { Suspense, useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
@@ -12003,6 +11996,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import './landing-page.css'
 
 const TOKUN_LOGO_SRC = '/icons/Tokun.png'
+const API_BASE = ((import.meta as any).env?.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, '')
 
 /* Routes — apni app ke hisaab se yahan badal sakte ho */
 const ROUTES = {
@@ -12154,6 +12148,7 @@ function HeroAccountMenu() {
   const secondaryItems = [
     { label: 'Purchase History', onClick: () => go('/prompty-history?p=purchased') },
     { label: 'Upload History', onClick: () => go('/prompty-history?p=uploaded') },
+    { label: 'My Feedback', onClick: () => go('/my-feedback') },
     { label: 'Pricing', onClick: () => go('/subscription') },
     { label: 'Support', onClick: () => go('/support') },
   ]
@@ -12265,9 +12260,15 @@ function HeroAccountMenu() {
                 cursor: 'pointer',
                 fontSize: 14,
                 textAlign: 'left',
+                transition: 'background 0.18s',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)'
+                e.currentTarget.style.color = '#fff'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent'
+              }}
             >
               <item.icon size={16} />
               {item.label}
@@ -12291,9 +12292,16 @@ function HeroAccountMenu() {
                 color: 'rgba(255,255,255,0.85)',
                 cursor: 'pointer',
                 fontSize: 14,
+                transition: 'background 0.18s',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)'
+                e.currentTarget.style.color = '#fff'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent'
+                e.currentTarget.style.color = 'rgba(255,255,255,0.85)'
+              }}
             >
               {item.label}
             </button>
@@ -13233,7 +13241,7 @@ const OFFERS = [
   {
     num: '02',
     icon: Sparkles,
-    title: 'Smartgen Generator',
+    title: 'Smartgen',
     description:
       'Transform simple ideas into powerful, optimized prompts with our AI-powered generation system.',
     accent: '#a855f7',
@@ -13356,7 +13364,7 @@ function LaptopDemo() {
             </div>
             <div className="laptop-demo__url">
               <span className="laptop-demo__lock" aria-hidden="true" />
-              app.tokun.ai
+              app.tokun.world
             </div>
             <div className="laptop-demo__chrome-spacer" aria-hidden="true" />
           </div>
@@ -13366,7 +13374,7 @@ function LaptopDemo() {
               <header className="laptop-ui__nav">
                 <div className="laptop-ui__brand">
                   <span className="laptop-ui__brand-dot" />
-                  TOKUN.AI
+                  TOKUN.WORLD
                 </div>
                 <div className="laptop-ui__actions">
                   <button type="button" className="laptop-ui__btn laptop-ui__btn--ghost">
@@ -13559,18 +13567,31 @@ const TESTIMONIALS = [
   { name: 'Nina Kowalski', role: 'Content Strategist', initial: 'N', accent: '#4ade80', quote: 'My marketing prompts went from bloated to razor-sharp. Output quality improved while costs dropped.' },
 ]
 
-const COLUMNS = [
-  { items: [0, 3, 6, 1, 4, 7], duration: 32, delay: 0 },
-  { items: [1, 4, 7, 2, 5, 8], duration: 38, delay: -12 },
-  { items: [2, 5, 8, 0, 3, 6], duration: 35, delay: -22 },
-]
+
+const ACCENT_COLORS = ['#38bdf8', '#a855f7', '#ec4899', '#818cf8', '#f472b6', '#4ade80', '#fb923c', '#34d399', '#f87171']
 
 function TestimonialCard({ item }) {
   return (
-    <article className="t-marquee-card" style={{ '--card-accent': item.accent }}>
+    <article className="t-marquee-card" style={{ '--card-accent': item.accent } as any}>
+      {item.rating > 0 && (
+        <div className="t-marquee-card__stars">
+          {Array.from({ length: 5 }, (_, i) => (
+            <span key={i} style={{ color: i < item.rating ? '#facc15' : 'rgba(255,255,255,0.2)', fontSize: 13 }}>★</span>
+          ))}
+        </div>
+      )}
       <p className="t-marquee-card__quote">{item.quote}</p>
       <footer className="t-marquee-card__author">
-        <span className="t-marquee-card__avatar">{item.initial}</span>
+        {item.profilePicture ? (
+          <img
+            src={`${API_BASE}${item.profilePicture}`}
+            alt={item.name}
+            className="t-marquee-card__avatar"
+            style={{ objectFit: 'cover' }}
+          />
+        ) : (
+          <span className="t-marquee-card__avatar">{item.initial}</span>
+        )}
         <div>
           <cite className="t-marquee-card__name">{item.name}</cite>
           <p className="t-marquee-card__role">{item.role}</p>
@@ -13580,23 +13601,21 @@ function TestimonialCard({ item }) {
   )
 }
 
-function MarqueeColumn({ indices, duration, delay }) {
-  const items = indices.map((i) => TESTIMONIALS[i % TESTIMONIALS.length])
-
+function MarqueeColumn({ items, duration, delay }: { items: any[], duration: number, delay: number }) {
   return (
     <div
       className="marquee-col"
-      style={{ '--marquee-duration': `${duration}s`, '--marquee-delay': `${delay}s` }}
+      style={{ '--marquee-duration': `${duration}s`, '--marquee-delay': `${delay}s` } as any}
     >
       <div className="marquee-col__track">
         <div className="marquee-col__group">
           {items.map((item, i) => (
-            <TestimonialCard key={`a-${item.name}-${i}`} item={item} />
+            <TestimonialCard key={`a-${i}`} item={item} />
           ))}
         </div>
         <div className="marquee-col__group" aria-hidden="true">
           {items.map((item, i) => (
-            <TestimonialCard key={`b-${item.name}-${i}`} item={item} />
+            <TestimonialCard key={`b-${i}`} item={item} />
           ))}
         </div>
       </div>
@@ -13607,6 +13626,37 @@ function MarqueeColumn({ indices, duration, delay }) {
 function Testimonials() {
   const sectionRef = useRef(null)
   const isVisible = useIsInViewport(sectionRef, { rootMargin: '100px' })
+  const [liveItems, setLiveItems] = useState(TESTIMONIALS)
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/feedback/top`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.success && data.feedbacks?.length >= 1) {
+          const mapped = data.feedbacks.map((f: any, i: number) => ({
+            name: f.name,
+            role: f.role || 'Tokun User',
+            initial: (f.name?.[0] || 'U').toUpperCase(),
+            accent: ACCENT_COLORS[i % ACCENT_COLORS.length],
+            quote: f.experience,
+            profilePicture: f.profilePicture || null,
+            rating: Number(f.rating) || 0,
+          }))
+          // Fill up to 9 with hardcoded fallback if needed
+          const combined = mapped.length >= 9
+            ? mapped
+            : [...mapped, ...TESTIMONIALS.slice(0, 9 - mapped.length)]
+          setLiveItems(combined)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const columns = [
+    { items: liveItems.filter((_: any, i: number) => i % 3 === 0), duration: 32, delay: 0 },
+    { items: liveItems.filter((_: any, i: number) => i % 3 === 1), duration: 38, delay: -12 },
+    { items: liveItems.filter((_: any, i: number) => i % 3 === 2), duration: 35, delay: -22 },
+  ]
 
   return (
     <section
@@ -13641,8 +13691,8 @@ function Testimonials() {
           <div className="testimonials__fade testimonials__fade--bottom" aria-hidden="true" />
 
           <div className="testimonials__columns">
-            {COLUMNS.map((col, i) => (
-              <MarqueeColumn key={i} indices={col.items} duration={col.duration} delay={col.delay} />
+            {columns.map((col, i) => (
+              <MarqueeColumn key={i} items={col.items} duration={col.duration} delay={col.delay} />
             ))}
           </div>
         </motion.div>
@@ -13921,7 +13971,7 @@ function GlobeSection() {
 
       <h2 className="globe-section__title">Loved across the globe</h2>
       <p className="globe-section__lead">
-        Thousands of prompt engineers from every corner of the world trust Tokun.AI daily.
+        Thousands of prompt engineers from every corner of the world trust Tokun.WORLD daily.
       </p>
 
       <div className="globe-wrap" style={{ maxWidth: isMobile ? 320 : 460 }}>
@@ -13990,7 +14040,7 @@ function FAQSection() {
       </div>
 
       <h2 className="faq__title">Got questions?</h2>
-      <p className="faq__lead">Everything you need to know about Tokun.AI</p>
+      <p className="faq__lead">Everything you need to know about Tokun.WORLD</p>
 
       <div className="faq__list">
         {FAQ_ITEMS.map((item, i) => {
@@ -14050,7 +14100,7 @@ function Footer() {
       <div className="site-footer__inner">
         <div className="site-footer__center">
           <Link to="/" className="site-footer__logo">
-            <span className="site-footer__logo-text">TOKUN.AI</span>
+            <span className="site-footer__logo-text">TOKUN.WORLD</span>
           </Link>
 
           <nav className="site-footer__nav">
@@ -14098,9 +14148,9 @@ const PROMPT_STEPS = [
   'Entering the Promptverse…',
 ]
 
-const MIN_LOAD_MS = 2600
-const HOLD_AT_100_MS = 380
-const CURTAIN_LIFT_S = 1.15
+const MIN_LOAD_MS = 1600
+const HOLD_AT_100_MS = 120
+const CURTAIN_LIFT_S = 0.68
 
 const NEURAL_LINKS = [
   [100, 36, 48, 72],
@@ -14326,26 +14376,455 @@ function LoadingScreen({ onComplete }) {
 }
 
 /* ============================================================
+   FeedbackButton — floating feedback tab on the right side
+   ============================================================ */
+
+const fbInputStyle: React.CSSProperties = {
+  width: '100%',
+  background: 'rgba(255,255,255,0.06)',
+  border: '1px solid rgba(255,255,255,0.1)',
+  borderRadius: 10,
+  padding: '10px 14px',
+  color: '#f3f4f6',
+  fontSize: 13.5,
+  outline: 'none',
+  boxSizing: 'border-box',
+  fontFamily: 'inherit',
+  transition: 'border-color 0.2s, background 0.2s',
+  backdropFilter: 'blur(6px)',
+}
+
+const fbLabelStyle: React.CSSProperties = {
+  color: 'rgba(255,255,255,0.4)',
+  fontSize: 11,
+  fontWeight: 700,
+  display: 'block',
+  marginBottom: 6,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+}
+
+function FeedbackButton() {
+  const [open, setOpen] = useState(false)
+  const [step, setStep] = useState<'form' | 'otp'>('form')
+  const [rating, setRating] = useState(0)
+  const [hoverStar, setHoverStar] = useState(0)
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [experience, setExperience] = useState('')
+  const [role, setRole] = useState('')
+  const [screenshots, setScreenshots] = useState<File[]>([])
+  const [issue, setIssue] = useState('')
+  const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [otpSending, setOtpSending] = useState(false)
+  const [otp, setOtp] = useState('')
+  const [error, setError] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const reset = () => {
+    setRating(0); setHoverStar(0); setName(''); setEmail(''); setExperience('')
+    setRole(''); setScreenshots([]); setIssue('')
+    setError(''); setSubmitted(false); setStep('form'); setOtp('')
+  }
+
+  const handleClose = () => {
+    setOpen(false)
+    setTimeout(reset, 400)
+  }
+
+  const handleSendOtp = async () => {
+    setError('')
+    if (!name.trim()) { setError('Name is required'); return }
+    if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) { setError('Valid email is required'); return }
+    if (!experience.trim()) { setError('Please share your experience'); return }
+    if (rating === 0) { setError('Please give a rating'); return }
+
+    setOtpSending(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/feedback/send-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), name: name.trim() }),
+      })
+      const data = await res.json()
+      if (!data.success) { setError(data.error || 'Failed to send OTP'); setOtpSending(false); return }
+      setStep('otp')
+    } catch {
+      setError('Network error. Please try again.')
+    }
+    setOtpSending(false)
+  }
+
+  const handleSubmit = async () => {
+    setError('')
+    if (otp.trim().length !== 6) { setError('Enter the 6-digit OTP'); return }
+
+    setSubmitting(true)
+    try {
+      // Verify OTP
+      const vRes = await fetch(`${API_BASE}/api/feedback/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), otp: otp.trim() }),
+      })
+      const vData = await vRes.json()
+      if (!vData.success) {
+        const msg: Record<string,string> = { otp_invalid: 'Incorrect OTP.', otp_expired: 'OTP expired. Go back and resend.', otp_not_found: 'OTP not found. Go back and resend.' }
+        setError(msg[vData.error] || 'OTP verification failed')
+        setSubmitting(false)
+        return
+      }
+
+      // Submit feedback
+      const formData = new FormData()
+      formData.append('name', name.trim())
+      formData.append('email', email.trim())
+      formData.append('experience', experience.trim())
+      formData.append('rating', String(rating))
+      if (role.trim()) formData.append('role', role.trim())
+      if (issue.trim()) formData.append('issue', issue.trim())
+      screenshots.forEach(f => formData.append('screenshots', f))
+
+      const res = await fetch(`${API_BASE}/api/feedback`, { method: 'POST', body: formData })
+      const data = await res.json()
+
+      if (!data.success) { setError(data.error || 'Something went wrong'); setSubmitting(false); return }
+
+      setSubmitted(true)
+      setTimeout(handleClose, 2800)
+    } catch {
+      setError('Network error. Please try again.')
+      setSubmitting(false)
+    }
+  }
+
+  const canProceed = name.trim().length > 0 && /\S+@\S+\.\S+/.test(email) && experience.trim().length > 0 && rating > 0
+
+  const focusBorder = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    e.currentTarget.style.borderColor = 'rgba(167,139,250,0.6)'
+    e.currentTarget.style.background = 'rgba(139,92,246,0.1)'
+    e.currentTarget.style.boxShadow = '0 0 0 3px rgba(139,92,246,0.15)'
+  }
+  const blurBorder = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+    e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
+    e.currentTarget.style.boxShadow = 'none'
+  }
+
+  const ratingLabels = ['', 'Poor', 'Fair', 'Good', 'Great', 'Excellent']
+
+  return (
+    <>
+      {/* ── Floating tab button ── */}
+      <motion.button
+        onClick={() => setOpen(true)}
+        initial={false}
+        whileHover={{ x: -5, scale: 1.02 }}
+        whileTap={{ scale: 0.95 }}
+        style={{
+          position: 'fixed',
+          right: 0,
+          top: '38%',
+          zIndex: 1000,
+          cursor: 'pointer',
+          border: 'none',
+          padding: 0,
+          background: 'linear-gradient(160deg, #7c3aed 0%, #4f46e5 40%, #2563eb 100%)',
+          borderRadius: '14px 0 0 14px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 10,
+          paddingTop: 18,
+          paddingBottom: 18,
+          paddingLeft: 11,
+          paddingRight: 11,
+          boxShadow: '-4px 0 32px rgba(124,58,237,0.55), -1px 0 0 rgba(255,255,255,0.08), inset 0 1px 0 rgba(255,255,255,0.15)',
+        }}
+      >
+        {/* Shiny top-left highlight */}
+        <div style={{
+          position: 'absolute',
+          top: 0, left: 0, right: 0,
+          height: '45%',
+          borderRadius: '14px 0 0 0',
+          background: 'linear-gradient(180deg, rgba(255,255,255,0.14) 0%, transparent 100%)',
+          pointerEvents: 'none',
+        }} />
+        <span style={{
+          writingMode: 'vertical-lr',
+          transform: 'rotate(180deg)',
+          textOrientation: 'mixed',
+          color: '#fff',
+          fontSize: 11.5,
+          fontWeight: 800,
+          letterSpacing: '0.14em',
+          textTransform: 'uppercase',
+          lineHeight: 1,
+          textShadow: '0 1px 4px rgba(0,0,0,0.3)',
+        }}>
+          Feedback
+        </span>
+        <div style={{
+          width: 32,
+          height: 32,
+          borderRadius: 9,
+          background: 'rgba(255,255,255,0.18)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.2)',
+        }}>
+          <MessageSquarePlus size={15} color="#fff" style={{ transform: 'scaleX(-1)' }} />
+        </div>
+      </motion.button>
+
+      <AnimatePresence>
+        {open && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              key="fb-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={handleClose}
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.6)',
+                backdropFilter: 'blur(6px)',
+                zIndex: 1001,
+              }}
+            />
+
+            {/* Panel — fixed top+bottom so it never overflows */}
+            <motion.div
+              key="fb-panel"
+              initial={{ x: '100%', opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: '100%', opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 340, damping: 34 }}
+              style={{
+                position: 'fixed',
+                right: 0,
+                top: 16,
+                bottom: 16,
+                zIndex: 1002,
+                width: 370,
+                display: 'flex',
+                flexDirection: 'column',
+                background: 'rgba(10, 10, 20, 0.55)',
+                backdropFilter: 'blur(28px) saturate(180%)',
+                WebkitBackdropFilter: 'blur(28px) saturate(180%)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRight: 'none',
+                borderRadius: '22px 0 0 22px',
+                boxShadow: '-16px 0 70px rgba(124,58,237,0.3), 0 0 0 1px rgba(139,92,246,0.12) inset',
+                overflow: 'hidden',
+              }}
+            >
+              {/* Rainbow gradient top bar */}
+              <div style={{
+                height: 3,
+                background: 'linear-gradient(90deg, #a855f7, #6366f1, #3b82f6, #06b6d4)',
+                flexShrink: 0,
+              }} />
+
+              {/* Glass inner glow layer */}
+              <div style={{
+                position: 'absolute',
+                top: 3, left: 0, right: 0,
+                height: 120,
+                background: 'linear-gradient(180deg, rgba(139,92,246,0.12) 0%, transparent 100%)',
+                pointerEvents: 'none',
+                borderRadius: '22px 0 0 0',
+              }} />
+
+              {/* Scrollable content */}
+              <div style={{
+                flex: 1,
+                overflowY: 'auto',
+                padding: '22px 24px 24px',
+                scrollbarWidth: 'none',
+                position: 'relative',
+              }}>
+                {submitted ? (
+                  /* ── Success ── */
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 300, textAlign: 'center', gap: 12 }}>
+                    <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 260, damping: 18 }} style={{ fontSize: 56 }}>🎉</motion.div>
+                    <p style={{ color: '#c4b5fd', fontWeight: 800, fontSize: 18, margin: 0 }}>Thanks, {name}!</p>
+                    <p style={{ color: '#4b5563', fontSize: 13, margin: 0, lineHeight: 1.5 }}>Your feedback helps us build<br />a better Tokun.</p>
+                  </div>
+                ) : step === 'otp' ? (
+                  /* ── Step 2: OTP ── */
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                      <div>
+                        <h3 style={{ color: '#f9fafb', fontWeight: 800, fontSize: 18, margin: 0 }}>Verify Email</h3>
+                        <p style={{ color: '#4b5563', fontSize: 12.5, margin: '5px 0 0' }}>OTP sent to <span style={{ color: '#a78bfa' }}>{email}</span></p>
+                      </div>
+                      <button onClick={handleClose} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.55)', cursor: 'pointer', width: 30, height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, lineHeight: 1 }}>×</button>
+                    </div>
+                    <div style={{ height: 1, background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)', margin: '16px 0' }} />
+
+                    <div style={{ marginBottom: 20 }}>
+                      <label style={fbLabelStyle}>6-digit OTP <span style={{ color: '#7c3aed' }}>*</span></label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={otp}
+                        onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="Enter OTP"
+                        style={{ ...fbInputStyle, letterSpacing: '0.3em', fontSize: 22, textAlign: 'center', fontWeight: 700 }}
+                        onFocus={focusBorder}
+                        onBlur={blurBorder}
+                        autoFocus
+                      />
+                      <p style={{ color: '#6b7280', fontSize: 11.5, margin: '8px 0 0' }}>OTP expires in 5 minutes.</p>
+                    </div>
+
+                    <AnimatePresence>
+                      {error && (
+                        <motion.p initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} style={{ color: '#f87171', fontSize: 12, marginBottom: 12, padding: '8px 12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8 }}>⚠ {error}</motion.p>
+                      )}
+                    </AnimatePresence>
+
+                    <button onClick={handleSubmit} disabled={submitting || otp.length !== 6} style={{ width: '100%', padding: '12px', background: otp.length === 6 ? 'linear-gradient(135deg, #7c3aed 0%, #2563eb 100%)' : 'rgba(255,255,255,0.04)', border: otp.length === 6 ? 'none' : '1px solid rgba(255,255,255,0.06)', borderRadius: 12, color: otp.length === 6 ? '#fff' : '#374151', fontWeight: 700, fontSize: 14, cursor: submitting || otp.length !== 6 ? 'not-allowed' : 'pointer', transition: 'background 0.2s', letterSpacing: '0.02em', boxShadow: otp.length === 6 ? '0 4px 20px rgba(124,58,237,0.4)' : 'none' }}>
+                      {submitting ? 'Verifying…' : 'Verify & Submit →'}
+                    </button>
+                    <button onClick={() => { setStep('form'); setError(''); setOtp('') }} style={{ width: '100%', marginTop: 10, padding: '10px', background: 'none', border: 'none', color: '#6b7280', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}>← Go back & resend OTP</button>
+                  </>
+                ) : (
+                  /* ── Step 1: Form ── */
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                      <div>
+                        <h3 style={{ color: '#f9fafb', fontWeight: 800, fontSize: 18, margin: 0, letterSpacing: '-0.01em' }}>Share Feedback</h3>
+                        <p style={{ color: '#4b5563', fontSize: 12.5, margin: '5px 0 0', lineHeight: 1.4 }}>Tell us how Tokun is working for you</p>
+                      </div>
+                      <button onClick={handleClose} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.55)', cursor: 'pointer', width: 30, height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, lineHeight: 1, flexShrink: 0, marginLeft: 10, backdropFilter: 'blur(4px)', transition: 'background 0.15s' }} onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.14)')} onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}>×</button>
+                    </div>
+                    <div style={{ height: 1, background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)', margin: '16px 0' }} />
+
+                    {/* Name */}
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={fbLabelStyle}>Name <span style={{ color: '#7c3aed' }}>*</span></label>
+                      <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Your full name" style={fbInputStyle} onFocus={focusBorder} onBlur={blurBorder} />
+                    </div>
+
+                    {/* Email */}
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={fbLabelStyle}>Email <span style={{ color: '#7c3aed' }}>*</span></label>
+                      <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" style={fbInputStyle} onFocus={focusBorder} onBlur={blurBorder} />
+                    </div>
+
+                    {/* Rating */}
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={fbLabelStyle}>Rating <span style={{ color: '#7c3aed' }}>*</span></label>
+                      <div style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 6, backdropFilter: 'blur(6px)' }}>
+                        {[1, 2, 3, 4, 5].map(star => (
+                          <button key={star} onClick={() => setRating(star)} onMouseEnter={() => setHoverStar(star)} onMouseLeave={() => setHoverStar(0)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 28, color: star <= (hoverStar || rating) ? '#fbbf24' : '#1f2937', transition: 'color 0.12s, transform 0.12s', transform: star <= (hoverStar || rating) ? 'scale(1.2)' : 'scale(1)', lineHeight: 1, filter: star <= (hoverStar || rating) ? 'drop-shadow(0 0 6px rgba(251,191,36,0.5))' : 'none' }}>★</button>
+                        ))}
+                        {(hoverStar || rating) > 0 && <span style={{ marginLeft: 6, color: '#8b5cf6', fontSize: 12, fontWeight: 600 }}>{ratingLabels[hoverStar || rating]}</span>}
+                      </div>
+                    </div>
+
+                    {/* Experience */}
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={fbLabelStyle}>Your Experience <span style={{ color: '#7c3aed' }}>*</span></label>
+                      <textarea value={experience} onChange={e => setExperience(e.target.value)} placeholder="What do you love? What could be better?" rows={4} style={{ ...fbInputStyle, resize: 'none' }} onFocus={focusBorder} onBlur={blurBorder} />
+                    </div>
+
+                    {/* Profession */}
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={fbLabelStyle}>Profession</label>
+                      <input type="text" value={role} onChange={e => setRole(e.target.value)} placeholder="e.g. Developer, Designer, Student…" style={fbInputStyle} onFocus={focusBorder} onBlur={blurBorder} />
+                    </div>
+
+                    {/* Any Issue */}
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={fbLabelStyle}>Any Issue? <span style={{ color: '#6b7280', fontWeight: 400 }}>(optional)</span></label>
+                      <input type="text" value={issue} onChange={e => setIssue(e.target.value)} placeholder="Describe any issue you faced…" style={fbInputStyle} onFocus={focusBorder} onBlur={blurBorder} />
+                    </div>
+
+                    {/* Screenshots */}
+                    <div style={{ marginBottom: 20 }}>
+                      <label style={fbLabelStyle}>Screenshots <span style={{ color: '#6b7280', fontWeight: 400 }}>(optional, max 5)</span></label>
+                      <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={e => { const files = Array.from(e.target.files || []).slice(0, 5); setScreenshots(files) }} />
+                      <button type="button" onClick={() => fileInputRef.current?.click()} style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.06)', border: `1px dashed ${screenshots.length ? 'rgba(167,139,250,0.7)' : 'rgba(255,255,255,0.12)'}`, borderRadius: 10, color: screenshots.length ? '#c4b5fd' : '#6b7280', fontSize: 13, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', transition: 'border-color 0.2s, color 0.2s', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 16 }}>🖼️</span>
+                        {screenshots.length ? `${screenshots.length} file${screenshots.length > 1 ? 's' : ''} selected` : 'Upload screenshots (optional)'}
+                      </button>
+                      {screenshots.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                          {screenshots.map((f, i) => <span key={i} style={{ fontSize: 11, padding: '3px 8px', background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 6, color: '#c4b5fd', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>)}
+                        </div>
+                      )}
+                    </div>
+
+                    <AnimatePresence>
+                      {error && (
+                        <motion.p initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} style={{ color: '#f87171', fontSize: 12, marginBottom: 12, padding: '8px 12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8 }}>⚠ {error}</motion.p>
+                      )}
+                    </AnimatePresence>
+
+                    <button onClick={handleSendOtp} disabled={otpSending || !canProceed} style={{ width: '100%', padding: '12px', background: canProceed ? 'linear-gradient(135deg, #7c3aed 0%, #2563eb 100%)' : 'rgba(255,255,255,0.04)', border: canProceed ? 'none' : '1px solid rgba(255,255,255,0.06)', borderRadius: 12, color: canProceed ? '#fff' : '#374151', fontWeight: 700, fontSize: 14, cursor: otpSending || !canProceed ? 'not-allowed' : 'pointer', transition: 'background 0.2s, box-shadow 0.2s', letterSpacing: '0.02em', boxShadow: canProceed ? '0 4px 20px rgba(124,58,237,0.4)' : 'none' }}>
+                      {otpSending ? 'Sending OTP…' : 'Send OTP →'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </>
+  )
+}
+
+/* ============================================================
    LandingPage — the single page that ties it all together
    ============================================================ */
 
 export default function LandingPage() {
   const [showCurtain, setShowCurtain] = useState(true)
+  const [belowFold, setBelowFold] = useState(false)
+
+  const handleComplete = () => {
+    setShowCurtain(false)
+    // 2 rAF gap — curtain unmount ke baad paint clear hone do, tab heavy sections mount ho
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => setBelowFold(true))
+    )
+  }
 
   return (
     <>
       <div className="app-shell">
+        {/* Above-fold — always ready, curtain ke peeche bhi render hota hai */}
         <Hero />
         <WhatWeOffer />
         <HowItWorks />
-        <GlobeSection />
-        <FAQSection />
-        <CtaSection />
-        <Testimonials />
-        <Footer />
+
+        {/* Below-fold — curtain hat ne ke baad mount hote hain, GPU free rehti hai */}
+        {belowFold && (
+          <>
+            <GlobeSection />
+            <FAQSection />
+            <CtaSection />
+            <Testimonials />
+            <Footer />
+          </>
+        )}
       </div>
 
-      {showCurtain && <LoadingScreen onComplete={() => setShowCurtain(false)} />}
+      <FeedbackButton />
+      {showCurtain && <LoadingScreen onComplete={handleComplete} />}
     </>
   )
 }

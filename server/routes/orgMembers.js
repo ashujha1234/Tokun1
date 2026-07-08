@@ -963,7 +963,7 @@
 // //     }
 
 // //     // ✅ Generate invite link
-// //     const inviteUrl = `${process.env.SITE_URL}` || "https://tokun.ai/login?invite="`${member._id}`;
+// //     const inviteUrl = `${process.env.SITE_URL}` || "https://tokun.world/login?invite="`${member._id}`;
 
 // //     // ✅ Build email HTML (use the template we created earlier)
 // //     const html = resendInvitationTemplate
@@ -1374,7 +1374,7 @@
 
 
 //     try {
-//         const inviteUrl = `${process.env.SITE_URL}` || "https://tokun.ai/login?invite="`${member._id}`;
+//         const inviteUrl = `${process.env.SITE_URL}` || "https://tokun.world/login?invite="`${member._id}`;
 
 //         const html = invitationTemplate
 //           .replace(/{{memberName}}/g, member.name || member.email.split("@")[0])
@@ -1643,7 +1643,7 @@
 //     }
 
 //     // ✅ Generate invite link
-//     const inviteUrl = `${process.env.SITE_URL}` || "https://tokun.ai/login?invite="`${member._id}`;
+//     const inviteUrl = `${process.env.SITE_URL}` || "https://tokun.world/login?invite="`${member._id}`;
 
 //     // ✅ Build email HTML (use the template we created earlier)
 //     const html = resendInvitationTemplate
@@ -2049,7 +2049,7 @@ router.post("/add", requireAuth, async (req, res) => {
 
 
     try {
-        const inviteUrl = `${process.env.SITE_URL}` || "https://tokun.ai/login?invite="`${member._id}`;
+        const inviteUrl = `${process.env.SITE_URL}` || "https://tokun.world/login?invite="`${member._id}`;
 
         const html = invitationTemplate
           .replace(/{{memberName}}/g, member.name || member.email.split("@")[0])
@@ -2318,7 +2318,7 @@ router.post("/resend-invite/:memberId", requireAuth, async (req, res) => {
     }
 
     // ✅ Generate invite link
-    const inviteUrl = `${process.env.SITE_URL}` || "https://tokun.ai/login?invite="`${member._id}`;
+    const inviteUrl = `${process.env.SITE_URL}` || "https://tokun.world/login?invite="`${member._id}`;
 
     // ✅ Build email HTML (use the template we created earlier)
     const html = resendInvitationTemplate

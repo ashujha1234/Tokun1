@@ -38,9 +38,7 @@ async function uploadToAzure(fileBuffer, originalName, containerName) {
   else if (ext === ".pdf") contentType = "application/pdf";
 
   await blockBlobClient.uploadData(fileBuffer, {
-    blobHTTPHeaders: {
-      blobContentType: contentType,
-    },
+    blobHTTPHeaders: { blobContentType: contentType },
   });
 
   return blockBlobClient.url;

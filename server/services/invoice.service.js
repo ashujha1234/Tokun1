@@ -151,7 +151,7 @@
 //     color: rgb(0.07, 0.07, 0.09),
 //   });
 
-//   text("tokun.ai", L, height - 42, { font: fontBold, size: 20, color: rgb(1, 1, 1) });
+//   text("tokun.world", L, height - 42, { font: fontBold, size: 20, color: rgb(1, 1, 1) });
 //   text("INVOICE", R - 65, height - 42, { font: fontBold, size: 18, color: rgb(1, 1, 1) });
 
 //   // ── Invoice meta ─────────────────────────────────────────
@@ -213,7 +213,7 @@
 //     width, height: 40,
 //     color: rgb(0.07, 0.07, 0.09),
 //   });
-//   text("Thank you for choosing tokun.ai", L, 14, {
+//   text("Thank you for choosing tokun.world", L, 14, {
 //     size: 9,
 //     color: rgb(0.8, 0.8, 0.8),
 //   });
@@ -312,7 +312,7 @@ exports.generateInvoicePDF = async (data) => {
     color: COLORS.blue,
   });
 
-  text("tokun.ai", L, height - 48, {
+  text("tokun.world", L, height - 48, {
     font: fontBold,
     size: 20,
     color: COLORS.white,
@@ -466,7 +466,7 @@ exports.generateInvoicePDF = async (data) => {
     color: COLORS.blue,
   });
 
-  text("Thank you for choosing tokun.ai", L, 16, {
+  text("Thank you for choosing tokun.world", L, 16, {
     size: 9,
     color: COLORS.soft,
   });

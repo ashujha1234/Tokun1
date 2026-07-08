@@ -85,7 +85,7 @@
 //                     focus-visible:ring-0
 //                     focus:border-[#3A6BFF]/60
 //                   "
-//                   placeholder="admin@tokun.ai"
+//                   placeholder="admin@tokun.world"
 //                 />
 //               </div>
 
@@ -119,7 +119,7 @@
 //               <p className="text-[13px] text-white/60">
 //                 Didn’t receive it? Check your spam folder or{" "}
 //                 <a
-//                   href="mailto:support@tokun.ai"
+//                   href="mailto:support@tokun.world"
 //                   className="text-transparent bg-clip-text bg-gradient-to-r from-[#FF14EF] via-[#8A4BFF] to-[#1A73E8] underline underline-offset-4"
 //                 >
 //                   contact support
@@ -230,7 +230,7 @@ const AdminForgotPassword = () => {
                 <Input
                   type="email" autoComplete="email" required
                   value={email} onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@tokun.ai"
+                  placeholder="admin@tokun.world"
                   className="h-[44px] w-full rounded-[12px] bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)] border border-white/20 text-white text-[14px] placeholder:text-white/30 px-4 focus-visible:ring-0 focus:border-white/50"
                 />
               </div>
@@ -266,7 +266,7 @@ const AdminForgotPassword = () => {
             <div className="mt-9 text-center space-y-2">
               <p className="text-[13px] text-white/60">
                 Didn't receive it? Check spam or{" "}
-                <a href="mailto:support@tokun.ai" className="text-transparent bg-clip-text bg-gradient-to-r from-[#FF14EF] to-[#A855F7]">
+                <a href="mailto:support@tokun.world" className="text-transparent bg-clip-text bg-gradient-to-r from-[#FF14EF] to-[#A855F7]">
                   contact support
                 </a>
               </p>
@@ -294,7 +294,7 @@ const AdminForgotPassword = () => {
                     id="email" type="email" autoComplete="email" required
                     value={email} onChange={(e) => setEmail(e.target.value)}
                     className="h-[54px] w-full rounded-[10px] bg-[#0F1520] border border-[#243045] text-white placeholder:text-white/35 focus-visible:ring-0 focus:border-[#3A6BFF]/60"
-                    placeholder="admin@tokun.ai"
+                    placeholder="admin@tokun.world"
                   />
                 </div>
 
@@ -315,7 +315,7 @@ const AdminForgotPassword = () => {
 
                 <p className="text-[13px] text-white/60">
                   Didn't receive it? Check your spam folder or{" "}
-                  <a href="mailto:support@tokun.ai" className="text-transparent bg-clip-text bg-gradient-to-r from-[#FF14EF] via-[#8A4BFF] to-[#1A73E8] underline underline-offset-4">
+                  <a href="mailto:support@tokun.world" className="text-transparent bg-clip-text bg-gradient-to-r from-[#FF14EF] via-[#8A4BFF] to-[#1A73E8] underline underline-offset-4">
                     contact support
                   </a>.
                 </p>

@@ -119,7 +119,7 @@
 //       const rzp = new (window as any).Razorpay({
 //         key,
 //         order_id: order.id,
-//         name: "Tokun.ai",
+//         name: "Tokun.world",
 //         description: "Subscription Payment",
 //         prefill: { name: "Static User", email: "user@example.com", contact: "9999999999" },
 //         notes: order.notes || {},
@@ -756,7 +756,7 @@ export default function Subscription() {
       const rzp = new (window as any).Razorpay({
         key,
         order_id: order.id,
-        name: "Tokun.ai",
+        name: "Tokun.world",
         description: "Subscription Payment",
         prefill: {
           name: "Static User",

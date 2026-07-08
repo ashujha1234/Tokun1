@@ -103,7 +103,7 @@ await sendEmail({
   html: buildOtpEmailHtml({
     name: user.name,
     otp,                       // e.g., "4821" or "935612"
-    siteUrl: process.env.SITE_URL || "https://tokun.ai",
+    siteUrl: process.env.SITE_URL || "https://tokun.world",
   }),
 });
 
@@ -274,7 +274,7 @@ if (userType === "ORG" && orgName && !user.orgId) {
       html: buildOtpEmailHtml({
         name: user.name,
         otp,
-        siteUrl: process.env.SITE_URL || "https://tokun.ai",
+        siteUrl: process.env.SITE_URL || "https://tokun.world",
       }),
     });
 
@@ -289,7 +289,7 @@ if (userType === "ORG" && orgName && !user.orgId) {
 //     html: buildOtpEmailHtml({
 //       name: user.name,
 //       otp,
-//       siteUrl: process.env.SITE_URL || "https://tokun.ai",
+//       siteUrl: process.env.SITE_URL || "https://tokun.world",
 //     }),
 //   });
 // } catch (emailErr) {
@@ -536,7 +536,7 @@ await sendEmail({
   html: buildOtpEmailHtml({
     name: user.name,
     otp,
-    siteUrl: process.env.SITE_URL || "https://tokun.ai",
+    siteUrl: process.env.SITE_URL || "https://tokun.world",
   }),
 
 });
@@ -551,7 +551,7 @@ await sendEmail({
 //     html: buildOtpEmailHtml({
 //       name: user.name,
 //       otp,
-//       siteUrl: process.env.SITE_URL || "https://tokun.ai",
+//       siteUrl: process.env.SITE_URL || "https://tokun.world",
 //     }),
 //   });
 // } catch (emailErr) {

@@ -22,7 +22,7 @@
 //       <div className="container mx-auto px-6 py-16">
 //         {/* Top brand row + nav */}
 //         <div className="flex flex-col items-center">
-//           {/* Brand: iconf + TOKUN.AI */}
+//           {/* Brand: iconf + TOKUN.WORLD */}
 //           <div className="flex items-center gap-3">
           
 //             <span
@@ -37,7 +37,7 @@
 //                 color: "#FFFFFF",
 //               }}
 //             >
-//               TOKUN.AI
+//               TOKUN.WORLD
 //             </span>
 //           </div>
 
@@ -172,7 +172,7 @@
 //               }}
 //               className="sm:text-[32px]"
 //             >
-//               TOKUN.AI
+//               TOKUN.WORLD
 //             </span>
 //           </div>
 
@@ -319,7 +319,7 @@ export default function Footer() {
               }}
               className="sm:text-[32px]"
             >
-              TOKUN.AI
+              TOKUN.WORLD
             </span>
           </Link>
 

@@ -168,7 +168,7 @@ export default function SupportPage() {
                       <div className="font-semibold">Email us</div>
 
                       <div className="text-white/70 text-sm mt-1">
-                        support@tokun.ai
+                        support@tokun.world
                       </div>
 
                       <p className="text-white/65 text-sm mt-2">
@@ -202,7 +202,7 @@ export default function SupportPage() {
                         "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)",
                     }}
                     onClick={() => {
-                      window.location.href = "mailto:support@tokun.ai";
+                      window.location.href = "mailto:support@tokun.world";
                     }}
                   >
                     Email Support

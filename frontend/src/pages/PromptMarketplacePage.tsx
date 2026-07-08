@@ -5844,6 +5844,180 @@ const RAZORPAY_KEY_ID = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || "rzp_t
 const authorInitials = (name?: string) =>
   (name || "U").trim().slice(0, 2).toUpperCase();
 
+/* ============================================================
+   VideoReelCard — Instagram Reels-style card for video prompts
+   ============================================================ */
+const DESC_LIMIT = 110;
+
+function VideoReelCard({
+  prompt,
+  isPurchased,
+  isOwn,
+  isPlaying,
+  onVideoPlay,
+  onAddToCart,
+  onBuyNow,
+  onOpenDetails,
+  onNavigateToProfile,
+}: {
+  prompt: any;
+  isPurchased: boolean;
+  isOwn: boolean;
+  isPlaying: boolean;
+  onVideoPlay: (id: string | number) => void;
+  onAddToCart: (id: string | number) => void;
+  onBuyNow: (p: any) => void;
+  onOpenDetails: (p: any) => void;
+  onNavigateToProfile: (id: string | null | undefined) => void;
+}) {
+  const [showPanel, setShowPanel] = useState(false);
+  const [showMore, setShowMore] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (!videoRef.current) return;
+    if (isPlaying) videoRef.current.play().catch(() => {});
+    else videoRef.current.pause();
+  }, [isPlaying]);
+
+  const desc = prompt.description || "";
+  const isLong = desc.length > DESC_LIMIT;
+  const displayDesc = showMore ? desc : desc.slice(0, DESC_LIMIT);
+
+  return (
+    <div className="reel-card" onClick={() => !showPanel && onVideoPlay(prompt.id)}>
+      {/* Video */}
+      <video
+        ref={videoRef}
+        src={prompt.videoUrl}
+        className="reel-card__video"
+        loop
+        muted
+        playsInline
+      />
+
+      {/* Watermark */}
+      {!isPurchased && (
+        <span className="reel-card__wm-center" aria-hidden="true">Tokun.world</span>
+      )}
+
+      {/* Play / Pause hint */}
+      {!isPlaying && !showPanel && (
+        <div className="reel-card__play-hint">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+        </div>
+      )}
+
+      {/* Top badges */}
+      <div className="reel-card__top">
+        <span className="reel-card__cat">{prompt.category?.toUpperCase()}</span>
+        {isPurchased
+          ? <span className="reel-card__badge reel-card__badge--owned">PURCHASED</span>
+          : <span className="reel-card__badge reel-card__badge--lock">
+              {prompt.exclusive ? "ONE-TIME" : "PURCHASE TO UNLOCK"}
+            </span>
+        }
+      </div>
+
+      {/* Bottom overlay */}
+      <div className="reel-card__bottom">
+        <div className="reel-card__author" onClick={(e) => { e.stopPropagation(); onNavigateToProfile(prompt.uploaderId); }}>
+          <span className="reel-card__avatar">{authorInitials(prompt.uploaderName)}</span>
+          <span className="reel-card__author-name">{prompt.uploaderName || "Unknown"}</span>
+          {prompt.rating != null && (
+            <span className="reel-card__rating">★ {prompt.rating.toFixed(1)}</span>
+          )}
+        </div>
+        <h3 className="reel-card__title">{prompt.title}</h3>
+        <button
+          className="reel-card__details-btn"
+          onClick={(e) => { e.stopPropagation(); setShowPanel(true); }}
+        >
+          Details ›
+        </button>
+      </div>
+
+      {/* Details slide-up panel */}
+      {showPanel && (
+        <div className="reel-card__panel" onClick={(e) => e.stopPropagation()}>
+          {/* Drag handle */}
+          <div className="reel-card__handle" onClick={() => setShowPanel(false)} />
+
+          <div className="reel-card__panel-scroll">
+            {/* Author row */}
+            <div className="reel-card__panel-author">
+              <span className="reel-card__avatar">{authorInitials(prompt.uploaderName)}</span>
+              <div>
+                <p className="reel-card__panel-name">{prompt.uploaderName || "Unknown"}</p>
+                {prompt.rating != null && (
+                  <p className="reel-card__panel-rating">★ {prompt.rating.toFixed(1)} rating</p>
+                )}
+              </div>
+              {isPurchased && (
+                <span className="reel-card__badge reel-card__badge--owned" style={{ marginLeft: "auto" }}>PURCHASED</span>
+              )}
+            </div>
+
+            {/* Title */}
+            <h2 className="reel-card__panel-title">{prompt.title}</h2>
+
+            {/* Description */}
+            <div className="reel-card__panel-desc">
+              <p>
+                {displayDesc}
+                {isLong && !showMore && "…"}
+              </p>
+              {isLong && (
+                <button
+                  className="reel-card__show-toggle"
+                  onClick={() => setShowMore(v => !v)}
+                >
+                  {showMore ? "Show less" : "Show more"}
+                </button>
+              )}
+            </div>
+
+            {/* Price row */}
+            <div className="reel-card__panel-price">
+              {prompt.isFree
+                ? <span className="reel-card__free-badge">FREE</span>
+                : <span className="reel-card__price-tag">₹{(prompt.price ?? 0).toFixed(2)}</span>
+              }
+            </div>
+
+            {/* Action buttons */}
+            {!isPurchased && !isOwn && !prompt.isFree && (
+              <div className="reel-card__actions">
+                <button
+                  className="reel-card__btn reel-card__btn--buy"
+                  onClick={() => { setShowPanel(false); onBuyNow(prompt); }}
+                >
+                  Buy Now
+                </button>
+                <button
+                  className="reel-card__btn reel-card__btn--cart"
+                  onClick={() => onAddToCart(prompt.id)}
+                >
+                  <ShoppingCart size={14} style={{ display: "inline", marginRight: 5, verticalAlign: "middle" }} />
+                  Add to Cart
+                </button>
+              </div>
+            )}
+            {(isPurchased || prompt.isFree) && (
+              <button
+                className="reel-card__btn reel-card__btn--view"
+                onClick={() => { setShowPanel(false); onOpenDetails(prompt); }}
+              >
+                View Full Prompt
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- Landing-style background (self-contained, no deps) ---------- */
 const BG_BITS = [
   { t: "{prompt}", x: "5%", y: "16%" },
@@ -5879,103 +6053,236 @@ const MarketplaceBackground = () => (
   </div>
 );
 
-/* ---------- Categories scroller (new design, same logic) ---------- */
-const CategoriesScroller: React.FC<{
-  selectedCategory: string;
-  setSelectedCategory: (c: string) => void;
-  categoriesData: { id: string; icon: React.ComponentType<any> }[];
-}> = ({ selectedCategory, setSelectedCategory, categoriesData }) => {
-  const railRef = useRef<HTMLDivElement>(null);
-  const slide = (dir: "left" | "right") => {
-    const rail = railRef.current;
-    if (!rail) return;
-    rail.scrollBy({ left: dir === "left" ? -260 : 260, behavior: "smooth" });
-  };
+/* ---------- Category animated preview themes ---------- */
+const CATEGORY_THEMES: Record<string, { bg: string; emoji: string; accent: string }> = {
+  "Coding":       { bg: "linear-gradient(135deg,#0f172a,#1e1b4b,#0c1445)", emoji: "💻", accent: "#06b6d4" },
+  "Design":       { bg: "linear-gradient(135deg,#2d1b69,#7c3aed,#4c0519)", emoji: "🎨", accent: "#f59e0b" },
+  "Writing":      { bg: "linear-gradient(135deg,#064e3b,#065f46,#047857)", emoji: "✍️", accent: "#10b981" },
+  "Marketing":    { bg: "linear-gradient(135deg,#7c2d12,#9a3412,#c2410c)", emoji: "📈", accent: "#f97316" },
+  "UI/UX":        { bg: "linear-gradient(135deg,#1e1b4b,#3730a3,#4338ca)", emoji: "🖥️", accent: "#818cf8" },
+  "Business":     { bg: "linear-gradient(135deg,#052e16,#166534,#15803d)", emoji: "💼", accent: "#4ade80" },
+  "Photography":  { bg: "linear-gradient(135deg,#1c1917,#44403c,#292524)", emoji: "📷", accent: "#a78bfa" },
+  "Video":        { bg: "linear-gradient(135deg,#450a0a,#7f1d1d,#991b1b)", emoji: "🎬", accent: "#fca5a5" },
+  "Music":        { bg: "linear-gradient(135deg,#2e1065,#4c1d95,#5b21b6)", emoji: "🎵", accent: "#c084fc" },
+  "Education":    { bg: "linear-gradient(135deg,#0c4a6e,#075985,#0369a1)", emoji: "📚", accent: "#38bdf8" },
+  "Social Media": { bg: "linear-gradient(135deg,#831843,#9d174d,#be185d)", emoji: "📱", accent: "#f9a8d4" },
+  "Finance":      { bg: "linear-gradient(135deg,#14532d,#166534,#065f46)", emoji: "💰", accent: "#86efac" },
+  "AI":           { bg: "linear-gradient(135deg,#1e1b4b,#312e81,#4338ca)", emoji: "🤖", accent: "#a5b4fc" },
+  "Productivity": { bg: "linear-gradient(135deg,#1c1917,#292524,#44403c)", emoji: "⚡", accent: "#fbbf24" },
+  "E-commerce":   { bg: "linear-gradient(135deg,#0c4a6e,#1e40af,#1d4ed8)", emoji: "🛒", accent: "#60a5fa" },
+  "Health":       { bg: "linear-gradient(135deg,#064e3b,#065f46,#0f766e)", emoji: "💚", accent: "#6ee7b7" },
+  "Travel":       { bg: "linear-gradient(135deg,#0c4a6e,#0369a1,#0284c7)", emoji: "✈️", accent: "#7dd3fc" },
+  "Food":         { bg: "linear-gradient(135deg,#7c2d12,#9a3412,#b45309)", emoji: "🍕", accent: "#fcd34d" },
+};
+const DEFAULT_THEME = { bg: "linear-gradient(135deg,#1e1b4b,#7c3aed,#1d4ed8)", emoji: "✨", accent: "#a78bfa" };
+
+const CODE_LINES = [
+  { text: 'const ai = new Model()', color: '#06b6d4' },
+  { text: 'import { GPT } from "ai"', color: '#818cf8' },
+  { text: 'function train(data) {', color: '#34d399' },
+  { text: '  return fit(data, 100)', color: '#94a3b8' },
+  { text: '} // epochs done', color: '#475569' },
+  { text: 'await model.predict(x)', color: '#06b6d4' },
+  { text: 'const loss = 0.0023', color: '#fbbf24' },
+  { text: 'export default model', color: '#818cf8' },
+  { text: 'npm run build:prod', color: '#34d399' },
+  { text: 'git push origin main', color: '#f97316' },
+];
+
+const CategoryPreviewAnim = ({ categoryId }: { categoryId: string }) => {
+  const theme = CATEGORY_THEMES[categoryId] || DEFAULT_THEME;
+
+  if (categoryId === "Coding") {
+    return (
+      <div className="mp-cat__anim mp-cat__anim--code" style={{ background: "#0d1117" }}>
+        <div className="mp-cat__code-scroll">
+          {CODE_LINES.map((line, i) => (
+            <div
+              key={i}
+              className="mp-cat__code-line"
+              style={{ color: line.color, animationDelay: `${i * 0.18}s` } as React.CSSProperties}
+            >
+              {line.text}
+            </div>
+          ))}
+        </div>
+        <div className="mp-cat__code-overlay" />
+      </div>
+    );
+  }
 
   return (
-    <div className="mp-cats">
-      <button onClick={() => slide("left")} className="mp-cats__arrow" aria-label="Scroll categories left">
-        <ChevronLeft className="w-5 h-5" />
-      </button>
-
-      <div className="mp-cats__viewport">
-        <div ref={railRef} className="mp-cats__rail">
-          {categoriesData.map(({ id, icon: Icon }) => {
-            const isActive = selectedCategory === id;
-            return (
-              <button
-                key={id}
-                onClick={() => setSelectedCategory(id)}
-                aria-pressed={isActive}
-                className={`mp-cat${isActive ? " mp-cat--active" : ""}`}
-              >
-                <Icon className="h-4 w-4" />
-                <span>{id}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <button onClick={() => slide("right")} className="mp-cats__arrow" aria-label="Scroll categories right">
-        <ChevronRight className="w-5 h-5" />
-      </button>
+    <div className="mp-cat__anim" style={{ background: theme.bg }}>
+      <div className="mp-cat__anim-glow" style={{ background: `radial-gradient(circle at 50% 40%,${theme.accent}44 0%,transparent 70%)` }} />
+      <span className="mp-cat__anim-emoji">{theme.emoji}</span>
+      {[0,1,2,3,4,5].map(i => (
+        <span
+          key={i}
+          className="mp-cat__particle"
+          style={{ left: `${10 + i * 15}%`, animationDelay: `${i * 0.28}s`, background: theme.accent } as React.CSSProperties}
+        />
+      ))}
     </div>
   );
 };
 
-/* ---------- Pill dropdown (new design, same logic) ---------- */
-const PillDropdown = ({
+/* ---------- Segmented tab filter (replaces PillDropdown) ---------- */
+const SegmentedTabs = ({
   label,
   value,
   onChange,
   options,
-  positionStyle,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options: { label: string; value: string; icon?: React.ComponentType<any> }[];
-  positionStyle?: React.CSSProperties;
-}) => {
-  const [open, setOpen] = useState(false);
+}) => (
+  <div className="mp-segtabs">
+    <span className="mp-segtabs__label">{label}</span>
+    <div className="mp-segtabs__track">
+      {options.map((opt) => {
+        const Icon = opt.icon;
+        const active = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            className={`mp-segtabs__tab${active ? " mp-segtabs__tab--on" : ""}`}
+          >
+            {Icon && <Icon className="h-3.5 w-3.5" />}
+            <span>{opt.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  </div>
+);
+
+/* ---------- Categories scroller with hover-video + Select Categories ---------- */
+const CategoriesScroller: React.FC<{
+  selectedCategory: string;
+  setSelectedCategory: (c: string) => void;
+  categoriesData: { id: string; icon: React.ComponentType<any>; previewImage?: string; previewVideo?: string }[];
+  onOpenModal: () => void;
+  selectedCategories: string[];
+  onClearCategories: () => void;
+  allPrompts: { id: string; category: string; videoUrl?: string; imageUrl?: string }[];
+}> = ({ selectedCategory, setSelectedCategory, categoriesData, onOpenModal, selectedCategories, onClearCategories, allPrompts }) => {
+  const railRef  = useRef<HTMLDivElement>(null);
+  const rowRef   = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [hoveredId,    setHoveredId]    = useState<string | null>(null);
+  const [previewLeft,  setPreviewLeft]  = useState(0);
+  const [previewMedia, setPreviewMedia] = useState<{ type: "video"|"image"|"animation"; src: string } | null>(null);
+
+  const slide = (dir: "left" | "right") => {
+    railRef.current?.scrollBy({ left: dir === "left" ? -260 : 260, behavior: "smooth" });
+  };
+
+  const resolveUrl = (src: string) =>
+    src.startsWith("http") ? src : `${API_BASE}${src.startsWith("/") ? "" : "/"}${src}`;
+
+  const getPreview = (id: string, catPreviewVideo?: string, catPreviewImage?: string) => {
+    if (id === "All") return null;
+    if (catPreviewVideo) return { type: "video" as const, src: catPreviewVideo };
+    const catLower = id.toLowerCase();
+    const match = allPrompts.find(p => p.category?.toLowerCase() === catLower && (p.videoUrl || p.imageUrl));
+    if (match?.videoUrl) return { type: "video" as const, src: match.videoUrl };
+    if (catPreviewImage) return { type: "image" as const, src: catPreviewImage };
+    if (match?.imageUrl) return { type: "image" as const, src: match.imageUrl };
+    return { type: "animation" as const, src: "" };
+  };
+
+  const handleEnter = (
+    id: string,
+    media: { type: "video"|"image"|"animation"; src: string },
+    e: React.MouseEvent<HTMLDivElement>
+  ) => {
+    const pillRect = e.currentTarget.getBoundingClientRect();
+    const rowRect  = rowRef.current?.getBoundingClientRect();
+    setPreviewLeft(rowRect ? pillRect.left - rowRect.left + pillRect.width / 2 : pillRect.width / 2);
+    setPreviewMedia(media);
+    setHoveredId(id);
+    if (media.type === "video") {
+      setTimeout(() => {
+        if (videoRef.current) { videoRef.current.currentTime = 0; videoRef.current.play().catch(() => {}); }
+      }, 20);
+    }
+  };
+
+  const handleLeave = () => {
+    setHoveredId(null);
+    if (videoRef.current) { videoRef.current.pause(); videoRef.current.currentTime = 0; }
+  };
 
   return (
-    <div className="mp-pill" style={positionStyle}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        className="mp-pill__trigger"
-      >
-        <span className="mp-pill__label">{label}</span>
-        <ChevronDown size={18} className={`mp-pill__caret${open ? " mp-pill__caret--open" : ""}`} />
-      </button>
+    <div ref={rowRef} className="mp-cats-row">
 
-      {open && (
-        <div role="listbox" className="mp-pill__menu">
-          {options.map((opt) => {
-            const Icon = opt.icon;
-            const selected = opt.value === value;
-            return (
-              <button
-                key={opt.value}
-                role="option"
-                aria-selected={selected}
-                onClick={() => {
-                  onChange(opt.value);
-                  setOpen(false);
-                }}
-                className={`mp-pill__option${selected ? " mp-pill__option--selected" : ""}`}
-              >
-                {Icon ? <Icon className="h-4 w-4" /> : null}
-                <span className="truncate">{opt.label}</span>
-              </button>
-            );
-          })}
+      {/* Preview card — rendered OUTSIDE the overflow:hidden viewport so it's never clipped */}
+      {hoveredId && previewMedia && (
+        <div className="mp-cat__preview" style={{ left: previewLeft }}>
+          {previewMedia.type === "video" ? (
+            <video ref={videoRef} src={resolveUrl(previewMedia.src)} muted loop playsInline autoPlay className="mp-cat__preview-video" />
+          ) : previewMedia.type === "image" ? (
+            <img src={resolveUrl(previewMedia.src)} alt={hoveredId} className="mp-cat__preview-video" />
+          ) : (
+            <CategoryPreviewAnim categoryId={hoveredId} />
+          )}
+          <span className="mp-cat__preview-label">{hoveredId}</span>
         </div>
       )}
+
+      {/* Scroller */}
+      <div className="mp-cats">
+        <button onClick={() => slide("left")} className="mp-cats__arrow" aria-label="Scroll left">
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+
+        <div className="mp-cats__viewport">
+          <div ref={railRef} className="mp-cats__rail">
+            {categoriesData.map(({ id, icon: Icon, previewVideo, previewImage }) => {
+              const isActive = selectedCategory === id;
+              const preview  = getPreview(id, previewVideo, previewImage);
+              return (
+                <div
+                  key={id}
+                  className="mp-cat-wrap"
+                  onMouseEnter={preview ? (e) => handleEnter(id, preview, e) : undefined}
+                  onMouseLeave={preview ? handleLeave : undefined}
+                >
+                  <button
+                    onClick={() => setSelectedCategory(id)}
+                    aria-pressed={isActive}
+                    className={`mp-cat${isActive ? " mp-cat--active" : ""}`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span>{id}</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <button onClick={() => slide("right")} className="mp-cats__arrow" aria-label="Scroll right">
+          <ChevronRight className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Select Categories — pinned right */}
+      <div className="mp-cats__actions">
+        <button type="button" onClick={onOpenModal} className="mp-catbar__btn">
+          <SlidersHorizontal className="h-4 w-4" />
+          <span>Select Categories{selectedCategories.length > 0 ? ` (${selectedCategories.length})` : ""}</span>
+        </button>
+        {selectedCategories.length > 0 && (
+          <button type="button" onClick={onClearCategories} className="mp-catbar__clear">
+            Clear
+          </button>
+        )}
+      </div>
     </div>
   );
 };
@@ -5996,7 +6303,7 @@ const [retryPrompt, setRetryPrompt] = useState<Prompt | null>(null);
   // NEW: dropdown filters
   const [fileType, setFileType] = useState<FileType>("all");
   const [licenseType, setLicenseType] = useState<LicenseType>("all");
-const [apiCategories, setApiCategories] = useState<string[]>([]);
+const [apiCategories, setApiCategories] = useState<{ name: string; previewImage?: string; previewVideo?: string }[]>([]);
   const [playingVideo, setPlayingVideo] = useState<string | number | null>(null);
 
   const [prompts, setPrompts] = useState<Prompt[]>([]);
@@ -6030,10 +6337,12 @@ const [draftCategories, setDraftCategories] = useState<string[]>([]);
 
 
 const categoriesData = [
-  { id: "All", icon: Sparkles },
-  ...apiCategories.map((name) => ({
-    id: name,
+  { id: "All", icon: Sparkles, previewImage: "", previewVideo: "" },
+  ...apiCategories.map((cat) => ({
+    id: cat.name,
     icon: Sparkles,
+    previewImage: cat.previewImage || "",
+    previewVideo: cat.previewVideo || "",
   })),
 ];
 const categoryOptions = categoriesData.filter((item) => item.id !== "All");
@@ -6144,7 +6453,11 @@ const [buyerName, setBuyerName] = useState<string>("");
       const data = await res.json();
 
       if (res.ok && data?.success) {
-        setApiCategories(data.categories.map((c: any) => c.name));
+        setApiCategories(data.categories.map((c: any) => ({
+          name: c.name,
+          previewImage: c.previewImage || "",
+          previewVideo: c.previewVideo || "",
+        })));
       }
     } catch (err) {
       console.error("Failed to load categories", err);
@@ -6590,7 +6903,8 @@ const savePromptToCollections = async ({
         <div className="marketplace__head">
           <h1 className="marketplace__title">Prompt Marketplace</h1>
           <p className="marketplace__subtitle">
-            Premium prompts from creators worldwide.
+            Discover, buy, and sell high-quality AI prompts crafted by creators worldwide.<br />
+            Save hours of trial and error with prompts that actually work, right out of the box.
           </p>
         </div>
 
@@ -6619,77 +6933,41 @@ const savePromptToCollections = async ({
             </div>
           </div>
 
-          {/* File type + License type pills */}
+          {/* Format + License segmented tabs */}
           <div className="marketplace__filters">
-            <PillDropdown
-              label={
-                fileType === "all"
-                  ? "File type"
-                  : fileType === "video"
-                  ? "Video"
-                  : fileType === "image"
-                  ? "Image"
-                  : "Code"
-              }
+            <SegmentedTabs
+              label="Format"
               value={fileType}
               onChange={(v) => setFileType(v as FileType)}
               options={[
-                { label: "All type", value: "all" },
+                { label: "All", value: "all" },
                 { label: "Video", value: "video", icon: Video },
                 { label: "Image", value: "image", icon: ImageIcon },
                 { label: "Code", value: "code", icon: Code2 },
               ]}
             />
-
-            <PillDropdown
-              label={
-                licenseType === "all"
-                  ? "License type"
-                  : licenseType === "free"
-                  ? "Free"
-                  : licenseType === "premium"
-                  ? "Premium"
-                  : "One-time Purchase"
-              }
+            <SegmentedTabs
+              label="License"
               value={licenseType}
               onChange={(v) => setLicenseType(v as LicenseType)}
               options={[
-                { label: "All type", value: "all" },
+                { label: "All", value: "all" },
                 { label: "Free", value: "free" },
                 { label: "Premium", value: "premium" },
-                { label: "One-time Purchase", value: "one-time" },
+                { label: "One-time", value: "one-time" },
               ]}
             />
           </div>
 
-          {/* Select categories + chips + scroller */}
-          <div id="marketplace-bg-end" className="marketplace__controls" style={{ gap: 16, margin: 0 }}>
-            <div className="mp-catbar">
-              <button type="button" onClick={openCategoriesModal} className="mp-catbar__btn">
-                <SlidersHorizontal className="h-4 w-4" />
-                <span>
-                  Select Categories
-                  {selectedCategories.length > 0 ? ` (${selectedCategories.length})` : ""}
-                </span>
-              </button>
-
-              {selectedCategories.length > 0 && (
-                <button type="button" onClick={clearCategorySelection} className="mp-catbar__clear">
-                  Clear Selection
-                </button>
-              )}
-            </div>
-
+          {/* Categories scroller + Select Categories (built into component) */}
+          <div id="marketplace-bg-end">
             {selectedCategories.length > 0 && (
-              <div className="mp-selected-chips">
+              <div className="mp-selected-chips" style={{ justifyContent: "center", marginBottom: 10 }}>
                 {selectedCategories.map((category) => (
-                  <span key={category} className="mp-selected-chip">
-                    {category}
-                  </span>
+                  <span key={category} className="mp-selected-chip">{category}</span>
                 ))}
               </div>
             )}
-
             <CategoriesScroller
               categoriesData={categoriesData}
               selectedCategory={selectedCategory}
@@ -6697,6 +6975,10 @@ const savePromptToCollections = async ({
                 setSelectedCategories([]);
                 setSelectedCategory(category);
               }}
+              onOpenModal={openCategoriesModal}
+              selectedCategories={selectedCategories}
+              onClearCategories={clearCategorySelection}
+              allPrompts={prompts}
             />
           </div>
         </div>
@@ -6712,6 +6994,28 @@ const savePromptToCollections = async ({
               {filteredPrompts.map((prompt) => {
                 const mediaKind = decideMediaType(prompt); // "video" | "image"
                 const isPurchased = purchasedPrompts.includes(String(prompt.id));
+
+                /* ── Reel card for video prompts ── */
+                if (mediaKind === "video") {
+                  return (
+                    <VideoReelCard
+                      key={prompt.id}
+                      prompt={prompt}
+                      isPurchased={isPurchased}
+                      isOwn={isOwnPrompt(prompt)}
+                      isPlaying={playingVideo === prompt.id}
+                      onVideoPlay={handleVideoPlay}
+                      onAddToCart={(id) => {
+                        addToCart(String(id));
+                        toast({ title: "Added to Cart", description: `"${prompt.title}" was added.` });
+                      }}
+                      onBuyNow={(p) => handlePurchase(p as Prompt)}
+                      onOpenDetails={(p) => { setDetailsPrompt(p); setDetailsOpen(true); }}
+                      onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
+                    />
+                  );
+                }
+
                 return (
                   <div
                     key={prompt.id}

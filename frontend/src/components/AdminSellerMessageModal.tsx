@@ -30,30 +30,33 @@ type AdminChatMessage = {
 
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5002").replace(/\/$/, "");
 
-const getToken = () => {
+// ✅ ADMIN token ko PRIORITY do — warna normal user (jaise rasu) ka "token"
+// pehle mil jaata tha aur admin request user ke roop mein jaati thi.
+const getAdminToken = () => {
   const token =
+    localStorage.getItem("tokun_admin_token") ||
+    localStorage.getItem("adminToken") ||
     localStorage.getItem("token") ||
     localStorage.getItem("tokun_token") ||
     localStorage.getItem("accessToken") ||
     localStorage.getItem("authToken") ||
-    localStorage.getItem("adminToken") ||
-    localStorage.getItem("tokun_admin_token") ||
     "";
 
   return token.replace(/^Bearer\s+/i, "").trim();
 };
 
 const authHeaders = (): Record<string, string> => {
-  const token = getToken();
+  const token = getAdminToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
-const getCurrentUserId = () => {
+// ✅ Admin ki apni id — token ke saath consistent rakho
+const getAdminUserId = () => {
   return (
+    localStorage.getItem("tokun_admin_id") ||
+    localStorage.getItem("adminId") ||
     localStorage.getItem("userId") ||
     localStorage.getItem("tokun_user_id") ||
-    localStorage.getItem("adminId") ||
-    localStorage.getItem("tokun_admin_id") ||
     ""
   );
 };
@@ -107,6 +110,9 @@ export default function AdminSellerMessageModal({
   const loadConversation = async () => {
     if (!seller?.id) return;
 
+    // 🔎 debug: kaunsi id ja rahi hai + admin id
+    console.log("📤 messaging seller.id =", seller.id, "| adminId =", getAdminUserId());
+
     try {
       setLoading(true);
       setError(null);
@@ -148,8 +154,8 @@ export default function AdminSellerMessageModal({
       transports: ["websocket"],
       withCredentials: true,
       auth: {
-        token: getToken(),
-        userId: getCurrentUserId(),
+        token: getAdminToken(),
+        userId: getAdminUserId(),
       },
     });
 
@@ -307,7 +313,15 @@ export default function AdminSellerMessageModal({
 
                 <div className="space-y-6">
                   {sortedMessages.map((m) => {
-                    const mine = !!m.isMine || m.senderRole === "ADMIN";
+                   const myId = String(getAdminUserId() || "");
+const msgSenderId = String(
+  m.senderId || (m as any)?.sender?._id || (m as any)?.sender || ""
+);
+const mine =
+  (myId && msgSenderId && msgSenderId === myId) ||
+  !!m.isMine ||
+  m.senderRole === "ADMIN" ||
+  (m as any)?.senderType === "admin";
                     const text = String(m.text || "").trim();
 
                     return (

@@ -1,5 +1,5 @@
 // // // // // ============================================================
-// // // // // TOKUN.AI — Globe + FAQ + Ticker Components (MOBILE FIXED)
+// // // // // TOKUN.WORLD — Globe + FAQ + Ticker Components (MOBILE FIXED)
 // // // // // ============================================================
 
 // // // // import { useRef, useEffect, useState, useCallback } from "react";
@@ -398,7 +398,7 @@
 
 // // // //       <h2 className="text-4xl md:text-5xl font-bold mb-4">Loved across the globe</h2>
 // // // //       <p className="text-white/70 text-lg mb-10 max-w-xl mx-auto">
-// // // //         Thousands of prompt engineers from every corner of the world trust Tokun.AI daily.
+// // // //         Thousands of prompt engineers from every corner of the world trust Tokun.WORLD daily.
 // // // //       </p>
 
 // // // //       {/*
@@ -549,7 +549,7 @@
 // // // // </div>
 
 // // // //       <h2 className="text-4xl md:text-5xl font-bold text-center mb-4">Got questions?</h2>
-// // // //       <p className="text-white/70 text-lg text-center mb-12">Everything you need to know about Tokun.AI</p>
+// // // //       <p className="text-white/70 text-lg text-center mb-12">Everything you need to know about Tokun.WORLD</p>
 
 // // // //       <div style={{ maxWidth: 740, margin: "0 auto", padding: "0 16px" }}>
 // // // //         {FAQ_ITEMS.map((item, i) => {
@@ -636,7 +636,7 @@
 
 
 // // // // ============================================================
-// // // // TOKUN.AI — Globe + FAQ + Ticker Components (3D GLB VERSION)
+// // // // TOKUN.WORLD — Globe + FAQ + Ticker Components (3D GLB VERSION)
 // // // // ============================================================
 
 // // // import { useEffect, useRef, useState, Suspense } from "react";
@@ -866,7 +866,7 @@
 // // //       </h2>
 
 // // //       <p className="text-white/70 text-lg mb-6 max-w-xl mx-auto">
-// // //         Thousands of prompt engineers from every corner of the world trust Tokun.AI daily.
+// // //         Thousands of prompt engineers from every corner of the world trust Tokun.WORLD daily.
 // // //       </p>
 
 // // //    <div className="relative mx-auto w-full max-w-[620px]">
@@ -1045,7 +1045,7 @@
 
 // // //       <h2 className="text-4xl md:text-5xl font-bold text-center mb-4">Got questions?</h2>
 // // //       <p className="text-white/70 text-lg text-center mb-12">
-// // //         Everything you need to know about Tokun.AI
+// // //         Everything you need to know about Tokun.WORLD
 // // //       </p>
 
 // // //       <div style={{ maxWidth: 740, margin: "0 auto", padding: "0 16px" }}>
@@ -1144,7 +1144,7 @@
 
 
 // // // // ============================================================
-// // // // TOKUN.AI — Globe + FAQ + Ticker Components (FINAL 3D GLOBE)
+// // // // TOKUN.WORLD — Globe + FAQ + Ticker Components (FINAL 3D GLOBE)
 // // // // ============================================================
 
 // // // import { Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -1479,7 +1479,7 @@
 // // //       </h2>
 
 // // //       <p className="text-white/70 text-lg mb-6 max-w-xl mx-auto">
-// // //         Thousands of prompt engineers from every corner of the world trust Tokun.AI daily.
+// // //         Thousands of prompt engineers from every corner of the world trust Tokun.WORLD daily.
 // // //       </p>
 
 // // //       <div className="relative mx-auto w-full max-w-[760px]">
@@ -1659,7 +1659,7 @@
 
 // // //       <h2 className="text-4xl md:text-5xl font-bold text-center mb-4">Got questions?</h2>
 // // //       <p className="text-white/70 text-lg text-center mb-12">
-// // //         Everything you need to know about Tokun.AI
+// // //         Everything you need to know about Tokun.WORLD
 // // //       </p>
 
 // // //       <div style={{ maxWidth: 740, margin: "0 auto", padding: "0 16px" }}>
@@ -1754,7 +1754,7 @@
 
 
 // // // ============================================================
-// // // TOKUN.AI — Globe + FAQ + Ticker Components (FINAL 3D GLOBE WITH ANCHORED REVIEWS)
+// // // TOKUN.WORLD — Globe + FAQ + Ticker Components (FINAL 3D GLOBE WITH ANCHORED REVIEWS)
 // // // ============================================================
 
 // // import { Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -2389,7 +2389,7 @@
 // //       </h2>
 
 // //       <p className="text-white/70 text-lg mb-6 max-w-xl mx-auto">
-// //         Thousands of prompt engineers from every corner of the world trust Tokun.AI daily.
+// //         Thousands of prompt engineers from every corner of the world trust Tokun.WORLD daily.
 // //       </p>
 
 // //       <div className="relative mx-auto w-full max-w-[710px]">
@@ -2529,7 +2529,7 @@
 
 // //       <h2 className="text-4xl md:text-5xl font-bold text-center mb-4">Got questions?</h2>
 // //       <p className="text-white/70 text-lg text-center mb-12">
-// //         Everything you need to know about Tokun.AI
+// //         Everything you need to know about Tokun.WORLD
 // //       </p>
 
 // //       <div style={{ maxWidth: 740, margin: "0 auto", padding: "0 16px" }}>
@@ -2625,7 +2625,7 @@
 
 
 // // ============================================================
-// // TOKUN.AI — Globe + FAQ + Ticker Components (FINAL CORRECTED)
+// // TOKUN.WORLD — Globe + FAQ + Ticker Components (FINAL CORRECTED)
 // // ============================================================
 
 // import { Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -3207,7 +3207,7 @@
 //       </h2>
 
 //       <p className="text-white/70 text-lg mb-6 max-w-xl mx-auto">
-//         Thousands of prompt engineers from every corner of the world trust Tokun.AI daily.
+//         Thousands of prompt engineers from every corner of the world trust Tokun.WORLD daily.
 //       </p>
 
 //       <div
@@ -3368,7 +3368,7 @@
 
 //       <h2 className="text-4xl md:text-5xl font-bold text-center mb-4">Got questions?</h2>
 //       <p className="text-white/70 text-lg text-center mb-12">
-//         Everything you need to know about Tokun.AI
+//         Everything you need to know about Tokun.WORLD
 //       </p>
 
 //       <div style={{ maxWidth: 740, margin: "0 auto", padding: "0 16px" }}>
@@ -3462,7 +3462,7 @@
 
 
 // ============================================================
-// TOKUN.AI — Globe + FAQ + Ticker Components
+// TOKUN.WORLD — Globe + FAQ + Ticker Components
 // ============================================================
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -4063,7 +4063,7 @@ export function GlobeSection() {
 
       <h2 className="text-4xl md:text-5xl font-bold mb-4">Loved across the globe</h2>
       <p className="text-white/70 text-lg mb-6 max-w-xl mx-auto">
-        Thousands of prompt engineers from every corner of the world trust Tokun.AI daily.
+        Thousands of prompt engineers from every corner of the world trust Tokun.WORLD daily.
       </p>
 
       {/* Globe wrapper — koi background nahi, sirf subtle glow */}
@@ -4194,7 +4194,7 @@ export function FAQSection() {
 
       <h2 className="text-4xl md:text-5xl font-bold text-center mb-4">Got questions?</h2>
       <p className="text-white/70 text-lg text-center mb-12">
-        Everything you need to know about Tokun.AI
+        Everything you need to know about Tokun.WORLD
       </p>
 
       <div style={{ maxWidth: 740, margin: "0 auto", padding: "0 16px" }}>

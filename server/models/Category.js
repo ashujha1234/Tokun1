@@ -6,6 +6,8 @@ const CategorySchema = new Schema(
   {
     name: { type: String, required: true, unique: true, trim: true },
     description: { type: String, default: "" },
+    previewImage: { type: String, default: "" },
+    previewVideo: { type: String, default: "" },
   },
   { timestamps: true }
 );

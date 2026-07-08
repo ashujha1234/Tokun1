@@ -1,15 +1,7 @@
-// // routes/adminRoutes.js (protected! ensure only you can hit this)
-// const express = require("express");
-// const User = require("../models/User");
-// const { getISTDateString } = require("../utils/quota");
-// const router = express.Router();
-
- 
-// module.exports = router;
-
-
+// routes/adminRoutes.js
 const express = require("express");
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const AdminUser = require("../models/AdminUser");
 
 const router = express.Router();
@@ -23,7 +15,9 @@ router.post("/auth/login", async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ success: false, error: "Email and password required" });
+      return res
+        .status(400)
+        .json({ success: false, error: "Email and password required" });
     }
 
     const emailNorm = String(email).trim().toLowerCase();
@@ -41,12 +35,22 @@ router.post("/auth/login", async (req, res) => {
     admin.lastLoginAt = new Date();
     await admin.save();
 
-    console.log("✅ ADMIN LOGIN SUCCESS:", { email: admin.email, id: admin._id.toString() });
+    // ✅ Admin JWT — "type: admin" se requireAuth ise AdminUser samajhta hai
+    const token = jwt.sign(
+      { sub: admin._id.toString(), type: "admin" },
+      process.env.JWT_SECRET || "devsecret",
+      { expiresIn: "7d" }
+    );
 
-    // For now returning simple response (you can add JWT later)
+    console.log("✅ ADMIN LOGIN SUCCESS:", {
+      email: admin.email,
+      id: admin._id.toString(),
+    });
+
     return res.json({
       success: true,
       message: "Admin login successful",
+      token, // 👈 frontend isse localStorage mein save karega
       admin: {
         id: admin._id,
         email: admin.email,

@@ -1845,7 +1845,7 @@ const openCheckout = ({
     const rzp = new (window as any).Razorpay({
       key,
       order_id: order.id,
-      name: "Tokun.ai",
+      name: "Tokun.world",
       description: "Subscription Payment",
       prefill: {
         name: user?.name || "Tokun User",

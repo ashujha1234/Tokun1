@@ -1,4 +1,4 @@
-//  function buildOtpEmailHtml({ name = "there", otp, siteUrl = "https://tokun.ai" }) {
+//  function buildOtpEmailHtml({ name = "there", otp, siteUrl = "https://tokun.world" }) {
 //   const firstName = (name || "there").split(" ")[0];
 //   const digits = String(otp).split(""); // supports 4 or 6 digits
 

@@ -30,6 +30,7 @@ import { CartProvider } from "@/contexts/CartContext";
 import ChatPage from "./pages/ChatPage";
 import AdminLogin from "./pages/AdminLogin";
 import Dashboard from "@/pages/Dashboard";
+import MyFeedbackPage from "@/pages/MyFeedbackPage";
 import AboutPage from "@/pages/AboutPage";
 import SupportPage from "@/pages/SupportPage";
 import CareersPage from "@/pages/CareersPage";
@@ -193,6 +194,7 @@ export default function App() {
 <Route path="/admin-login" element={< AdminLogin/>} />
 <Route path="/admin-forgot-password" element={<AdminForgotPassword />} />
 <Route path="/admin/dashboard" element={<Dashboard />} />
+<Route path="/my-feedback" element={<MyFeedbackPage />} />
 <Route path="/admin/escrow" element={<EscrowAdminDashboard />} />
 
 <Route

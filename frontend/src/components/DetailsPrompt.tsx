@@ -711,6 +711,60 @@ const isOwnPrompt =
                   playsInline
                 />
               )}
+
+              {/* Watermark overlay — visible only when not purchased */}
+              {!owned && (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    pointerEvents: "none",
+                    overflow: "hidden",
+                    zIndex: 20,
+                    isolation: "isolate",
+                  }}
+                >
+                  {Array.from({ length: 20 }).map((_, i) => (
+                    <span
+                      key={i}
+                      style={{
+                        position: "absolute",
+                        left: `${(i % 4) * 28 - 5}%`,
+                        top: `${Math.floor(i / 4) * 22 + 5}%`,
+                        transform: "rotate(-30deg)",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        letterSpacing: "0.06em",
+                        color: "rgba(255,255,255,0.22)",
+                        whiteSpace: "nowrap",
+                        userSelect: "none",
+                        fontFamily: "Arial, sans-serif",
+                      }}
+                    >
+                      Tokun.world
+                    </span>
+                  ))}
+                  <span
+                    style={{
+                      position: "absolute",
+                      bottom: 10,
+                      right: 14,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      letterSpacing: "0.08em",
+                      color: "rgba(255,255,255,0.65)",
+                      background: "rgba(0,0,0,0.4)",
+                      padding: "3px 8px",
+                      borderRadius: 6,
+                      userSelect: "none",
+                      fontFamily: "Arial, sans-serif",
+                      backdropFilter: "blur(4px)",
+                    }}
+                  >
+                    © Tokun.world
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="absolute bottom-3 left-4 flex items-center gap-2 text-sm text-white/80">
@@ -948,7 +1002,7 @@ const isOwnPrompt =
     price={prompt?.price || 0}
     thumbnail={prompt?.imageUrl || ""}
     userType={user?.userType === "TM" ? "TM" : "ORG"} // "TM" for team members, "ORG" for org users
-    role={user?.role || ""} // 👈 IMPORTANT: pass this
+    role={(user?.role || "") as "TM" | "Owner" | "Admin"}
     ownerEmail={
       user?.userType === "TM"
         ? prompt?.ownerEmail || "" // for team member show org owner's email

@@ -325,10 +325,10 @@
 // //           <p className="mt-6 text-[16px]">
 // //             Having trouble logging in? Contact us at{" "}
 // //             <a
-// //               href="mailto:support@tokun.ai"
+// //               href="mailto:support@tokun.world"
 // //               className="text-transparent bg-clip-text bg-gradient-to-r from-[#7D4DFF] via-[#A24BFF] to-[#FF2CC3] underline"
 // //             >
-// //               support@tokun.ai
+// //               support@tokun.world
 // //             </a>
 // //           </p>
 // //         </div>
@@ -738,10 +738,10 @@
 //               Having trouble logging in? Contact us at
 //               <br />
 //               <a
-//                 href="mailto:support@tokun.ai"
+//                 href="mailto:support@tokun.world"
 //                 className="text-transparent bg-clip-text bg-gradient-to-r from-[#FF14EF] to-[#A855F7]"
 //               >
-//                 support@tokun.ai
+//                 support@tokun.world
 //               </a>
 //             </p>
 //           </div>
@@ -812,10 +812,10 @@
 //             <p className="mt-6 text-[16px]">
 //               Having trouble logging in? Contact us at{" "}
 //               <a
-//                 href="mailto:support@tokun.ai"
+//                 href="mailto:support@tokun.world"
 //                 className="text-transparent bg-clip-text bg-gradient-to-r from-[#7D4DFF] via-[#A24BFF] to-[#FF2CC3] underline"
 //               >
-//                 support@tokun.ai
+//                 support@tokun.world
 //               </a>
 //             </p>
 //           </div>
@@ -1274,10 +1274,10 @@ setSecondsLeft(50);
       Having trouble logging in? Contact us at
       <br />
       
-       <a href="mailto:support@tokun.ai"
+       <a href="mailto:support@tokun.world"
         className="text-transparent bg-clip-text bg-gradient-to-r from-[#FF14EF] to-[#A855F7]"
       >
-        support@tokun.ai
+        support@tokun.world
       </a>
     </p>
   </div>
@@ -1352,10 +1352,10 @@ setSecondsLeft(50);
           <p className="mt-6 text-[16px]">
             Having trouble logging in? Contact us at{" "}
             <a
-              href="mailto:support@tokun.ai"
+              href="mailto:support@tokun.world"
               className="text-transparent bg-clip-text bg-gradient-to-r from-[#7D4DFF] via-[#A24BFF] to-[#FF2CC3] underline"
             >
-              support@tokun.ai
+              support@tokun.world
             </a>
           </p>
         </div>
