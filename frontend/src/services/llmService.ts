@@ -4542,8 +4542,7 @@
 // export const llmService = new LLMService();
 
 
-
-
+// src/services/llmService.ts
 export type LLMProvider = string;
 
 export interface LLMConfig {
@@ -4564,21 +4563,12 @@ export interface TokenizerResponse {
   words: number;
 }
 
-// export interface OptimizeResponse {
-//   optimizedText: string;
-//   tokens: number;
-//   words: number;
-//   suggestions: string[];
-//   usage?: OptimizeUsage;
-// }
-
-
 export interface OptimizeResponse {
   optimizedText: string;
   tokens: number;
   words: number;
   suggestions: string[];
-  steps?: { title: string; content: string }[];  // 👈 add karo
+  steps?: { title: string; content: string }[];
   usage?: OptimizeUsage;
 }
 
@@ -4587,15 +4577,56 @@ export interface UserTokenUsage {
   tokenLimit: number;
 }
 
+// ── Smart Mode types ──────────────────────────────────────────────────────────
+export interface SubcategoryChip {
+  id: string;
+  label: string;
+}
+
+export interface DetectionResult {
+  domainId: string;
+  categoryLabel: string;
+  skillLabel: string;
+  confidence: number;
+  subcategories: SubcategoryChip[];
+  matchedKeywords: string[];
+  extractedConstraints?: Record<string, string>;
+  suggestDeepMode?: boolean;
+}
+
+export interface DeepQuestion {
+  id: string;
+  question: string;
+  type: "text" | "select" | "textarea";
+  placeholder?: string;
+  options?: string[];
+}
+
+export interface SmartModeContext {
+  domainId?: string;
+  subcategoryId?: string;
+  subcategoryLabel?: string;
+  deepAnswers?: Record<string, string>;
+  skillMode?: boolean;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
 const DEFAULT_MODEL_BY_PROVIDER: Record<LLMProvider, string> = {
-  openai: "gpt-4o-mini",
+  openai:     "gpt-4o-mini",
   perplexity: "llama-3.1-sonar-small-128k-online",
-  anthropic: "claude-instant",
-  google: "gemini-pro",
-  other: "generic",
+  anthropic:  "claude-instant",
+  google:     "gemini-pro",
+  other:      "generic",
 };
+
+const getToken = () =>
+  localStorage.getItem("auth_token") ||
+  sessionStorage.getItem("auth_token") ||
+  localStorage.getItem("token") ||
+  sessionStorage.getItem("token") ||
+  "";
 
 class LLMService {
   private config: LLMConfig = {
@@ -4610,32 +4641,28 @@ class LLMService {
 
   private loadConfig() {
     const savedProvider = localStorage.getItem("llm_provider") || "openai";
-    const savedApiKey = localStorage.getItem(`${savedProvider}_key`);
-    const savedModel =
+    const savedApiKey   = localStorage.getItem(`${savedProvider}_key`);
+    const savedModel    =
       localStorage.getItem(`${savedProvider}_model`) ||
       DEFAULT_MODEL_BY_PROVIDER[savedProvider as LLMProvider];
 
-   const defaultKeyFromEnv = import.meta.env.VITE_OPENAI_API_KEY || "backend-handled";
+    const defaultKeyFromEnv   = import.meta.env.VITE_OPENAI_API_KEY || "backend-handled";
     const defaultModelFromEnv =
       import.meta.env.VITE_DEFAULT_MODEL ||
       DEFAULT_MODEL_BY_PROVIDER[savedProvider as LLMProvider];
 
     this.config = {
       provider: savedProvider as LLMProvider,
-      apiKey: savedApiKey || (savedProvider === "openai" ? defaultKeyFromEnv : ""),
-      model: savedModel || (savedProvider === "openai" ? defaultModelFromEnv : ""),
+      apiKey:   savedApiKey || (savedProvider === "openai" ? defaultKeyFromEnv : ""),
+      model:    savedModel  || (savedProvider === "openai" ? defaultModelFromEnv : ""),
     };
   }
 
   setConfig(config: Partial<LLMConfig>) {
     this.config = { ...this.config, ...config };
     localStorage.setItem("llm_provider", this.config.provider);
-    if (this.config.apiKey) {
-      localStorage.setItem(`${this.config.provider}_key`, this.config.apiKey);
-    }
-    if (this.config.model) {
-      localStorage.setItem(`${this.config.provider}_model`, this.config.model);
-    }
+    if (this.config.apiKey) localStorage.setItem(`${this.config.provider}_key`,   this.config.apiKey);
+    if (this.config.model)  localStorage.setItem(`${this.config.provider}_model`, this.config.model);
   }
 
   getConfig(): LLMConfig {
@@ -4644,129 +4671,153 @@ class LLMService {
 
   async countTokens(text: string): Promise<TokenizerResponse> {
     const words = text.split(/\s+/).filter(Boolean).length;
-    let tokenMultiplier = 1.3;
-
-    switch (this.config.provider) {
-      case "openai":
-        tokenMultiplier = 1.3;
-        break;
-      case "perplexity":
-        tokenMultiplier = 1.35;
-        break;
-      case "anthropic":
-        tokenMultiplier = 1.25;
-        break;
-      case "google":
-        tokenMultiplier = 1.2;
-        break;
-      default:
-        tokenMultiplier = 1.3;
-    }
-
-    const tokens = Math.round(words * tokenMultiplier);
-    return { tokens, words };
+    const multipliers: Record<string, number> = {
+      openai: 1.3, perplexity: 1.35, anthropic: 1.25, google: 1.2,
+    };
+    const tokenMultiplier = multipliers[this.config.provider] ?? 1.3;
+    return { tokens: Math.round(words * tokenMultiplier), words };
   }
 
- async optimizePrompt(text: string, targetTokens?: number): Promise<OptimizeResponse> {
-    // if (!this.config.apiKey) throw new Error("API key not set"); // ← COMMENT KARO
-    
+  async optimizePrompt(text: string, targetTokens?: number): Promise<OptimizeResponse> {
     const originalCount = await this.countTokens(text);
     const target = targetTokens || Math.max(Math.floor(originalCount.tokens * 0.7), 10);
-
-    switch (this.config.provider) {
-      case "openai":
-        return this.optimizeWithOpenAI(text, target);
-      default:
-        return this.optimizeWithOpenAI(text, target);
-    }
-}
-
-  private async optimizeWithOpenAI(text: string, targetTokens: number): Promise<OptimizeResponse> {
-    const model = (this.config.model || "gpt-4o-mini").trim();
-
-    try {
-      const res = await fetch(`${API_BASE}/api/optimize`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, model, temperature: 0.3, mode: "optimize" }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data?.error || `Backend error (${res.status})`);
-      }
-
-      const optimizedText = data?.optimizedText || "";
-      const suggestions = data?.suggestions || [];
-
-      if (!optimizedText || optimizedText.trim() === "") {
-        throw new Error("Model returned empty content");
-      }
-
-      const optimizedCount = await this.countTokens(optimizedText);
-
-      return {
-        optimizedText,
-        tokens: optimizedCount.tokens,
-        words: optimizedCount.words,
-        suggestions,
-      };
-    } catch (error) {
-      console.error("OpenAI optimization error:", error);
-      throw error;
-    }
+    return this.optimizeWithOpenAI(text, target);
   }
 
-  async generateDetailedPrompt(text: string): Promise<OptimizeResponse> {
-    // if (!this.config.apiKey) throw new Error("API key not set");
-
+  private async optimizeWithOpenAI(text: string, _targetTokens: number): Promise<OptimizeResponse> {
     const model = (this.config.model || "gpt-4o-mini").trim();
+    const res = await fetch(`${API_BASE}/api/optimize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, model, temperature: 0.3, mode: "optimize" }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || `Backend error (${res.status})`);
+    const optimizedText = data?.optimizedText || "";
+    if (!optimizedText.trim()) throw new Error("Model returned empty content");
+    const optimizedCount = await this.countTokens(optimizedText);
+    return {
+      optimizedText,
+      tokens:      optimizedCount.tokens,
+      words:       optimizedCount.words,
+      suggestions: data?.suggestions || [],
+    };
+  }
+
+  async generateDetailedPrompt(
+    text: string,
+    context?: SmartModeContext
+  ): Promise<OptimizeResponse> {
+    const model = (this.config.model || "gpt-4o-mini").trim();
+    const body: Record<string, unknown> = { text, model, temperature: 0.2, mode: "detailed" };
+
+    if (context && context.skillMode !== false) {
+      if (context.domainId)         body.domainId         = context.domainId;
+      if (context.subcategoryId)    body.subcategoryId    = context.subcategoryId;
+      if (context.subcategoryLabel) body.subcategoryLabel = context.subcategoryLabel;
+      if (context.deepAnswers && Object.keys(context.deepAnswers).length > 0)
+        body.deepAnswers = context.deepAnswers;
+      body.skillMode = true;
+    }
 
     try {
       const res = await fetch(`${API_BASE}/api/optimize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, model, temperature: 0.2, mode: "detailed" }),
+        body: JSON.stringify(body),
       });
-
       const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data?.error || `Backend error (${res.status})`);
-      }
-
+      if (!res.ok) throw new Error(data?.error || `Backend error (${res.status})`);
       const optimizedText = data?.optimizedText || "";
-      const suggestions = data?.suggestions || [];
-
-      if (!optimizedText || optimizedText.trim() === "") {
-        console.warn("⚠️ Empty optimizedText from backend:", data);
+      if (!optimizedText.trim()) {
+        console.warn("\u26a0\ufe0f Empty optimizedText from backend:", data);
         throw new Error("Model returned empty content");
       }
-
       const optimizedCount = await this.countTokens(optimizedText);
-
       return {
-  optimizedText,
-  tokens: optimizedCount.tokens,
-  words: optimizedCount.words,
-  suggestions: Array.isArray(suggestions) ? suggestions : [],
-  steps: Array.isArray(data?.steps) ? data.steps : [],  // 👈 add karo
-};
+        optimizedText,
+        tokens:      optimizedCount.tokens,
+        words:       optimizedCount.words,
+        suggestions: Array.isArray(data?.suggestions) ? data.suggestions : [],
+        steps:       Array.isArray(data?.steps) ? data.steps : [],
+      };
     } catch (error) {
       console.error("Detailed prompt generation error:", error);
       throw error;
     }
   }
 
-  private async optimizeWithPerplexity(text: string, targetTokens: number): Promise<OptimizeResponse> {
+  async detectDomain(text: string): Promise<DetectionResult | null> {
+    if (!text || text.trim().length < 5) return null;
+    try {
+      const token = getToken();
+      const res = await fetch(
+        `${API_BASE}/api/smartgen-detect?text=${encodeURIComponent(text.trim())}`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: "include",
+        }
+      );
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data?.detected ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  async getDeepQuestions(
+    userText: string,
+    domainId: string,
+    subcategoryId: string,
+    subcategoryLabel?: string
+  ): Promise<DeepQuestion[]> {
+    try {
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/api/smartgen-detect/deep-questions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
+        body: JSON.stringify({ userText, domainId, subcategoryId, subcategoryLabel }),
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data?.questions) ? data.questions : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async saveSmartgen(payload: {
+    inputPrompt: string;
+    detailedPrompt: string;
+    tokensUsed: number;
+  }): Promise<void> {
+    try {
+      const token = getToken();
+      await fetch(`${API_BASE}/api/smartgen`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+    } catch { /* non-fatal */ }
+  }
+
+  private async optimizeWithPerplexity(text: string, _t: number): Promise<OptimizeResponse> {
     const response = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.config.apiKey}` },
       body: JSON.stringify({
         model: this.config.model || "llama-3.1-sonar-small-128k-online",
         messages: [
-          { role: "system", content: `You are an advanced Prompt Engineer. Return JSON with optimizedText and suggestions.` },
+          { role: "system", content: "You are an advanced Prompt Engineer. Return JSON with optimizedText and suggestions." },
           { role: "user", content: text },
         ],
         temperature: 0.2,
@@ -4774,44 +4825,23 @@ class LLMService {
         response_format: { type: "json_object" },
       }),
     });
-
     const data = await response.json();
     if (data.error) throw new Error(data.error.message || "Error optimizing prompt");
-
-    let result;
-    try {
-      result = JSON.parse(data.choices[0].message.content);
-    } catch {
-      throw new Error("Invalid response format from Perplexity");
-    }
-
-    const optimizedCount = await this.countTokens(result.optimizedText);
-    return {
-      optimizedText: result.optimizedText,
-      tokens: optimizedCount.tokens,
-      words: optimizedCount.words,
-      suggestions: result.suggestions || [],
-    };
+    let result: { optimizedText: string; suggestions?: string[] };
+    try { result = JSON.parse(data.choices[0].message.content); }
+    catch { throw new Error("Invalid response format from Perplexity"); }
+    const c = await this.countTokens(result.optimizedText);
+    return { optimizedText: result.optimizedText, tokens: c.tokens, words: c.words, suggestions: result.suggestions || [] };
   }
 
-  private async optimizeWithAnthropic(text: string, targetTokens: number): Promise<OptimizeResponse> {
-    const originalCount = await this.countTokens(text);
-    return {
-      optimizedText: text,
-      tokens: originalCount.tokens,
-      words: originalCount.words,
-      suggestions: ["Anthropic integration pending"],
-    };
+  private async optimizeWithAnthropic(text: string, _t: number): Promise<OptimizeResponse> {
+    const c = await this.countTokens(text);
+    return { optimizedText: text, tokens: c.tokens, words: c.words, suggestions: ["Anthropic integration pending"] };
   }
 
-  private async optimizeWithGoogle(text: string, targetTokens: number): Promise<OptimizeResponse> {
-    const originalCount = await this.countTokens(text);
-    return {
-      optimizedText: text,
-      tokens: originalCount.tokens,
-      words: originalCount.words,
-      suggestions: ["Google AI integration pending"],
-    };
+  private async optimizeWithGoogle(text: string, _t: number): Promise<OptimizeResponse> {
+    const c = await this.countTokens(text);
+    return { optimizedText: text, tokens: c.tokens, words: c.words, suggestions: ["Google AI integration pending"] };
   }
 
   async getUserTokenUsage(): Promise<UserTokenUsage> {
@@ -4819,8 +4849,7 @@ class LLMService {
   }
 
   async incrementUserTokens(): Promise<void> {}
-
-  async setUserTokenLimit(): Promise<void> {}
+  async setUserTokenLimit():   Promise<void> {}
 }
 
 export const llmService = new LLMService();

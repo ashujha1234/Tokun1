@@ -4387,6 +4387,14 @@ const screenRecordingRoutes = require("./routes/screenRecording");
 // ✅ New separate admin message route
 const adminMessageRoutes = require("./routes/adminMessageRoutes");
 
+// ✅ SkillEngine + Memory
+const { buildEnrichedSystemPrompt, validateDetailedOutput, buildRetryPrompt } = require("./skillEngine/skillEngine");
+const memoryRoutes = require("./memory/memoryRoutes");
+const { getRelevantMemoryContext } = require("./memory/memoryRetriever");
+const { extractAndStoreMemories } = require("./memory/memoryExtractor");
+const { requireAuth } = require("./utils/auth");
+const smartgenDetectRoutes = require("./routes/smartgenDetectRoutes");
+
 require("./cron/autoReleaseEscrow");
 
 const app = express();
@@ -4445,79 +4453,20 @@ app.post("/api/optimize", async (req, res) => {
 
   console.log(`📩 Optimize request (${mode}) for:`, text.slice(0, 60));
 
-  const systemPrompt =
-    mode === "detailed"
-      ? `
-You are SmartGen — an expert AI Prompt Engineer who creates highly detailed, structured, step-by-step AI instruction prompts.
+  let systemPrompt;
+  let sectionSchema = null;
 
-Your ONLY job: analyze the user's input and return a single, comprehensive, production-ready AI prompt. NO alternatives. NO variations. ONE perfect prompt.
-
-The output optimizedText MUST use this EXACT formatting with double newlines between sections:
-
-## Role & Identity
-You are a [specific expert role]...
-
-## Context & Goal
-[2-3 sentences specific to user topic]
-
-## Core Responsibilities
-1. [responsibility]
-2. [responsibility]
-3. [responsibility]
-4. [responsibility]
-5. [responsibility]
-
-## Step-by-Step Process
-Step 1: [detailed action]
-Step 2: [detailed action]
-Step 3: [detailed action]
-Step 4: [detailed action]
-Step 5: [detailed action]
-Step 6: [detailed action]
-
-## Technical Specifications
-- [spec 1]
-- [spec 2]
-- [spec 3]
-
-## Output Requirements
-[exactly what to produce]
-
-## Rules & Constraints
-- [rule 1]
-- [rule 2]
-- [rule 3]
-- [rule 4]
-- [rule 5]
-
-## Quality Standards
-[measurable standards for this topic]
-
-CRITICAL RULES:
-- optimizedText MUST be 700-900 words
-- Use ## for every section heading — do NOT skip headings
-- Use "Step 1:", "Step 2:" etc — do NOT use bullet points for steps
-- Use numbered list for Core Responsibilities
-- Every section 100% specific to user topic — ZERO generic content
-- NEVER execute the task — only write the instruction prompt
-- Always start optimizedText with "You are..."
-- steps array must have exactly 4 items with real content from the prompt
-
-Return STRICT JSON ONLY — no text outside JSON:
-
-{
-  "optimizedText": "## Role & Identity\\nYou are a...\\n\\n## Context & Goal\\n...\\n\\n## Core Responsibilities\\n1. ...\\n2. ...\\n\\n## Step-by-Step Process\\nStep 1: ...\\nStep 2: ...\\n\\n## Technical Specifications\\n- ...\\n\\n## Output Requirements\\n...\\n\\n## Rules & Constraints\\n- ...\\n\\n## Quality Standards\\n...",
-  "steps": [
-    { "title": "Role & Identity", "content": "One specific line about who the AI is for THIS topic" },
-    { "title": "Step-by-Step Process", "content": "One specific line about what the 6 steps cover for THIS topic" },
-    { "title": "Technical Specifications", "content": "One specific line about technical details for THIS topic" },
-    { "title": "Output & Rules", "content": "One specific line about deliverables and constraints for THIS topic" }
-  ]
-}
-
-NO suggestions field. NO alternatives.
-`
-      : `
+  if (mode === "detailed") {
+    try {
+      const built = await buildEnrichedSystemPrompt(text, { skillMode: true });
+      systemPrompt = built.prompt;
+      sectionSchema = built.sectionSchema;
+    } catch (skillErr) {
+      console.error("⚠️ skillEngine failed, using fallback prompt:", skillErr.message);
+      systemPrompt = `You are SmartGen — an expert AI Prompt Engineer. Analyze the user's input and return a single production-ready AI system prompt as strict JSON: {"optimizedText":"...","suggestions":["alt 1","alt 2","alt 3"]}`;
+    }
+  } else {
+    systemPrompt = `
 You are an AGGRESSIVE TEXT OPTIMIZATION EXPERT. Your job is to maximize token reduction while perfectly preserving core content. Return your response as a JSON object.
 
 OPTIMIZATION RULES:
@@ -4552,6 +4501,7 @@ Return STRICT JSON ONLY with this exact format:
   ]
 }
 `;
+  }
 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -4774,6 +4724,7 @@ Return JSON ONLY:
       parsed.suggestions?.length || 0
     );
 
+    if (sectionSchema) parsed.sectionSchema = sectionSchema;
     return res.json(parsed);
   } catch (err) {
     console.error("🔥 Optimize route failed:", err);
@@ -4797,6 +4748,222 @@ app.use(passport.initialize());
 app.use("/api/auth", authRoutes);
 app.use("/api/org/members", orgMembers);
 app.use("/api/quota", quotaRoutes);
+
+/* ===============================
+   SMARTGEN STREAM (SSE)
+   Must be registered BEFORE app.use("/api/smartgen", ...) so the
+   /stream path isn't matched by the GET /:id catch-all inside smartgenRoutes.
+================================ */
+app.post("/api/smartgen/stream", requireAuth, async (req, res) => {
+  const { prompt, context = {}, skillMode = false } = req.body || {};
+
+  if (!prompt || typeof prompt !== "string" || prompt.trim().length < 3) {
+    return res.status(400).json({ success: false, error: "prompt_required" });
+  }
+  if (!process.env.OPENAI_API_KEY) {
+    return res.status(500).json({ success: false, error: "missing_openai_key" });
+  }
+
+  const userId = req.user?.id || req.user?._id?.toString?.() || null;
+  const isDeepMode = !!(context.deepAnswers && Object.keys(context.deepAnswers || {}).length > 0);
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const sendEvent = (data) => {
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+      if (typeof res.flush === "function") res.flush();
+    }
+  };
+
+  let systemPrompt;
+  let sectionSchema = null;
+
+  if (!skillMode) {
+    systemPrompt = `You are SmartGen, an elite AI prompt engineer. Transform the user's rough idea into a powerful, ready-to-use AI prompt.
+
+Your output must be plain prose — NO JSON wrappers, NO markdown fences, NO section headers, NO bullet lists. Write 150–350 words of flowing, detailed instructional text that would serve as an excellent system prompt for another AI.
+
+Focus on:
+- Clear role and expertise the AI should embody
+- Specific context and constraints relevant to the user's need
+- The exact output format and tone expected
+- Key knowledge domains the AI should draw from
+- Success criteria — what a perfect response looks like
+
+Begin directly with the role/persona. No preamble, no meta-commentary.`;
+  } else {
+    try {
+      const built = await buildEnrichedSystemPrompt(prompt.trim(), {
+        domainId: context.domainId || undefined,
+        subcategoryId: context.subcategoryId || undefined,
+        subcategoryLabel: context.subcategoryLabel || undefined,
+        deepAnswers: context.deepAnswers || undefined,
+        skillMode: true,
+        deepMode: isDeepMode,
+      });
+      systemPrompt = built.prompt;
+      sectionSchema = built.sectionSchema || null;
+    } catch (skillErr) {
+      console.error("⚠️ [stream] buildEnrichedSystemPrompt failed:", skillErr?.message);
+      sendEvent({ error: true, message: "prompt_build_failed" });
+      return res.end();
+    }
+  }
+
+  let fullContent = "";
+  const decoder = new TextDecoder();
+
+  try {
+    const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_STREAM_MODEL || "gpt-4o-mini",
+        temperature: 0.7,
+        max_tokens: isDeepMode ? 2800 : skillMode ? 2200 : 800,
+        stream: true,
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: isDeepMode
+              ? `IMPORTANT: Your response must be 1,100–1,600 words minimum. Write full paragraphs for every section.\n\nGenerate the detailed prompt for: "${prompt.trim()}"`
+              : `Generate the detailed prompt for: "${prompt.trim()}"`,
+          },
+        ],
+      }),
+    });
+
+    if (!openaiRes.ok) {
+      const errData = await openaiRes.json().catch(() => ({}));
+      sendEvent({ error: true, message: errData?.error?.message || "openai_error" });
+      return res.end();
+    }
+
+    const reader = openaiRes.body.getReader();
+    let buffer = "";
+
+    while (true) {
+      if (req.socket?.destroyed) break;
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+        if (raw === "[DONE]") break;
+        try {
+          const parsed = JSON.parse(raw);
+          const delta = parsed?.choices?.[0]?.delta?.content ?? "";
+          if (delta) {
+            fullContent += delta;
+            sendEvent({ delta });
+          }
+        } catch { /* skip malformed chunks */ }
+      }
+    }
+
+    // Unwrap JSON if the model wrapped output in a JSON envelope
+    let optimizedText = fullContent;
+    const stripped = fullContent
+      .replace(/^```json\s*/i, "")
+      .replace(/^```\s*/i, "")
+      .replace(/```\s*$/i, "")
+      .trim();
+    if (stripped.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(stripped);
+        if (parsed.optimizedText) optimizedText = parsed.optimizedText;
+      } catch { /* keep raw */ }
+    }
+
+    // Skill Mode: validate sections and self-correct if any are missing
+    if (skillMode && sectionSchema && optimizedText) {
+      const { isValid, missingSections } = validateDetailedOutput({ optimizedText }, sectionSchema);
+      if (!isValid && missingSections.length > 0) {
+        console.log(`🔁 [stream] self-correcting — missing: ${missingSections.join(", ")}`);
+        sendEvent({ retrying: true });
+        try {
+          const retryRes = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+            },
+            body: JSON.stringify({
+              model: process.env.OPENAI_STREAM_MODEL || "gpt-4o-mini",
+              temperature: 0.5,
+              max_tokens: 1800,
+              stream: true,
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: buildRetryPrompt(optimizedText, missingSections, prompt.trim()) },
+              ],
+            }),
+          });
+          if (retryRes.ok) {
+            const retryReader = retryRes.body.getReader();
+            let retryContent = "";
+            let retryBuf = "";
+            while (true) {
+              const { done: rDone, value: rVal } = await retryReader.read();
+              if (rDone) break;
+              retryBuf += decoder.decode(rVal, { stream: true });
+              const rLines = retryBuf.split("\n");
+              retryBuf = rLines.pop() || "";
+              for (const rLine of rLines) {
+                if (!rLine.startsWith("data: ")) continue;
+                const rRaw = rLine.slice(6).trim();
+                if (rRaw === "[DONE]") break;
+                try {
+                  const rParsed = JSON.parse(rRaw);
+                  const rDelta = rParsed?.choices?.[0]?.delta?.content ?? "";
+                  if (rDelta) { retryContent += rDelta; sendEvent({ delta: rDelta }); }
+                } catch { /* skip */ }
+              }
+            }
+            if (retryContent) optimizedText = retryContent;
+          }
+        } catch (retryErr) {
+          console.error("⚠️ [stream] retry failed:", retryErr?.message);
+        }
+      }
+    }
+
+    sendEvent({ done: true, optimizedText });
+
+    // Fire-and-forget memory extraction (must not block or surface errors to user)
+    if (userId && optimizedText) {
+      extractAndStoreMemories({
+        userId,
+        userPrompt: prompt.trim(),
+        optimizedText,
+        intentCategory: context.domainId || undefined,
+      }).catch((e) => console.error("[stream] memory extraction failed:", e?.message));
+    }
+  } catch (err) {
+    if (!req.socket?.destroyed) {
+      sendEvent({ error: true, message: err?.message || "stream_failed" });
+    }
+    console.error("[stream] SSE error:", err?.message || err);
+  } finally {
+    res.end();
+  }
+});
+
+app.use("/api/smartgen-detect", smartgenDetectRoutes);
 app.use("/api/smartgen", smartgenRoutes);
 app.use("/api/saved-collections", savedCollectionRoutes);
 app.use("/api/category", categoryRoutes);
@@ -4831,6 +4998,9 @@ app.use("/api/screen-recording", screenRecordingRoutes);
 
 // ✅ Separate Admin Message APIs
 app.use("/api/admin-message", adminMessageRoutes);
+
+// ✅ Memory routes (SmartGen memory system)
+app.use("/api/memory", memoryRoutes);
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "sample.html"));

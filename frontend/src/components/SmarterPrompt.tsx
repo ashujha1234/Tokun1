@@ -1,1089 +1,880 @@
-
-
 // src/components/SmarterPrompt.tsx
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { toast } from "@/components/ui/use-toast";
-import { usePrompt } from "@/contexts/PromptContext";
 import {
-  Wand2,
-  Copy,
-  Download,
-  ExternalLink,
-  
-  Send,
-  Sparkles,
-  History
+  History, Zap, Sparkles, Copy, Download, RotateCcw,
+  ChevronDown, Bookmark, Send, Pencil, Code2, Video,
+  Image, Share2, Loader2, ArrowRight, X, Check, Search,
+  AlertTriangle,
 } from "lucide-react";
-import ModalComponent from "@/components/ModalComponent";
-import { saveItem } from "@/lib/savedCollections";
 import { llmService } from "@/services/llmService";
+import type { DetectionResult, DeepQuestion } from "@/services/llmService";
 import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "@/components/ui/use-toast";
 
+/* ─── Types ──────────────────────────────────────────────────────────────── */
 interface SmarterPromptProps {
   onPromptGenerated?: (prompt: string) => void;
   onUseInOptimizer?: (prompt: string) => void;
-  /** If parent already created Smartgen and knows the id, pass it here */
   smartgenId?: string;
 }
+interface SubcategoryChip { id: string; label: string }
 
-const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
-const GRADIENT =
-  "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)";
-const CARD_FRAME =
-  "w-full max-w-[1000px] rounded-[30px] border border-[#282829] bg-[#121213] overflow-hidden";
+/* ─── Constants ───────────────────────────────────────────────────────────── */
+const API_BASE   = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+const GRADIENT   = "linear-gradient(270deg, #FF14EF 0%, #1A73E8 100%)";
+const PILL_BG    = "linear-gradient(90deg, #ec4899 0%, #8b5cf6 50%, #3b82f6 100%)";
+const GEN_BG     = "linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)";
 
+/* ─── Ideas strip data ────────────────────────────────────────────────────── */
+const EXAMPLE_IDEAS = [
+  { Icon: Video,  title: "AI Video",     text: "Generate AI video content with Runway for my brand..." },
+  { Icon: Code2,  title: "Code & Dev",   text: "Build a REST API in Node.js and document every endpoint..." },
+  { Icon: Image,  title: "AI Images",    text: "Create a Midjourney prompt system for product photos.." },
+  { Icon: Share2, title: "Social Media", text: "Create a detailed 30-day social media content calendar" },
+];
 
+/* ─── Category data ───────────────────────────────────────────────────────── */
+const CATEGORY_LABELS: Record<string, string> = {
+  cafe_food_service:"🍵 Food & Hospitality",       startup_fundraising:"💼 Startup & Fundraising",
+  marketing_growth:"📈 Marketing & Growth",         competitive_pricing:"📊 Strategy & Pricing",
+  product_development:"💻 Product & Technology",    content_writing:"✏️ Content & Writing",
+  edtech_product:"🖥️ EdTech Product Builder",       technical_tutorial:"📖 Technical Educator",
+  education_learning:"🎓 Education & Learning",     finance_investment:"⚖️ Finance & Investment",
+  health_wellness:"❤️ Health & Wellness",           hr_people:"👥 HR & People",
+  legal_compliance:"📋 Legal & Compliance",         ai_automation:"🤖 AI & Automation",
+  personal_development:"🚀 Personal Development",   real_estate:"🏠 Real Estate",
+  social_media_branding:"📱 Social Media & Brand", data_science_ai:"📡 Data Science & AI",
+  resume_career:"💼 Resume & Career",               saas_product:"🚀 SaaS & Product",
+  freelancing_consulting:"🧑‍💻 Freelancing",        uiux_design:"🎨 UI/UX Design",
+  video_creation:"🎬 Video & YouTube",              no_code_tools:"🧩 No-Code & Automation",
+  cloud_devops:"☁️ Cloud & DevOps",                mobile_app_development:"📲 Mobile App Dev",
+  cybersecurity:"🔐 Cybersecurity",                 blockchain_web3:"⛓️ Blockchain & Web3",
+  podcast_creator:"🎙️ Podcasting & Creator",       fitness_sports:"🏋️ Fitness & Sports",
+  mental_health:"🧠 Mental Health",                 interior_architecture:"🏡 Interior & Arch",
+  ai_video_generation:"🎬 AI Video Generation",    ai_image_generation:"🖼️ AI Image Generation",
+  ecommerce_business:"🛒 E-Commerce Business",      graphic_design:"🎨 Graphic Design",
+  data_annotation:"🏷️ Data Annotation",             general_expert:"💡 General",
+};
 
+const SKILL_LABELS: Record<string, string> = {
+  cafe_food_service:"Café Business Builder",       startup_fundraising:"Startup Launch Strategist",
+  marketing_growth:"Marketing Strategy Builder",   product_development:"Product Development Planner",
+  content_writing:"Content Strategy Expert",       education_learning:"Curriculum & Course Designer",
+  finance_investment:"Financial Strategy Advisor", health_wellness:"Health & Wellness Coach",
+  hr_people:"People & Culture Strategist",         ai_automation:"AI & Automation Architect",
+  saas_product:"SaaS Product Advisor",             uiux_design:"UI/UX Design Expert",
+  backend_architecture:"Backend Architecture Expert", ai_image_generation:"AI Image Generation Expert",
+  ai_video_generation:"AI Video Generation Expert",video_creation:"Video & YouTube Strategist",
+  ecommerce_business:"E-Commerce Growth Strategist",general_expert:"Expert Prompt Engineer",
+};
 
+interface CategoryEntry { id: string; label: string; subcategories: SubcategoryChip[] }
 
-const IdeasStrip = ({
-  exampleIdeas,
-  activeIndex,
-  setActiveIndex,
-  handleExampleClick,
-}: {
-  exampleIdeas: { img: string; title: string; text: string }[];
-  activeIndex: number;
-  setActiveIndex: (n: number) => void;
-  handleExampleClick: (idea: any) => void;
-}) => {
+const ALL_CATEGORIES: CategoryEntry[] = [
+  { id:"cafe_food_service",    label:"🍵 Food & Hospitality",        subcategories:[{id:"business_planning",label:"Business Planning"},{id:"menu_design",label:"Menu Design"},{id:"interior_branding",label:"Interior & Branding"},{id:"marketing_strategy",label:"Marketing Strategy"}]},
+  { id:"startup_fundraising",  label:"💼 Business & Startup",        subcategories:[{id:"pitch_deck",label:"Pitch Deck"},{id:"financial_model",label:"Financial Model"},{id:"gtm_strategy",label:"Go-to-Market"},{id:"investor_outreach",label:"Investor Outreach"}]},
+  { id:"marketing_growth",     label:"📈 Marketing & Growth",        subcategories:[{id:"seo_content",label:"SEO & Content"},{id:"paid_ads",label:"Paid Ads"},{id:"social_media",label:"Social Media"},{id:"email_campaigns",label:"Email Campaigns"}]},
+  { id:"product_development",  label:"💻 Product & Technology",      subcategories:[{id:"product_roadmap",label:"Product Roadmap"},{id:"ux_design",label:"UX Design"},{id:"technical_arch",label:"Technical Architecture"},{id:"launch_strategy",label:"Launch Strategy"}]},
+  { id:"content_writing",      label:"✏️ Content & Writing",         subcategories:[{id:"blog_articles",label:"Blog & Articles"},{id:"social_copy",label:"Social Media Copy"},{id:"email_newsletters",label:"Email Newsletters"},{id:"scripts_speeches",label:"Scripts & Speeches"}]},
+  { id:"education_learning",   label:"🎓 Education & Learning",      subcategories:[{id:"course_creation",label:"Course Creation"},{id:"lesson_planning",label:"Lesson Planning"},{id:"assessment_design",label:"Assessment Design"},{id:"learning_outcomes",label:"Learning Outcomes"}]},
+  { id:"finance_investment",   label:"⚖️ Finance & Investment",      subcategories:[{id:"financial_planning",label:"Financial Planning"},{id:"investment_thesis",label:"Investment Thesis"},{id:"financial_modelling",label:"Financial Modelling"},{id:"tax_compliance",label:"Tax & Compliance"}]},
+  { id:"health_wellness",      label:"❤️ Health & Wellness",         subcategories:[{id:"fitness_plan",label:"Fitness Plan"},{id:"nutrition_guide",label:"Nutrition Guide"},{id:"mental_wellness",label:"Mental Wellness"},{id:"lifestyle_habits",label:"Lifestyle Habits"}]},
+  { id:"hr_people",            label:"👥 HR & People",               subcategories:[{id:"hiring_process",label:"Hiring Process"},{id:"onboarding",label:"Onboarding"},{id:"performance_mgmt",label:"Performance Mgmt"},{id:"team_culture",label:"Team Culture"}]},
+  { id:"ai_automation",        label:"🤖 AI & Automation",           subcategories:[{id:"prompt_engineering",label:"Prompt Engineering"},{id:"workflow_automation",label:"Workflow Automation"},{id:"chatbot_design",label:"Chatbot Design"},{id:"data_pipeline",label:"Data Pipeline"}]},
+  { id:"saas_product",         label:"🚀 SaaS & Product",            subcategories:[{id:"saas_launch",label:"SaaS Launch"},{id:"pricing_saas",label:"SaaS Pricing"},{id:"growth_saas",label:"Growth Strategy"},{id:"churn_retention",label:"Churn & Retention"}]},
+  { id:"uiux_design",          label:"🎨 UI/UX Design",              subcategories:[{id:"user_research",label:"User Research"},{id:"wireframing",label:"Wireframing"},{id:"design_system",label:"Design System"},{id:"usability_testing",label:"Usability Testing"}]},
+  { id:"video_creation",       label:"🎬 Video & YouTube",           subcategories:[{id:"channel_strategy",label:"Channel Strategy"},{id:"video_scripting",label:"Video Scripting"},{id:"seo_youtube",label:"YouTube SEO"},{id:"monetization_yt",label:"Monetization"}]},
+  { id:"cloud_devops",         label:"☁️ Cloud & DevOps",            subcategories:[{id:"cloud_arch",label:"Cloud Architecture"},{id:"cicd_pipeline",label:"CI/CD Pipeline"},{id:"container_k8s",label:"Docker & Kubernetes"},{id:"cloud_security",label:"Cloud Security"}]},
+  { id:"mobile_app_development",label:"📲 Mobile App Dev",           subcategories:[{id:"app_architecture",label:"App Architecture"},{id:"ui_mobile",label:"Mobile UI/UX"},{id:"app_launch",label:"App Store Launch"},{id:"app_monetization",label:"App Monetization"}]},
+  { id:"cybersecurity",        label:"🔐 Cybersecurity",             subcategories:[{id:"pentest",label:"Penetration Testing"},{id:"security_audit",label:"Security Audit"},{id:"compliance_sec",label:"Compliance"},{id:"incident_response",label:"Incident Response"}]},
+  { id:"ai_image_generation",  label:"🖼️ AI Image Generation",       subcategories:[{id:"prompt_engineering_img",label:"Prompt Engineering"},{id:"stable_diffusion_wf",label:"Stable Diffusion & ComfyUI"},{id:"lora_finetune",label:"LoRA & Fine-Tuning"},{id:"commercial_workflow",label:"Commercial Workflow"}]},
+  { id:"ai_video_generation",  label:"🎬 AI Video Generation",       subcategories:[{id:"text_to_video",label:"Text-to-Video"},{id:"ai_avatar_video",label:"AI Avatar & Presenter"},{id:"video_workflow",label:"Production Workflow"},{id:"ai_video_monetize",label:"Monetization"}]},
+  { id:"ecommerce_business",   label:"🛒 E-Commerce Business",       subcategories:[{id:"shopify_store",label:"Shopify Store"},{id:"amazon_fba",label:"Amazon FBA"},{id:"conversion_opt",label:"Conversion Optimisation"},{id:"ecommerce_ads",label:"Paid Ads & Retention"}]},
+  { id:"data_science_ai",      label:"📡 Data Science & AI",         subcategories:[{id:"ml_model",label:"ML Model Building"},{id:"data_analysis",label:"Data Analysis"},{id:"data_pipeline_ds",label:"Data Pipeline"},{id:"nlp_project",label:"NLP Project"}]},
+  { id:"resume_career",        label:"💼 Resume & Career",           subcategories:[{id:"resume_writing",label:"Resume Writing"},{id:"linkedin_profile",label:"LinkedIn Profile"},{id:"interview_prep",label:"Interview Prep"},{id:"salary_negotiation",label:"Salary Negotiation"}]},
+  { id:"freelancing_consulting",label:"🧑‍💻 Freelancing & Consulting",subcategories:[{id:"client_acquisition",label:"Client Acquisition"},{id:"pricing_freelance",label:"Pricing & Rates"},{id:"portfolio_building",label:"Portfolio Building"},{id:"agency_scaling",label:"Agency Scaling"}]},
+  { id:"blockchain_web3",      label:"⛓️ Blockchain & Web3",         subcategories:[{id:"smart_contracts",label:"Smart Contracts"},{id:"defi_protocol",label:"DeFi Protocol"},{id:"nft_project",label:"NFT Project"},{id:"tokenomics",label:"Tokenomics"}]},
+  { id:"podcast_creator",      label:"🎙️ Podcasting & Creator",      subcategories:[{id:"podcast_launch",label:"Podcast Launch"},{id:"podcast_growth",label:"Audience Growth"},{id:"podcast_monetize",label:"Monetization"},{id:"podcast_production",label:"Production Quality"}]},
+  { id:"fitness_sports",       label:"🏋️ Fitness & Sports",          subcategories:[{id:"training_plan",label:"Training Plan"},{id:"sports_nutrition",label:"Sports Nutrition"},{id:"performance_analysis",label:"Performance Analysis"},{id:"injury_prevention",label:"Injury Prevention"}]},
+  { id:"mental_health",        label:"🧠 Mental Health",             subcategories:[{id:"anxiety_management",label:"Anxiety Management"},{id:"burnout_recovery",label:"Burnout Recovery"},{id:"resilience_building",label:"Resilience Building"},{id:"workplace_wellness",label:"Workplace Wellness"}]},
+  { id:"graphic_design",       label:"🎨 Graphic Design",            subcategories:[{id:"brand_identity_gd",label:"Brand Identity"},{id:"print_design",label:"Print & Packaging"},{id:"digital_design",label:"Digital & Social"},{id:"design_system_gd",label:"Design Systems"}]},
+  { id:"data_annotation",      label:"🏷️ Data Annotation",           subcategories:[{id:"annotation_pipeline",label:"Pipeline Setup"},{id:"cv_annotation",label:"Computer Vision"},{id:"nlp_annotation",label:"NLP & Text"},{id:"quality_assurance",label:"QA & IAA"}]},
+];
+
+/* ─── Client-side detection ───────────────────────────────────────────────── */
+const DOMAIN_KEYWORDS: Record<string, string[]> = {
+  ai_image_generation:["midjourney","stable diffusion","comfyui","dall-e","dall e","leonardo ai","flux","ideogram","ai image","ai art","text to image","image generation","lora","dreambooth","controlnet","firefly","adobe firefly","ai illustration"],
+  ai_video_generation:["runway","pika","sora","kling","luma","heygen","synthesia","ai video","text to video","ai animation","ai avatar","descript","invideo ai","veo","gen 2","gen 3"],
+  startup_fundraising:["startup","pitch deck","fundraise","investor","vc","venture capital","seed round","series a","angel investor","term sheet","valuation","cap table","mvp","traction","saas metrics"],
+  marketing_growth:["marketing","growth hacking","brand strategy","branding","campaign","seo","paid advertising","google ads","facebook ads","tiktok ads","influencer","email marketing","lead generation","conversion rate","sales funnel","roas"],
+  product_development:["product roadmap","feature planning","user story","agile","scrum","sprint","mvp","prototype","ux research","api development","software architecture","microservices","web app","system design"],
+  content_writing:["blog post","article writing","copywriting","content strategy","newsletter","email copy","video script","social media copy","whitepaper","case study","press release","landing page copy","seo content"],
+  education_learning:["curriculum","lesson plan","course creation","e-learning","lms","assessment","learning objectives","instructional design","bloom","formative assessment","course outline"],
+  ai_automation:["ai automation","machine learning","llm","gpt","chatgpt","prompt engineering","workflow automation","ai chatbot","ai agent","rag","vector database","fine tuning","langchain","openai api","n8n","zapier"],
+  data_science_ai:["data science","machine learning model","data analysis","pandas","numpy","scikit","tensorflow","pytorch","neural network","nlp","computer vision","jupyter","sql analytics","big data","spark"],
+  saas_product:["saas","b2b saas","subscription","arr","mrr","churn","plg","product led growth","saas pricing","saas launch","saas metrics","saas growth"],
+  ecommerce_business:["ecommerce","shopify","amazon fba","dropshipping","online store","product listing","conversion optimisation","cart abandonment","woocommerce","print on demand","etsy","d2c"],
+  uiux_design:["ui design","ux design","figma","design system","wireframe","prototype","usability testing","user research","interaction design","mobile ui","accessibility"],
+  video_creation:["youtube","video content","video production","youtube seo","video editing","video script","youtube growth","shorts","reels","tiktok","vlog","monetization"],
+  cloud_devops:["cloud","aws","google cloud","azure","devops","ci cd","docker","kubernetes","terraform","github actions","serverless","lambda","cloud security","site reliability"],
+  mobile_app_development:["mobile app","ios app","android app","react native","flutter","swift","kotlin","app store","google play","mobile ux","cross platform","pwa"],
+  cybersecurity:["cybersecurity","penetration testing","ethical hacking","vulnerability","soc analyst","security audit","zero trust","ransomware","gdpr security","threat modelling"],
+  blockchain_web3:["blockchain","web3","smart contract","solidity","ethereum","defi","nft","dao","cryptocurrency","token","metamask","hardhat","polygon","solana","tokenomics"],
+  finance_investment:["financial planning","investment strategy","stock market","crypto investment","personal finance","budgeting","wealth management","tax planning","dcf","portfolio","retirement"],
+  health_wellness:["fitness plan","workout","nutrition plan","diet","meal planning","weight loss","muscle building","gym","wellness","mindfulness","sleep","supplement","cardio","strength training"],
+  hr_people:["hiring","talent acquisition","recruitment","job interview","onboarding","performance management","okr","kpi","team building","company culture","employee engagement","hr strategy"],
+  resume_career:["resume","cv","cover letter","job application","linkedin","job search","interview preparation","salary negotiation","career pivot","career growth"],
+  marketing_social:["social media branding","instagram","linkedin personal brand","tiktok strategy","youtube channel","brand identity","content calendar","engagement rate","creator economy"],
+  real_estate:["real estate","property investment","rental property","house flipping","commercial real estate","mortgage","property valuation","cap rate","rental yield"],
+  podcast_creator:["podcast","podcasting","podcast launch","podcast growth","podcast monetization","spotify podcast","apple podcast","creator economy","substack","patreon"],
+  freelancing_consulting:["freelancing","freelance business","consulting business","upwork","fiverr","freelance rates","client acquisition","freelance portfolio","agency","solopreneur"],
+  graphic_design:["graphic design","logo design","brand identity","visual identity","typography","adobe illustrator","photoshop","figma graphic","print design","packaging design","motion graphics"],
+  cafe_food_service:["cafe","coffee","restaurant","food service","bakery","bistro","menu","barista","espresso","latte","food truck","diner","cloud kitchen","catering"],
+  fitness_sports:["fitness coaching","sports training","athletic performance","sports nutrition","powerlifting","crossfit","marathon","cycling","vo2 max","periodisation","injury prevention"],
+  mental_health:["mental health","anxiety","stress","depression","therapy","cbt","mindfulness based","meditation","burnout","emotional wellbeing","resilience","trauma"],
+  data_annotation:["data annotation","data labeling","annotation pipeline","label studio","roboflow","cvat","bounding box","segmentation","ner annotation","iaa","rlhf","ground truth"],
+};
+
+function clientDetectDomain(text: string): DetectionResult | null {
+  if (!text || text.trim().length < 5) return null;
+  const lower = text.toLowerCase();
+  let bestId = "";
+  let bestScore = 0;
+  for (const [domainId, keywords] of Object.entries(DOMAIN_KEYWORDS)) {
+    let score = 0;
+    for (const kw of keywords) {
+      if (lower.includes(kw)) score += kw.includes(" ") ? 12 : 8;
+    }
+    if (score > bestScore) { bestScore = score; bestId = domainId; }
+  }
+  if (!bestId || bestScore < 5) return null;
+  const catEntry = ALL_CATEGORIES.find(c => c.id === bestId);
+  const confidence = Math.min(99, Math.round(40 + (bestScore / 60) * 59));
+  return {
+    domainId: bestId,
+    categoryLabel: CATEGORY_LABELS[bestId] ?? "💡 General",
+    skillLabel: SKILL_LABELS[bestId] ?? "SmartGen Expert",
+    confidence,
+    subcategories: catEntry?.subcategories ?? [],
+    matchedKeywords: [],
+  };
+}
+
+function stripEmoji(label?: string | null) {
+  if (!label) return "";
+  return label.replace(/^[\p{Extended_Pictographic}‍️\s]+/gu, "").trim();
+}
+
+function unwrapJson(raw: string): string {
+  const s = raw.replace(/^```json\s*/i,"").replace(/^```\s*/i,"").replace(/```\s*$/i,"").trim();
+  if (s.startsWith("{")) { try { const p = JSON.parse(s); if (p.optimizedText) return p.optimizedText; } catch {} }
+  return raw;
+}
+
+/* ─── PromptRenderer ─────────────────────────────────────────────────────── */
+function isSectionHeader(line: string): boolean {
+  const t = line.trim();
+  if (!t || t.length > 80) return false;
+  if (/^\[.{3,60}\]$/.test(t)) return true;
+  if (/^\*\*[^*]{3,60}\*\*$/.test(t)) return true;
+  if (t.endsWith(":") && t.length < 70 && /^[A-Z]/.test(t) && !t.startsWith("-")) return true;
+  return false;
+}
+function isTableRow(line: string): boolean { return /^\|.+\|/.test(line.trim()); }
+function isTableSep(line: string): boolean { return /^\|[\s\-:|]+\|/.test(line.trim()); }
+function renderInline(text: string): string {
+  return text
+    .replace(/`([^`]+)`/g,'<code style="background:rgba(255,255,255,0.08);border-radius:4px;padding:1px 5px;font-family:monospace;font-size:0.88em;color:#a78bfa">$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g,'<strong style="color:#fff;font-weight:600">$1</strong>')
+    .replace(/\*([^*]+)\*/g,'<em style="color:rgba(255,255,255,0.75)">$1</em>')
+    .replace(/→\s*(Output|Result|Deliverable):/gi,'<span style="color:#8b5cf6;font-weight:600;margin:0 4px">→</span><span style="color:#c4b5fd;font-weight:600"> Output:</span>')
+    .replace(/→/g,'<span style="color:#8b5cf6;font-weight:500;margin:0 3px">→</span>');
+}
+
+type Block = {type:"pill";text:string}|{type:"table";rows:string[][]}|{type:"bullet";text:string}|{type:"numbered";n:string;text:string}|{type:"step";title:string;time:string;content:string}|{type:"para";text:string}|{type:"gap"};
+
+// Detects: "Title (1-2 weeks):" or "**Title (1 week):**" at start of line
+const STEP_RE = /^\*{0,2}([^(*\n]{3,60}?)\s+\((\d[\d\-– ]*\s*(?:week|day|month|hour)s?)\)\*{0,2}:?\s*(.*)/i;
+
+function parseBlocks(raw: string): Block[] {
+  const lines = raw.split("\n"); const blocks: Block[] = []; let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]; const t = line.trim();
+    if (!t) { blocks.push({type:"gap"}); i++; continue; }
+    if (isTableRow(t)) {
+      const rows: string[][] = [];
+      while (i < lines.length && isTableRow(lines[i].trim())) {
+        if (!isTableSep(lines[i].trim())) rows.push(lines[i].trim().replace(/^\||\|$/g,"").split("|").map(c=>c.trim()));
+        i++;
+      }
+      if (rows.length) blocks.push({type:"table",rows}); continue;
+    }
+    if (isSectionHeader(t)) { blocks.push({type:"pill",text:t.replace(/^\[|\]$/g,"").replace(/^\*\*|\*\*$/g,"").replace(/:$/,"")}); i++; continue; }
+    const bm = t.match(/^[-•*]\s+(.*)/); if (bm) { blocks.push({type:"bullet",text:bm[1]}); i++; continue; }
+    const nm = t.match(/^(\d+)\.\s+(.*)/); if (nm) { blocks.push({type:"numbered",n:nm[1],text:nm[2]}); i++; continue; }
+    const sm = t.match(STEP_RE); if (sm) { blocks.push({type:"step",title:sm[1].trim(),time:sm[2].trim(),content:sm[3].trim()}); i++; continue; }
+    blocks.push({type:"para",text:t}); i++;
+  }
+  return blocks;
+}
+
+function PromptRenderer({text}: {text: string}) {
+  const blocks = parseBlocks(text);
   return (
-    <div className="mx-auto w-full px-4 font-inter">
-      <div className="mx-auto w-full max-w-[1047.5px] h-[110px] rounded-[20px] border border-[#282829] bg-[#121213] overflow-hidden">
-        <div className="h-full overflow-x-auto md:overflow-visible no-scrollbar snap-x snap-mandatory">
-          <div className="grid grid-cols-[repeat(4,minmax(0,1fr))] h-full min-w-[1040px] md:min-w-0 md:grid-cols-4">
-            {exampleIdeas.map((idea, idx) => (
-              <button
-                key={idx}
-                onClick={() => {
-                  handleExampleClick(idea);
-                  setActiveIndex(idx);
-                }}
-                className={[
-                  "relative h-[110px] w-full text-left",
-                  "flex items-center gap-3 px-5 snap-start",
-                  idx !== 0 ? "border-l border-[#282829]" : "",
-                  idx === activeIndex ? "bg-white/5" : "hover:bg-white/7",
-                ].join(" ")}
-                aria-label={idea.title}
-                title={idea.title}
-              >
-                <img src={idea.img} alt="" className="h-6 w-6 object-contain" />
-                <div className="flex flex-col items-start">
-                  <div className="text-white font-semibold leading-[1.1] text-[15px]">
-                    {idea.title}
-                  </div>
-                  <div className="text-white/80 text-[12px] leading-[1.2] mt-[6px]">
-                    {idea.text}
-                  </div>
-                </div>
-              </button>
-            ))}
+    <div style={{fontSize:14,lineHeight:1.65,color:"rgba(255,255,255,0.82)"}}>
+      {blocks.map((b,idx) => {
+        if (b.type==="gap") return <div key={idx} style={{height:10}}/>;
+        if (b.type==="pill") return (
+          <div key={idx} style={{marginTop:18,marginBottom:10}}>
+            <span style={{display:"inline-block",background:PILL_BG,color:"#fff",fontWeight:700,fontSize:13,padding:"5px 16px",borderRadius:100}}>{b.text}</span>
           </div>
+        );
+        if (b.type==="table") return (
+          <div key={idx} style={{overflowX:"auto",margin:"10px 0"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              {b.rows.map((row,ri) => (
+                <tr key={ri} style={{borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+                  {row.map((cell,ci) => ri===0
+                    ? <th key={ci} style={{textAlign:"left",padding:"8px 14px",color:"rgba(255,255,255,0.9)",fontWeight:600,background:"rgba(255,255,255,0.04)"}}>{cell}</th>
+                    : <td key={ci} style={{padding:"8px 14px",color:ci===0?"rgba(255,255,255,0.75)":"rgba(139,92,246,0.9)"}}>{cell}</td>
+                  )}
+                </tr>
+              ))}
+            </table>
+          </div>
+        );
+        if (b.type==="step") return (
+          <div key={idx} style={{display:"flex",gap:12,margin:"8px 0",padding:"10px 14px",borderRadius:12,background:"rgba(139,92,246,0.05)",border:"1px solid rgba(139,92,246,0.12)"}}>
+            <div style={{flexShrink:0,marginTop:2}}>
+              <span style={{display:"inline-block",background:"rgba(139,92,246,0.18)",color:"#a78bfa",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:100,whiteSpace:"nowrap"}}>{b.time}</span>
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:700,color:"#fff",fontSize:13,marginBottom:b.content?4:0}}>{b.title}</div>
+              {b.content && <div style={{fontSize:13,color:"rgba(255,255,255,0.65)",lineHeight:1.5}} dangerouslySetInnerHTML={{__html:renderInline(b.content)}}/>}
+            </div>
+          </div>
+        );
+        if (b.type==="bullet") return <div key={idx} style={{display:"flex",gap:10,marginBottom:5}}><span style={{color:"#8b5cf6",marginTop:5,flexShrink:0,fontSize:8}}>●</span><span style={{flex:1}} dangerouslySetInnerHTML={{__html:renderInline(b.text)}}/></div>;
+        if (b.type==="numbered") return <div key={idx} style={{display:"flex",gap:10,marginBottom:5}}><span style={{color:"#8b5cf6",fontFamily:"monospace",fontSize:12,marginTop:1,minWidth:18,flexShrink:0}}>{b.n}.</span><span style={{flex:1}} dangerouslySetInnerHTML={{__html:renderInline(b.text)}}/></div>;
+        return <p key={idx} style={{margin:"0 0 4px 0"}} dangerouslySetInnerHTML={{__html:renderInline((b as {type:"para";text:string}).text)}}/>;
+      })}
+    </div>
+  );
+}
+
+/* ─── Open With Menu ─────────────────────────────────────────────────────── */
+const LLM_TOOLS = [
+  {label:"ChatGPT",   icon:"🤖", buildUrl:(q:string)=>`https://chatgpt.com/?q=${encodeURIComponent(q)}`},
+  {label:"Claude",    icon:"✦",  buildUrl:(q:string)=>`https://claude.ai/new?q=${encodeURIComponent(q)}`},
+  {label:"Gemini",    icon:"♊",  buildUrl:(q:string)=>`https://gemini.google.com/app?q=${encodeURIComponent(q)}`},
+  {label:"Perplexity",icon:"🔍", buildUrl:(q:string)=>`https://www.perplexity.ai/?q=${encodeURIComponent(q)}`},
+  {label:"Grok",      icon:"⚡", buildUrl:(q:string)=>`https://x.com/i/grok?text=${encodeURIComponent(q)}`},
+  {label:"DeepSeek",  icon:"🌊", buildUrl:(q:string)=>`https://chat.deepseek.com/?q=${encodeURIComponent(q)}`},
+];
+
+function OpenWithMenu({text, onToast}: {text: string; onToast:(msg:string)=>void}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  return (
+    <div ref={ref} style={{position:"relative"}}>
+      <button onClick={() => setOpen(v=>!v)}
+        style={{display:"flex",alignItems:"center",gap:6,height:38,padding:"0 16px",borderRadius:100,border:"1px solid rgba(255,255,255,0.12)",background:"#1a1a1b",color:"rgba(255,255,255,0.7)",fontSize:13,cursor:"pointer"}}>
+        <Send size={14}/> Open with <ChevronDown size={13} style={{transform:open?"rotate(180deg)":"none",transition:"transform 0.2s"}}/>
+      </button>
+      {open && (
+        <div style={{position:"absolute",bottom:"calc(100% + 8px)",right:0,zIndex:50,background:"#18181a",border:"1px solid rgba(255,255,255,0.1)",borderRadius:14,overflow:"hidden",minWidth:190,boxShadow:"0 20px 60px rgba(0,0,0,0.7)"}}>
+          <div style={{padding:"10px 14px 8px",fontSize:11,color:"rgba(255,255,255,0.3)",fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase",borderBottom:"1px solid rgba(255,255,255,0.06)"}}>Send prompt to</div>
+          {LLM_TOOLS.map(t => (
+            <button key={t.label}
+              onClick={() => {
+                navigator.clipboard.writeText(text).catch(()=>{});
+                window.open(t.buildUrl(text),"_blank","noopener,noreferrer");
+                setOpen(false);
+                onToast(`Opening ${t.label} — prompt sent to input & copied to clipboard`);
+              }}
+              style={{display:"flex",alignItems:"center",gap:10,width:"100%",textAlign:"left",padding:"10px 16px",color:"rgba(255,255,255,0.8)",fontSize:13,background:"transparent",border:"none",cursor:"pointer"}}
+              onMouseEnter={e=>(e.currentTarget.style.background="rgba(255,255,255,0.05)")}
+              onMouseLeave={e=>(e.currentTarget.style.background="transparent")}>
+              <span style={{fontSize:16,width:22,textAlign:"center"}}>{t.icon}</span>
+              <span>{t.label}</span>
+              <span style={{marginLeft:"auto",fontSize:10,color:"rgba(255,255,255,0.2)"}}>↗</span>
+            </button>
+          ))}
+          <div style={{padding:"8px 16px 10px",fontSize:11,color:"rgba(255,255,255,0.2)",borderTop:"1px solid rgba(255,255,255,0.06)"}}>Prompt auto-fills the input ✓</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Deep Mode Modal ────────────────────────────────────────────────────── */
+function DeepModal({
+  questions, answers, setAnswers, isLoading, domainLabel, subcategoryLabel,
+  onClose, onSkip, onGenerate, isGenerating,
+}: {
+  questions: DeepQuestion[]; answers: Record<string,string>;
+  setAnswers: React.Dispatch<React.SetStateAction<Record<string,string>>>;
+  isLoading: boolean; domainLabel: string|null; subcategoryLabel: string|null;
+  onClose: () => void; onSkip: () => void; onGenerate: () => void; isGenerating: boolean;
+}) {
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",padding:20}}>
+      <div style={{width:"100%",maxWidth:540,borderRadius:20,background:"#0f0f10",border:"1px solid rgba(255,255,255,0.1)",boxShadow:"0 20px 80px rgba(0,0,0,0.7)"}}>
+        {/* Header */}
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",padding:"24px 24px 8px"}}>
+          <div>
+            <h2 style={{margin:0,fontSize:18,fontWeight:700,color:"#fff"}}>Deep Mode — A few quick questions</h2>
+            <p style={{margin:"4px 0 0",fontSize:12,color:"rgba(255,255,255,0.4)",display:"flex",alignItems:"center",gap:6}}>
+              {domainLabel && <><span>{CATEGORY_LABELS[domainLabel]?.match(/\p{Extended_Pictographic}/u)?.[0] ?? "💡"}</span><span>{stripEmoji(CATEGORY_LABELS[domainLabel] ?? domainLabel)}</span></>}
+              {subcategoryLabel && <><span>·</span><span>{subcategoryLabel}</span></>}
+              <span>· All optional</span>
+            </p>
+          </div>
+          <button onClick={onClose} style={{marginTop:2,width:32,height:32,borderRadius:"50%",border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <X size={15} color="rgba(255,255,255,0.6)"/>
+          </button>
+        </div>
+
+        {/* Questions */}
+        <div style={{padding:"16px 24px",maxHeight:"55vh",overflowY:"auto"}}>
+          {isLoading ? (
+            <div style={{display:"flex",justifyContent:"center",padding:"32px 0"}}>
+              <Loader2 size={24} style={{animation:"spin 1s linear infinite",color:"rgba(255,255,255,0.3)"}}/>
+            </div>
+          ) : questions.length === 0 ? (
+            <p style={{color:"rgba(255,255,255,0.3)",fontSize:13}}>No questions available for this domain.</p>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:16}}>
+              {questions.map(q => (
+                <div key={q.id}>
+                  <label style={{fontSize:13,color:"rgba(255,255,255,0.8)",display:"block",marginBottom:6,fontWeight:500}}>{q.question}</label>
+                  {q.type==="select" && q.options ? (
+                    <div style={{position:"relative"}}>
+                      <select value={answers[q.id]||""} onChange={e=>setAnswers(a=>({...a,[q.id]:e.target.value}))}
+                        style={{width:"100%",height:44,background:"#1c1c1e",border:"1px solid rgba(255,255,255,0.15)",borderRadius:10,padding:"0 12px",color:"#fff",fontSize:13,outline:"none",appearance:"none",cursor:"pointer",fontFamily:"inherit"}}>
+                        <option value="" disabled style={{background:"#1c1c1e",color:"rgba(255,255,255,0.4)"}}>Select…</option>
+                        {q.options.map(o=><option key={o} value={o} style={{background:"#1c1c1e",color:"#fff"}}>{o}</option>)}
+                      </select>
+                      <ChevronDown size={14} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",color:"rgba(255,255,255,0.4)",pointerEvents:"none"}}/>
+                    </div>
+                  ) : q.type==="textarea" ? (
+                    <textarea value={answers[q.id]||""} onChange={e=>setAnswers(a=>({...a,[q.id]:e.target.value}))}
+                      placeholder={q.placeholder||"Your answer…"} rows={3}
+                      style={{width:"100%",background:"#1c1c1e",border:"1px solid rgba(255,255,255,0.15)",borderRadius:10,padding:"10px 12px",color:"#fff",fontSize:13,outline:"none",resize:"vertical",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  ) : (
+                    <input type="text" value={answers[q.id]||""} onChange={e=>setAnswers(a=>({...a,[q.id]:e.target.value}))}
+                      placeholder={q.placeholder||"Your answer…"}
+                      style={{width:"100%",height:44,background:"#1c1c1e",border:"1px solid rgba(255,255,255,0.15)",borderRadius:10,padding:"0 12px",color:"#fff",fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 24px",borderTop:"1px solid rgba(255,255,255,0.07)"}}>
+          <button onClick={onSkip} style={{fontSize:13,color:"rgba(255,255,255,0.5)",background:"none",border:"none",cursor:"pointer",padding:"8px 0"}}
+            onMouseEnter={e=>(e.currentTarget.style.color="rgba(255,255,255,0.8)")}
+            onMouseLeave={e=>(e.currentTarget.style.color="rgba(255,255,255,0.5)")}>
+            Skip &amp; Generate
+          </button>
+          <button onClick={onGenerate} disabled={isGenerating}
+            style={{height:44,padding:"0 28px",borderRadius:10,border:"none",background:GRADIENT,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:8,opacity:isGenerating?0.6:1}}>
+            {isGenerating ? <><Loader2 size={15} style={{animation:"spin 1s linear infinite"}}/> Generating…</> : "Generate"}
+          </button>
         </div>
       </div>
     </div>
   );
-};
+}
 
-const SmarterPrompt = ({
-  onPromptGenerated,
-  onUseInOptimizer,
-  smartgenId: smartgenIdProp,
-}: SmarterPromptProps) => {
-  const navigate = useNavigate();
-
-const sendTOptimizer = async () => {
-  if (!detailedPrompt?.trim()) return;
-  // optional: also copy to clipboard
-  try { await navigator.clipboard.writeText(detailedPrompt); } catch {}
-
-  navigate("/prompt-optimization", {
-    state: { initialText: detailedPrompt }, // <-- this feeds the next page
-    replace: false,
-  });
-};
-
-
-const goToSmartgenHistory = () => {
-  // opens /history and selects the Smartgen tab
-  navigate("/history?tab=smartgen", { replace: false });
-};
-
-  // main state
-  const [isGenerating, setIsGenerating] = useState(false);
-  const {userPrompt, setUserPrompt, detailedPrompt, setDetailedPrompt, clearPrompts } = usePrompt();
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [activeAction, setActiveAction] =
-    useState<"copy" | "download" | "save" | "open" | null>(null);
-  const [tokenEfficiencyScore, setTokenEfficiencyScore] = useState(0);
-  const [files, setFiles] = useState<File[]>([]);
-  const [smartgenId, setSmartgenId] = useState<string | undefined>(
-    smartgenIdProp
-  );
-const [detailedPromptMeta, setDetailedPromptMeta] = useState<any>(null);
-  // save modal
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const saveBtnRef = useRef<HTMLButtonElement | null>(null);
-
-  // auth
-  const { token, user, persistAuth } = useAuth() as any;
-   
-  
-
-  // ---------- MIC (speech-to-text) ----------
-  const recognitionRef = useRef<any>(null);
-  const [speechSupported, setSpeechSupported] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-   
-    const [isEditingDetailed, setIsEditingDetailed] = useState(false);
-const [editablePrompt, setEditablePrompt] = useState("");
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const SpeechRecognition =
-        (window as any).SpeechRecognition ||
-        (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        setSpeechSupported(true);
-        const rec = new SpeechRecognition();
-        rec.continuous = false;
-        rec.interimResults = false;
-        rec.lang = "en-US";
-
-        rec.onresult = (event: any) => {
-          try {
-            const transcript = event.results[0][0].transcript;
-            setUserPrompt(userPrompt ? userPrompt + " " + transcript : transcript);
-          } catch {}
-          setIsListening(false);
-        };
-        rec.onerror = () => {
-          setIsListening(false);
-          toast({
-            title: "Speech recognition failed",
-            description: "Please try again or use text input",
-            variant: "destructive",
-          });
-        };
-        rec.onend = () => setIsListening(false);
-        recognitionRef.current = rec;
-      }
-    }
-  }, []);
-
-  const startListening = () => {
-    if (recognitionRef.current && speechSupported) {
-      setIsListening(true);
-      try {
-        recognitionRef.current.start();
-      } catch {
-        setIsListening(false);
-      }
-    }
-  };
-  const stopListening = () => {
-    try {
-      recognitionRef.current?.stop();
-    } finally {
-      setIsListening(false);
-    }
-  };
-  // -----------------------------------------
-
-  useEffect(() => {
-    if (smartgenIdProp && smartgenIdProp !== smartgenId) {
-      setSmartgenId(smartgenIdProp);
-    }
-  }, [smartgenIdProp]);
-
-  const exampleIdeas = [
-    {
-      text: "Help me create a marketing strategy",
-      img: "/icons/i1.png",
-      title: "Marketing Strategy",
-    },
-    {
-      text: "Write a technical tutorial for beginners",
-      img: "/icons/i2.png",
-      title: "Technical Tutorial",
-    },
-    {
-      text: "Analyze competitor pricing models",
-      img: "/icons/i3.png",
-      title: "Pricing Models",
-    },
-    { text: "Design a user onboarding flow", img: "/icons/i4.png", title: "Design" },
-  ];
-
-  const handleExampleClick = (idea: any) => setUserPrompt(idea.text);
-
-  // ---- server helpers (unchanged logic, condensed logs) ----
-  const logFormData = (fd: FormData) => {
-    const preview: Record<string, any[]> = {};
-    for (const [k, v] of fd.entries()) {
-      if (!preview[k]) preview[k] = [];
-      if (v instanceof File)
-        preview[k].push({ fileName: v.name, size: v.size, type: v.type });
-      else preview[k].push(v);
-    }
-    console.log("[Smartgen -> FormData]", preview);
-  };
-const postCreateSmartgen = async ({
-  inputPrompt,
-  detailedPrompt,
-  tokensUsed,
-}: {
-  inputPrompt: string;
-  detailedPrompt: string;
-  tokensUsed: number;
-}) => {
-  const safeTokens = Math.max(1, Number.isFinite(tokensUsed) ? tokensUsed : 0);
-  const fd = new FormData();
-  fd.append("inputPrompt", inputPrompt);
-  fd.append("detailedPrompt", detailedPrompt);
-  fd.append("tokensUsed", String(safeTokens));
-  for (const f of files) fd.append("attachments", f);
-
-  const base = API_BASE.replace(/\/+$/, "");
-  const url = `${base}/api/smartgen`;
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    body: fd,
-    credentials: "include",
-  });
-
-  const raw = await res.text();
-  let data: any = {};
-  try { data = JSON.parse(raw); } catch {}
-
-  if (!res.ok) {
-    // map common server errors to nicer messages
-   const code = data?.error || `http_${res.status}`;
-const nice =
-  code === "plan_required" ? "Plan required. Please purchase a plan."
-: code === "subscription_inactive" ? "Your subscription is inactive."
-: code === "org_subscription_inactive" ? "Your organization’s subscription is inactive."
-: code === "member_cap_exceeded" ? "Your member token cap is exhausted."
-: code === "org_pool_exhausted" ? "Organization token pool is exhausted."
-: code === "token_quota_exceeded" ? "Monthly token quota exceeded."
-: code === "insufficient_quota" ? "Insufficient token quota."
-: code === "invalid_user_type" ? "Your account type cannot use Smartgen."
-: code;
-
-  }
-  // Optional UI hint: if server includes daily tokens, show it; otherwise generic success
-  const newId = data?.item?.id || data?.item?._id;
-  if (newId) setSmartgenId(newId);
-
-  const hasDaily = typeof data?.dailyTokensRemaining === "number";
-  toast({
-    title: "Smartgen created",
-    description: hasDaily
-      ? `Daily tokens remaining: ${data.dailyTokensRemaining}`
-      : "Created successfully.",
-  });
-
-  // Only update auth if backend returned anything quota-related
-  if (user && persistAuth) {
-    const patch: any = { user: { ...user } };
-    if (hasDaily) patch.user.dailyTokensRemaining = data.dailyTokensRemaining;
-    // Keep future-friendly: if server later adds monthly, this won’t break
-    if (typeof data?.monthlyTokensRemaining === "number") {
-      patch.user.monthlyTokensRemaining = data.monthlyTokensRemaining;
-    }
-    if (data?.plan) patch.user.plan = data.plan;
-    if (hasDaily || typeof data?.monthlyTokensRemaining === "number" || data?.plan) {
-      persistAuth(patch);
-    }
-  }
-  return data?.item;
-};
-  const putUpdateSmartgen = async ({
-  id,
-  inputPrompt,
-  detailedPrompt,
-  tokensUsed,
-}: {
-  id: string;
-  inputPrompt: string;
-  detailedPrompt: string;
-  tokensUsed: number;
-}) => {
-  const safeTokens = Math.max(1, Number.isFinite(tokensUsed) ? tokensUsed : 0);
-  const fd = new FormData();
-  fd.append("inputPrompt", inputPrompt);
-  fd.append("detailedPrompt", detailedPrompt);
-  fd.append("tokensUsed", String(safeTokens));
-  for (const f of files) fd.append("attachments", f);
-
-  const base = API_BASE.replace(/\/+$/, "");
-  const url = `${base}/api/smartgen/${id}`;
-
-  const res = await fetch(url, {
-    method: "PUT",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    body: fd,
-    credentials: "include",
-  });
-
-  const raw = await res.text();
-  let data: any = {};
-  try { data = JSON.parse(raw); } catch {}
-
-  if (!res.ok) {
-    const code = data?.error || `http_${res.status}`;
-    const nice =
-      code === "insufficient_quota" ? "Insufficient token quota."
-      : code === "not proper plan purchased" ? "Plan required. Please purchase a plan."
-      : code === "smartgen_not_found_or_access_denied" ? "Not found or access denied."
-      : code;
-    throw new Error(nice);
-  }
-
-  const hasDaily = typeof data?.dailyTokensRemaining === "number";
-  toast({
-    title: "Smartgen updated",
-    description: hasDaily
-      ? `Daily tokens remaining: ${data.dailyTokensRemaining}`
-      : "Updated successfully.",
-  });
-
-  // Update auth quotas only if present
-  if (user && persistAuth) {
-    const patch: any = { user: { ...user } };
-    if (hasDaily) patch.user.dailyTokensRemaining = data.dailyTokensRemaining;
-    if (typeof data?.monthlyTokensRemaining === "number") {
-      patch.user.monthlyTokensRemaining = data.monthlyTokensRemaining;
-    }
-    if (data?.plan) patch.user.plan = data.plan;
-    if (hasDaily || typeof data?.monthlyTokensRemaining === "number" || data?.plan) {
-      persistAuth(patch);
-    }
-  }
-
-  const newId = data?.item?.id || data?.item?._id;
-  if (newId) setSmartgenId(newId);
-
-  return data?.item;
-};
-
-const upsertSmartgen = async (payload: {
-  inputPrompt: string;
-  detailedPrompt: string;
-  tokensUsed: number;
-}) => {
-  try {
-    if (smartgenId) {
-      const updated = await putUpdateSmartgen({ id: smartgenId, ...payload });
-      console.log("✅ PUT updated item:", updated);
-      return updated;
-    } else {
-      console.log("↪ Using POST (no smartgenId yet) …");
-      const created = await postCreateSmartgen(payload);
-      console.log("✅ POST created item:", created);
-      return created;
-    }
-  } catch (e: any) {
-    console.error("[Smartgen upsert error]", e);
-    toast({
-      title: "Save failed",
-      description: e?.message || "Unable to save Smartgen",
-      variant: "destructive",
-    });
-    throw e; // Re-throw to handle in calling function
-  }
-};
-
-  const saveSmartgenToServer = async ({
-    collectionTitle,
-    name,
-  }: {
-    collectionTitle?: string;
-    name: string;
-  }) => {
-    if (!token) {
-      toast({
-        title: "Not signed in",
-        description: "Please login to save.",
-        variant: "destructive",
-      });
-      return null;
-    }
-    if (!smartgenId) {
-      toast({
-        title: "Nothing to save yet",
-        description: "Generate a Smartgen first, then try saving.",
-        variant: "destructive",
-      });
-      return null;
-    }
-
-    const base = API_BASE.replace(/\/+$/, "");
-    const url = `${base}/api/saved-collections`;
-
-    const payload = {
-      section: "smartgen",
-      refId: smartgenId,
-      collectionTitle: collectionTitle?.trim() || undefined,
-      name: name?.trim() || undefined,
-    };
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      credentials: "include",
-    });
-
-    const raw = await res.text();
-    let data: any = {};
-    try {
-      data = JSON.parse(raw);
-    } catch {}
-
-    if (!res.ok) {
-      const msg =
-        data?.error === "invalid_section"
-          ? "Invalid section"
-          : data?.error === "invalid_refId"
-          ? "Invalid reference id"
-          : data?.error || `http_${res.status}`;
-      throw new Error(msg);
-    }
-
-    return data;
-  };
-
-  /** Generate detailed prompt (fast llmService) + upsert */
-const generateDetailedPrompt = async () => {
-  const promptToProcess = userPrompt.trim();
-  if (!promptToProcess) {
-    toast({
-      title: "No prompt provided",
-      description: "Please enter a prompt first",
-      variant: "destructive",
-    });
-    return;
-  }
-  setIsGenerating(true);
-
-  try {
-    const result = await llmService.generateDetailedPrompt(promptToProcess);
-
-    setDetailedPrompt(result.optimizedText);
-    setDetailedPromptMeta(result); // 👈 add karo
-
-
-    const originalTokens = Math.ceil(promptToProcess.length / 4);
-    const tokensUsed =
-      originalTokens +
-      Math.ceil((result?.optimizedText?.length || 0) / 4);
-
-    const efficiencyScore = Math.min(
-      95,
-      Math.max(
-        60,
-        100 -
-          Math.round(
-            (((result?.tokens ??
-              Math.ceil((result?.optimizedText?.length || 0) / 4)) -
-              originalTokens) /
-              Math.max(originalTokens, 1)) *
-              50
-          )
-      )
-    );
-    setTokenEfficiencyScore(efficiencyScore);
-
-    // Call onPromptGenerated AFTER the API call that consumes tokens
-    const saved = await upsertSmartgen({
-      inputPrompt: promptToProcess,
-      detailedPrompt: result.optimizedText,
-      tokensUsed,
-    });
-    
-    if (saved) {
-      console.log("💾 Upsert success:", saved);
-      // NOW call the callback to refresh tokens
-      onPromptGenerated?.(result.optimizedText);
-    }
-
-    toast({
-      title: "Detailed Prompt Generated!",
-      description: "Your detailed prompt is ready",
-    });
-
-  } catch (err: any) {
-    console.error(err);
-    const msg =
-      err?.code === "llm_timeout" || err?.message === "llm_timeout"
-        ? "The AI request took too long. Please try again, or shorten the prompt."
-        : err?.message || "Failed to generate prompt";
-    toast({ title: "Error", description: msg, variant: "destructive" });
-  } finally {
-    setIsGenerating(false);
-  }
-};
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    toast({
-      title: "Copied to clipboard",
-      description: `${label} has been copied successfully`,
-    });
-  };
-
-  const downloadPrompt = () => {
-    const element = document.createElement("a");
-    const file = new Blob([detailedPrompt], { type: "text/plain" });
-    element.href = URL.createObjectURL(file);
-    element.download = "detailed-prompt.txt";
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-    toast({
-      title: "Download started",
-      description: "Your prompt has been downloaded as a text file",
-    });
-  };
-
-    // send detailed prompt to Prompt Optimizer
-  const sendToOptimizer = async () => {
-      if (!detailedPrompt?.trim()) {
-       toast({
-         title: "No detailed prompt",
-         description: "Generate a detailed prompt first.",
-         variant: "destructive",
-      });
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(detailedPrompt);
-        toast({
-             title: "Copied",
-      description: "Detailed prompt copied and opening Prompt Optimizer…",
-    });
-    navigate("/prompt-optimization", {
-      state: { initialText: detailedPrompt },
-      replace: false,
-    });
-    setDetailedPrompt(detailedPrompt); // Explicitly sync with context
-  } catch (e) {
-    console.error("Clipboard error:", e);
-    toast({
-      title: "Error",
-      description: "Failed to copy to clipboard, but opening Prompt Optimizer…",
-      variant: "destructive",
-    });
-    navigate("/prompt-optimization", {
-      state: { initialText: detailedPrompt },
-      replace: false,
-    });
-    setDetailedPrompt(detailedPrompt); // Ensure context is updated
-  }
-}; 
+/* ─── Category Modal with search ─────────────────────────────────────────── */
+function CategoryModal({current, onSelect, onClose}: {
+  current: string|null;
+  onSelect:(id:string,label:string,skillLabel:string)=>void;
+  onClose:()=>void;
+}) {
+  const [search, setSearch] = useState("");
+  const filtered = search.trim()
+    ? ALL_CATEGORIES.filter(c => c.label.toLowerCase().includes(search.toLowerCase()) || c.subcategories.some(s=>s.label.toLowerCase().includes(search.toLowerCase())))
+    : ALL_CATEGORIES;
 
   return (
-    <div className="space-y-6">
-      {detailedPrompt && (
-        <IdeasStrip
-          exampleIdeas={exampleIdeas}
-          activeIndex={activeIndex}
-          setActiveIndex={setActiveIndex}
-          handleExampleClick={handleExampleClick}
-        />
-      )}
+    <div style={{position:"fixed",inset:0,zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",padding:20}}>
+      <div style={{width:"100%",maxWidth:640,maxHeight:"80vh",borderRadius:20,background:"#0f0f10",border:"1px solid rgba(255,255,255,0.1)",boxShadow:"0 20px 80px rgba(0,0,0,0.7)",display:"flex",flexDirection:"column"}}>
+        {/* Header */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"20px 20px 12px",flexShrink:0}}>
+          <div>
+            <div style={{fontWeight:700,fontSize:17,color:"#fff"}}>Select a Category</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.3)",marginTop:2}}>{filtered.length} of {ALL_CATEGORIES.length} domains</div>
+          </div>
+          <button onClick={onClose} style={{width:32,height:32,borderRadius:"50%",border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <X size={15} color="rgba(255,255,255,0.6)"/>
+          </button>
+        </div>
 
-         <div className="mx-auto w-full max-w-[1050px] rounded-[36px] bg-[#121213] overflow-visible px-2 md:px-0">
-        <div className="flex justify-center px-4 pt-4 md:pt-6">
-          <div className="relative w-full max-w-[1000px] min-h-[150px] md:h-[200px] rounded-[30px] bg-[#121213] border border-[#282829] text-white overflow-hidden">
-           <div className="h-full flex flex-col md:block">
-  <div className="flex-1 flex">
-    <div className="w-3 md:w-12" />
-    <div className="flex-1 pr-3 md:pr-14 pl-2 py-4">
-      <Textarea
-        value={userPrompt}
-        onChange={(e) => setUserPrompt(e.target.value)}
-        placeholder="Write a technical tutorial for beginners"
-        className="w-full min-h-[120px] md:h-full bg-transparent border-none resize-none text-white placeholder-white/70 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-[15px] md:text-base leading-relaxed placeholder:text-[13px] md:placeholder:text-base placeholder:leading-none placeholder:whitespace-nowrap"
-      />
-    </div>
-    <div className="w-3 md:w-12" />
-  </div>
-</div>
-
-           
-
-{/* Bottom-right controls (Mic, History, Clear*, Generate) */}
-<div className="absolute bottom-3 left-1/2 -translate-x-1/2 w-full px-3 md:left-auto md:right-3 md:translate-x-0 md:w-auto md:px-0">
-  <div className="flex items-center justify-center md:justify-end gap-2">
-
-    {/* Mic — hide after detailed prompt appears */}
-    {speechSupported && !Boolean(detailedPrompt.trim()) && (
-      <button
-        onClick={isListening ? stopListening : startListening}
-        className="relative h-8 w-8 md:h-9 md:w-9 rounded-full grid place-items-center flex-shrink-0 overflow-visible border border-[#333335] text-white transition-all duration-300"
-        style={{ background: "#2C2C2C" }}
-        onMouseEnter={(e) =>
-          (e.currentTarget.style.backgroundImage =
-            "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)")
-        }
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundImage = "";
-          e.currentTarget.style.background = "#2C2C2C";
-        }}
-        title={isListening ? "Stop voice input" : "Start voice input"}
-        aria-label="Microphone"
-      >
-        {isListening && (
-          <>
-            <span
-              className="absolute inset-0 rounded-full opacity-60 animate-ping"
-              style={{ background: "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)" }}
-            />
-            <span
-              className="absolute inset-0 rounded-full opacity-40 animate-ping"
-              style={{
-                background: "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)",
-                animationDelay: "0.4s",
-              }}
-            />
-          </>
-        )}
-        <img
-          src="/icons/mic.png"
-          alt="Mic"
-          className={`h-4 w-4 ${isListening ? "animate-pulse" : ""}`}
-        />
-      </button>
-    )}
-
-    {/* History */}
-    <button
-      onClick={goToSmartgenHistory}
-      className="h-8 md:h-9 px-3 rounded-full flex items-center justify-center gap-2 flex-shrink-0 border border-[#333335] text-white transition-all duration-300"
-      style={{ background: "#2C2C2C" }}
-      onMouseEnter={(e) =>
-        (e.currentTarget.style.backgroundImage =
-          "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)")
-      }
-      onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundImage = "";
-        e.currentTarget.style.background = "#2C2C2C";
-      }}
-      title="Prompt history"
-      aria-label="Prompt history"
-    >
-      <History className="h-4 w-4" />
-      <span className="text-xs md:text-sm whitespace-nowrap">History</span>
-    </button>
-
-    {/* Clear */}
-    {Boolean(detailedPrompt.trim()) && (
-      <button
-// Clear button ke onClick mein
-onClick={() => {
-  clearPrompts();
-  setDetailedPromptMeta(null); // 👈 add karo
-}}
-        className="h-8 md:h-9 px-3 rounded-full flex items-center justify-center text-white text-xs md:text-sm border border-[#333335] transition-all duration-300 flex-shrink-0"
-        style={{ background: "#2C2C2C" }}
-        onMouseEnter={(e) =>
-          (e.currentTarget.style.backgroundImage =
-            "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)")
-        }
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundImage = "";
-          e.currentTarget.style.background = "#2C2C2C";
-        }}
-        title="Clear"
-        aria-label="Clear"
-      >
-        Clear
-      </button>
-    )}
-
-    {/* Generate */}
-    <button
-      onClick={generateDetailedPrompt}
-      disabled={isGenerating || !userPrompt.trim()}
-      className={`flex items-center justify-center flex-shrink-0 rounded-[8px]
-        bg-gradient-to-r from-[#FF14EF] to-[#1A73E8]
-        transition-all duration-300 hover:opacity-90 active:scale-[0.98] disabled:opacity-50
-        ${
-          detailedPrompt.trim()
-            ? "h-8 px-3 gap-1.5 text-[12px] md:w-[120px] md:h-[38px] md:text-sm"
-            : "h-8 px-3 gap-1.5 text-[12px] md:w-[131px] md:h-[40px] md:text-sm"
-        }`}
-    >
-      {isGenerating ? "Generating..." : "Generate"}
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        className={`${detailedPrompt.trim() ? "h-3.5 w-3.5" : "h-3.5 w-3.5 md:h-4 md:w-4"}`}
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-        strokeWidth={2}
-      >
-        <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
-      </svg>
-    </button>
-  </div>
-</div>
+        {/* Search */}
+        <div style={{padding:"0 20px 12px",flexShrink:0}}>
+          <div style={{position:"relative"}}>
+            <Search size={14} style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"rgba(255,255,255,0.3)",pointerEvents:"none"}}/>
+            <input type="text" placeholder="Search domains and subcategories…" value={search} onChange={e=>setSearch(e.target.value)} autoFocus
+              style={{width:"100%",height:38,paddingLeft:36,paddingRight:search?36:12,background:"#1a1a1b",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,color:"#fff",fontSize:12,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            {search && <button onClick={()=>setSearch("")} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,0.3)",display:"flex",alignItems:"center"}}><X size={12}/></button>}
           </div>
         </div>
 
-        {!detailedPrompt && (
-          <div className="flex justify-center px-4 -mt-px pb-4 md:pb-6">
-           <div className="relative w-full max-w-[1000px] min-h-[220px] md:h-[200px] rounded-[30px] bg-[#121213] border border-[#282829] text-white overflow-hidden">
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 h-full">
-                {exampleIdeas.map((idea, index) => {
-                  const isActive = index === activeIndex;
+        {/* Grid */}
+        <div style={{overflowY:"auto",padding:"0 20px 20px"}}>
+          {filtered.length === 0 ? (
+            <div style={{textAlign:"center",padding:"32px 0",color:"rgba(255,255,255,0.3)",fontSize:13}}>No domains match "{search}"</div>
+          ) : (
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              {filtered.map(cat => {
+                const isActive = current === cat.id;
+                return (
+                  <button key={cat.id}
+                    onClick={() => { onSelect(cat.id, cat.label, SKILL_LABELS[cat.id]||cat.label); onClose(); }}
+                    style={{textAlign:"left",padding:"14px 16px",borderRadius:14,border:isActive?"1px solid rgba(139,92,246,0.5)":"1px solid rgba(255,255,255,0.07)",background:isActive?"rgba(139,92,246,0.12)":"rgba(255,255,255,0.02)",cursor:"pointer",display:"flex",alignItems:"flex-start",gap:10}}
+                    onMouseEnter={e=>{if(!isActive)e.currentTarget.style.background="rgba(255,255,255,0.05)";}}
+                    onMouseLeave={e=>{if(!isActive)e.currentTarget.style.background="rgba(255,255,255,0.02)";}}>
+                    <span style={{fontSize:18,lineHeight:1,marginTop:1}}>{cat.label.match(/\p{Extended_Pictographic}/u)?.[0]||"💡"}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:600,color:isActive?"#c4b5fd":"#fff",marginBottom:3}}>{stripEmoji(cat.label)}</div>
+                      <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cat.subcategories.map(s=>s.label).join(" · ")}</div>
+                    </div>
+                    {isActive && <Check size={14} color="#8b5cf6" style={{flexShrink:0,marginTop:2}}/>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Main Component ─────────────────────────────────────────────────────── */
+export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: SmarterPromptProps) {
+  const {user} = useAuth();
+  const navigate = useNavigate();
+
+  const [prompt,       setPrompt]       = useState("");
+  const [skillMode,    setSkillMode]    = useState(false);
+  const [deepMode,     setDeepMode]     = useState(false);
+  const [activeIdea,   setActiveIdea]   = useState<number|null>(null);
+
+  // Detection
+  const [detection,       setDetection]       = useState<DetectionResult|null>(null);
+  const [isDetecting,     setIsDetecting]     = useState(false);
+  const [manualDomainId,  setManualDomainId]  = useState<string|null>(null);
+  const [manualLabel,     setManualLabel]     = useState<string|null>(null);
+  const [selectedSubcat,  setSelectedSubcat]  = useState<SubcategoryChip|null>(null);
+  const [showCatModal,    setShowCatModal]    = useState(false);
+
+  // Deep mode
+  const [showDeepModal,   setShowDeepModal]   = useState(false);
+  const [deepQuestions,   setDeepQuestions]   = useState<DeepQuestion[]>([]);
+  const [deepAnswers,     setDeepAnswers]     = useState<Record<string,string>>({});
+  const [loadingQs,       setLoadingQs]       = useState(false);
+
+  // Output
+  const [isGenerating,  setIsGenerating]  = useState(false);
+  const [generated,     setGenerated]     = useState("");
+  const [streamedText,  setStreamedText]  = useState("");
+  const [isEditing,     setIsEditing]     = useState(false);
+  const [editable,      setEditable]      = useState("");
+  const [isBookmarked,  setIsBookmarked]  = useState(false);
+
+  const abortRef    = useRef<AbortController|null>(null);
+  const detectTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
+  const outputRef   = useRef<HTMLDivElement>(null);
+
+  // Derived
+  const effectiveDomainId    = manualDomainId ?? detection?.domainId ?? null;
+  const effectiveDomainLabel = manualLabel    ?? detection?.categoryLabel ?? null;
+  const effectiveSubcatLabel = selectedSubcat?.label ?? null;
+  const chipList: SubcategoryChip[] = manualDomainId
+    ? (ALL_CATEGORIES.find(c=>c.id===manualDomainId)?.subcategories ?? [])
+    : (detection?.subcategories ?? []);
+
+  const displayText = isEditing ? editable : (generated || streamedText);
+  const hasOutput   = !!displayText;
+
+  // Show detection banner: when skillMode OR deepMode is on and detection found something
+  const showBanner = (skillMode || deepMode) && !generated && !streamedText && (detection||manualDomainId) && prompt.trim().length >= 8;
+
+  // Hallucination nudge: skill or deep mode, short prompt, low confidence
+  const promptWords = prompt.trim().split(/\s+/).filter(Boolean).length;
+  const showNudge = (skillMode || deepMode) && !generated && !isGenerating && promptWords > 0 && promptWords < 8 && !manualDomainId && (!detection || (detection.confidence??0) < 50);
+
+  /* ── Detection ── runs when skillMode OR deepMode is active ── */
+  useEffect(() => {
+    if (!skillMode && !deepMode) { setDetection(null); setSelectedSubcat(null); return; }
+    if (detectTimer.current) clearTimeout(detectTimer.current);
+    if (prompt.trim().length < 8) { setDetection(null); setSelectedSubcat(null); return; }
+    detectTimer.current = setTimeout(() => {
+      const local = clientDetectDomain(prompt);
+      if (local) {
+        setDetection(local);
+        if (!selectedSubcat) setSelectedSubcat(local.subcategories[0] ?? null);
+      } else {
+        setIsDetecting(true);
+        llmService.detectDomain(prompt)
+          .then(r => { if (r) { setDetection(r); if (!selectedSubcat) setSelectedSubcat(r.subcategories[0]??null); } })
+          .catch(()=>{})
+          .finally(()=>setIsDetecting(false));
+      }
+    }, 350);
+  }, [prompt, skillMode, deepMode]);
+
+  useEffect(() => {
+    if (streamedText && outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight;
+  }, [streamedText]);
+
+  /* ── Open deep modal: loads questions then shows popup ── */
+  const openDeepModal = useCallback(async () => {
+    const domainId = effectiveDomainId ?? "general_expert";
+    setLoadingQs(true);
+    setShowDeepModal(true);
+    setDeepAnswers({});
+    try {
+      const qs = await llmService.getDeepQuestions(prompt, domainId, selectedSubcat?.id ?? domainId, effectiveSubcatLabel ?? undefined);
+      setDeepQuestions(qs);
+    } catch {
+      setDeepQuestions([]);
+    } finally {
+      setLoadingQs(false);
+    }
+  }, [effectiveDomainId, selectedSubcat, effectiveSubcatLabel, prompt]);
+
+  /* ── Core generate function ── */
+  const doGenerate = useCallback(async (answersOverride?: Record<string,string>) => {
+    if (!user) { navigate("/login"); return; }
+    if (!prompt.trim()) { toast({title:"Enter a prompt first",variant:"destructive"}); return; }
+    if (isGenerating) { abortRef.current?.abort(); return; }
+
+    setShowDeepModal(false);
+    setIsGenerating(true); setGenerated(""); setStreamedText(""); setIsEditing(false);
+    const ctrl = new AbortController(); abortRef.current = ctrl;
+
+    const context = skillMode ? {
+      domainId:         effectiveDomainId ?? undefined,
+      subcategoryId:    selectedSubcat?.id ?? undefined,
+      subcategoryLabel: effectiveSubcatLabel ?? undefined,
+      deepAnswers:      answersOverride ?? (Object.keys(deepAnswers).length ? deepAnswers : undefined),
+    } : {};
+
+    try {
+      const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/api/smartgen/stream`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})},
+        body:JSON.stringify({prompt:prompt.trim(),context,skillMode}),
+        signal:ctrl.signal, credentials:"include",
+      });
+
+      if (!res.ok || !res.body) throw new Error("stream_unavailable");
+      const reader = res.body.getReader(); const decoder = new TextDecoder();
+      let buf = ""; let accum = ""; let final = "";
+
+      while (true) {
+        const {done,value} = await reader.read(); if (done) break;
+        buf += decoder.decode(value,{stream:true});
+        const lines = buf.split("\n"); buf = lines.pop()||"";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.error) throw new Error(evt.message||"stream_error");
+            if (evt.delta) { accum += evt.delta; setStreamedText(unwrapJson(accum)); }
+            if (evt.done)  final = evt.optimizedText || unwrapJson(accum);
+          } catch(pe) { if ((pe as Error).message!=="stream_error") continue; throw pe; }
+        }
+      }
+
+      const result = final || unwrapJson(accum);
+      if (!result) throw new Error("empty_response");
+      setGenerated(result); setStreamedText("");
+      onPromptGenerated?.(result);
+      try { await llmService.saveSmartgen({inputPrompt:prompt.trim(),detailedPrompt:result,tokensUsed:Math.ceil(result.length/3.5)}); } catch{}
+
+    } catch(err) {
+      if ((err as Error).name==="AbortError") { setIsGenerating(false); return; }
+      try {
+        const r = await llmService.generateDetailedPrompt(prompt.trim());
+        const clean = unwrapJson((r as any)?.optimizedText ?? (typeof r==="string"?r:""));
+        if (!clean) throw new Error("empty");
+        setGenerated(clean); setStreamedText("");
+        onPromptGenerated?.(clean);
+        try { await llmService.saveSmartgen({inputPrompt:prompt.trim(),detailedPrompt:clean,tokensUsed:Math.ceil(clean.length/3.5)}); } catch{}
+      } catch(fe) {
+        toast({title:"Generation failed",description:(fe as Error).message,variant:"destructive"});
+      }
+    } finally { setIsGenerating(false); }
+  }, [user, prompt, skillMode, effectiveDomainId, selectedSubcat, effectiveSubcatLabel, deepAnswers, navigate, onPromptGenerated, isGenerating]);
+
+  /* ── Generate button click ──
+     If deep mode ON and domain known → show "Next" → open deep modal
+     Otherwise → generate directly
+  ── */
+  const handleGenerateClick = useCallback(async () => {
+    if (!prompt.trim()) return;
+    if (isGenerating) { abortRef.current?.abort(); return; }
+    // Deep mode: always show "Next" → open the questions popup first
+    if (deepMode && !showDeepModal) {
+      await openDeepModal();
+      return;
+    }
+    doGenerate();
+  }, [prompt, isGenerating, deepMode, showDeepModal, openDeepModal, doGenerate]);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(displayText).then(()=>toast({title:"Copied to clipboard"}));
+  }
+  function handleDownload() {
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([displayText],{type:"text/plain"}));
+    a.download = "smartgen-prompt.txt"; a.click();
+  }
+
+  const inputBg    = "#111214";
+  const cardBorder = "1px solid #282829";
+  const btnDark    = {background:"#1a1a1b",border:"1px solid rgba(255,255,255,0.10)",color:"rgba(255,255,255,0.65)"} as const;
+
+  // Generate button label: "Next" whenever Deep mode is ON
+  const isDeepNext = deepMode && !isGenerating;
+
+  return (
+    <div style={{width:"100%",maxWidth:1000,margin:"0 auto",fontFamily:"Inter, ui-sans-serif, system-ui"}}>
+
+      {/* ── Ideas Strip ──────────────────────────────────────────────────── */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",background:inputBg,borderRadius:20,border:cardBorder,overflow:"hidden",marginBottom:16}}>
+        {EXAMPLE_IDEAS.map(({Icon,title,text},idx) => (
+          <button key={idx} onClick={()=>{setPrompt(text);setActiveIdea(idx);setDetection(null);setManualDomainId(null);setSelectedSubcat(null);}}
+            style={{display:"flex",alignItems:"center",gap:14,padding:"18px 20px",textAlign:"left",background:activeIdea===idx?"rgba(255,255,255,0.04)":"transparent",border:"none",borderLeft:idx>0?"1px solid #282829":"none",cursor:"pointer",transition:"background 0.15s"}}
+            onMouseEnter={e=>{if(activeIdea!==idx)e.currentTarget.style.background="rgba(255,255,255,0.02)";}}
+            onMouseLeave={e=>{if(activeIdea!==idx)e.currentTarget.style.background="transparent";}}>
+            <div style={{width:32,height:32,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.06)",borderRadius:8}}>
+              <Icon size={16} color="rgba(255,255,255,0.8)"/>
+            </div>
+            <div>
+              <div style={{fontWeight:700,fontSize:14,color:"#fff",marginBottom:4}}>{title}</div>
+              <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",lineHeight:1.3}}>{text}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {/* ── Input Card ───────────────────────────────────────────────────── */}
+      <div style={{background:inputBg,borderRadius:20,border:cardBorder,overflow:"hidden",marginBottom:hasOutput||isGenerating?24:0}}>
+
+        {/* Textarea */}
+        <div style={{padding:"20px 20px 8px"}}>
+          <textarea value={prompt} onChange={e=>{setPrompt(e.target.value);setDetection(null);setManualDomainId(null);setSelectedSubcat(null);}}
+            placeholder="Describe your goal and SmartGen will craft the perfect expert prompt…"
+            style={{width:"100%",minHeight:130,resize:"none",background:"transparent",border:"none",outline:"none",color:"#fff",fontSize:14,lineHeight:1.6,fontFamily:"inherit",caretColor:"#8b5cf6"}}
+            onKeyDown={e=>{if(e.key==="Enter"&&(e.metaKey||e.ctrlKey))handleGenerateClick();}}/>
+        </div>
+
+        {/* ── Hallucination nudge ── */}
+        {showNudge && (
+          <div style={{margin:"0 16px 10px",display:"flex",alignItems:"flex-start",gap:8,padding:"10px 14px",borderRadius:12,background:"rgba(251,191,36,0.06)",border:"1px solid rgba(251,191,36,0.18)"}}>
+            <AlertTriangle size={14} style={{color:"rgba(251,191,36,0.7)",marginTop:1,flexShrink:0}}/>
+            <p style={{margin:0,fontSize:12,color:"rgba(251,191,36,0.7)",lineHeight:1.4}}>
+              <strong style={{color:"rgba(251,191,36,0.9)"}}>Add more detail</strong> — short prompts produce generic outputs. Try adding your goal, audience, tool or budget.
+            </p>
+          </div>
+        )}
+
+        {/* ── Detection Banner ── */}
+        {showBanner && (
+          <div style={{margin:"0 16px 10px",padding:"10px 14px",borderRadius:14,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:chipList.length?8:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                <span style={{fontSize:11,color:"rgba(255,255,255,0.35)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.04em"}}>Detected</span>
+                {isDetecting && <Loader2 size={11} style={{color:"#a78bfa",animation:"spin 1s linear infinite"}}/>}
+                <span style={{width:1,height:12,background:"rgba(255,255,255,0.12)"}}/>
+                <span style={{fontSize:14}}>{CATEGORY_LABELS[effectiveDomainId ?? ""]?.match(/\p{Extended_Pictographic}/u)?.[0] || "💡"}</span>
+                <span style={{fontSize:12,fontWeight:600,color:"#e2e8f0"}}>{stripEmoji(effectiveDomainLabel)}</span>
+                {detection?.skillLabel && <><span style={{color:"rgba(255,255,255,0.2)",fontSize:12}}>·</span><span style={{fontSize:12,color:"rgba(255,255,255,0.55)"}}>{detection.skillLabel}</span></>}
+                {detection?.confidence && !manualDomainId && <span style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>{detection.confidence}% match</span>}
+              </div>
+              <button onClick={()=>setShowCatModal(true)}
+                style={{display:"flex",alignItems:"center",gap:5,height:28,padding:"0 12px",borderRadius:100,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.04)",color:"rgba(255,255,255,0.6)",fontSize:12,cursor:"pointer",flexShrink:0}}>
+                Change <ChevronDown size={11}/>
+              </button>
+            </div>
+            {chipList.length > 0 && (
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {chipList.map(chip => {
+                  const active = selectedSubcat?.id===chip.id;
                   return (
-                    <button
-                      key={index}
-                      onClick={() => {
-                        handleExampleClick(idea);
-                        setActiveIndex(index);
-                      }}
-                      className={[
-                        "relative h-full w-full text-left",
-                        "flex flex-col items-start justify-start px-6 pt-8 pb-4",
-                        index !== 0 ? "border-l border-[#282829]" : "",
-                        isActive ? "bg-white/5" : "hover:bg-white/7",
-                      ].join(" ")}
-                    >
-                      <img
-                        src={idea.img}
-                        alt={idea.title}
-                        className="h-6 w-6 mb-2"
-                      />
-                      <div
-                        className="text-white font-semibold leading-[1.1] text-[15px]"
-                        style={{ fontFamily: "Inter" }}
-                      >
-                        {idea.title}
-                      </div>
-                      <div
-                        className="text-white/70 text-[15px] leading-[1.2] mt-[6px]"
-                        style={{ fontFamily: "Inter" }}
-                      >
-                        {idea.text}
-                      </div>
+                    <button key={chip.id} onClick={()=>setSelectedSubcat(active?null:chip)}
+                      style={{display:"inline-flex",alignItems:"center",gap:5,padding:"5px 12px",borderRadius:100,border:"none",cursor:"pointer",fontSize:12,fontWeight:active?600:400,transition:"all 0.15s",background:active?"linear-gradient(90deg,#ec4899,#8b5cf6)":"rgba(255,255,255,0.06)",color:active?"#fff":"rgba(255,255,255,0.6)"}}>
+                      {active && <Check size={11}/>}{chip.label}
                     </button>
                   );
                 })}
               </div>
-            </div>
+            )}
           </div>
         )}
 
-        {detailedPrompt && (
-          <div className="px-4 pb-6">
-            <div className="mx-auto w-full max-w-[1000px]">
-              <div className="text-center my-6">
-                <h3 className="text-white font-semibold text-xl md:text-2xl">
-                  Detailed Prompt
-                </h3>
-              </div>
+        {/* ── Bottom Button Bar ── */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px 14px",borderTop:"1px solid #1e1e1f"}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
 
-              <div className={`${CARD_FRAME} relative p-4 md:p-5`}>
-  <div className="relative text-white/90 text-sm leading-relaxed pr-4 md:pr-[12rem] pb-24 md:pb-22">
-  {isEditingDetailed ? (
-    <Textarea
-      value={editablePrompt}
-      onChange={(e) => setEditablePrompt(e.target.value)}
-      className="w-full min-h-[200px] bg-[#1a1a1a] border border-[#333] text-white resize-vertical p-3 rounded-md"
-    />
-  ) : (
-    <div className="space-y-5">
+            {/* History */}
+            <button style={{...btnDark,display:"flex",alignItems:"center",gap:6,height:36,padding:"0 14px",borderRadius:100,fontSize:13,cursor:"pointer"}}
+              onClick={()=>navigate("/history?tab=smartgen")}>
+              <History size={14}/> History
+            </button>
 
-      {/* Step Cards */}
-      {detailedPromptMeta?.steps?.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {detailedPromptMeta.steps.map((step: any, i: number) => (
-            <div
-              key={i}
-              className="rounded-xl border border-[#282829] bg-[#17171A] p-4"
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <span
-                  className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-                  style={{
-                    background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)",
-                  }}
-                >
-                  {i + 1}
-                </span>
-                <span className="text-white font-semibold text-sm">{step.title}</span>
-              </div>
-              <p className="text-white/70 text-xs leading-relaxed">{step.content}</p>
-            </div>
-          ))}
+            {/* Skill — purple identity always */}
+            <button onClick={()=>{setSkillMode(v=>{if(v){setDetection(null);setSelectedSubcat(null);setManualDomainId(null);setManualLabel(null);}return !v;});}}
+              style={{display:"flex",alignItems:"center",gap:6,height:36,padding:"0 14px",borderRadius:100,fontSize:13,cursor:"pointer",transition:"all 0.15s",
+                background:skillMode?"rgba(124,58,237,0.3)":"rgba(139,92,246,0.07)",
+                border:skillMode?"1px solid rgba(139,92,246,0.6)":"1px solid rgba(139,92,246,0.22)",
+                color:skillMode?"#c4b5fd":"rgba(139,92,246,0.75)"}}>
+              <Zap size={14} fill={skillMode?"#c4b5fd":"none"} color={skillMode?"#c4b5fd":"rgba(139,92,246,0.75)"}/> Skill
+            </button>
+
+            {/* Deep — amber identity always, fully independent of Skill */}
+            <button onClick={()=>setDeepMode(v=>!v)}
+              style={{display:"flex",alignItems:"center",gap:6,height:36,padding:"0 14px",borderRadius:100,fontSize:13,cursor:"pointer",transition:"all 0.15s",
+                background:deepMode?"rgba(245,158,11,0.22)":"rgba(245,158,11,0.06)",
+                border:deepMode?"1px solid rgba(245,158,11,0.6)":"1px solid rgba(245,158,11,0.22)",
+                color:deepMode?"#fbbf24":"rgba(245,158,11,0.65)"}}>
+              <Sparkles size={13} color={deepMode?"#fbbf24":"rgba(245,158,11,0.65)"}/> Deep
+            </button>
+
+            {/* Clear */}
+            {prompt && (
+              <button onClick={()=>{setPrompt("");setActiveIdea(null);setDetection(null);setManualDomainId(null);setSelectedSubcat(null);setDeepAnswers({});}}
+                style={{...btnDark,display:"flex",alignItems:"center",gap:6,height:36,padding:"0 14px",borderRadius:100,fontSize:13,cursor:"pointer"}}>
+                <X size={13}/> Clear
+              </button>
+            )}
+          </div>
+
+          {/* Generate / Next / Stop */}
+          <button onClick={handleGenerateClick} disabled={!prompt.trim()&&!isGenerating}
+            style={{display:"flex",alignItems:"center",gap:8,height:40,padding:"0 22px",borderRadius:100,border:"none",
+              cursor:prompt.trim()||isGenerating?"pointer":"not-allowed",
+              background:prompt.trim()||isGenerating?GEN_BG:"rgba(124,58,237,0.3)",
+              color:"#fff",fontWeight:600,fontSize:14,transition:"opacity 0.15s",
+              opacity:!prompt.trim()&&!isGenerating?0.5:1}}>
+            {isGenerating
+              ? <><Loader2 size={15} style={{animation:"spin 1s linear infinite"}}/> Stop</>
+              : isDeepNext
+              ? <><span>Next</span><ArrowRight size={15}/></>
+              : <><span>Generate</span><ArrowRight size={15}/></>
+            }
+          </button>
         </div>
-      )}
-
-      {/* Full prompt text */}
-     {/* Full prompt text — section-wise rendered */}
-<div className="space-y-4">
-  {detailedPrompt
-    .split(/\n(?=## )/)
-    .filter(Boolean)
-    .map((section, idx) => {
-      const lines = section.trim().split('\n');
-      const heading = lines[0].replace(/^## /, '');
-      const body = lines.slice(1).join('\n').trim();
-      return (
-        <div key={idx} className="rounded-xl border border-[#282829] bg-[#17171A] p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <span
-              className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-              style={{
-                background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)",
-              }}
-            >
-              {idx + 1}
-            </span>
-            <span className="text-white font-semibold text-sm">{heading}</span>
-          </div>
-          <div className="text-white/75 text-xs leading-relaxed whitespace-pre-line">
-            {body}
-          </div>
-        </div>
-      );
-    })}
-</div>
-
-      {/* Alternative Variations */}
-      
-
-    </div>
-  )}
-</div>
-
-                {/* Actions (bottom-right): Optimize (left of Save), Save, Copy, Download, Open */}
-                {/* Actions (bottom-right): Optimise, Save, Copy, Download, Open */}
-<div className="mt-6 md:mt-0 md:absolute md:bottom-4 md:right-4 flex flex-wrap items-center gap-3">
-  {/* Optimise → navigate to Prompt Optimizer */}
-<button
-  onClick={sendTOptimizer}
-  className="h-10 px-4 rounded-full flex items-center gap-2 border border-[#333335] text-white transition-all duration-300"
-  style={{
-    background: "#252525", // default dark bg
-  }}
-  onMouseEnter={(e) =>
-    (e.currentTarget.style.backgroundImage =
-      "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)")
-  }
-  onMouseLeave={(e) => {
-    e.currentTarget.style.backgroundImage = "";
-    e.currentTarget.style.background = "#252525";
-  }}
-  title="Optimise in Prompt Optimizer"
-  aria-label="Optimise in Prompt Optimizer"
->
-   <Sparkles className="h-4 w-4" />
-  <span className="text-sm font-inter">Optimise</span>
-</button>
-
- {!isEditingDetailed && (
-  <button
-    onClick={() => {
-      setEditablePrompt(detailedPrompt);
-      setIsEditingDetailed(true);
-    }}
-    className="h-10 px-4 rounded-full flex items-center gap-2 border border-[#333335] text-white transition-all duration-300"
-    style={{ background: "#252525" }}
-  >
-    ✏️ Edit
-  </button>
-)}
-
-{isEditingDetailed && (
-  <>
-    <button
-      onClick={() => setIsEditingDetailed(false)}
-      className="h-10 px-4 rounded-full flex items-center gap-2 border border-[#333335] text-white transition-all duration-300"
-      style={{ background: "#252525" }}
-    >
-      ❌ Cancel
-    </button>
-
-    <button
-      onClick={async () => {
-        try {
-          setIsGenerating(true);
-          const result = await llmService.generateDetailedPrompt(editablePrompt);
-          setDetailedPrompt(result.optimizedText);
-          setIsEditingDetailed(false);
-          toast({
-            title: "Regenerated!",
-            description: "Detailed prompt regenerated from your edited version.",
-          });
-
-          await upsertSmartgen({
-            inputPrompt: userPrompt,
-            detailedPrompt: result.optimizedText,
-            tokensUsed: Math.ceil(result.optimizedText.length / 4),
-          });
-        } catch (e: any) {
-          toast({
-            title: "Error",
-            description: e?.message || "Failed to regenerate prompt",
-            variant: "destructive",
-          });
-        } finally {
-          setIsGenerating(false);
-        }
-      }}
-      className="h-10 px-4 rounded-full flex items-center gap-2 border border-[#333335] text-white transition-all duration-300"
-      style={{
-        background: "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)",
-      }}
-    >
-      🔄 Regenerate
-    </button>
-  </>
-)}
-
-  {/* Save (cop.png) */}
-  <button
-    ref={saveBtnRef}
-    onClick={() => setIsModalOpen((v) => !v)}
-    aria-pressed={isModalOpen}
-    title="Save"
-    aria-label="Save"
-    className="w-10 h-10 rounded-full flex items-center justify-center transition-colors border"
-    style={{ background: isModalOpen ? GRADIENT : "#252525", borderColor: "#333335" }}
-  >
-    <img src="/icons/cop.png" alt="Save" className="w-5 h-5 object-contain" />
-  </button>
-
-  <button
-    onClick={() => { setActiveAction("copy"); copyToClipboard(detailedPrompt, "Prompt"); }}
-    aria-pressed={activeAction === "copy"}
-    className="h-9 w-9 rounded-full flex items-center justify-center transition-colors"
-    style={{ background: activeAction === "copy" ? GRADIENT : "#252525" }}
-    title="Copy"
-  >
-    <Copy className="h-4 w-4 text-white" />
-  </button>
-
-  <button
-    onClick={() => { setActiveAction("download"); downloadPrompt(); }}
-    aria-pressed={activeAction === "download"}
-    className="h-9 w-9 rounded-full flex items-center justify-center transition-colors"
-    style={{ background: activeAction === "download" ? GRADIENT : "#252525" }}
-    title="Download"
-  >
-    <Download className="h-4 w-4 text-white" />
-  </button>
-
-  <button
-    onClick={() => {
-      setActiveAction("open");
-      const encodedPrompt = encodeURIComponent(detailedPrompt);
-      window.open(`https://chat.openai.com/?prompt=${encodedPrompt}`, "_blank");
-    }}
-    aria-pressed={activeAction === "open"}
-    className="h-9 w-9 rounded-full flex items-center justify-center transition-colors"
-    style={{ background: activeAction === "open" ? GRADIENT : "#252525" }}
-    title="Open in ChatGPT"
-  >
-    <ExternalLink className="h-4 w-4 text-white" />
-  </button>
-</div>
-
-              </div>
-
-              {/* chips (kept) */}
-              {/* <div className="mt-4 flex flex-wrap items-center justify-center gap-3 sm:gap-2">
-                
-                </div>
-              </div> */}
-            </div>
-          </div>
-        )}
       </div>
 
-      {isGenerating && (
-        <div className="text-center text-muted-foreground mb-4">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <div className="w-2 h-2 bg-tokun rounded-full animate-bounce"></div>
-            <div
-              className="w-2 h-2 bg-tokun rounded-full animate-bounce"
-              style={{ animationDelay: "0.1s" }}
-            ></div>
-            <div
-              className="w-2 h-2 bg-tokun rounded-full animate-bounce"
-              style={{ animationDelay: "0.2s" }}
-            ></div>
+      {/* ── Output Card ──────────────────────────────────────────────────── */}
+      {(isGenerating || hasOutput) && (
+        <div>
+          <div style={{textAlign:"center",marginBottom:16}}>
+            <h2 style={{margin:0,fontSize:28,fontWeight:700,color:"#fff",letterSpacing:"-0.02em"}}>Detailed Prompt</h2>
+            <div style={{marginTop:6,display:"flex",alignItems:"center",justifyContent:"center",gap:6,color:"rgba(255,255,255,0.4)",fontSize:13}}>
+              <span style={{fontSize:15}}>⊞</span>
+              {detection||manualDomainId
+                ? <><span>{stripEmoji(effectiveDomainLabel)}</span>{effectiveSubcatLabel&&<><span>·</span><span>{effectiveSubcatLabel}</span></>}</>
+                : <span>General · Prompt Engineering</span>
+              }
+            </div>
           </div>
-          <p>Creating detailed prompt...</p>
+
+          <div style={{background:inputBg,borderRadius:20,border:cardBorder,overflow:"hidden"}}>
+            <div ref={outputRef} style={{padding:"24px 28px",maxHeight:560,overflowY:"auto"}}>
+              {isEditing ? (
+                <textarea value={editable} onChange={e=>setEditable(e.target.value)}
+                  style={{width:"100%",minHeight:300,resize:"vertical",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:14,color:"rgba(255,255,255,0.85)",fontSize:14,lineHeight:1.65,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+              ) : displayText ? (
+                <PromptRenderer text={displayText}/>
+              ) : (
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  {[80,95,65,85,55,90,70].map((w,i)=>(
+                    <div key={i} style={{height:12,borderRadius:6,background:"rgba(255,255,255,0.07)",width:`${w}%`,animation:"pulse 1.5s ease-in-out infinite"}}/>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {hasOutput && !isGenerating && (
+              <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:8,padding:"14px 20px",borderTop:"1px solid #1e1e1f"}}>
+                <button onClick={handleCopy} style={{display:"flex",alignItems:"center",gap:7,height:38,padding:"0 18px",borderRadius:100,border:"none",background:"#7c3aed",color:"#fff",fontWeight:600,fontSize:13,cursor:"pointer"}}>
+                  <Copy size={14}/> Copy Prompt
+                </button>
+                <button onClick={()=>onUseInOptimizer?.(displayText)} style={{display:"flex",alignItems:"center",gap:7,height:38,padding:"0 18px",borderRadius:100,border:"none",background:PILL_BG,color:"#fff",fontWeight:600,fontSize:13,cursor:"pointer"}}>
+                  <Sparkles size={14}/> Optimise
+                </button>
+                <button onClick={()=>doGenerate()} style={{...btnDark,display:"flex",alignItems:"center",gap:7,height:38,padding:"0 16px",borderRadius:100,fontSize:13,cursor:"pointer"}}>
+                  <RotateCcw size={14}/> Regenerate
+                </button>
+                <button onClick={()=>{if(!isEditing)setEditable(displayText);setIsEditing(v=>!v);}} style={{...btnDark,display:"flex",alignItems:"center",gap:7,height:38,padding:"0 16px",borderRadius:100,fontSize:13,cursor:"pointer"}}>
+                  <Pencil size={14}/> {isEditing?"Done":"Edit"}
+                </button>
+                <OpenWithMenu text={displayText} onToast={msg=>toast({title:msg})}/>
+                <button onClick={()=>setIsBookmarked(v=>!v)} style={{width:38,height:38,borderRadius:"50%",border:"1px solid rgba(255,255,255,0.12)",background:"#1a1a1b",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <Bookmark size={15} fill={isBookmarked?"#8b5cf6":"none"} color={isBookmarked?"#8b5cf6":"rgba(255,255,255,0.55)"}/>
+                </button>
+                <button onClick={handleDownload} style={{width:38,height:38,borderRadius:"50%",border:"1px solid rgba(255,255,255,0.12)",background:"#1a1a1b",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <Download size={15} color="rgba(255,255,255,0.55)"/>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      <ModalComponent
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSave={async (payload) => {
-          const finalTitle =
-            (payload?.title ?? "").trim() ||
-            (userPrompt || "Untitled").trim();
-          const isQuick = !!payload?.quick;
+      {/* ── Deep Mode Modal ───────────────────────────────────────────────── */}
+      {showDeepModal && (
+        <DeepModal
+          questions={deepQuestions} answers={deepAnswers} setAnswers={setDeepAnswers}
+          isLoading={loadingQs}
+          domainLabel={effectiveDomainId}
+          subcategoryLabel={effectiveSubcatLabel}
+          onClose={()=>setShowDeepModal(false)}
+          onSkip={()=>doGenerate()}
+          onGenerate={()=>doGenerate(deepAnswers)}
+          isGenerating={isGenerating}
+        />
+      )}
 
-          try {
-            const serverResp = await saveSmartgenToServer({
-              collectionTitle: isQuick ? undefined : finalTitle,
-              name: finalTitle,
-            });
+      {/* ── Category Modal ────────────────────────────────────────────────── */}
+      {showCatModal && (
+        <CategoryModal
+          current={effectiveDomainId}
+          onSelect={(id,label,skillLabel)=>{
+            setManualDomainId(id); setManualLabel(label);
+            setDetection(prev=>prev?{...prev,domainId:id,categoryLabel:label,skillLabel}:{domainId:id,categoryLabel:label,skillLabel,confidence:100,subcategories:ALL_CATEGORIES.find(c=>c.id===id)?.subcategories??[],matchedKeywords:[]});
+            setSelectedSubcat(ALL_CATEGORIES.find(c=>c.id===id)?.subcategories[0]??null);
+          }}
+          onClose={()=>setShowCatModal(false)}
+        />
+      )}
 
-            if (serverResp?.success) {
-              toast({
-                title: "Saved",
-                description: isQuick
-                  ? "Added to All Saved (Smartgen)."
-                  : `Created/updated collection “${finalTitle}”.`,
-              });
-            } else {
-              saveItem({
-                title: finalTitle,
-                prompt: detailedPrompt || "No result yet",
-                type: "smartgen",
-                category: isQuick ? "All Saved" : finalTitle,
-              });
-              toast({
-                title: "Saved locally",
-                description:
-                  "Could not confirm server save, mirrored to local.",
-              });
-            }
-          } catch (e: any) {
-            saveItem({
-              title: finalTitle,
-              prompt: detailedPrompt || "No result yet",
-              type: "smartgen",
-              category: isQuick ? "All Saved" : finalTitle,
-            });
-            toast({
-              title: "Saved locally",
-              description:
-                e?.message ||
-                "Server save failed; mirrored to local storage.",
-            });
-          } finally {
-            setIsModalOpen(false);
-          }
-        }}
-        anchorRef={saveBtnRef}
-      />
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%,100%{opacity:.5} 50%{opacity:1} }
+        textarea::placeholder { color: rgba(255,255,255,0.28); }
+        input::placeholder { color: rgba(255,255,255,0.28); }
+        select option { background: #1c1c1e; color: #fff; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+      `}</style>
     </div>
   );
-};
-
-export default SmarterPrompt;
+}
