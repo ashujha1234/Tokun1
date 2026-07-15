@@ -34,7 +34,6 @@ jobs:
           name: node-app
           path: |
             server/**
-            !server/node_modules/**
             !server/.git/**
             !server/.github/**
             !server/**/*.log
