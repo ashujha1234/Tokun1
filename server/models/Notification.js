@@ -192,6 +192,7 @@ const NotificationSchema = new mongoose.Schema(
     "HIRE_REVISION_REQUESTED",
     "HIRE_PAYMENT_RELEASED",
     "HIRE_COUNTER_OFFER",
+    "HIRE_NDA_SIGNED",
   ],
   required: true,
 },

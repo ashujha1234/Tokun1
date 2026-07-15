@@ -17,7 +17,6 @@ function perfEnd(handle) {
   const ns  = process.hrtime.bigint() - handle.start;
   const ms  = Number(ns) / 1_000_000;
   const sec = (ms / 1000).toFixed(3);
-  console.log(`â±  [PERF] ${handle.label}: ${ms.toFixed(1)}ms (${sec}s)`);
   return { ms, sec };
 }
 

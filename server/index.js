@@ -4325,6 +4325,8 @@ const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const path = require("path");
+const multer = require("multer");
+const pdfParse = require("pdf-parse");
 const cron = require("node-cron");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -4410,7 +4412,6 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function (origin, callback) {
-    console.log("CORS Origin:", origin);
 
     if (!origin || allowedOrigins.includes(origin)) {
       return callback(null, true);
@@ -4451,7 +4452,6 @@ app.post("/api/optimize", async (req, res) => {
     });
   }
 
-  console.log(`📩 Optimize request (${mode}) for:`, text.slice(0, 60));
 
   let systemPrompt;
   let sectionSchema = null;
@@ -4570,7 +4570,6 @@ Return STRICT JSON ONLY with this exact format:
         text.toLowerCase().startsWith("act as");
 
       if (isRolePrompt) {
-        console.log("🔍 Detected role prompt - ensuring structure preservation");
 
         const openingMatch = text.match(/^(you are|act as)[^.!?]*/i);
         const exactOpening = openingMatch ? openingMatch[0] : null;
@@ -4662,7 +4661,6 @@ Return STRICT JSON ONLY with this exact format:
         !optimizedText.toLowerCase().includes("act as");
 
       if (looksLikeExecution) {
-        console.log("🔁 Model produced an answer instead of a prompt → retrying...");
 
         const retryPrompt = `
 You mistakenly created a final answer instead of an AI instruction prompt.
@@ -4712,17 +4710,9 @@ Return JSON ONLY:
           retryParsed = { optimizedText: retryContent, suggestions: [] };
         }
 
-        console.log("✅ Self-correction successful.");
         return res.json(retryParsed);
       }
     }
-
-    console.log(
-      "✅ Optimization successful. Mode:",
-      mode,
-      "Suggestions:",
-      parsed.suggestions?.length || 0
-    );
 
     if (sectionSchema) parsed.sectionSchema = sectionSchema;
     return res.json(parsed);
@@ -4819,7 +4809,10 @@ Begin directly with the role/persona. No preamble, no meta-commentary.`;
   const decoder = new TextDecoder();
 
   try {
-    const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+    // NOTE: uses the native global fetch (not the module's node-fetch shim above) —
+    // this route reads openaiRes.body via the WHATWG getReader() API for SSE relay,
+    // and node-fetch's Response.body is a Node PassThrough stream that has no getReader.
+    const openaiRes = await globalThis.fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -4830,6 +4823,7 @@ Begin directly with the role/persona. No preamble, no meta-commentary.`;
         temperature: 0.7,
         max_tokens: isDeepMode ? 2800 : skillMode ? 2200 : 800,
         stream: true,
+        stream_options: { include_usage: true },
         messages: [
           { role: "system", content: systemPrompt },
           {
@@ -4850,6 +4844,7 @@ Begin directly with the role/persona. No preamble, no meta-commentary.`;
 
     const reader = openaiRes.body.getReader();
     let buffer = "";
+    let usage = null;
 
     while (true) {
       if (req.socket?.destroyed) break;
@@ -4871,6 +4866,7 @@ Begin directly with the role/persona. No preamble, no meta-commentary.`;
             fullContent += delta;
             sendEvent({ delta });
           }
+          if (parsed?.usage) usage = parsed.usage;
         } catch { /* skip malformed chunks */ }
       }
     }
@@ -4893,10 +4889,9 @@ Begin directly with the role/persona. No preamble, no meta-commentary.`;
     if (skillMode && sectionSchema && optimizedText) {
       const { isValid, missingSections } = validateDetailedOutput({ optimizedText }, sectionSchema);
       if (!isValid && missingSections.length > 0) {
-        console.log(`🔁 [stream] self-correcting — missing: ${missingSections.join(", ")}`);
         sendEvent({ retrying: true });
         try {
-          const retryRes = await fetch("https://api.openai.com/v1/chat/completions", {
+          const retryRes = await globalThis.fetch("https://api.openai.com/v1/chat/completions", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -4907,6 +4902,7 @@ Begin directly with the role/persona. No preamble, no meta-commentary.`;
               temperature: 0.5,
               max_tokens: 1800,
               stream: true,
+              stream_options: { include_usage: true },
               messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: buildRetryPrompt(optimizedText, missingSections, prompt.trim()) },
@@ -4931,6 +4927,13 @@ Begin directly with the role/persona. No preamble, no meta-commentary.`;
                   const rParsed = JSON.parse(rRaw);
                   const rDelta = rParsed?.choices?.[0]?.delta?.content ?? "";
                   if (rDelta) { retryContent += rDelta; sendEvent({ delta: rDelta }); }
+                  if (rParsed?.usage) {
+                    usage = {
+                      prompt_tokens: (usage?.prompt_tokens || 0) + rParsed.usage.prompt_tokens,
+                      completion_tokens: (usage?.completion_tokens || 0) + rParsed.usage.completion_tokens,
+                      total_tokens: (usage?.total_tokens || 0) + rParsed.usage.total_tokens,
+                    };
+                  }
                 } catch { /* skip */ }
               }
             }
@@ -4942,7 +4945,13 @@ Begin directly with the role/persona. No preamble, no meta-commentary.`;
       }
     }
 
-    sendEvent({ done: true, optimizedText });
+    sendEvent({
+      done: true,
+      optimizedText,
+      usage: usage
+        ? { promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens, totalTokens: usage.total_tokens }
+        : null,
+    });
 
     // Fire-and-forget memory extraction (must not block or surface errors to user)
     if (userId && optimizedText) {
@@ -4962,6 +4971,137 @@ Begin directly with the role/persona. No preamble, no meta-commentary.`;
     res.end();
   }
 });
+
+/* ===============================
+   SMARTGEN — PDF → PROMPT
+   Same "must be registered before app.use('/api/smartgen', ...)"
+   reasoning as /stream above.
+================================ */
+const pdfToPromptUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
+
+// pdf-parse's raw output is often noisy (hard line-wraps mid-sentence, hyphenated
+// word breaks, stray page-number-only lines, repeated blank lines) — clean that up
+// so the model sees coherent prose instead of fragmented text.
+function cleanExtractedPdfText(raw) {
+  return raw
+    .replace(/\r\n?/g, "\n")
+    // de-hyphenate words split across a line-wrap: "exam-\nple" -> "example"
+    .replace(/([a-zA-Z])-\n([a-zA-Z])/g, "$1$2")
+    // drop lines that are just a page number (with optional "Page" label)
+    .split("\n")
+    .filter((line) => !/^\s*(page\s*)?\d{1,4}\s*(\/\s*\d{1,4})?\s*$/i.test(line))
+    .join("\n")
+    // join single line-breaks that just wrap prose (not real paragraph breaks) into spaces
+    .replace(/([^\n])\n(?!\n)([^\n])/g, "$1 $2")
+    // collapse excess blank lines/spaces left behind
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+app.post(
+  "/api/smartgen/pdf-to-prompt",
+  requireAuth,
+  pdfToPromptUpload.single("pdf"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: "pdf_required" });
+      }
+      if (req.file.mimetype !== "application/pdf") {
+        return res.status(400).json({ success: false, error: "only_pdf_allowed" });
+      }
+      if (!process.env.OPENAI_API_KEY) {
+        return res.status(500).json({ success: false, error: "missing_openai_key" });
+      }
+
+      let extractedText = "";
+      let pageCount = 0;
+      try {
+        const parsed = await pdfParse(req.file.buffer);
+        extractedText = cleanExtractedPdfText(parsed.text || "");
+        pageCount = parsed.numpages || 0;
+      } catch (parseErr) {
+        console.error("[pdf-to-prompt] PDF parse failed:", parseErr?.message);
+        return res.status(400).json({ success: false, error: "could_not_read_pdf" });
+      }
+
+      if (!extractedText || extractedText.length < 20) {
+        // Likely a scanned/image-only PDF — pdf-parse has no OCR, so there's nothing to extract.
+        return res.status(400).json({ success: false, error: "pdf_has_no_extractable_text" });
+      }
+
+      // gpt-4o-mini has a 128k-token context window, so we can afford to send a lot more
+      // of the document than before — this was the main reason long PDFs lost content.
+      const MAX_CHARS = 60000;
+      const truncated = extractedText.length > MAX_CHARS;
+      const textForModel = truncated ? extractedText.slice(0, MAX_CHARS) : extractedText;
+
+      const instructions = typeof req.body?.instructions === "string" ? req.body.instructions.trim() : "";
+
+      const systemPrompt = `You are an expert prompt engineer. The user has uploaded a PDF document; you're given its extracted text below (${pageCount ? `${pageCount} page(s), ` : ""}${extractedText.length.toLocaleString()} characters${truncated ? `, truncated to the first ${MAX_CHARS.toLocaleString()}` : ""}). Your job is to read it thoroughly and produce ONE polished, ready-to-use AI prompt built from its content, so the user can paste it directly into any LLM (ChatGPT, Claude, Gemini, etc.) and get a great, on-topic result.
+
+How to read the document:
+- Identify what the document actually is (a report, contract, resume, spec, article, dataset, syllabus, etc.) and let that shape the prompt's framing.
+- Extract and preserve EVERY concrete detail that matters: specific names, numbers, dates, figures, definitions, requirements, constraints, and terminology — do not water them down into vague generalities or a loose summary.
+- Ignore boilerplate noise (running headers/footers, page numbers, repeated letterhead) if present — focus on substantive content.
+
+How to write the prompt:
+- Output ONLY the final prompt text — no preamble, no explanation, no meta-commentary, no markdown fences.
+- The prompt must be fully self-contained: assume the reader has NOT seen the original PDF, so restate all the key facts, data, and requirements an LLM needs to act on it well.
+- Structure it clearly with short paragraphs and/or bullet points — e.g. background/context, then the specific task or question, then any constraints, format, or tone requirements.
+- End with a precise instruction telling the LLM exactly what output is wanted.
+- Be thorough rather than brief: aim for roughly 200–600 words, scaling with how much substantive content the document actually contains.`;
+
+      const userMessage = instructions
+        ? `Extracted PDF text:\n"""${textForModel}"""\n\nThe user also asked: "${instructions}"\n\nConvert this into a single, ready-to-use prompt as instructed above.`
+        : `Extracted PDF text:\n"""${textForModel}"""\n\nConvert this into a single, ready-to-use prompt as instructed above.`;
+
+      const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: process.env.OPENAI_STREAM_MODEL || "gpt-4o-mini",
+          temperature: 0.5,
+          max_tokens: 1700,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userMessage },
+          ],
+        }),
+      });
+
+      if (!openaiRes.ok) {
+        const errData = await openaiRes.json().catch(() => ({}));
+        return res.status(502).json({
+          success: false,
+          error: errData?.error?.message || "openai_error",
+        });
+      }
+
+      const data = await openaiRes.json();
+      const promptText = (data?.choices?.[0]?.message?.content || "").trim();
+      if (!promptText) {
+        return res.status(502).json({ success: false, error: "empty_response" });
+      }
+
+      const usage = data?.usage
+        ? { promptTokens: data.usage.prompt_tokens, completionTokens: data.usage.completion_tokens, totalTokens: data.usage.total_tokens }
+        : null;
+
+      return res.json({ success: true, prompt: promptText, truncated, usage });
+    } catch (err) {
+      console.error("[pdf-to-prompt] error:", err?.message || err);
+      return res.status(500).json({ success: false, error: "server_error" });
+    }
+  }
+);
 
 app.use("/api/smartgen-detect", smartgenDetectRoutes);
 app.use("/api/smartgen", smartgenRoutes);
@@ -5129,7 +5269,6 @@ async function mirrorUserReplyToAdmin({ conversationId, senderId, text }) {
 
 // --- REAL-TIME SOCKET LOGIC ---
 io.on("connection", (socket) => {
-  console.log(`⚡ Client connected: ${socket.id}`);
 
   const userId = socket.handshake.auth?.userId;
 
@@ -5140,8 +5279,6 @@ io.on("connection", (socket) => {
     // ✅ New admin-message personal room
     socket.join(`admin-message-user:${userId}`);
 
-    console.log(`👤 User ${userId} joined personal room`);
-    console.log(`📨 User ${userId} joined admin message user room`);
   }
 
   /* ===============================
@@ -5155,7 +5292,6 @@ io.on("connection", (socket) => {
     if (!conversationId) return;
 
     socket.join(`admin-message:${conversationId}`);
-    console.log("📨 Socket joined admin message room:", conversationId);
   });
 
   socket.on("admin-message:leave", (payload = {}) => {
@@ -5165,7 +5301,6 @@ io.on("connection", (socket) => {
     if (!conversationId) return;
 
     socket.leave(`admin-message:${conversationId}`);
-    console.log("📨 Socket left admin message room:", conversationId);
   });
 
   /* ===============================
@@ -5179,7 +5314,6 @@ io.on("connection", (socket) => {
     if (!conversationId) return;
 
     socket.join(String(conversationId));
-    console.log("💬 Socket joined chat:", conversationId);
   });
 
   socket.on("send-message", async ({ conversationId, senderId, text }) => {
@@ -5228,7 +5362,6 @@ io.on("connection", (socket) => {
   ================================ */
 
   socket.on("call-user", ({ toUserId, fromUser, conversationId, type }) => {
-    console.log("📞 Call request:", toUserId, type);
 
     io.to(String(toUserId)).emit("incoming-call", {
       fromUser,
@@ -5254,7 +5387,6 @@ io.on("connection", (socket) => {
       if (!sessionId) return;
 
       socket.join(String(sessionId));
-      console.log(`👥 ${socket.id} joined session ${sessionId}`);
 
       let session = await CollabSession.findOne({ sessionId });
 
@@ -5308,7 +5440,6 @@ io.on("connection", (socket) => {
     try {
       if (!sessionId) return;
 
-      console.log(`🛑 Ending session ${sessionId}`);
 
       await CollabSession.deleteOne({ sessionId });
 
@@ -5324,7 +5455,6 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    console.log(`❌ Client disconnected: ${socket.id}`);
   });
 });
 
@@ -5346,7 +5476,6 @@ mongoose
     ssl: true,
   })
   .then(async () => {
-    console.log("✅ MongoDB connected");
 
     /* ===============================
        ✅ AdminConversation index cleanup
@@ -5357,10 +5486,6 @@ mongoose
       const AdminConversationModel = require("./models/AdminConversation");
 
       const indexes = await AdminConversationModel.collection.indexes();
-      console.log(
-        "📑 AdminConversation indexes:",
-        indexes.map((i) => i.name)
-      );
 
       // koi bhi index jismein sellerUserId field ho use drop karo
       const badIndexes = indexes.filter(
@@ -5371,23 +5496,15 @@ mongoose
 
       for (const idx of badIndexes) {
         await AdminConversationModel.collection.dropIndex(idx.name);
-        console.log(`🗑️ Dropped stale index: ${idx.name}`);
       }
 
       // galat data (sellerUserId field wale, sellerId ke bina) saaf karo
-      const cleaned = await AdminConversationModel.collection.deleteMany({
+      await AdminConversationModel.collection.deleteMany({
         sellerUserId: { $exists: true },
         sellerId: { $exists: false },
       });
-      if (cleaned.deletedCount) {
-        console.log(
-          `🧹 Removed bad AdminConversation docs: ${cleaned.deletedCount}`
-        );
-      }
-
       // sahi index (adminId_1_sellerId_1) sync karo
       await AdminConversationModel.syncIndexes();
-      console.log("✅ AdminConversation indexes synced");
     } catch (e) {
       console.error("Index cleanup warning:", e?.message);
     }
@@ -5395,12 +5512,9 @@ mongoose
     await seedDefaultAdmin();
 
     server.listen(PORT, () => {
-      console.log(`🚀 Server + Socket.io running on ${PORT}`);
     });
   })
   .catch((err) => {
     console.error("❌ MongoDB connection failed:", err);
     process.exit(1);
   });
-
-console.log("daily quota reset");

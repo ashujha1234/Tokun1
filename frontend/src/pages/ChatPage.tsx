@@ -3098,6 +3098,7 @@ import { Search, Trash2, X, Plus, ArrowLeft,ShieldAlert } from "lucide-react";
 import { useAgoraCall } from "@/hooks/useAgoraCall";
 import { ReportModal } from "@/components/ReportModal";
 import NdaButton from "@/components/NdaCard";
+import { toast } from "@/components/ui/use-toast";
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 const GRADIENT = "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)";
 
@@ -4180,6 +4181,15 @@ const CARD_BG = "#161A18";
       const orderData = await orderRes.json();
 
       if (!orderRes.ok || !orderData.success) {
+        if (orderData.error === "NDA_NOT_SIGNED") {
+          toast({
+            title: "Sign the NDA first",
+            description: orderData.message || "Both parties must sign the NDA before payment can be made.",
+            variant: "destructive",
+          });
+          setPayState("idle");
+          return;
+        }
         throw new Error(orderData.error || "Failed to create payment order");
       }
 

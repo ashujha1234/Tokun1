@@ -82,6 +82,14 @@ export default function HirePaymentPopup({
       const data = await res.json();
 
       if (!res.ok || !data.success) {
+        if (data.error === "NDA_NOT_SIGNED") {
+          toast({
+            title: "Sign the NDA first",
+            description: data.message || "Both parties must sign the NDA before payment can be made.",
+            variant: "destructive",
+          });
+          return;
+        }
         throw new Error(data.error || "Failed to create payment order");
       }
 

@@ -57,7 +57,6 @@ function startMonthlyQuotaResetJob() {
           }
         );
 
-        console.log(`[quota] Reset monthly tokens for ${res.modifiedCount} users on ${today.toDateString()}`);
       } catch (err) {
         console.error("[quota] Monthly reset failed:", err);
       }
@@ -65,7 +64,6 @@ function startMonthlyQuotaResetJob() {
     { timezone: "Asia/Kolkata" }
   );
 
-  console.log("[quota] Monthly quota reset job scheduled daily at 00:00 IST");
 }
 
 module.exports = { startMonthlyQuotaResetJob };

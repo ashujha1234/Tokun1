@@ -1161,6 +1161,7 @@ type Notif = {
     | "HIRE_WORK_COMPLETED"
     | "HIRE_PAYMENT_RELEASED"
     | "HIRE_COUNTER_OFFER"
+    | "HIRE_NDA_SIGNED"
     | string;
 
   message?: string;
@@ -1445,6 +1446,7 @@ export default function NotificationsPage() {
     HIRE_WORK_COMPLETED:    { icon: <PartyPopper size={18} />,    accent: "#10b981", label: "Work Completed" },
     HIRE_PAYMENT_RELEASED:  { icon: <BadgeDollarSign size={18} />,accent: "#10b981", label: "Payment Released" },
     HIRE_COUNTER_OFFER:     { icon: <RotateCcw size={18} />,      accent: "#f59e0b", label: "Counter Offer" },
+    HIRE_NDA_SIGNED:        { icon: <CheckCircle2 size={18} />,   accent: "#8b5cf6", label: "NDA Signed" },
     TM_REQUEST:             { icon: <UserPlus size={18} />,       accent: "#38bdf8", label: "Team Request" },
     ORG_SUGGEST:            { icon: <Share2 size={18} />,         accent: "#1A73E8", label: "Suggested" },
     ORG_SHARE:              { icon: <Share2 size={18} />,         accent: "#1A73E8", label: "Shared" },
@@ -1650,6 +1652,16 @@ export default function NotificationsPage() {
         message: n.message || "Payment made. Amount is safely held by Tokun.",
         title: n.meta?.title,
         senderName: base.senderName || "Client",
+        prompt: null,
+        actionButton: actionBtn("Mark Read", () => markNotificationRead(n._id), "ghost"),
+      });
+    }
+
+    if (n.type === "HIRE_NDA_SIGNED") {
+      return NotifCard({
+        ...base,
+        message: n.message || "The NDA status has been updated.",
+        title: n.meta?.title || "NDA Update",
         prompt: null,
         actionButton: actionBtn("Mark Read", () => markNotificationRead(n._id), "ghost"),
       });

@@ -327,7 +327,6 @@ router.get("/me/preview/front", requireAuth, async (req, res) => {
     const azureRes = await fetch(sub.frontPath);
 
     if (!azureRes.ok) {
-      console.log("Azure KYC file fetch failed:", azureRes.status, sub.frontPath);
       return res.status(404).end();
     }
 

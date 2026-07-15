@@ -777,23 +777,6 @@ router.post("/verifypayment", async (req, res) => {
         const gst = +(subtotal * 0.18).toFixed(2);
         const total = +(subtotal + gst).toFixed(2);
 
-        const PLAN_META = {
-          pro: {
-            name: "Pro",
-            tokens: "100,000",
-            features: `
-              ✓ Extra Tokens Feature<br/>
-              ✓ 50,000 Extra Tokens<br/>
-              ✓ Extra Token Price ₹200
-            `,
-          },
-          free: {
-            name: "Free",
-            tokens: "5,000",
-            features: `✓ Basic Access`,
-          },
-        };
-
         const pdfBuffer = await generateInvoicePDF({
           logo: "",
           date,
@@ -815,9 +798,13 @@ router.post("/verifypayment", async (req, res) => {
             to: user.email,
             buyerName: user.name || "Customer",
             buyerEmail: user.email,
-            plan: PLAN_META[planKey] || { name: planKey, tokens: "-", features: "" },
-            price: subtotal,
-            tokens: PLAN_META[planKey]?.tokens,
+            items: [
+              {
+                title: planKey.toUpperCase(),
+                subtitle: billingCycle,
+                price: subtotal,
+              },
+            ],
             invoiceNo,
             date,
             subtotal,
@@ -825,7 +812,6 @@ router.post("/verifypayment", async (req, res) => {
             total,
             pdfBuffer,
           });
-          console.log("✅ USER invoice email sent to", user.email);
         }
       } catch (invoiceErr) {
         // Invoice fail hone pe bhi payment success return karo
@@ -929,17 +915,13 @@ router.post("/verifypayment", async (req, res) => {
               to: owner.email,
               buyerName: owner.name || "Customer",
               buyerEmail: owner.email,
-              plan: {
-                name: "Enterprise",
-                tokens: "1,000,000",
-                features: `
-                  ✓ Team Access<br/>
-                  ✓ Unlimited History<br/>
-                  ✓ Priority Support
-                `,
-              },
-              price: subtotal,
-              tokens: "1,000,000",
+              items: [
+                {
+                  title: "ENTERPRISE",
+                  subtitle: payment.billingCycle,
+                  price: subtotal,
+                },
+              ],
               invoiceNo,
               date,
               subtotal,
@@ -947,7 +929,6 @@ router.post("/verifypayment", async (req, res) => {
               total,
               pdfBuffer,
             });
-            console.log("✅ ORG invoice email sent to", owner.email);
           }
         }
       } catch (invoiceErr) {

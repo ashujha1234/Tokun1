@@ -307,13 +307,13 @@ const AppNavigation = ({ activeSection, onSectionChange }: AppNavigationProps) =
               aria-current={isActive ? "page" : undefined}
               className={`
                 relative
-                flex-1
+                flex-1 min-w-0
                 flex flex-col items-center justify-center
-                gap-1.5
-                h-[64px] sm:h-[72px]
-                px-2 sm:px-3
+                gap-1 sm:gap-1.5
+                h-[56px] min-[420px]:h-[64px] sm:h-[72px]
+                px-1 sm:px-3
                 rounded-2xl
-                text-[11px] sm:text-sm font-medium
+                text-[9px] min-[420px]:text-[11px] sm:text-sm font-medium
                 transition-all duration-200
                 ${
                   isActive
@@ -325,7 +325,7 @@ const AppNavigation = ({ activeSection, onSectionChange }: AppNavigationProps) =
             >
               {section.badge && (
                 <span
-                  className="absolute -top-1.5 right-3 sm:right-4 text-[8px] sm:text-[9px] font-bold tracking-wide text-white px-2 py-0.5 rounded-full"
+                  className="absolute -top-1.5 right-1.5 sm:right-4 text-[7px] min-[420px]:text-[8px] sm:text-[9px] font-bold tracking-wide text-white px-1.5 sm:px-2 py-0.5 rounded-full"
                   style={{
                     background: "linear-gradient(90deg, #C026D3 0%, #7C3AED 100%)",
                     boxShadow: "0 2px 10px rgba(192, 38, 211, 0.55)",
@@ -338,10 +338,10 @@ const AppNavigation = ({ activeSection, onSectionChange }: AppNavigationProps) =
               <img
                 src={`/icons/${section.id}.${section.ext}`}
                 alt={section.label}
-                className="w-4 h-4 sm:w-5 sm:h-5 shrink-0"
+                className="w-3.5 h-3.5 min-[420px]:w-4 min-[420px]:h-4 sm:w-5 sm:h-5 shrink-0"
               />
 
-              <span className="text-center leading-tight whitespace-nowrap">
+              <span className="text-center leading-tight w-full min-w-0 px-0.5">
                 {section.label}
               </span>
             </button>

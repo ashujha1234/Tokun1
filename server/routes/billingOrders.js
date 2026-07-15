@@ -36,7 +36,6 @@ router.post("/create/user", requireAuth, async (req, res) => {
 
     const amount = priceFor(planKey, billingCycle) * 100; // paise
 const receipt = `user-${user._id.toString().slice(-6)}-${Date.now()}`;
-    console.log(amount);
     const order = await razorpay.orders.create({
       amount,
       currency: "INR",
@@ -84,7 +83,6 @@ router.post("/create/org", requireAuth, async (req, res) => {
     }
 
     const caller = await User.findById(req.user._id);
-    console.log(caller);
     if (!caller || caller.userType !== "ORG" || caller.role !== "Owner" || String(caller.orgId) !== String(orgId)) {
       return res.status(403).json({ success: false, error: "not_org_owner" });
     }

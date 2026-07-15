@@ -1955,7 +1955,6 @@ router.post("/add", requireAuth, async (req, res) => {
     // -----------------------------
     // 🔹 TEAM MEMBER LIMIT CHECK
     // -----------------------------
-    console.log(org.teamMembersLimit)
     const maxMembers = org.teamMembersLimit || PLANS.enterprise.features.teamMembersLimit || 0;
     const currentMembersCount = org.members.length || 0;
 

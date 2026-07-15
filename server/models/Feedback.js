@@ -11,6 +11,7 @@ const feedbackSchema = new mongoose.Schema(
     screenshots: [{ type: String }],
     sentiment: { type: String, enum: ["positive", "negative", "neutral"], default: "neutral" },
     status: { type: String, enum: ["pending", "reviewed", "resolved"], default: "pending" },
+    showOnLanding: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

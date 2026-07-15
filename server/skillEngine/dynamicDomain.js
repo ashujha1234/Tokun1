@@ -102,7 +102,6 @@ async function cacheDomain(userText, domain) {
       { role: domain.role, knowledge: domain.knowledge, tone: domain.tone, keywords: domain.keywords || [], updatedAt: new Date() },
       { upsert: true, new: true }
     );
-    console.log(`[skillEngine] Phase 3 cached: "${userText.slice(0, 50)}"`);
   } catch (err) {
     console.warn("[skillEngine] Cache save failed (non-critical):", err.message);
   }
@@ -114,7 +113,6 @@ async function cacheDomain(userText, domain) {
 async function getDynamicDomain(userText) {
   if (!process.env.OPENAI_API_KEY) {
     // No LLM available â return universal fallback so Deep Mode is never blocked
-    console.log("[skillEngine] No OPENAI_API_KEY â using UNIVERSAL_FALLBACK_DOMAIN");
     return UNIVERSAL_FALLBACK_DOMAIN;
   }
 
@@ -122,12 +120,10 @@ async function getDynamicDomain(userText) {
 
   const cached = await getCachedDomain(userText);
   if (cached) {
-    console.log(`[skillEngine] Phase 3 cache hit: "${userText.slice(0, 50)}"`);
     perfEnd(perfHandle);
     return cached;
   }
 
-  console.log(`[skillEngine] Phase 2 LLM domain classification for: "${userText.slice(0, 80)}"`);
 
   try {
     const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
@@ -190,7 +186,6 @@ Rules:
       criticalUnknowns: [],
     };
 
-    console.log(`[skillEngine] LLM classified as: "${dynamicDomain.domainName}"`);
     await cacheDomain(userText, dynamicDomain);
     perfEnd(perfHandle);
     return dynamicDomain;
@@ -199,7 +194,6 @@ Rules:
     console.warn("[skillEngine] Dynamic domain generation failed:", err.message);
     perfEnd(perfHandle);
     // CRITICAL: Never return null â always fall back to universal domain so Deep Mode stays accessible
-    console.log("[skillEngine] Falling back to UNIVERSAL_FALLBACK_DOMAIN to preserve Deep Mode access");
     return UNIVERSAL_FALLBACK_DOMAIN;
   }
 }
@@ -490,7 +484,6 @@ async function getDeepQuestions(userText, domainId, subcategoryId, subcategoryLa
   const extractedConstraints = extractConstraints(userText || "");
   const { skip, reason } = shouldSkipQuestions(userText, domain, extractedConstraints);
   if (skip) {
-    console.log(`[skillEngine] Deep Mode question skip: ${reason}`);
     return [];
   }
 

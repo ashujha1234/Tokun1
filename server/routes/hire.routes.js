@@ -557,12 +557,14 @@ const uploadNdaFile = multer({ storage: ndaStorage, limits: { fileSize: 20 * 102
 
 router.post("/:dealId/upload-nda", requireAuth, uploadNdaFile.single("nda"), async (req, res) => {
   try {
-    const deal = await HireDeal.findById(req.params.dealId);
+    const deal = await HireDeal.findById(req.params.dealId)
+      .populate("clientId", "name email profileImage image")
+      .populate("freelancerId", "name email profileImage image");
     if (!deal) return res.status(404).json({ success: false, error: "Deal not found" });
 
     const userId = String(req.user._id);
-    const isClient = String(deal.clientId) === userId;
-    const isFreelancer = String(deal.freelancerId) === userId;
+    const isClient = String(deal.clientId._id) === userId;
+    const isFreelancer = String(deal.freelancerId._id) === userId;
 
     if (!isClient && !isFreelancer)
       return res.status(403).json({ success: false, error: "Not part of this deal" });
@@ -582,11 +584,48 @@ router.post("/:dealId/upload-nda", requireAuth, uploadNdaFile.single("nda"), asy
 
     await deal.save();
 
+    const bothSigned = !!(deal.ndaClientUrl && deal.ndaFreelancerUrl);
+    const signer = isClient ? deal.clientId : deal.freelancerId;
+    const otherParty = isClient ? deal.freelancerId : deal.clientId;
+    const signerRoleLabel = isClient ? "Client" : "Freelancer";
+
+    // 🔔 Notify the other party that this side has signed the NDA
+    await Notification.create({
+      senderId: signer._id,
+      senderName: signer.name,
+      senderEmail: signer.email,
+      senderImage: signer.profileImage || signer.image,
+      receiverUserId: otherParty._id,
+      type: "HIRE_NDA_SIGNED",
+      hireDealId: deal._id,
+      chatId: deal.chatId,
+      message: bothSigned
+        ? `${signer.name || signerRoleLabel} has signed the NDA. Both parties have now signed — the NDA is complete!`
+        : `${signer.name || signerRoleLabel} has signed the NDA for "${deal.title}". Waiting for you to sign.`,
+      meta: { title: deal.title, signedBy: signerRoleLabel.toLowerCase(), bothSigned },
+    });
+
+    // 🔔 If this signature completes the NDA, also confirm it to the signer themself
+    if (bothSigned) {
+      await Notification.create({
+        senderId: otherParty._id,
+        senderName: otherParty.name,
+        senderEmail: otherParty.email,
+        senderImage: otherParty.profileImage || otherParty.image,
+        receiverUserId: signer._id,
+        type: "HIRE_NDA_SIGNED",
+        hireDealId: deal._id,
+        chatId: deal.chatId,
+        message: `Both parties have signed the NDA for "${deal.title}". The NDA is complete!`,
+        meta: { title: deal.title, bothSigned: true },
+      });
+    }
+
     return res.json({
       success: true,
       role: isClient ? "client" : "freelancer",
       url: fileUrl,
-      bothSigned: !!(deal.ndaClientUrl && deal.ndaFreelancerUrl),
+      bothSigned,
     });
   } catch (err) {
     console.error("upload-nda error:", err);
@@ -681,6 +720,14 @@ router.post("/:dealId/create-payment-order", requireAuth, async (req, res) => {
 
     if (deal.status !== "ACCEPTED_WAITING_PAYMENT") {
       return res.status(400).json({ success: false, error: "Deal is not ready for payment" });
+    }
+
+    if (!(deal.ndaClientUrl && deal.ndaFreelancerUrl)) {
+      return res.status(400).json({
+        success: false,
+        error: "NDA_NOT_SIGNED",
+        message: "Please sign the NDA before making payment.",
+      });
     }
 
     const order = await razorpay.orders.create({

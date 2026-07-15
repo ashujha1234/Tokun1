@@ -5785,6 +5785,7 @@ import {
   BadgeDollarSign, Users, Plane, FlaskConical, Code2, BarChart3,
   LifeBuoy, Briefcase, Image as ImageIcon, ArrowLeft,
   SlidersHorizontal, Check, X,
+  Database, Building2, HeartPulse, Zap, Tag, Share2, Layers,
 } from "lucide-react";
 import { User } from "lucide-react";
 
@@ -5803,6 +5804,7 @@ import ModalComponent from "@/components/ModalComponent";
 import { ShoppingCart } from "lucide-react";
 import KycGateModal from "@/components/KycGateModal";
 import { useCart } from "@/contexts/CartContext";
+import SellPromptModal from "@/components/SellPromptModal";
 import "./PromptMarketplace.css";
 
 type Prompt = {
@@ -6336,11 +6338,37 @@ const [draftCategories, setDraftCategories] = useState<string[]>([]);
 
 
 
+// One distinct icon per category — a name → icon lookup, with a generic
+// fallback for anything not in this list (e.g. a custom "Other" category).
+const CATEGORY_ICONS: Record<string, React.ComponentType<any>> = {
+  Business: Briefcase,
+  Coding: Code2,
+  Content: ImageIcon,
+  Creative: Star,
+  Data: Database,
+  Design: Palette,
+  Education: GraduationCap,
+  Enterprise: Building2,
+  Finance: BadgeDollarSign,
+  HR: Users,
+  Health: HeartPulse,
+  Marketing: BarChart3,
+  Productivity: Zap,
+  Research: FlaskConical,
+  Sales: Tag,
+  "Social Media": Share2,
+  Support: LifeBuoy,
+  Travel: Plane,
+  "UI/UX": SlidersHorizontal,
+  Writing: FileText,
+};
+const DEFAULT_CATEGORY_ICON = Layers;
+
 const categoriesData = [
   { id: "All", icon: Sparkles, previewImage: "", previewVideo: "" },
   ...apiCategories.map((cat) => ({
     id: cat.name,
-    icon: Sparkles,
+    icon: CATEGORY_ICONS[cat.name] || DEFAULT_CATEGORY_ICON,
     previewImage: cat.previewImage || "",
     previewVideo: cat.previewVideo || "",
   })),
@@ -6885,8 +6913,44 @@ const savePromptToCollections = async ({
   }
 };
 
-
-
+//   /* ============================================================
+//      NEW LANDING-STYLE DESIGN (v2) — visual redesign only.
+//      Old design kept fully commented below for rollback in case
+//      this isn't approved. All state/handlers above are unchanged;
+//      everything below is purely derived/presentational.
+//      ============================================================ */
+// 
+//   const browseRef = useRef<HTMLDivElement>(null);
+//   const [sellOpen, setSellOpen] = useState(false);
+// 
+//   const scrollToBrowse = () => browseRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+// 
+//   // Trending: top-rated prompts overall (independent of active filters)
+//   const trendingPrompts = [...prompts]
+//     .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+//     .slice(0, 8);
+// 
+//   // Featured: exclusive/one-time prompts first, then highest rated
+//   const featuredPrompts = [...prompts]
+//     .sort((a, b) => Number(!!b.exclusive) - Number(!!a.exclusive) || (b.rating ?? 0) - (a.rating ?? 0))
+//     .slice(0, 2);
+// 
+//   const creatorCount = new Set(prompts.map((p) => p.uploaderId || p.uploaderName).filter(Boolean)).size;
+//   const topUploaderInitials = Array.from(new Set(prompts.map((p) => p.uploaderName).filter(Boolean)))
+//     .slice(0, 4)
+//     .map((n) => authorInitials(n as string));
+// 
+//   // "Specialized" category promo — points at a real category if one matches, else the first available
+//   const promoCategoryMatch = categoryOptions.find((c) => /logo|brand|design/i.test(c.id));
+//   const promoCategoryName = promoCategoryMatch?.id || categoryOptions[0]?.id || "Design";
+//   const goToPromoCategory = () => {
+//     if (promoCategoryMatch) {
+//       setSelectedCategories([]);
+//       setSelectedCategory(promoCategoryMatch.id);
+//     }
+//     scrollToBrowse();
+//   };
+// 
   return (
     <div className="marketplace dark text-foreground">
       {/* Background (landing-page style) */}
@@ -7117,10 +7181,6 @@ const savePromptToCollections = async ({
                         >
                           {prompt.uploaderName || "Unknown"}
                         </span>
-                        <div className="mp-card__rating">
-                          <Star className="w-4 h-4 mp-card__star" />
-                          <span>{prompt.rating?.toFixed(1) || "0.0"}</span>
-                        </div>
                       </div>
 
                       {/* TEXT */}
@@ -7312,7 +7372,7 @@ const savePromptToCollections = async ({
                     }
                   } catch {}
 
-                  navigate("/purchases?p=purchased", {
+                  navigate("/self-dash?tab=prompts&p=purchased", {
                     state: { refreshPurchases: true },
                   });
                 }}
@@ -7450,6 +7510,741 @@ const savePromptToCollections = async ({
 
     </div>
   );
+
+//   return (
+//     <div className="marketplace mp2 dark text-foreground">
+//       {/* Background (landing-page style) */}
+//       <MarketplaceBackground />
+// 
+//       {/* Fixed compact Header (unchanged component) */}
+//       <div className="marketplace__header-slot">
+//         <Header />
+//       </div>
+// 
+//       {/* Main Content */}
+//       <div className="marketplace__main">
+// 
+//         {/* ================= HERO ================= */}
+//         <div className="mp2-hero">
+//           <h1 className="mp2-hero__title">
+//             Prompt <span className="mp2-hero__title-accent">Marketplace</span>
+//           </h1>
+//           <p className="mp2-hero__subtitle">
+//             Access {prompts.length > 0 ? `${prompts.length}+` : ""} high-quality AI prompts for art, logic, architecture, and business optimization.
+//           </p>
+//           <div className="mp2-hero__search">
+//             <Search className="mp2-hero__search-icon" size={18} />
+//             <input
+//               placeholder="Search prompts for 'Hyper-realistic architecture'..."
+//               value={searchQuery}
+//               onChange={(e) => setSearchQuery(e.target.value)}
+//               className="mp2-hero__search-input"
+//             />
+//             <button type="button" onClick={scrollToBrowse} className="mp2-hero__search-btn">
+//               Search
+//             </button>
+//           </div>
+//         </div>
+// 
+//         {/* ================= HERO BANNER ================= */}
+//         <div className="mp2-banner">
+//           <img src="/icons/homeban.png" alt="" aria-hidden="true" className="mp2-banner__glow" />
+//           <div className="mp2-banner__content">
+//             <span className="mp2-banner__tag">
+//               <BarChart3 className="h-3.5 w-3.5" /> GLOBAL LEADERBOARD
+//             </span>
+//             <h2 className="mp2-banner__title">
+//               Most Popular<br />
+//               <span className="mp2-banner__title-accent">AI Prompts</span>
+//             </h2>
+//             <p className="mp2-banner__desc">
+//               Discover the prompts defining the creative industry this week. High-conversion, high-fidelity, and battle-tested.
+//             </p>
+//             <button type="button" className="mp2-banner__cta" onClick={scrollToBrowse}>
+//               Browse Collection <ChevronRight className="h-4 w-4" />
+//             </button>
+//             {creatorCount > 0 && (
+//               <div className="mp2-banner__stat">
+//                 <div className="mp2-banner__avatars">
+//                   {topUploaderInitials.map((n, i) => (
+//                     <span key={i} className="mp2-banner__avatar">{n}</span>
+//                   ))}
+//                 </div>
+//                 <span>Used by {creatorCount}+ creators today</span>
+//               </div>
+//             )}
+//           </div>
+//         </div>
+// 
+//         {/* ================= TRENDING PROMPTS ================= */}
+//         {trendingPrompts.length > 0 && (
+//           <section className="mp2-section">
+//             <div className="mp2-section__head">
+//               <span className="mp2-section__eyebrow">ON THE RISE</span>
+//               <h3 className="mp2-section__title">Trending Prompts</h3>
+//             </div>
+//             <div className="mp2-trend-row">
+//               {trendingPrompts.map((prompt) => (
+//                 <div
+//                   key={prompt.id}
+//                   className="mp2-trend-card"
+//                   onClick={() => { setDetailsPrompt(prompt); setDetailsOpen(true); }}
+//                 >
+//                   <div className="mp2-trend-card__media">
+//                     {prompt.imageUrl ? (
+//                       <img src={prompt.imageUrl} alt={prompt.title} />
+//                     ) : prompt.videoUrl ? (
+//                       <video src={prompt.videoUrl} muted loop playsInline />
+//                     ) : (
+//                       <div className="mp2-trend-card__placeholder" />
+//                     )}
+//                   </div>
+//                   <div className="mp2-trend-card__body">
+//                     <p className="mp2-trend-card__title">{prompt.title}</p>
+//                     <div className="mp2-trend-card__row">
+//                       <span className="mp2-trend-card__price">
+//                         {prompt.isFree ? "Free" : `₹${(prompt.price ?? 0).toFixed(2)}`}
+//                       </span>
+//                       <button
+//                         type="button"
+//                         className="mp2-trend-card__btn"
+//                         onClick={(e) => { e.stopPropagation(); setDetailsPrompt(prompt); setDetailsOpen(true); }}
+//                       >
+//                         Get Prompt
+//                       </button>
+//                     </div>
+//                   </div>
+//                 </div>
+//               ))}
+//             </div>
+//           </section>
+//         )}
+// 
+//         {/* ================= FEATURED PROMPTS ================= */}
+//         {featuredPrompts.length > 0 && (
+//           <section className="mp2-section">
+//             <div className="mp2-section__head">
+//               <span className="mp2-section__eyebrow">VERIFIED EXCELLENCE</span>
+//               <h3 className="mp2-section__title">Featured Prompts</h3>
+//               <p className="mp2-section__sub">Curated selection of professional-grade prompts hand-picked from top creators.</p>
+//             </div>
+//             <div className="mp2-feat-grid">
+//               {featuredPrompts.map((prompt, i) => (
+//                 <div
+//                   key={prompt.id}
+//                   className="mp2-feat-card"
+//                   onClick={() => { setDetailsPrompt(prompt); setDetailsOpen(true); }}
+//                 >
+//                   <div className="mp2-feat-card__media">
+//                     {prompt.imageUrl ? (
+//                       <img src={prompt.imageUrl} alt={prompt.title} />
+//                     ) : prompt.videoUrl ? (
+//                       <video src={prompt.videoUrl} muted loop playsInline />
+//                     ) : null}
+//                     <span className="mp2-feat-card__badge">{i === 0 ? "STAFF PICK" : "PREMIUM"}</span>
+//                   </div>
+//                   <div className="mp2-feat-card__body">
+//                     <span className="mp2-feat-card__tags">{prompt.category}</span>
+//                     <h4 className="mp2-feat-card__title">{prompt.title}</h4>
+//                     <p className="mp2-feat-card__desc">{prompt.description}</p>
+//                     <div className="mp2-feat-card__row">
+//                       <span className="mp2-feat-card__price">
+//                         {prompt.isFree ? "Free" : `₹${(prompt.price ?? 0).toFixed(2)}`}
+//                       </span>
+//                       <button
+//                         type="button"
+//                         className="mp2-feat-card__btn"
+//                         onClick={(e) => { e.stopPropagation(); setDetailsPrompt(prompt); setDetailsOpen(true); }}
+//                       >
+//                         Quick View
+//                       </button>
+//                     </div>
+//                   </div>
+//                 </div>
+//               ))}
+//             </div>
+//           </section>
+//         )}
+// 
+//         {/* ================= BRAND / CATEGORY PROMO ================= */}
+//         <div className="mp2-promo">
+//           <div className="mp2-promo__body">
+//             <span className="mp2-promo__tag">SPECIALIZED PROMPTS</span>
+//             <h3 className="mp2-promo__title">
+//               {promoCategoryName} Prompts<br />
+//               <span className="mp2-promo__title-accent">Engineered for Pro Creators</span>
+//             </h3>
+//             <p className="mp2-promo__desc">
+//               Elevate your workflow with prompts curated for {promoCategoryName.toLowerCase()} work — consistent quality, tested output, ready to use.
+//             </p>
+//             <ul className="mp2-promo__list">
+//               <li><Check className="h-4 w-4" /> Hand-picked, high-conversion prompts</li>
+//               <li><Check className="h-4 w-4" /> Consistent, production-ready output</li>
+//               <li><Check className="h-4 w-4" /> Curated by top-rated creators</li>
+//             </ul>
+//             <button type="button" className="mp2-promo__btn" onClick={goToPromoCategory}>
+//               Explore {promoCategoryName} Prompts
+//             </button>
+//           </div>
+//           <div className="mp2-promo__art">
+//             <img src="/icons/gem1.png" alt="" className="mp2-promo__tile mp2-promo__tile--logo" />
+//             <div className="mp2-promo__tile mp2-promo__tile--retro">
+//               <span>Retro Brand Kit</span>
+//             </div>
+//           </div>
+//         </div>
+// 
+//         {/* ================= SELL / HIRE ================= */}
+//         <div className="mp2-cta-row">
+//           <div className="mp2-cta-card">
+//             <h4>Sell your prompts</h4>
+//             <p>Upload your prompts, connect your payout method, and join a global community of creators. Get started in minutes.</p>
+//             <button type="button" className="mp2-cta-card__btn mp2-cta-card__btn--purple" onClick={() => setSellOpen(true)}>
+//               Start Selling
+//             </button>
+//           </div>
+//           <div className="mp2-cta-card">
+//             <h4>Hire an AI Expert</h4>
+//             <p>Commission custom prompt solutions and fine-tuned workflows from top-rated creators for your specific needs.</p>
+//             <button type="button" className="mp2-cta-card__btn mp2-cta-card__btn--blue" onClick={scrollToBrowse}>
+//               Find a Creator
+//             </button>
+//           </div>
+//         </div>
+// 
+//         {/* ================= BROWSE ALL PROMPTS (existing filters/grid — unchanged logic) ================= */}
+//         <div ref={browseRef} className="mp2-browse">
+//           <div className="mp2-section__head">
+//             <span className="mp2-section__eyebrow">FULL CATALOG</span>
+//             <h3 className="mp2-section__title">Browse All Prompts</h3>
+//           </div>
+// 
+//           {/* App navigation */}
+//           <div className="marketplace__nav">
+//             <AppNavigation activeSection="prompt-marketplace" />
+//           </div>
+// 
+//           <div className="marketplace__controls">
+//             {/* Format + License segmented tabs */}
+//             <div className="marketplace__filters">
+//               <SegmentedTabs
+//                 label="Format"
+//                 value={fileType}
+//                 onChange={(v) => setFileType(v as FileType)}
+//                 options={[
+//                   { label: "All", value: "all" },
+//                   { label: "Video", value: "video", icon: Video },
+//                   { label: "Image", value: "image", icon: ImageIcon },
+//                   { label: "Code", value: "code", icon: Code2 },
+//                 ]}
+//               />
+//               <SegmentedTabs
+//                 label="License"
+//                 value={licenseType}
+//                 onChange={(v) => setLicenseType(v as LicenseType)}
+//                 options={[
+//                   { label: "All", value: "all" },
+//                   { label: "Free", value: "free" },
+//                   { label: "Premium", value: "premium" },
+//                   { label: "One-time", value: "one-time" },
+//                 ]}
+//               />
+//             </div>
+// 
+//             {/* Categories scroller + Select Categories (built into component) */}
+//             <div id="marketplace-bg-end">
+//               {selectedCategories.length > 0 && (
+//                 <div className="mp-selected-chips" style={{ justifyContent: "center", marginBottom: 10 }}>
+//                   {selectedCategories.map((category) => (
+//                     <span key={category} className="mp-selected-chip">{category}</span>
+//                   ))}
+//                 </div>
+//               )}
+//               <CategoriesScroller
+//                 categoriesData={categoriesData}
+//                 selectedCategory={selectedCategory}
+//                 setSelectedCategory={(category) => {
+//                   setSelectedCategories([]);
+//                   setSelectedCategory(category);
+//                 }}
+//                 onOpenModal={openCategoriesModal}
+//                 selectedCategories={selectedCategories}
+//                 onClearCategories={clearCategorySelection}
+//                 allPrompts={prompts}
+//               />
+//             </div>
+//           </div>
+// 
+//           {/* Loading / error states */}
+//           {loading && <p className="marketplace__status">Loading prompts…</p>}
+//           {!!loadError && !loading && <p className="marketplace__status marketplace__status--error">{loadError}</p>}
+// 
+//           {/* Prompts Grid */}
+//           {!loading && !loadError && (
+//             <>
+//               <div className="mp-grid">
+//                 {filteredPrompts.map((prompt) => {
+//                   const mediaKind = decideMediaType(prompt); // "video" | "image"
+//                   const isPurchased = purchasedPrompts.includes(String(prompt.id));
+// 
+//                   /* ── Reel card for video prompts ── */
+//                   if (mediaKind === "video") {
+//                     return (
+//                       <VideoReelCard
+//                         key={prompt.id}
+//                         prompt={prompt}
+//                         isPurchased={isPurchased}
+//                         isOwn={isOwnPrompt(prompt)}
+//                         isPlaying={playingVideo === prompt.id}
+//                         onVideoPlay={handleVideoPlay}
+//                         onAddToCart={(id) => {
+//                           addToCart(String(id));
+//                           toast({ title: "Added to Cart", description: `"${prompt.title}" was added.` });
+//                         }}
+//                         onBuyNow={(p) => handlePurchase(p as Prompt)}
+//                         onOpenDetails={(p) => { setDetailsPrompt(p); setDetailsOpen(true); }}
+//                         onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
+//                       />
+//                     );
+//                   }
+// 
+//                   return (
+//                     <div
+//                       key={prompt.id}
+//                       className="mp-card"
+//                       onClick={() => {
+//                         setDetailsPrompt(prompt);
+//                         setDetailsOpen(true);
+//                       }}
+//                     >
+//                       {/* MEDIA */}
+//                       <div className="mp-card__media">
+//                         <div className="mp-card__preview group">
+//                           {mediaKind === "image" ? (
+//                             <img src={prompt.imageUrl} alt={prompt.title} className="mp-card__img" />
+//                           ) : (
+//                             <>
+//                               <video
+//                                 className="mp-card__video"
+//                                 src={prompt.videoUrl}
+//                                 loop
+//                                 muted
+//                                 playsInline
+//                                 ref={(el) => {
+//                                   if (!el) return;
+//                                   if (playingVideo === prompt.id) el.play().catch(() => {});
+//                                   else el.pause();
+//                                 }}
+//                               />
+//                               <button
+//                                 type="button"
+//                                 onClick={(e) => {
+//                                   e.stopPropagation();
+//                                   handleVideoPlay(prompt.id);
+//                                 }}
+//                                 className="mp-card__play"
+//                                 aria-label={playingVideo === prompt.id ? "Pause" : "Play"}
+//                               >
+//                                 <span className="mp-card__play-circle">
+//                                   {playingVideo === prompt.id ? (
+//                                     <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+//                                       <rect x="6" y="5" width="4" height="14" rx="1" />
+//                                       <rect x="14" y="5" width="4" height="14" rx="1" />
+//                                     </svg>
+//                                   ) : (
+//                                     <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+//                                       <path d="M8 5v14l11-7-11-7z" />
+//                                     </svg>
+//                                   )}
+//                                 </span>
+//                               </button>
+//                               <div className="mp-card__duration">0:20</div>
+//                             </>
+//                           )}
+//                         </div>
+// 
+//                         {/* Badges (category + unlock/purchased) */}
+//                         <div className="mp-card__badges">
+//                           <span className="mp-card__cat">{prompt.category?.toUpperCase()}</span>
+//                           {!isPurchased ? (
+//                             <span
+//                               className="mp-card__unlock"
+//                               style={{
+//                                 background: prompt.exclusive ? "#2A2A2A" : undefined,
+//                                 color: prompt.exclusive ? "#4ADE80" : undefined,
+//                               }}
+//                             >
+//                               {prompt.exclusive ? "ONE-TIME PURCHASE" : "PURCHASE TO UNLOCK"}
+//                             </span>
+//                           ) : (
+//                             <span className="mp-card__unlock" style={{ background: "#14532D", color: "#BBF7D0" }}>
+//                               PURCHASED
+//                             </span>
+//                           )}
+//                         </div>
+// 
+//                         {/* Premium icon */}
+//                         {!prompt.isFree && prompt.price && prompt.price > 0 ? (
+//                           <div className="mp-card__crown">
+//                             <img
+//                               src="/icons/premium.png"
+//                               alt="Premium"
+//                               className={prompt.exclusive ? "filter-green" : ""}
+//                             />
+//                           </div>
+//                         ) : null}
+//                       </div>
+// 
+//                       {/* BODY */}
+//                       <div className="mp-card__body">
+//                         {/* Uploader row */}
+//                         <div className="mp-card__meta">
+//                           <span className="mp-card__avatar">{authorInitials(prompt.uploaderName)}</span>
+//                           <span
+//                             className="mp-card__author-name"
+//                             onClick={(e) => {
+//                               e.stopPropagation();
+//                               navigate(`/profile/${prompt.uploaderId}`);
+//                             }}
+//                           >
+//                             {prompt.uploaderName || "Unknown"}
+//                           </span>
+//                           <div className="mp-card__rating">
+//                             <Star className="w-4 h-4 mp-card__star" />
+//                             <span>{prompt.rating?.toFixed(1) || "0.0"}</span>
+//                           </div>
+//                         </div>
+// 
+//                         {/* TEXT */}
+//                         <h3 className="mp-card__title">{prompt.title}</h3>
+//                         <p className="mp-card__desc">{prompt.description}</p>
+// 
+//                         {/* FOOTER */}
+//                         <div className="mp-card__footer">
+//                           {prompt.isFree ? (
+//                             <div className="mp-card__pill mp-card__pill--free">FREE</div>
+//                           ) : (
+//                             <>
+//                               <div className="mp-card__pill mp-card__pill--muted">
+//                                 ₹{(prompt.price ?? 0).toFixed(2)}
+//                               </div>
+// 
+//                               {!isOwnPrompt(prompt) && (
+//                                 <button
+//                                   type="button"
+//                                   onClick={(e) => {
+//                                     e.stopPropagation();
+//                                     addToCart(prompt.id);
+//                                     toast({
+//                                       title: "Added to Cart",
+//                                       description: `"${prompt.title}" was added.`,
+//                                     });
+//                                   }}
+//                                   className="mp-card__pill mp-card__pill--cart"
+//                                 >
+//                                   <ShoppingCart className="h-4 w-4" />
+//                                   Cart
+//                                 </button>
+//                               )}
+// 
+//                               {/* Buy Now hidden if one-time and already sold */}
+//                               {!isOwnPrompt(prompt) && !isPurchased && (
+//                                 isPurchased ? (
+//                                   <div className="mp-card__pill mp-card__pill--owned">Purchased</div>
+//                                 ) : !(prompt.exclusive && prompt.sold) ? (
+//                                   <button
+//                                     onClick={(e) => {
+//                                       e.stopPropagation();
+//                                       handlePurchase(prompt);
+//                                     }}
+//                                     className="mp-card__pill mp-card__pill--buy"
+//                                   >
+//                                     Buy Now
+//                                   </button>
+//                                 ) : null
+//                               )}
+//                             </>
+//                           )}
+//                         </div>
+//                       </div>
+//                     </div>
+//                   );
+//                 })}
+//               </div>
+// 
+//               {/* Empty state */}
+//               {filteredPrompts.length === 0 && (
+//                 <div className="marketplace__empty">
+//                   <p className="marketplace__empty-title">
+//                     {`Showing 0 premium prompts in ${selectedCategory || "All"}`}
+//                   </p>
+//                   <p className="marketplace__empty-sub">No prompts found matching your criteria.</p>
+//                   <button
+//                     type="button"
+//                     onClick={() => {
+//                       setSearchQuery("");
+//                       setSelectedCategory("All");
+//                       setFileType("all");
+//                       setLicenseType("all");
+//                     }}
+//                     className="marketplace__clear-filters"
+//                   >
+//                     Clear Filters
+//                   </button>
+//                 </div>
+//               )}
+//             </>
+//           )}
+//         </div>
+//       </div>
+// 
+//       <div className="relative z-10 mt-20">
+//         <Footer />
+//       </div>
+// 
+//       {/* ===================================================================
+//           NEECHE ke saare modals / popups LOGIC — unchanged (jaise the waise)
+//           =================================================================== */}
+// 
+//       <ModalComponent
+//         isOpen={saveModalOpen}
+//         onClose={() => setSaveModalOpen(false)}
+//         onSave={async (payload) => {
+//           if (!saveForPromptId) { /* toast ... */ return; }
+// 
+//           if (payload?.quick) {
+//             await savePromptToCollections({ refId: saveForPromptId, name: saveForPrompt?.title });
+//             toast({ title: "Saved", description: "Prompt saved to All Saved." });
+//           } else if (payload?.title) {
+//             await savePromptToCollections({
+//               refId: saveForPromptId,
+//               collectionTitle: payload.title,
+//               name: saveForPrompt?.title, // 👈 label = original title
+//             });
+//             toast({ title: "Collection created", description: `Saved to "${payload.title}".` });
+//           } else {
+//             await savePromptToCollections({ refId: saveForPromptId, name: saveForPrompt?.title });
+//             toast({ title: "Saved", description: "Prompt saved to All Saved." });
+//           }
+//           setSaveForPromptId(null);
+//           setSaveForPrompt(null);
+//         }}
+//         anchorRef={{ current: saveAnchorEl } as unknown as React.RefObject<HTMLElement>}
+//       />
+// 
+//       <MediaEnlargeModal
+//         isOpen={enlargeModalOpen}
+//         onClose={() => setEnlargeModalOpen(false)}
+//         mediaUrl={enlargeMedia?.url || ""}
+//         mediaType={enlargeMedia?.type || "image"}
+//         title={enlargeMedia?.title || ""}
+//       />
+// 
+//       <DetailsPrompt
+//         open={detailsOpen}
+//         onOpenChange={setDetailsOpen}
+//         prompt={detailsPrompt}
+//         owned={detailsPrompt ? purchasedPrompts.includes(String(detailsPrompt.id)) : false}
+//         onPurchase={(p) => {
+//           setDetailsOpen(false);
+//           handlePurchase(p);
+//         }}
+//         onEnlargeMedia={(m) => {
+//           setEnlargeMedia({ url: m.url, type: m.type, title: m.title });
+//           setEnlargeModalOpen(true);
+//         }}
+//       />
+// 
+//       {/* ✅ Purchase Success Popup */}
+//       {showSuccessPopup && (
+//         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+//           <div
+//             className="bg-[#1C1C1C] text-white rounded-2xl shadow-2xl px-8 py-10 w-[420px] text-center animate-fadeIn relative"
+//             style={{ border: "1px solid rgba(255,255,255,0.1)" }}
+//           >
+//             {/* Close button */}
+//             <button
+//               onClick={() => setShowSuccessPopup(false)}
+//               className="absolute top-4 right-4 text-white/60 hover:text-white"
+//               aria-label="Close"
+//             >
+//               ✕
+//             </button>
+// 
+//             {/* ✅ Success icon */}
+//             <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-emerald-600 flex items-center justify-center">
+//               <svg
+//                 xmlns="http://www.w3.org/2000/svg"
+//                 className="h-10 w-10 text-white"
+//                 fill="none"
+//                 viewBox="0 0 24 24"
+//                 stroke="currentColor"
+//                 strokeWidth={2}
+//               >
+//                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+//               </svg>
+//             </div>
+// 
+//             <h2 className="text-xl font-semibold mb-2">🎉 Thank you, {buyerName}!</h2>
+//             <p className="text-white/80 mb-8">
+//               You’ve successfully purchased this prompt!
+//             </p>
+// 
+//             <div className="flex items-center justify-center gap-4">
+//               {/* ✅ Go to Purchases */}
+//               <button
+//                 onClick={() => {
+//                   setShowSuccessPopup(false);
+// 
+//                   try {
+//                     if (latestPurchase) {
+//                       window.dispatchEvent(
+//                         new CustomEvent("tokun:purchased", { detail: latestPurchase })
+//                       );
+//                     }
+//                   } catch {}
+// 
+//                   navigate("/purchases?p=purchased", {
+//                     state: { refreshPurchases: true },
+//                   });
+//                 }}
+//                 className="w-40 h-11 rounded-lg text-sm font-medium bg-white/10 hover:bg-white/20 transition"
+//               >
+//                 Go to My Purchases
+//               </button>
+// 
+//               {/* ✅ Back to Marketplace */}
+//               <button
+//                 onClick={() => {
+//                   setShowSuccessPopup(false);
+//                   navigate("/prompt-marketplace");  // 👈 goes to marketplace
+//                 }}
+//                 className="w-40 h-11 rounded-lg text-sm font-medium text-white"
+//                 style={{
+//                   background: "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)",
+//                 }}
+//               >
+//                 Prompt Marketplace
+//               </button>
+//             </div>
+//           </div>
+//         </div>
+//       )}
+// 
+//       {token && (
+//         <KycGateModal
+//           open={kycOpen}
+//           onClose={() => setKycOpen(false)}
+//           token={token}
+//           apiBase={API_BASE}
+//           defaultCountry="IN"
+//           requiredForLabel="buying and uploading prompts"
+//           onVerified={() => {
+//             if (pendingPurchasePrompt) {
+//               const p = pendingPurchasePrompt;
+//               setPendingPurchasePrompt(null);
+//               handlePurchase(p);
+//             }
+//           }}
+//         />
+//       )}
+// 
+//       {categoriesModalOpen && (
+//         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+//           <div
+//             className="w-full max-w-[620px] rounded-[28px] border border-white/10 bg-[#17171A] p-5 sm:p-6 text-white"
+//             onClick={(e) => e.stopPropagation()}
+//           >
+//             <div className="flex items-start justify-between gap-4">
+//               <div>
+//                 <h3 className="text-xl font-semibold">Select Categories</h3>
+//                 <p className="mt-1 text-sm text-white/60">
+//                   Ek hi baar me multiple categories choose kar sakte ho.
+//                 </p>
+//               </div>
+// 
+//               <button
+//                 type="button"
+//                 onClick={() => setCategoriesModalOpen(false)}
+//                 className="w-10 h-10 rounded-full grid place-items-center bg-white/5 hover:bg-white/10"
+//                 aria-label="Close categories modal"
+//               >
+//                 <X className="h-5 w-5" />
+//               </button>
+//             </div>
+// 
+//             <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[320px] overflow-y-auto pr-1">
+//               {categoryOptions.map(({ id, icon: Icon }) => {
+//                 const active = draftCategories.includes(id);
+// 
+//                 return (
+//                   <button
+//                     key={id}
+//                     type="button"
+//                     onClick={() => toggleDraftCategory(id)}
+//                     className={`w-full flex items-center justify-between rounded-2xl px-4 py-3 border transition-colors ${
+//                       active
+//                         ? "bg-white/10 border-white/20"
+//                         : "bg-[#121213] border-white/5 hover:bg-white/5"
+//                     }`}
+//                   >
+//                     <div className="flex items-center gap-3">
+//                       <Icon className="h-4 w-4" />
+//                       <span className="text-sm font-medium">{id}</span>
+//                     </div>
+// 
+//                     <span
+//                       className={`w-5 h-5 rounded-full grid place-items-center border ${
+//                         active
+//                           ? "bg-white text-black border-white"
+//                           : "border-white/20 text-transparent"
+//                       }`}
+//                     >
+//                       <Check className="h-3.5 w-3.5" />
+//                     </span>
+//                   </button>
+//                 );
+//               })}
+//             </div>
+// 
+//             <div className="mt-6 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3">
+//               <button
+//                 type="button"
+//                 onClick={clearCategorySelection}
+//                 className="h-[46px] px-4 rounded-full border border-white/10 bg-[#121213] text-white/80 hover:bg-white/5"
+//               >
+//                 Clear All
+//               </button>
+// 
+//               <button
+//                 type="button"
+//                 onClick={() => setCategoriesModalOpen(false)}
+//                 className="h-[46px] px-4 rounded-full border border-white/10 bg-[#121213] text-white hover:bg-white/5"
+//               >
+//                 Cancel
+//               </button>
+// 
+//               <button
+//                 type="button"
+//                 onClick={applyCategorySelection}
+//                 className="h-[46px] px-5 rounded-full text-white font-medium"
+//                 style={{ background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)" }}
+//               >
+//                 Apply Categories
+//               </button>
+//             </div>
+//           </div>
+//         </div>
+//       )}
+// 
+//       <SellPromptModal
+//         open={sellOpen}
+//         onOpenChange={setSellOpen}
+//         onPromptSubmitted={() => {}}
+//       />
+// 
+//     </div>
+//   );
 };
 
 export default PromptMarketplacePage;

@@ -350,7 +350,7 @@ router.post("/signup/verify", async (req, res) => {
 
     const token = jwt.sign(
       { sub: String(user._id), email: user.email, name: user.name },
-      process.env.JWT_SECRET || "devsecret",
+      process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
@@ -443,7 +443,6 @@ if (user.userType === "TM" && user.orgId) {
 }
 
    // signup/verify mein (line ~180 ke aaspaas):
-   console.log("About to log activity for:", user.name);
 await logActivity({
   type: "USER_REGISTERED",
   title: "New user registered",
@@ -458,7 +457,7 @@ await logActivity({
 
     const token = jwt.sign(
       { sub: String(user._id), email: user.email, name: user.name, userType: user.userType, role: user.role, orgId: user.orgId, plan: user.plan },
-      process.env.JWT_SECRET || "devsecret",
+      process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
@@ -618,7 +617,6 @@ router.post("/login/verify", async (req, res) => {
     if(!user.isVerified)
       user.isVerified=true;
     await user.save();
-     console.log("=== ABOUT TO LOG ACTIVITY ===");
    await logActivity({
   type: "USER_LOGIN",
   title: "User logged in",
@@ -628,12 +626,11 @@ router.post("/login/verify", async (req, res) => {
   meta: { email: user.email, ip: req.ip },
 });
 
-console.log("=== ACTIVITY LOGGED ===");
 
 
     const token = jwt.sign(
       { sub: String(user._id), email: user.email, name: user.name },
-      process.env.JWT_SECRET || "devsecret",
+      process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 

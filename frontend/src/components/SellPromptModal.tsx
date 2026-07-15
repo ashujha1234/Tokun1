@@ -2022,6 +2022,7 @@ export default function SellPromptModal({
   const [description, setDescription] = useState("");
   const [promptText, setPromptText] = useState("");
   const [category, setCategory] = useState("");
+  const [customCategory, setCustomCategory] = useState("");
   const [price, setPrice] = useState("");
   const [isFree, setIsFree] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
@@ -2162,7 +2163,10 @@ export default function SellPromptModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!title || !description || !promptText || !category || (!isFree && !price)) {
+    const isOtherCategory = category === "__other__";
+    const finalCategory = isOtherCategory ? customCategory.trim() : category;
+
+    if (!title || !description || !promptText || !finalCategory || (!isFree && !price)) {
       toast({ title: "Missing Information", description: "Please fill in all required fields", variant: "destructive" });
       return;
     }
@@ -2174,6 +2178,31 @@ export default function SellPromptModal({
 
     setUploading(true);
     try {
+      // Custom "Other" category — create it first so the marketplace's
+      // category list picks it up too. Treat "already exists" as success
+      // (e.g. someone else just added the same name).
+      if (isOtherCategory) {
+        try {
+          const catRes = await fetch(`${API_BASE}/api/category`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: finalCategory }),
+          });
+          const catData = await catRes.json();
+          if (!catRes.ok && catData?.error !== "category_exists") {
+            throw new Error(catData?.error || "failed_to_create_category");
+          }
+        } catch (catErr: any) {
+          toast({
+            title: "Couldn't create category",
+            description: catErr?.message || "Please try again.",
+            variant: "destructive",
+          });
+          setUploading(false);
+          return;
+        }
+      }
+
       const fd = new FormData();
       fd.append("title", title.trim());
       fd.append("description", description.trim());
@@ -2181,7 +2210,7 @@ export default function SellPromptModal({
       fd.append("free", String(isFree));
       if (!isFree) fd.append("price", String(Number(price)));
       if (tags.length) fd.append("tags", tags.join(","));
-      if (category) fd.append("categories", category.trim());
+      fd.append("categories", finalCategory);
       if (oneTimeSale) fd.append("exclusive", "true");
       fd.append("attachment", attachments[0]);
       if (codeFile) fd.append("uploadCode", codeFile);
@@ -2229,6 +2258,7 @@ export default function SellPromptModal({
       setDescription("");
       setPromptText("");
       setCategory("");
+      setCustomCategory("");
       setPrice("");
       setIsFree(true);
       setTags([]);
@@ -2314,20 +2344,35 @@ export default function SellPromptModal({
               </SelectTrigger>
               {/* ✅ FIX: z-[1200] — Dialog (z-1100) ke UPAR, warna dropdown dialog ke
                   peeche chala jaata hai aur categories dikhti hi nahi */}
-              <SelectContent className="max-h-[240px] z-[1200]">
+              <SelectContent className="max-h-[240px] z-[1200] bg-[#131419] border border-white/10 text-white">
                 {validCategories.length === 0 && !catsLoading ? (
                   <div className="px-3 py-2 text-sm text-white/50">
                     No categories found
                   </div>
                 ) : (
                   validCategories.map((cat) => (
-                    <SelectItem key={cat._id} value={cat.name}>
+                    <SelectItem
+                      key={cat._id}
+                      value={cat.name}
+                      className="text-white focus:bg-white/10 focus:text-white"
+                    >
                       {cat.name}
                     </SelectItem>
                   ))
                 )}
+                <SelectItem value="__other__" className="text-white focus:bg-white/10 focus:text-white">
+                  Other…
+                </SelectItem>
               </SelectContent>
             </Select>
+            {category === "__other__" && (
+              <Input
+                value={customCategory}
+                onChange={(e) => setCustomCategory(e.target.value)}
+                placeholder="Type your category name"
+                className={`${fieldBase} mt-2`}
+              />
+            )}
             {catsError && (
               <p className="text-xs text-red-400">
                 Couldn't load categories.{" "}

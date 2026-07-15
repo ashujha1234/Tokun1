@@ -45,7 +45,6 @@ if (!isActiveOrGrace(user.subscriptionStatus)) {
   }
 
   await user.save();
-  console.log(user);
   return { ok: true, used: n ,user: user};
 }
 
@@ -94,7 +93,6 @@ async function spendTokensForOrgOwner(userId, n, section) {
 async function spendTokensForTeamMember(userId, n, section) {
   const user = await User.findById(userId);
   if (!user || user.userType !== "TM" || !user.orgId) throw new Error("not_team_member");
-console.log(user.orgTokensRemaining);
   if (user.orgTokensRemaining < n) throw new Error("member_cap_exceeded");
 
   const org = await Organization.findById(user.orgId);
@@ -112,8 +110,6 @@ console.log(user.orgTokensRemaining);
   const m = org.members.find((x) => String(x.userId) === String(user._id));
   if (m) {
     m.usedThisPeriod += n;
-    console.log("in section");
-    console.log(section);
     if (section) {
       const prev = m.sectionUsage.get(section) || 0;
       m.sectionUsage.set(section, prev + n);

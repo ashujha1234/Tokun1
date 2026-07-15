@@ -151,9 +151,6 @@ async function addTokunIntro(videoBuffer, ext = "mp4") {
     const outBuffer = fs.readFileSync(outPath);
     if (!outBuffer.length) throw new Error("empty output");
 
-    console.log(
-      `[TokunIntro] intro added (${(videoBuffer.length / 1e6).toFixed(1)}MB → ${(outBuffer.length / 1e6).toFixed(1)}MB)`
-    );
     return outBuffer;
   } catch (err) {
     console.error("[TokunIntro] failed, uploading original:", err.message);

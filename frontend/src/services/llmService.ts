@@ -4795,10 +4795,10 @@ class LLMService {
     inputPrompt: string;
     detailedPrompt: string;
     tokensUsed: number;
-  }): Promise<void> {
+  }): Promise<{ success: boolean; error?: string }> {
     try {
       const token = getToken();
-      await fetch(`${API_BASE}/api/smartgen`, {
+      const res = await fetch(`${API_BASE}/api/smartgen`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -4807,7 +4807,14 @@ class LLMService {
         credentials: "include",
         body: JSON.stringify(payload),
       });
-    } catch { /* non-fatal */ }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        return { success: false, error: data?.error || `http_${res.status}` };
+      }
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: (err as Error)?.message || "network_error" };
+    }
   }
 
   private async optimizeWithPerplexity(text: string, _t: number): Promise<OptimizeResponse> {

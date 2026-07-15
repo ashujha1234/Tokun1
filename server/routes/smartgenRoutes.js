@@ -490,6 +490,16 @@ router.post("/", requireAuth, upload.array("attachments", 5), async (req, res) =
     if (err?.code === "insufficient_quota") {
       return res.status(402).json({ success: false, error: "insufficient_quota" });
     }
+    // Known quota/plan errors thrown by service/spend.js — surface the real reason
+    // instead of masking every failure as an opaque "server_error".
+    const knownQuotaErrors = [
+      "not_individual", "invalid_plan", "subscription_inactive", "token_quota_exceeded",
+      "not_org_owner", "org_not_found", "org_subscription_inactive", "org_pool_exhausted",
+      "not_team_member", "member_cap_exceeded", "user_not_found",
+    ];
+    if (knownQuotaErrors.includes(err?.message)) {
+      return res.status(402).json({ success: false, error: err.message });
+    }
     console.error("POST /smartgen error:", err);
     return res.status(500).json({ success: false, error: "server_error" });
   }

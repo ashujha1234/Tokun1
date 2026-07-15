@@ -2605,6 +2605,19 @@ import KycGateModal from "@/components/KycGateModal";
 
 type ThemeMode = "light" | "dark" | "system";
 
+const HEADER_NOTIF_TYPE_LABELS: Record<string, string> = {
+  HIRE_PROPOSAL_ACCEPTED: "Hire Proposal Accepted",
+  HIRE_PAYMENT_REQUIRED: "Payment Required",
+  HIRE_PAYMENT_DONE: "Payment Received",
+  HIRE_WORK_STARTED: "Work Started",
+  HIRE_WORK_SUBMITTED: "Work Submitted",
+  HIRE_WORK_COMPLETED: "Work Completed",
+  HIRE_REVISION_REQUESTED: "Revision Requested",
+  HIRE_PAYMENT_RELEASED: "Payment Released",
+  HIRE_COUNTER_OFFER: "Counter Offer",
+  HIRE_NDA_SIGNED: "NDA Signed",
+};
+
 const Header = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -2677,7 +2690,17 @@ useEffect(() => {
 
 
   // Display
-  const displayName = useMemo(() => user?.name?.trim() || "", [user]);
+  const toTitleCase = (value: string) =>
+    value
+      .split(" ")
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(" ");
+
+  const displayName = useMemo(() => {
+    const raw = user?.name?.trim() || "";
+    return raw ? toTitleCase(raw) : "";
+  }, [user]);
   const displayEmail = useMemo(() => user?.email || "", [user]);
   const fullName = useMemo(() => {
     if (displayName) return displayName;
@@ -2688,8 +2711,6 @@ useEffect(() => {
   // Nav helpers
   const handleBrandClick = () => navigate(user ? "/app" : "/");
   const goToSaved = () => navigate("/saved");
-  const goToPurchaseHistory = () => navigate("/prompty-history?p=purchased");
-  const goToUploadHistory = () => navigate("/prompty-history?p=uploaded");
 
   const handleLogout = () => {
     logout();
@@ -3943,7 +3964,7 @@ useEffect(() => {
             ></span>
             <div className="min-w-0 flex-1">
               <div className="text-sm font-medium truncate">
-                {n.promptId?.title || "Prompt Notification"}
+                {n.promptId?.title || n.meta?.title || HEADER_NOTIF_TYPE_LABELS[n.type] || "Notification"}
               </div>
               <div className="text-xs text-white/70 truncate">{n.message}</div>
             </div>
@@ -4182,8 +4203,6 @@ useEffect(() => {
 
     {/* Secondary items — no icons */}
     {[
-      { label: "Purchase History", onClick: goToPurchaseHistory },
-      { label: "Upload History",   onClick: goToUploadHistory },
       { label: "Pricing",          onClick: () => navigate("/subscription") },
       { label: "Support",          onClick: () => navigate("/support") },
       { label: "Admin",            onClick: () => navigate("/admin") },

@@ -38,14 +38,9 @@ router.post("/auth/login", async (req, res) => {
     // ✅ Admin JWT — "type: admin" se requireAuth ise AdminUser samajhta hai
     const token = jwt.sign(
       { sub: admin._id.toString(), type: "admin" },
-      process.env.JWT_SECRET || "devsecret",
+      process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
-
-    console.log("✅ ADMIN LOGIN SUCCESS:", {
-      email: admin.email,
-      id: admin._id.toString(),
-    });
 
     return res.json({
       success: true,
@@ -70,13 +65,7 @@ router.post("/auth/login", async (req, res) => {
  */
 router.post("/auth/forgot-password", async (req, res) => {
   try {
-    const { email } = req.body;
-
-    const emailNorm = String(email || "").trim().toLowerCase();
-
     // Always return success to avoid email enumeration
-    console.log("📩 ADMIN FORGOT PASSWORD REQUEST:", emailNorm);
-
     return res.json({
       success: true,
       message: "If this email exists, a reset link will be sent.",

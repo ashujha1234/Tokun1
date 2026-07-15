@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Tokun.ai Invoice</title>
+  <title>Tokun.world Invoice</title>
 </head>
 
 <body style="margin:0;padding:0;background:#0b0c0f;font-family:Inter,Arial,sans-serif;color:#ffffff">
@@ -21,7 +21,7 @@
             <table width="100%">
               <tr>
                 <td style="font-size:22px;font-weight:600;color:#ffffff">
-                  Tokun.ai
+                  Tokun.world
                 </td>
                 <td align="right" style="font-size:13px;opacity:0.95;color:#ffffff">
                   Invoice #{{INVOICE_NO}}<br/>
@@ -39,8 +39,8 @@
               <tr>
                 <td style="font-size:13px;line-height:1.6;color:#ffffff">
                   <strong>FROM</strong><br/>
-                  Tokun.ai<br/>
-                  support@tokun.ai
+                  Tokun.world<br/>
+                  support@tokun.world
                 </td>
 
                 <!-- FORCE WHITE TEXT (NO BLUE EMAIL) -->
@@ -58,57 +58,22 @@
           </td>
         </tr>
 
-        <!-- PLAN CARD (MATCHES SUBSCRIPTION PAGE) -->
+        <!-- ITEMS -->
         <tr>
-          <td align="center" style="padding:28px">
-
-            <table width="360" height="400" cellpadding="0" cellspacing="0"
-              style="
-                background:#0D0D0E;
-                border-radius:16px;
-                border:1px solid #35343C;
-                color:#ffffff;
-              ">
+          <td style="padding:24px 24px 8px">
+            <table width="100%" cellpadding="0" cellspacing="0">
               <tr>
-                <td style="padding:24px;text-align:center;vertical-align:top">
-
-                  <!-- PLAN NAME -->
-                  <div style="font-size:32px;font-weight:600;margin-top:10px">
-                    {{PLAN_NAME}}
-                  </div>
-
-                  <!-- SUBTITLE -->
-                  <div style="font-size:12px;opacity:0.85;margin-top:4px">
-                    Subscription Plan
-                  </div>
-
-                  <!-- PRICE -->
-                  <div style="margin-top:24px;font-size:28px;font-weight:600">
-                    ₹{{PLAN_PRICE}}
-                    <span style="font-size:16px;font-weight:400">/month</span>
-                  </div>
-
-                  <!-- TOKENS -->
-                  <div style="margin-top:18px;font-size:16px">
-                    Monthly Tokens:
-                    <strong>{{TOKENS}}</strong>
-                  </div>
-
-                  <!-- FEATURES -->
-                  <div style="margin-top:26px;text-align:left;font-size:12px;line-height:1.9">
-                    {{PLAN_FEATURES}}
-                  </div>
-
-                </td>
+                <td style="padding:0 0 10px;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:rgba(255,255,255,0.5);border-bottom:1px solid #2a2a2a">Description</td>
+                <td align="right" style="padding:0 0 10px;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:rgba(255,255,255,0.5);border-bottom:1px solid #2a2a2a">Amount</td>
               </tr>
+              {{ITEMS_ROWS}}
             </table>
-
           </td>
         </tr>
 
         <!-- TOTAL -->
         <tr>
-          <td style="padding:24px;border-top:1px solid #2a2a2a">
+          <td style="padding:16px 24px 24px;border-bottom:1px solid #2a2a2a">
             <table width="100%">
               <tr>
                 <td align="right" style="font-size:14px;color:#ffffff">
@@ -126,8 +91,8 @@
         <!-- FOOTER -->
         <tr>
           <td style="padding:20px;background:#1a1a1a;font-size:12px;opacity:0.85;color:#ffffff">
-            Thank you for choosing Tokun.ai 🚀<br/>
-            This email contains your invoice. A PDF copy is attached.
+            Thank you for your purchase.<br/>
+            We've attached a copy of your invoice to this email for your records.
           </td>
         </tr>
 

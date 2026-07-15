@@ -7,7 +7,6 @@ const { requireAuth } = require("../utils/auth");
 router.get("/recent", async (req, res) => {  // requireAuth hatao
   try {
     const count = await AdminActivity.countDocuments();
-    console.log("Total activities in DB:", count);
 
     const limit = Math.min(parseInt(req.query.limit || "10", 10), 50);
     const query = {};
@@ -17,7 +16,6 @@ router.get("/recent", async (req, res) => {  // requireAuth hatao
       .limit(limit)
       .lean();
 
-    console.log("Items found:", items.length);
 
     res.json({
       success: true,
@@ -49,7 +47,6 @@ router.get("/test-insert", async (req, res) => {
       description: "Manual test insert",
       actorName: "Test Admin",
     });
-    console.log("Test insert result:", result);
     res.json({ success: true, result });
   } catch (e) {
     console.error("Test insert error:", e);

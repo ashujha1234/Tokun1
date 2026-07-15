@@ -119,7 +119,17 @@ const onlyLetters = (value: string) =>
 
 const onlyDigits = (value: string) => value.replace(/\D/g, "").slice(0, 18);
 
-  const displayName = useMemo(() => user?.name?.trim() || "", [user]);
+  const toTitleCase = (value: string) =>
+    value
+      .split(" ")
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(" ");
+
+  const displayName = useMemo(() => {
+    const raw = user?.name?.trim() || "";
+    return raw ? toTitleCase(raw) : "";
+  }, [user]);
   const displayEmail = useMemo(() => user?.email || "", [user]);
   const fullName = useMemo(() => {
     if (displayName) return displayName;

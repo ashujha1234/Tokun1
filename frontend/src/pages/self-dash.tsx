@@ -1093,6 +1093,7 @@
 
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import Header from "@/components/Header";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -1100,7 +1101,6 @@ import {
   Clock3,
   ShoppingCart,
   Upload,
-  Star,
   Trash,
   Check,
   BadgeDollarSign,
@@ -1654,6 +1654,98 @@ function HistoryGridCard({
 }) {
   const isPlaying = playingVideo === prompt.id;
   const priceLabel = prompt.isFree ? "FREE" : `₹${(prompt.price ?? 0).toFixed(2)}`;
+  const isVideo = !showImages && !!prompt.videoUrl;
+
+  // Video prompts: media fills the whole card edge-to-edge, with an
+  // explicit Details button (title/description are hidden under the video
+  // now, so the old "just tap the card" affordance isn't discoverable).
+  if (isVideo) {
+    return (
+      <Card
+        onClick={() => onPreview(prompt)}
+        className="relative overflow-hidden cursor-pointer hover:scale-[1.01] transition-transform"
+        style={{ width: 260, height: 460, background: "#0B0B0B", borderRadius: 24 }}
+      >
+        <video
+          className="absolute inset-0 w-full h-full object-cover"
+          src={prompt.videoUrl}
+          loop
+          muted
+          playsInline
+          ref={(el) => {
+            if (!el) return;
+            if (isPlaying) el.play().catch(() => {});
+            else el.pause();
+          }}
+        />
+
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onToggleVideo(prompt.id); }}
+          className="absolute inset-0 flex items-center justify-center"
+        >
+          {!isPlaying && (
+            <span className="w-12 h-12 rounded-full bg-black/55 hover:bg-black/70 grid place-items-center text-white transition-colors">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7-11-7z" />
+              </svg>
+            </span>
+          )}
+        </button>
+
+        {/* Category pill */}
+        <div
+          className="absolute top-3 left-3 px-2 py-1 text-[10px] font-semibold text-white rounded-full"
+          style={{ background: GRAD }}
+        >
+          {prompt.category?.toUpperCase()}
+        </div>
+
+        {/* Bottom scrim: title + price + details + delete/buy-again */}
+        <div
+          className="absolute bottom-0 left-0 right-0 px-4 pt-12 pb-3"
+          style={{ background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.55) 60%, transparent 100%)" }}
+        >
+          <h3 className="text-[14px] leading-snug font-semibold text-white line-clamp-1">{prompt.title}</h3>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <div
+              className="flex items-center justify-center shrink-0"
+              style={{ minWidth: 56, height: 32, borderRadius: 50, padding: "0 12px", background: "rgba(255,255,255,0.12)" }}
+            >
+              <span className="text-[12px] text-white/90">{priceLabel}</span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onPreview(prompt); }}
+                className="text-[12px] font-medium text-white"
+                style={{ height: 32, padding: "0 14px", borderRadius: 50, background: "rgba(255,255,255,0.14)", border: "1px solid rgba(255,255,255,0.2)" }}
+              >
+                Details ›
+              </button>
+              {isUploaded ? (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onDelete?.(prompt); }}
+                  className="flex items-center justify-center"
+                  style={{ width: 32, height: 32, borderRadius: 50, background: "rgba(255,255,255,0.12)" }}
+                >
+                  <Trash className="h-3.5 w-3.5 text-white/90" />
+                </button>
+              ) : (
+                <div
+                  className="flex items-center justify-center"
+                  style={{ width: 32, height: 32, borderRadius: 50, background: "rgba(255,255,255,0.12)" }}
+                >
+                  <img src="/icons/cop1.png" alt="cop1" className="h-3.5" />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card
@@ -1667,55 +1759,13 @@ function HistoryGridCard({
           className="relative w-full overflow-hidden group"
           style={{ height: 200, borderRadius: 16, backgroundColor: "#0B0B0B" }}
         >
-          {showImages ? (
-            <img src={prompt.imageUrl} alt={prompt.title} className="w-full h-full object-cover" />
-          ) : (
-            <>
-              <video
-                className="w-full h-full object-cover"
-                src={prompt.videoUrl}
-                loop
-                muted
-                playsInline
-                ref={(el) => {
-                  if (!el) return;
-                  if (isPlaying) el.play().catch(() => {});
-                  else el.pause();
-                }}
-              />
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onToggleVideo(prompt.id); }}
-                className="absolute inset-0 flex items-center justify-center"
-              >
-                <span className="w-10 h-10 rounded-full bg-black/60 hover:bg-black/75 grid place-items-center text-white transition-colors">
-                  {isPlaying ? (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                      <rect x="6" y="5" width="4" height="14" rx="1" />
-                      <rect x="14" y="5" width="4" height="14" rx="1" />
-                    </svg>
-                  ) : (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M8 5v14l11-7-11-7z" />
-                    </svg>
-                  )}
-                </span>
-              </button>
-            </>
-          )}
+          <img src={prompt.imageUrl} alt={prompt.title} className="w-full h-full object-cover" />
           {/* Category pill */}
           <div
             className="absolute top-2 left-2 px-2 py-1 text-[10px] font-semibold text-white rounded-full"
             style={{ background: GRAD }}
           >
             {prompt.category?.toUpperCase()}
-          </div>
-          {/* Rating pill */}
-          <div className="absolute top-2 right-2">
-            <div className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium text-white bg-black/40 border border-white/40 backdrop-blur-sm">
-              <Star className="h-3 w-3 text-white" />
-              {typeof prompt.rating === "number" ? prompt.rating : "—"}
-            </div>
           </div>
         </div>
 
@@ -1792,8 +1842,15 @@ const SelfDash = () => {
       ? `${import.meta.env.VITE_API_URL || ""}${user.avatar}`
       : `https://i.pravatar.cc/160?u=${encodeURIComponent(displayName)}`;
 
-  const [activeTab, setActiveTab] = useState<DashTab>("dashboard");
-  const [promptsTab, setPromptsTab] = useState<PromptsTab>("purchased");
+  const location = useLocation();
+  const initialParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+
+  const [activeTab, setActiveTab] = useState<DashTab>(
+    initialParams.get("tab") === "prompts" ? "prompts" : "dashboard"
+  );
+  const [promptsTab, setPromptsTab] = useState<PromptsTab>(
+    initialParams.get("p") === "uploaded" ? "uploaded" : "purchased"
+  );
   const [showCalendar, setShowCalendar] = useState(false);
   const [selectedDate, setSelectedDate] = useState(toDateValue(new Date()));
   const [calendarMonth, setCalendarMonth] = useState(() => {

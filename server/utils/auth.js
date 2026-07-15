@@ -33,7 +33,7 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ success: false, error: "unauthorized" });
     }
 
-    const payload = jwt.verify(token, process.env.JWT_SECRET || "devsecret");
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
 
     // ✅ Admin token — AdminUser se resolve karo
     if (payload.type === "admin") {

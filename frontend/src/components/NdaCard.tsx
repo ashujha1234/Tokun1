@@ -245,11 +245,11 @@ function NdaModal({ nda, onClose, dealId, token, apiBase }: {
   const { user } = useAuth() as any;
   const [tab, setTab] = useState<"preview" | "sign">("preview");
   const [mySig, setMySig] = useState<string>("");                     // my confirmed signature data URL
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2>(1);                         // 1 = signing, 2 = auto-submitting/submitted
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState("");
   const [uploadError, setUploadError] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingFileRef = useRef<File | null>(null);                   // signed doc, kept around so a failed auto-submit can retry
 
   // NDA upload status from deal
   const [ndaStatus, setNdaStatus] = useState<{ clientUrl?: string; freelancerUrl?: string } | null>(null);
@@ -273,12 +273,6 @@ function NdaModal({ nda, onClose, dealId, token, apiBase }: {
 
   useEffect(() => { fetchDealStatus(); }, [fetchDealStatus]);
 
-  // Advance to step 2 after signature confirmed
-  const handleSigConfirmed = useCallback((dataUrl: string) => {
-    setMySig(dataUrl);
-    setTimeout(() => setStep(2), 400);
-  }, []);
-
   const sigs = useMemo(() => ({
     client: role === "client" ? mySig || undefined : undefined,
     freelancer: role === "freelancer" ? mySig || undefined : undefined,
@@ -286,8 +280,9 @@ function NdaModal({ nda, onClose, dealId, token, apiBase }: {
 
   const srcDoc = useMemo(() => buildNdaHtml(nda, sigs), [nda, sigs]);
 
-  const handleUpload = async (file: File) => {
+  const handleUpload = useCallback(async (file: File) => {
     if (!dealId || !token || !apiBase) { setUploadError("Open this NDA from inside a deal chat to enable upload."); return; }
+    pendingFileRef.current = file;
     setUploading(true); setUploadError(""); setUploadMsg("");
     const form = new FormData();
     form.append("nda", file);
@@ -300,16 +295,37 @@ function NdaModal({ nda, onClose, dealId, token, apiBase }: {
       const data = await res.json();
       if (data.success) {
         setUploadMsg(data.bothSigned
-          ? "Both parties have signed and uploaded! ✓ NDA is complete."
-          : "Your signed NDA has been uploaded. Waiting for the other party to sign.");
-        setStep(3);
+          ? "Both parties have signed and submitted! ✓ NDA is complete."
+          : "Your signed NDA has been submitted. Waiting for the other party to sign.");
+        pendingFileRef.current = null;
         fetchDealStatus();
       } else {
-        setUploadError(data.error || "Upload failed. Try again.");
+        setUploadError(data.error || "Submission failed. Try again.");
       }
     } catch { setUploadError("Network error. Try again."); }
     setUploading(false);
-  };
+  }, [dealId, token, apiBase, fetchDealStatus]);
+
+  // As soon as the signature is confirmed, build the final signed document
+  // right here (same HTML the Preview/Download buttons would produce, with
+  // the signature baked in) and submit it immediately — no manual
+  // download-then-reupload step for either party.
+  const handleSigConfirmed = useCallback((dataUrl: string) => {
+    setMySig(dataUrl);
+    setStep(2);
+    const mySigs = {
+      client: role === "client" ? dataUrl : undefined,
+      freelancer: role === "freelancer" ? dataUrl : undefined,
+    };
+    const html = buildNdaHtml(nda, mySigs);
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const file = new File([blob], `Tokun-NDA-${nda.dealId || "agreement"}.html`, { type: "text/html" });
+    handleUpload(file);
+  }, [role, nda, handleUpload]);
+
+  const retrySubmit = useCallback(() => {
+    if (pendingFileRef.current) handleUpload(pendingFileRef.current);
+  }, [handleUpload]);
 
   const myUploaded = role === "client" ? !!ndaStatus?.clientUrl : !!ndaStatus?.freelancerUrl;
   const otherUploaded = role === "client" ? !!ndaStatus?.freelancerUrl : !!ndaStatus?.clientUrl;
@@ -408,53 +424,30 @@ function NdaModal({ nda, onClose, dealId, token, apiBase }: {
                   )}
                 </div>
 
-                {/* Step 2 — Download */}
-                <div style={{ marginBottom: 24, opacity: step >= 2 ? 1 : 0.35, transition: "opacity .3s", pointerEvents: step >= 2 ? "all" : "none" }}>
+                {/* Step 2 — Auto-submit (no manual download/re-upload needed) */}
+                <div style={{ opacity: step >= 2 ? 1 : 0.35, transition: "opacity .3s" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-                    <StepDot n={2} active={step === 2} done={step > 2} />
+                    <StepDot n={2} active={uploading} done={!!uploadMsg} />
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: 14 }}>Download the signed NDA as PDF</div>
-                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>Print dialog → "Save as PDF"</div>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>Submitting your signed NDA</div>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>
+                        {uploading ? "Uploading your signed copy…" : uploadMsg ? "Submitted automatically after signing" : "Happens automatically once you confirm your signature"}
+                      </div>
                     </div>
                   </div>
-                  {step === 2 && (
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                      <button onClick={() => downloadHtml(nda, sigs)} style={{ height: 40, padding: "0 18px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.8)", cursor: "pointer", fontSize: 13 }}>⬇ Download .html</button>
+                  {uploadMsg && <p style={{ fontSize: 13, color: "#4ade80", marginTop: 4, fontWeight: 600 }}>✓ {uploadMsg}</p>}
+                  {uploadError && (
+                    <div style={{ marginTop: 4 }}>
+                      <p style={{ fontSize: 12, color: "#f87171", marginBottom: 8 }}>⚠ {uploadError}</p>
                       <button
-                        onClick={() => { printNda(nda, sigs); setTimeout(() => setStep(3), 600); }}
-                        style={{ height: 40, padding: "0 22px", borderRadius: 8, border: "none", background: GRADIENT, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700 }}
+                        onClick={retrySubmit}
+                        disabled={uploading}
+                        style={{ height: 38, padding: "0 20px", borderRadius: 8, border: "none", background: uploading ? "rgba(255,255,255,0.06)" : GRADIENT, color: uploading ? "rgba(255,255,255,0.35)" : "#fff", cursor: uploading ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700 }}
                       >
-                        ⬇ Save as PDF / Print
+                        {uploading ? "Retrying…" : "Retry Submission"}
                       </button>
                     </div>
                   )}
-                  {step > 2 && <div style={{ fontSize: 12, color: "#4ade80" }}>✓ Download initiated</div>}
-                </div>
-
-                {/* Step 3 — Upload */}
-                <div style={{ opacity: step >= 3 ? 1 : 0.35, transition: "opacity .3s", pointerEvents: step >= 3 ? "all" : "none" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-                    <StepDot n={3} active={step === 3} done={myUploaded} />
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 14 }}>Upload your signed NDA copy</div>
-                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>Upload the PDF you just saved so the other party can verify it</div>
-                    </div>
-                  </div>
-                  {step >= 3 && !myUploaded && (
-                    <>
-                      <input ref={fileInputRef} type="file" accept=".pdf,.html,.png,.jpg,.jpeg" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ""; }} />
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploading || !dealId}
-                        style={{ height: 44, padding: "0 28px", borderRadius: 10, border: "none", background: uploading ? "rgba(255,255,255,0.06)" : "linear-gradient(135deg,#7c3aed,#2563eb)", color: uploading ? "rgba(255,255,255,0.35)" : "#fff", cursor: (uploading || !dealId) ? "not-allowed" : "pointer", fontSize: 14, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 8 }}
-                      >
-                        {uploading ? "Uploading…" : "📤 Upload Signed NDA"}
-                      </button>
-                      {!dealId && <p style={{ fontSize: 11, color: "#f87171", marginTop: 6 }}>Open this NDA from inside a deal chat to enable upload.</p>}
-                    </>
-                  )}
-                  {uploadMsg && <p style={{ fontSize: 13, color: "#4ade80", marginTop: 10, fontWeight: 600 }}>{uploadMsg}</p>}
-                  {uploadError && <p style={{ fontSize: 12, color: "#f87171", marginTop: 8 }}>⚠ {uploadError}</p>}
                 </div>
               </>
             )}

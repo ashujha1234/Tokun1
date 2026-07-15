@@ -446,3 +446,155 @@ export default function Footer() {
     </footer>
   );
 }
+
+// /* ============================================================
+//    NEW FOOTER (v2) — richer multi-column layout.
+//    Previous versions kept fully commented above for rollback.
+//    ============================================================ */
+// import { useMemo, useState } from "react";
+// import { Link } from "react-router-dom";
+// import { Facebook, Instagram, Linkedin } from "lucide-react";
+// import { FaXTwitter } from "react-icons/fa6";
+// import { Button } from "@/components/ui/button";
+// import "./Footer.css";
+// 
+// const SOCIAL_ICONS = [
+//   { Icon: Facebook, href: "#" },
+//   { Icon: FaXTwitter, href: "#" },
+//   { Icon: Instagram, href: "#" },
+//   { Icon: Linkedin, href: "#" },
+// ];
+// 
+// const FOOTER_COLUMNS = [
+//   {
+//     title: "Marketplace",
+//     links: [
+//       { label: "Popular Prompts", href: "/prompt-marketplace" },
+//       { label: "Staff Picks", href: "/prompt-marketplace" },
+//       { label: "Brand Identity", href: "/prompt-marketplace" },
+//       { label: "Prompt Library", href: "/prompt-library" },
+//     ],
+//   },
+//   {
+//     title: "Company",
+//     links: [
+//       { label: "About us", href: "/about" },
+//       { label: "Pricing", href: "/subscription" },
+//       { label: "Blog", href: "/blog" },
+//       { label: "Careers", href: "/careers" },
+//       { label: "Support", href: "/support" },
+//     ],
+//   },
+//   {
+//     title: "Legal",
+//     links: [
+//       { label: "Privacy Policy", href: "#" },
+//       { label: "Terms of Service", href: "#" },
+//       { label: "Legal Notices", href: "#" },
+//     ],
+//   },
+// ];
+// 
+// function FooterLink({ label, href }: { label: string; href: string }) {
+//   const isInternal = href.startsWith("/");
+//   const className = "footer2__link";
+//   return isInternal ? (
+//     <Link to={href} className={className}>{label}</Link>
+//   ) : (
+//     <a href={href} className={className}>{label}</a>
+//   );
+// }
+// 
+// export default function Footer() {
+//   const [active, setActive] = useState<number | null>(null);
+// 
+//   const ICON_SIZE = 40;
+//   const GAP = 12;
+//   const puckX = useMemo(
+//     () => (active !== null ? active * (ICON_SIZE + GAP) : 0),
+//     [active]
+//   );
+// 
+//   return (
+//     <footer className="footer2 relative z-10 bg-black text-white">
+//       <div className="footer2__top">
+//         {/* Brand column */}
+//         <div className="footer2__brand">
+//           <Link to="/" className="footer2__logo">TOKUN<span>.WORLD</span></Link>
+//           <p className="footer2__tagline">
+//             The premier marketplace for high-performance AI prompts and specialized intelligence tools.
+//           </p>
+// 
+//           <div
+//             className="footer2__socials"
+//             style={{ width: SOCIAL_ICONS.length * ICON_SIZE + (SOCIAL_ICONS.length - 1) * GAP, height: ICON_SIZE }}
+//             onMouseLeave={() => setActive(null)}
+//           >
+//             {active !== null && (
+//               <span
+//                 aria-hidden
+//                 className="footer2__social-puck"
+//                 style={{
+//                   width: ICON_SIZE,
+//                   height: ICON_SIZE,
+//                   transform: `translateX(${puckX}px)`,
+//                 }}
+//               />
+//             )}
+//             <div className="footer2__social-row">
+//               {SOCIAL_ICONS.map(({ Icon, href }, i) => (
+//                 <a
+//                   key={i}
+//                   href={href}
+//                   onMouseEnter={() => setActive(i)}
+//                   onFocus={() => setActive(i)}
+//                   onBlur={() => setActive(null)}
+//                   className="footer2__social-icon"
+//                   title="Follow us"
+//                   style={{ width: ICON_SIZE, height: ICON_SIZE }}
+//                 >
+//                   <Icon className="w-4 h-4" />
+//                 </a>
+//               ))}
+//             </div>
+//           </div>
+//         </div>
+// 
+//         {/* Link columns */}
+//         {FOOTER_COLUMNS.map((col) => (
+//           <div key={col.title} className="footer2__col">
+//             <h4 className="footer2__col-title">{col.title}</h4>
+//             <ul className="footer2__col-list">
+//               {col.links.map((link) => (
+//                 <li key={link.label}>
+//                   <FooterLink label={link.label} href={link.href} />
+//                 </li>
+//               ))}
+//             </ul>
+//           </div>
+//         ))}
+//       </div>
+// 
+//       {/* Newsletter */}
+//       <div className="footer2__newsletter">
+//         <span className="footer2__newsletter-label">Get product updates</span>
+//         <div className="footer2__newsletter-form">
+//           <input
+//             type="email"
+//             placeholder="Enter your email"
+//             className="footer2__newsletter-input"
+//           />
+//           <Button className="footer2__newsletter-btn h-10 px-6 rounded-full bg-white text-black hover:bg-white/90">
+//             Subscribe
+//           </Button>
+//         </div>
+//       </div>
+// 
+//       {/* Bottom strip */}
+//       <div className="footer2__bottom">
+//         <p className="footer2__copyright">© 2025 TOKUN. All rights reserved.</p>
+//         <p className="footer2__motto">MADE FOR THE FUTURE</p>
+//       </div>
+//     </footer>
+//   );
+// }

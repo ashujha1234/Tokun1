@@ -141,7 +141,6 @@ const emitAdminMessage = (req, conversation, message, receiverId) => {
   const io = req.app.get("io");
 
   if (!io) {
-    console.log("⚠️ Socket io not found on app");
     return;
   }
 

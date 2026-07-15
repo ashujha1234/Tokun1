@@ -19780,6 +19780,15 @@ function FeedbackView() {
     setFeedbacks(prev => prev.filter(f => f._id !== id));
   };
 
+  const toggleTestimonial = async (id: string, showOnLanding: boolean) => {
+    await fetch(`${API_BASE}/api/feedback/${id}/testimonial`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ showOnLanding }),
+    });
+    setFeedbacks(prev => prev.map(f => f._id === id ? { ...f, showOnLanding } : f));
+  };
+
   const shown = feedbacks.filter(f => {
     const statusOk = filter === "all" || (f.status || "pending") === filter;
     const sentOk = sentFilter === "all" || f.sentiment === sentFilter;
@@ -19832,6 +19841,9 @@ function FeedbackView() {
                 <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
                   <span style={{ fontSize:12, color: sentColor[fb.sentiment]||"#fff", background:"rgba(255,255,255,0.06)", padding:"3px 10px", borderRadius:20, fontWeight:700, textTransform:"capitalize" }}>{fb.sentiment}</span>
                   <span style={{ fontSize:12, color: statusColor[fb.status||"pending"], background:"rgba(255,255,255,0.06)", padding:"3px 10px", borderRadius:20, fontWeight:700, textTransform:"capitalize" }}>{fb.status||"pending"}</span>
+                  {fb.showOnLanding && (
+                    <span style={{ fontSize:12, color:"#c4b5fd", background:"rgba(139,92,246,0.15)", padding:"3px 10px", borderRadius:20, fontWeight:700 }}>On Landing Page</span>
+                  )}
                   <span style={{ color:"#facc15", fontSize:14, letterSpacing:2 }}>{stars(fb.rating)}</span>
                 </div>
               </div>
@@ -19855,6 +19867,9 @@ function FeedbackView() {
                   {(fb.status||"pending") !== "resolved" && (
                     <button onClick={() => updateStatus(fb._id,"resolved")} style={{ padding:"6px 14px", fontSize:12, fontWeight:700, borderRadius:8, border:"none", background:"rgba(74,222,128,0.12)", color:"#4ade80", cursor:"pointer" }}>Resolve</button>
                   )}
+                  <button onClick={() => toggleTestimonial(fb._id, !fb.showOnLanding)} style={{ padding:"6px 14px", fontSize:12, fontWeight:700, borderRadius:8, border:"none", background: fb.showOnLanding ? "rgba(139,92,246,0.25)" : "rgba(139,92,246,0.12)", color:"#c4b5fd", cursor:"pointer" }}>
+                    {fb.showOnLanding ? "Remove from Landing" : "Show on Landing"}
+                  </button>
                   <button onClick={() => deleteFeedback(fb._id)} style={{ padding:"6px 14px", fontSize:12, fontWeight:700, borderRadius:8, border:"none", background:"rgba(239,68,68,0.12)", color:"#f87171", cursor:"pointer" }}>Delete</button>
                 </div>
               </div>

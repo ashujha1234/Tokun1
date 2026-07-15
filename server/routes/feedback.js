@@ -137,6 +137,17 @@ router.patch("/:id/status", async (req, res) => {
   }
 });
 
+// PATCH /api/feedback/:id/testimonial (admin) — approve/unapprove for landing page display
+router.patch("/:id/testimonial", async (req, res) => {
+  try {
+    const { showOnLanding } = req.body;
+    const fb = await Feedback.findByIdAndUpdate(req.params.id, { showOnLanding: !!showOnLanding }, { new: true });
+    res.json({ success: true, feedback: fb });
+  } catch (err) {
+    res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
 // GET /api/feedback (admin)
 router.get("/", async (req, res) => {
   try {
@@ -147,16 +158,11 @@ router.get("/", async (req, res) => {
   }
 });
 
-// GET /api/feedback/top
+// GET /api/feedback/top — only feedback an admin has explicitly approved for the landing page
 router.get("/top", async (req, res) => {
   try {
-    let positives = await Feedback.find({ sentiment: "positive" }).sort({ createdAt: -1 }).limit(5);
-    if (positives.length < 5) {
-      const needed = 5 - positives.length;
-      const neutrals = await Feedback.find({ sentiment: "neutral" }).sort({ createdAt: -1 }).limit(needed);
-      positives = positives.concat(neutrals);
-    }
-    res.json({ success: true, count: positives.length, feedbacks: positives });
+    const approved = await Feedback.find({ showOnLanding: true }).sort({ createdAt: -1 }).limit(9);
+    res.json({ success: true, count: approved.length, feedbacks: approved });
   } catch (err) {
     res.status(500).json({ success: false, error: "server_error" });
   }

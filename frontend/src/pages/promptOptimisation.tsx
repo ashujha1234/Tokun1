@@ -277,7 +277,6 @@ export default function PromptOptimizationPage() {
 
     const cfg = llmService.getConfig();
     setIsKeySet(!!cfg.apiKey);
-    if (!cfg.apiKey) setApiKeyModalOpen(true);
 
     if (navState?.initialText && !optimizerInput) {
       setOptimizerInput(navState.initialText);

@@ -11993,6 +11993,7 @@ import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls, useGLTF, Environment } from '@react-three/drei'
 import * as THREE from 'three'
 import { useAuth } from '@/contexts/AuthContext'
+// import Footer from '@/components/Footer'
 import './landing-page.css'
 
 const TOKUN_LOGO_SRC = '/icons/Tokun.png'
@@ -12101,8 +12102,16 @@ function HeroAccountMenu() {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
-  const fullName =
-    user?.name?.trim() || (user?.email ? user.email.split('@')[0] : 'User')
+  const toTitleCase = (value: string) =>
+    value
+      .split(' ')
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(' ')
+
+  const fullName = user?.name?.trim()
+    ? toTitleCase(user.name.trim())
+    : (user?.email ? user.email.split('@')[0] : 'User')
   const plan = user?.plan || 'free'
 
   useEffect(() => {
@@ -12146,8 +12155,6 @@ function HeroAccountMenu() {
   ]
 
   const secondaryItems = [
-    { label: 'Purchase History', onClick: () => go('/prompty-history?p=purchased') },
-    { label: 'Upload History', onClick: () => go('/prompty-history?p=uploaded') },
     { label: 'My Feedback', onClick: () => go('/my-feedback') },
     { label: 'Pricing', onClick: () => go('/subscription') },
     { label: 'Support', onClick: () => go('/support') },

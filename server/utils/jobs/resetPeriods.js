@@ -10,7 +10,6 @@ const { PLANS } = require("../../config/plans");
 
 // Run this with node-cron (e.g., every hour): 0 * * * *
 async function resetDuePeriods() {
-  console.log("reset Due Periods call");
   const now = dayjs().utc().toDate();
 
   // --- ORGS (you already had this) ---

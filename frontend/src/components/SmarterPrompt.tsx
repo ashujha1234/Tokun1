@@ -2,11 +2,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  History, Zap, Sparkles, Copy, Download, RotateCcw,
-  ChevronDown, Bookmark, Send, Pencil, Code2, Video,
+  History, Zap, Sparkles, Copy, RotateCcw,
+  ChevronDown, Bookmark, Pencil, Code2, Video,
   Image, Share2, Loader2, ArrowRight, X, Check, Search,
-  AlertTriangle,
+  AlertTriangle, Paperclip, FileText,
 } from "lucide-react";
+import { SiOpenai, SiClaude, SiGooglegemini, SiPerplexity, SiX } from "react-icons/si";
 import { llmService } from "@/services/llmService";
 import type { DetectionResult, DeepQuestion } from "@/services/llmService";
 import { useAuth } from "@/contexts/AuthContext";
@@ -264,52 +265,35 @@ function PromptRenderer({text}: {text: string}) {
 }
 
 /* ─── Open With Menu ─────────────────────────────────────────────────────── */
+// Real brand marks (react-icons/si) — DeepSeek has no icon in this react-icons
+// version yet, so it keeps an emoji fallback rather than an inconsistent one-off.
 const LLM_TOOLS = [
-  {label:"ChatGPT",   icon:"🤖", buildUrl:(q:string)=>`https://chatgpt.com/?q=${encodeURIComponent(q)}`},
-  {label:"Claude",    icon:"✦",  buildUrl:(q:string)=>`https://claude.ai/new?q=${encodeURIComponent(q)}`},
-  {label:"Gemini",    icon:"♊",  buildUrl:(q:string)=>`https://gemini.google.com/app?q=${encodeURIComponent(q)}`},
-  {label:"Perplexity",icon:"🔍", buildUrl:(q:string)=>`https://www.perplexity.ai/?q=${encodeURIComponent(q)}`},
-  {label:"Grok",      icon:"⚡", buildUrl:(q:string)=>`https://x.com/i/grok?text=${encodeURIComponent(q)}`},
-  {label:"DeepSeek",  icon:"🌊", buildUrl:(q:string)=>`https://chat.deepseek.com/?q=${encodeURIComponent(q)}`},
+  {label:"ChatGPT",   Icon:SiOpenai,       emoji:null, color:"#ffffff", buildUrl:(q:string)=>`https://chatgpt.com/?q=${encodeURIComponent(q)}`},
+  {label:"Claude",    Icon:SiClaude,       emoji:null, color:"#D97757", buildUrl:(q:string)=>`https://claude.ai/new?q=${encodeURIComponent(q)}`},
+  {label:"Gemini",    Icon:SiGooglegemini,emoji:null, color:"#4285F4", buildUrl:(q:string)=>`https://gemini.google.com/app?q=${encodeURIComponent(q)}`},
+  {label:"Perplexity",Icon:SiPerplexity,   emoji:null, color:"#1FB8CD", buildUrl:(q:string)=>`https://www.perplexity.ai/?q=${encodeURIComponent(q)}`},
+  {label:"Grok",      Icon:SiX,            emoji:null, color:"#ffffff", buildUrl:(q:string)=>`https://x.com/i/grok?text=${encodeURIComponent(q)}`},
+  {label:"DeepSeek",  Icon:null,           emoji:"🌊", color:"#4D6BFE", buildUrl:(q:string)=>`https://chat.deepseek.com/?q=${encodeURIComponent(q)}`},
 ];
 
-function OpenWithMenu({text, onToast}: {text: string; onToast:(msg:string)=>void}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
+function LlmButtons({text, onToast}: {text: string; onToast:(msg:string)=>void}) {
   return (
-    <div ref={ref} style={{position:"relative"}}>
-      <button onClick={() => setOpen(v=>!v)}
-        style={{display:"flex",alignItems:"center",gap:6,height:38,padding:"0 16px",borderRadius:100,border:"1px solid rgba(255,255,255,0.12)",background:"#1a1a1b",color:"rgba(255,255,255,0.7)",fontSize:13,cursor:"pointer"}}>
-        <Send size={14}/> Open with <ChevronDown size={13} style={{transform:open?"rotate(180deg)":"none",transition:"transform 0.2s"}}/>
-      </button>
-      {open && (
-        <div style={{position:"absolute",bottom:"calc(100% + 8px)",right:0,zIndex:50,background:"#18181a",border:"1px solid rgba(255,255,255,0.1)",borderRadius:14,overflow:"hidden",minWidth:190,boxShadow:"0 20px 60px rgba(0,0,0,0.7)"}}>
-          <div style={{padding:"10px 14px 8px",fontSize:11,color:"rgba(255,255,255,0.3)",fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase",borderBottom:"1px solid rgba(255,255,255,0.06)"}}>Send prompt to</div>
-          {LLM_TOOLS.map(t => (
-            <button key={t.label}
-              onClick={() => {
-                navigator.clipboard.writeText(text).catch(()=>{});
-                window.open(t.buildUrl(text),"_blank","noopener,noreferrer");
-                setOpen(false);
-                onToast(`Opening ${t.label} — prompt sent to input & copied to clipboard`);
-              }}
-              style={{display:"flex",alignItems:"center",gap:10,width:"100%",textAlign:"left",padding:"10px 16px",color:"rgba(255,255,255,0.8)",fontSize:13,background:"transparent",border:"none",cursor:"pointer"}}
-              onMouseEnter={e=>(e.currentTarget.style.background="rgba(255,255,255,0.05)")}
-              onMouseLeave={e=>(e.currentTarget.style.background="transparent")}>
-              <span style={{fontSize:16,width:22,textAlign:"center"}}>{t.icon}</span>
-              <span>{t.label}</span>
-              <span style={{marginLeft:"auto",fontSize:10,color:"rgba(255,255,255,0.2)"}}>↗</span>
-            </button>
-          ))}
-          <div style={{padding:"8px 16px 10px",fontSize:11,color:"rgba(255,255,255,0.2)",borderTop:"1px solid rgba(255,255,255,0.06)"}}>Prompt auto-fills the input ✓</div>
-        </div>
-      )}
-    </div>
+    <>
+      {LLM_TOOLS.map(t => (
+        <button key={t.label}
+          title={`Open with ${t.label}`}
+          onClick={() => {
+            navigator.clipboard.writeText(text).catch(()=>{});
+            window.open(t.buildUrl(text),"_blank","noopener,noreferrer");
+            onToast(`Opening ${t.label} — prompt copied to clipboard`);
+          }}
+          style={{width:38,height:38,borderRadius:"50%",border:"1px solid rgba(255,255,255,0.12)",background:"#1a1a1b",color:"rgba(255,255,255,0.8)",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}
+          onMouseEnter={e=>(e.currentTarget.style.background="rgba(255,255,255,0.08)")}
+          onMouseLeave={e=>(e.currentTarget.style.background="#1a1a1b")}>
+          {t.Icon ? <t.Icon size={17} color={t.color}/> : t.emoji}
+        </button>
+      ))}
+    </>
   );
 }
 
@@ -462,11 +446,21 @@ function CategoryModal({current, onSelect, onClose}: {
 }
 
 /* ─── Main Component ─────────────────────────────────────────────────────── */
+// Keeps the idea + generated output alive across navigation (e.g. switching to
+// Prompt Optimiser and back) — only the Clear button should wipe it.
+const SMARTGEN_DRAFT_KEY = "smartgen_draft_v1";
+function loadSmartgenDraft(): { prompt?: string; generated?: string } | null {
+  try {
+    const raw = localStorage.getItem(SMARTGEN_DRAFT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
 export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: SmarterPromptProps) {
   const {user} = useAuth();
   const navigate = useNavigate();
 
-  const [prompt,       setPrompt]       = useState("");
+  const [prompt,       setPrompt]       = useState(() => loadSmartgenDraft()?.prompt || "");
   const [skillMode,    setSkillMode]    = useState(false);
   const [deepMode,     setDeepMode]     = useState(false);
   const [activeIdea,   setActiveIdea]   = useState<number|null>(null);
@@ -487,15 +481,20 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
 
   // Output
   const [isGenerating,  setIsGenerating]  = useState(false);
-  const [generated,     setGenerated]     = useState("");
+  const [generated,     setGenerated]     = useState(() => loadSmartgenDraft()?.generated || "");
   const [streamedText,  setStreamedText]  = useState("");
   const [isEditing,     setIsEditing]     = useState(false);
   const [editable,      setEditable]      = useState("");
   const [isBookmarked,  setIsBookmarked]  = useState(false);
+  const [tokensUsed,    setTokensUsed]    = useState<number|null>(null);
+
+  // PDF attachment → convert to prompt
+  const [attachedPdf,   setAttachedPdf]   = useState<File|null>(null);
 
   const abortRef    = useRef<AbortController|null>(null);
   const detectTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
   const outputRef   = useRef<HTMLDivElement>(null);
+  const pdfInputRef  = useRef<HTMLInputElement>(null);
 
   // Derived
   const effectiveDomainId    = manualDomainId ?? detection?.domainId ?? null;
@@ -539,6 +538,18 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
     if (streamedText && outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight;
   }, [streamedText]);
 
+  // Persist the idea + generated output so navigating away (e.g. to Prompt
+  // Optimiser) and back doesn't lose it — only Clear removes it.
+  useEffect(() => {
+    try {
+      if (!prompt && !generated) {
+        localStorage.removeItem(SMARTGEN_DRAFT_KEY);
+      } else {
+        localStorage.setItem(SMARTGEN_DRAFT_KEY, JSON.stringify({ prompt, generated }));
+      }
+    } catch {}
+  }, [prompt, generated]);
+
   /* ── Open deep modal: loads questions then shows popup ── */
   const openDeepModal = useCallback(async () => {
     const domainId = effectiveDomainId ?? "general_expert";
@@ -555,6 +566,25 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
     }
   }, [effectiveDomainId, selectedSubcat, effectiveSubcatLabel, prompt]);
 
+  // The prompt/PDF generation itself already succeeded by the time this runs — this only
+  // records token usage against the quota. If it fails, don't block the user from seeing
+  // their result, but surface why so a silent quota mismatch doesn't look like a UI bug.
+  const quotaSaveErrorMessages: Record<string,string> = {
+    token_quota_exceeded: "You've used up your monthly token quota.",
+    org_pool_exhausted: "Your organisation's token pool is exhausted.",
+    org_subscription_inactive: "Your organisation's subscription isn't active.",
+    subscription_inactive: "Your subscription isn't active.",
+    member_cap_exceeded: "You've used up your assigned token cap.",
+    insufficient_quota: "You've used up your monthly token quota.",
+  };
+  const warnIfQuotaSaveFailed = (res: {success:boolean; error?: string}) => {
+    if (res.success) return;
+    toast({
+      title: "Couldn't record token usage",
+      description: quotaSaveErrorMessages[res.error || ""] || `This generation won't count toward your usage widget (${res.error}).`,
+    });
+  };
+
   /* ── Core generate function ── */
   const doGenerate = useCallback(async (answersOverride?: Record<string,string>) => {
     if (!user) { navigate("/login"); return; }
@@ -562,7 +592,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
     if (isGenerating) { abortRef.current?.abort(); return; }
 
     setShowDeepModal(false);
-    setIsGenerating(true); setGenerated(""); setStreamedText(""); setIsEditing(false);
+    setIsGenerating(true); setGenerated(""); setStreamedText(""); setIsEditing(false); setTokensUsed(null);
     const ctrl = new AbortController(); abortRef.current = ctrl;
 
     const context = skillMode ? {
@@ -584,6 +614,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
       if (!res.ok || !res.body) throw new Error("stream_unavailable");
       const reader = res.body.getReader(); const decoder = new TextDecoder();
       let buf = ""; let accum = ""; let final = "";
+      let finalUsage: {promptTokens?:number; completionTokens?:number; totalTokens?:number}|null = null;
 
       while (true) {
         const {done,value} = await reader.read(); if (done) break;
@@ -595,16 +626,23 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
             const evt = JSON.parse(line.slice(6));
             if (evt.error) throw new Error(evt.message||"stream_error");
             if (evt.delta) { accum += evt.delta; setStreamedText(unwrapJson(accum)); }
-            if (evt.done)  final = evt.optimizedText || unwrapJson(accum);
+            if (evt.done)  { final = evt.optimizedText || unwrapJson(accum); finalUsage = evt.usage ?? null; }
           } catch(pe) { if ((pe as Error).message!=="stream_error") continue; throw pe; }
         }
       }
 
       const result = final || unwrapJson(accum);
       if (!result) throw new Error("empty_response");
+      // Only count the tokens actually generated (the output) — not the tokens spent
+      // reading the input — that's what "tokens used" should mean to the user.
+      const outputTokens = finalUsage?.completionTokens ?? Math.ceil(result.length/3.5);
       setGenerated(result); setStreamedText("");
+      setTokensUsed(outputTokens);
+      // Deduct quota BEFORE notifying the parent (which refreshes the quota widget) —
+      // otherwise the widget refetches before the spend lands and looks stale.
+      const saveRes = await llmService.saveSmartgen({inputPrompt:prompt.trim(),detailedPrompt:result,tokensUsed:outputTokens});
+      warnIfQuotaSaveFailed(saveRes);
       onPromptGenerated?.(result);
-      try { await llmService.saveSmartgen({inputPrompt:prompt.trim(),detailedPrompt:result,tokensUsed:Math.ceil(result.length/3.5)}); } catch{}
 
     } catch(err) {
       if ((err as Error).name==="AbortError") { setIsGenerating(false); return; }
@@ -612,20 +650,80 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
         const r = await llmService.generateDetailedPrompt(prompt.trim());
         const clean = unwrapJson((r as any)?.optimizedText ?? (typeof r==="string"?r:""));
         if (!clean) throw new Error("empty");
+        const outputTokens = (r as any)?.tokens ?? Math.ceil(clean.length/3.5);
         setGenerated(clean); setStreamedText("");
+        setTokensUsed(outputTokens);
+        const saveRes = await llmService.saveSmartgen({inputPrompt:prompt.trim(),detailedPrompt:clean,tokensUsed:outputTokens});
+        warnIfQuotaSaveFailed(saveRes);
         onPromptGenerated?.(clean);
-        try { await llmService.saveSmartgen({inputPrompt:prompt.trim(),detailedPrompt:clean,tokensUsed:Math.ceil(clean.length/3.5)}); } catch{}
       } catch(fe) {
         toast({title:"Generation failed",description:(fe as Error).message,variant:"destructive"});
       }
     } finally { setIsGenerating(false); }
   }, [user, prompt, skillMode, effectiveDomainId, selectedSubcat, effectiveSubcatLabel, deepAnswers, navigate, onPromptGenerated, isGenerating]);
 
+  /* ── Convert an attached PDF into a ready-to-use prompt ── */
+  const doGenerateFromPdf = useCallback(async () => {
+    if (!user) { navigate("/login"); return; }
+    if (!attachedPdf) return;
+    if (isGenerating) { abortRef.current?.abort(); return; }
+
+    setIsGenerating(true); setGenerated(""); setStreamedText(""); setIsEditing(false); setTokensUsed(null);
+
+    try {
+      const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+      const form = new FormData();
+      form.append("pdf", attachedPdf);
+      if (prompt.trim()) form.append("instructions", prompt.trim());
+
+      const res = await fetch(`${API_BASE}/api/smartgen/pdf-to-prompt`, {
+        method: "POST",
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: form,
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success || !data?.prompt) {
+        const errorMessages: Record<string, string> = {
+          pdf_has_no_extractable_text: "This PDF has no selectable text (likely a scanned image) — try a text-based PDF instead.",
+          could_not_read_pdf: "This file couldn't be read as a PDF — it may be corrupted or password-protected.",
+          only_pdf_allowed: "Only PDF files are supported for this feature.",
+        };
+        throw new Error(errorMessages[data?.error] || data?.error || "Could not convert this PDF");
+      }
+
+      // Only count the tokens actually generated (the converted prompt output) — not the
+      // tokens spent reading the PDF's extracted text as input.
+      const outputTokens = data.usage?.completionTokens ?? Math.ceil(data.prompt.length / 3.5);
+      setGenerated(data.prompt);
+      setTokensUsed(outputTokens);
+      setAttachedPdf(null);
+      if (data.truncated) {
+        toast({ title: "PDF was very long", description: "Only the first part of the document was used to build the prompt." });
+      }
+      // Deduct quota BEFORE notifying the parent (which refreshes the quota widget) —
+      // otherwise the widget refetches before the spend lands and looks stale.
+      const saveRes = await llmService.saveSmartgen({
+        inputPrompt: `Converted from PDF: ${attachedPdf.name}`,
+        detailedPrompt: data.prompt,
+        tokensUsed: outputTokens,
+      });
+      warnIfQuotaSaveFailed(saveRes);
+      onPromptGenerated?.(data.prompt);
+    } catch (err) {
+      toast({ title: "PDF conversion failed", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [user, attachedPdf, prompt, isGenerating, navigate, onPromptGenerated]);
+
   /* ── Generate button click ──
+     If a PDF is attached → convert it into a prompt
      If deep mode ON and domain known → show "Next" → open deep modal
      Otherwise → generate directly
   ── */
   const handleGenerateClick = useCallback(async () => {
+    if (attachedPdf) { doGenerateFromPdf(); return; }
     if (!prompt.trim()) return;
     if (isGenerating) { abortRef.current?.abort(); return; }
     // Deep mode: always show "Next" → open the questions popup first
@@ -634,14 +732,25 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
       return;
     }
     doGenerate();
-  }, [prompt, isGenerating, deepMode, showDeepModal, openDeepModal, doGenerate]);
+  }, [prompt, isGenerating, deepMode, showDeepModal, openDeepModal, doGenerate, attachedPdf, doGenerateFromPdf]);
+
+  const handlePdfSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.type !== "application/pdf") {
+      toast({ title: "PDF files only", variant: "destructive" });
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      toast({ title: "File too large", description: "PDF must be under 20MB.", variant: "destructive" });
+      return;
+    }
+    setAttachedPdf(file);
+  };
 
   function handleCopy() {
     navigator.clipboard.writeText(displayText).then(()=>toast({title:"Copied to clipboard"}));
-  }
-  function handleDownload() {
-    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([displayText],{type:"text/plain"}));
-    a.download = "smartgen-prompt.txt"; a.click();
   }
 
   const inputBg    = "#111214";
@@ -755,24 +864,48 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
               <Sparkles size={13} color={deepMode?"#fbbf24":"rgba(245,158,11,0.65)"}/> Deep
             </button>
 
-            {/* Clear */}
-            {prompt && (
-              <button onClick={()=>{setPrompt("");setActiveIdea(null);setDetection(null);setManualDomainId(null);setSelectedSubcat(null);setDeepAnswers({});}}
+            {/* Clear — wipes idea + generated output + attachment (the only way any of it goes away) */}
+            {(prompt || generated || streamedText || attachedPdf) && (
+              <button onClick={()=>{
+                setPrompt("");setActiveIdea(null);setDetection(null);setManualDomainId(null);setSelectedSubcat(null);setDeepAnswers({});
+                setGenerated("");setStreamedText("");setIsEditing(false);setEditable("");setIsBookmarked(false);
+                setAttachedPdf(null);setTokensUsed(null);
+              }}
                 style={{...btnDark,display:"flex",alignItems:"center",gap:6,height:36,padding:"0 14px",borderRadius:100,fontSize:13,cursor:"pointer"}}>
                 <X size={13}/> Clear
+              </button>
+            )}
+
+            {/* Attach PDF → convert to prompt */}
+            <input ref={pdfInputRef} type="file" accept="application/pdf" onChange={handlePdfSelected} style={{display:"none"}}/>
+            {attachedPdf ? (
+              <div style={{display:"flex",alignItems:"center",gap:6,height:36,padding:"0 10px 0 14px",borderRadius:100,fontSize:13,background:"rgba(139,92,246,0.12)",border:"1px solid rgba(139,92,246,0.35)",color:"#c4b5fd"}}>
+                <FileText size={14}/>
+                <span style={{maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{attachedPdf.name}</span>
+                <button type="button" onClick={()=>setAttachedPdf(null)} title="Remove attachment"
+                  style={{display:"flex",alignItems:"center",justifyContent:"center",width:20,height:20,borderRadius:"50%",border:"none",background:"rgba(255,255,255,0.1)",color:"#c4b5fd",cursor:"pointer"}}>
+                  <X size={12}/>
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={()=>pdfInputRef.current?.click()} title="Attach a PDF to convert into a prompt"
+                style={{...btnDark,display:"flex",alignItems:"center",gap:6,height:36,padding:"0 14px",borderRadius:100,fontSize:13,cursor:"pointer"}}>
+                <Paperclip size={14}/> Attach PDF
               </button>
             )}
           </div>
 
           {/* Generate / Next / Stop */}
-          <button onClick={handleGenerateClick} disabled={!prompt.trim()&&!isGenerating}
+          <button onClick={handleGenerateClick} disabled={!prompt.trim()&&!isGenerating&&!attachedPdf}
             style={{display:"flex",alignItems:"center",gap:8,height:40,padding:"0 22px",borderRadius:100,border:"none",
-              cursor:prompt.trim()||isGenerating?"pointer":"not-allowed",
-              background:prompt.trim()||isGenerating?GEN_BG:"rgba(124,58,237,0.3)",
+              cursor:prompt.trim()||isGenerating||attachedPdf?"pointer":"not-allowed",
+              background:prompt.trim()||isGenerating||attachedPdf?GEN_BG:"rgba(124,58,237,0.3)",
               color:"#fff",fontWeight:600,fontSize:14,transition:"opacity 0.15s",
-              opacity:!prompt.trim()&&!isGenerating?0.5:1}}>
+              opacity:!prompt.trim()&&!isGenerating&&!attachedPdf?0.5:1}}>
             {isGenerating
               ? <><Loader2 size={15} style={{animation:"spin 1s linear infinite"}}/> Stop</>
+              : attachedPdf
+              ? <><span>Convert PDF</span><ArrowRight size={15}/></>
               : isDeepNext
               ? <><span>Next</span><ArrowRight size={15}/></>
               : <><span>Generate</span><ArrowRight size={15}/></>
@@ -825,13 +958,15 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
                 <button onClick={()=>{if(!isEditing)setEditable(displayText);setIsEditing(v=>!v);}} style={{...btnDark,display:"flex",alignItems:"center",gap:7,height:38,padding:"0 16px",borderRadius:100,fontSize:13,cursor:"pointer"}}>
                   <Pencil size={14}/> {isEditing?"Done":"Edit"}
                 </button>
-                <OpenWithMenu text={displayText} onToast={msg=>toast({title:msg})}/>
+                <LlmButtons text={displayText} onToast={msg=>toast({title:msg})}/>
                 <button onClick={()=>setIsBookmarked(v=>!v)} style={{width:38,height:38,borderRadius:"50%",border:"1px solid rgba(255,255,255,0.12)",background:"#1a1a1b",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                   <Bookmark size={15} fill={isBookmarked?"#8b5cf6":"none"} color={isBookmarked?"#8b5cf6":"rgba(255,255,255,0.55)"}/>
                 </button>
-                <button onClick={handleDownload} style={{width:38,height:38,borderRadius:"50%",border:"1px solid rgba(255,255,255,0.12)",background:"#1a1a1b",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <Download size={15} color="rgba(255,255,255,0.55)"/>
-                </button>
+                {tokensUsed != null && (
+                  <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,height:38,padding:"0 16px",borderRadius:100,background:"rgba(124,58,237,0.12)",border:"1px solid rgba(124,58,237,0.25)",color:"#c4b5fd",fontSize:13,fontWeight:600}}>
+                    <Zap size={14}/> {tokensUsed.toLocaleString()} tokens used
+                  </div>
+                )}
               </div>
             )}
           </div>

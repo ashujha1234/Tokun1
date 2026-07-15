@@ -79,11 +79,11 @@ export default function SmartGenPage() {
       <div className="container mx-auto px-4 py-6">
         <Header />
 
-        <div className="pt-20 md:pt-24 lg:pt-28 flex justify-center">
+        <div className="pt-4 md:pt-5 lg:pt-6 flex justify-center">
           <TokenUsageSection />
         </div>
 
-        <div className="mt-6 text-center">
+        <div className="mt-3 text-center">
           <h2
             className="text-[17px] sm:text-[22px] lg:text-[28px] font-semibold text-white leading-snug"
             style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
@@ -92,11 +92,11 @@ export default function SmartGenPage() {
           </h2>
         </div>
 
-        <div className="mt-4 flex justify-center">
+        <div className="mt-3 flex justify-center">
           <AppNavigation />
         </div>
 
-        <div className="mt-8 text-center px-4">
+        <div className="mt-5 text-center px-4">
           <h1 className="m-0 leading-tight text-[20px] sm:text-[24px] lg:text-[32px]">
             <span className="font-semibold text-white" style={{ fontFamily: "Inter" }}>
               Smartgen –
@@ -110,7 +110,7 @@ export default function SmartGenPage() {
           </h1>
         </div>
 
-        <div className="mt-6">
+        <div className="mt-4">
           <SmarterPrompt
             onPromptGenerated={handleSmartgenPromptGenerated}
             onUseInOptimizer={(text) => {

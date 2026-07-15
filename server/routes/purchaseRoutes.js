@@ -386,7 +386,11 @@ const { requireAuth } = require("../utils/auth");
 const { requireKycVerified } = require("../utils/requireKycVerified");
 const { logActivity } = require("../utils/activityLogger");
 const crypto = require("crypto");
+const path = require("path");
+const fs = require("fs");
 const { embedWatermark, extractWatermark } = require("../utils/nvisibleWatermark");
+const { generateInvoicePDF } = require("../services/invoice.service");
+const { sendInvoiceEmail } = require("../services/email.service");
 
 // POST /api/purchase/create-order/:promptId
 router.post("/create-order/:promptId", requireAuth, requireKycVerified, async (req, res) => {
@@ -472,7 +476,7 @@ router.post("/verify/:promptId", requireAuth, async (req, res) => {
     const generatedSignature = crypto
       .createHmac(
         "sha256",
-        process.env.RAZORPAY_KEY_SECRET || "O9jzpGZzixxQp1iNXSheMDuN"
+        process.env.RAZORPAY_KEY_SECRET
       )
       .update(razorpayOrderId + "|" + razorpayPaymentId)
       .digest("hex");
@@ -547,13 +551,6 @@ router.post("/verify/:promptId", requireAuth, async (req, res) => {
         promptId: prompt._id,
         promptTitle: prompt.title,
       });
-
-      console.log("Wallet credited successfully:", {
-        sellerId: String(sellerId),
-        amount: prompt.price,
-        promptId: String(prompt._id),
-        purchaseId: String(purchase._id),
-      });
     } catch (walletErr) {
       console.error("Wallet credit failed:", walletErr);
 
@@ -567,6 +564,57 @@ router.post("/verify/:promptId", requireAuth, async (req, res) => {
     // Update buyer's purchasedPrompts
     req.user.purchasedPrompts.push(purchase._id);
     await req.user.save();
+
+    /* -------------------- INVOICE (safe — purchase already saved) -------------------- */
+    try {
+      const invoiceNo = `INV-${purchase._id}`;
+      const date = new Date(purchase.createdAt || Date.now()).toLocaleDateString("en-GB");
+
+      // generateInvoicePDF derives subtotal/GST/total from `items` itself
+      // (subtotal = sum of item prices, GST = 18% on top) — mirror the same
+      // math here so the email body matches the attached PDF exactly.
+      const subtotal = Number(pricePaid || 0);
+      const gst = +(subtotal * 0.18).toFixed(2);
+      const total = +(subtotal + gst).toFixed(2);
+      const items = [
+        {
+          title: prompt.title,
+          price: subtotal,
+        },
+      ];
+
+      const logoPath = path.join(__dirname, "../assets/icons/Tokun.png");
+      const logoBase64 = fs.existsSync(logoPath)
+        ? `data:image/png;base64,${fs.readFileSync(logoPath).toString("base64")}`
+        : "";
+
+      const pdfBuffer = await generateInvoicePDF({
+        logo: logoBase64,
+        date,
+        invoiceNo,
+        buyerName: req.user.name || "Customer",
+        buyerEmail: req.user.email || "",
+        items,
+      });
+
+      if (req.user.email) {
+        await sendInvoiceEmail({
+          to: req.user.email,
+          buyerName: req.user.name || "Customer",
+          buyerEmail: req.user.email,
+          items,
+          invoiceNo,
+          date,
+          subtotal,
+          gst,
+          total,
+          pdfBuffer,
+        });
+      }
+    } catch (invoiceErr) {
+      // Invoice fail hone pe bhi purchase success hi return karo
+      console.error("⚠️ Prompt invoice/email failed (purchase still success):", invoiceErr.message);
+    }
 
     // Log activity
     await logActivity({

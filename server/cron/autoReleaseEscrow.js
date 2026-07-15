@@ -102,8 +102,6 @@ async function releaseEscrowToWallet(deal) {
 
 // ── Cron: runs every hour ───────────────────────────────────────────────────
 cron.schedule("0 * * * *", async () => {
-  console.log("[AutoRelease] Checking for deals eligible for auto-release...");
-
   try {
     const cutoff = new Date(Date.now() - AUTO_RELEASE_HOURS * 60 * 60 * 1000);
 
@@ -115,17 +113,9 @@ cron.schedule("0 * * * *", async () => {
       .populate("freelancerId", "name email")
       .populate("clientId", "name email");
 
-    console.log(`[AutoRelease] Found ${eligibleDeals.length} eligible deal(s)`);
-
     for (const deal of eligibleDeals) {
       try {
-        console.log(
-          `[AutoRelease] Auto-releasing deal ${deal._id} — submitted at ${deal.workSubmittedAt}`
-        );
-
         await releaseEscrowToWallet(deal);
-
-        console.log(`[AutoRelease] ✓ Deal ${deal._id} auto-released`);
       } catch (dealErr) {
         console.error(
           `[AutoRelease] ✗ Failed for deal ${deal._id}:`,
@@ -138,7 +128,3 @@ cron.schedule("0 * * * *", async () => {
     console.error("[AutoRelease] Cron job error:", err);
   }
 });
-
-console.log(
-  `[AutoRelease] Cron started — auto-releases after ${AUTO_RELEASE_HOURS}h`
-);

@@ -2328,7 +2328,6 @@ router.post("/upi/validate", requireAuth, async (req, res) => {
     // Test mode mein validateVpa inhe "not registered" kehta hai
     // lekin ye valid test IDs hain. Live mode mein koi nahi use karta inhe.
     if (RAZORPAY_TEST_VPAS[cleanVpa]) {
-      console.log("[UPI Validate] Test VPA bypass:", cleanVpa);
       return res.json({
         success: true,
         valid: true,
@@ -2341,7 +2340,6 @@ router.post("/upi/validate", requireAuth, async (req, res) => {
     // ── LIVE: Real Razorpay VPA validation ──
     try {
       const vpaResult = await Razorpay.payments.validateVpa({ vpa: cleanVpa });
-      console.log("[UPI Validate] Razorpay response:", JSON.stringify(vpaResult));
 
       // success: false = VPA invalid
       if (vpaResult && vpaResult.success === false) {
@@ -2459,7 +2457,6 @@ router.post("/add-fund/create-qr", requireAuth, async (req, res) => {
       status: "created",
     });
 
-    console.log("[QR Create] QR ID:", qrCode.id, "Amount:", amount, "User:", userId);
 
     return res.json({
       success: true,
@@ -2514,7 +2511,6 @@ router.get("/add-fund/qr-status/:qrId", requireAuth, async (req, res) => {
           method: "upi",
         });
 
-        console.log("[QR Status] Payment received. QR ID:", qrId, "Payment ID:", payment.id, "Amount:", topup.amount);
 
         return res.json({
           success: true,

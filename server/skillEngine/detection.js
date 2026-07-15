@@ -157,7 +157,6 @@ function detectDomain(text) {
   if (namedTool?.id === "ai_image_gen" || namedTool?.id === "ai_video_gen") {
     const toolDomain = DOMAIN_MAP.get(namedTool.id);
     if (toolDomain) {
-      console.log(`[detectDomain] Tool override -> ${namedTool.id} (detected: ${namedTool.tool})`);
       return toolDomain;
     }
   }
@@ -168,13 +167,13 @@ function detectDomain(text) {
   // Supply chain before ecommerce to avoid false positives
   if (detectSupplyChainIntent(text)) {
     const d = DOMAIN_MAP.get("supply_chain_logistics");
-    if (d) { console.log("[detectDomain] Intent override -> supply_chain_logistics"); return d; }
+    if (d) {  return d; }
   }
 
   // AI photography monetization (more specific than general creator economy)
   if (detectAIPhotographyMonetizationIntent(text)) {
     const d = DOMAIN_MAP.get("ai_photography_monetization") || DOMAIN_MAP.get("ai_headshot_business");
-    if (d) { console.log(`[detectDomain] Intent override -> ${d.id} (AI photography monetization)`); return d; }
+    if (d) {  return d; }
   }
 
   // Rental property investment (more specific than general real estate)
@@ -182,53 +181,52 @@ function detectDomain(text) {
     const isPune = /\bpune\b/i.test(text);
     const domainId = isPune ? "rental_property_pune" : "real_estate";
     const d = DOMAIN_MAP.get(domainId) || DOMAIN_MAP.get("real_estate");
-    if (d) { console.log(`[detectDomain] Intent override -> ${d.id} (rental property investment)`); return d; }
+    if (d) {  return d; }
   }
 
   if (detectEcommerceIntent(text)) {
     const d = DOMAIN_MAP.get("ecommerce_store");
-    if (d) { console.log("[detectDomain] Intent override -> ecommerce_store"); return d; }
+    if (d) {  return d; }
   }
 
   if (detectImmigrationIntent(text)) {
     const d = DOMAIN_MAP.get("immigration_visa");
-    if (d) { console.log("[detectDomain] Intent override -> immigration_visa"); return d; }
+    if (d) {  return d; }
   }
 
   if (detectWeddingPhotographyIntent(text)) {
     const d = DOMAIN_MAP.get("wedding_photography");
-    if (d) { console.log("[detectDomain] Intent override -> wedding_photography"); return d; }
+    if (d) {  return d; }
   }
 
   if (detectPetBusinessIntent(text)) {
     const d = DOMAIN_MAP.get("pet_care_business");
-    if (d) { console.log("[detectDomain] Intent override -> pet_care_business"); return d; }
+    if (d) {  return d; }
   }
 
   if (detectSupplyChainIntent(text)) {
     const d = DOMAIN_MAP.get("supply_chain_logistics");
-    if (d) { console.log("[detectDomain] Intent override -> supply_chain_logistics"); return d; }
+    if (d) {  return d; }
   }
 
   if (detectNutritionCoachingIntent(text)) {
     const d = DOMAIN_MAP.get("nutrition_coaching");
-    if (d) { console.log("[detectDomain] Intent override -> nutrition_coaching"); return d; }
+    if (d) {  return d; }
   }
 
   if (detectGhostwritingIntent(text)) {
     const d = DOMAIN_MAP.get("ghostwriting_content");
-    if (d) { console.log("[detectDomain] Intent override -> ghostwriting_content"); return d; }
+    if (d) {  return d; }
   }
 
   if (detectCreatorEconomyIntent(text)) {
     const d = DOMAIN_MAP.get("creator_economy");
-    if (d) { console.log("[detectDomain] Intent override -> creator_economy"); return d; }
+    if (d) {  return d; }
   }
 
   if (detectEventPlanningIntent(text)) {
     const eventDomain = DOMAIN_MAP.get("event_planning");
     if (eventDomain) {
-      console.log("[detectDomain] Intent override -> event_planning");
       return eventDomain;
     }
   }
@@ -236,62 +234,62 @@ function detectDomain(text) {
   // Wellness/coaching intents â PCOS/femtech has its own domain, check first
   if (/\b(pcos|hormonal\s+health|femtech|gamif\w+\s+fitness|fitness\s+app\s+for\s+women)\b/i.test(text)) {
     const d = DOMAIN_MAP.get("gamified_fitness_app");
-    if (d) { console.log("[detectDomain] Intent override -> gamified_fitness_app (pcos/femtech)"); return d; }
+    if (d) {  return d; }
   }
 
   if (detectWellnessCoachingIntent(text)) {
     // Postpartum maps to its own domain
     if (/\b(postpartum|postnatal)\b/i.test(text)) {
       const d = DOMAIN_MAP.get("postpartum_fitness_coaching");
-      if (d) { console.log("[detectDomain] Intent override -> postpartum_fitness_coaching"); return d; }
+      if (d) {  return d; }
     }
     const d = DOMAIN_MAP.get("health_wellness");
-    if (d) { console.log("[detectDomain] Intent override -> health_wellness (wellness coaching)"); return d; }
+    if (d) {  return d; }
   }
 
   if (detectLanguageAppIntent(text)) {
     const d = DOMAIN_MAP.get("language_learning_app");
-    if (d) { console.log("[detectDomain] Intent override -> language_learning_app"); return d; }
+    if (d) {  return d; }
   }
 
   if (detectCookingWorkshopIntent(text)) {
     const d = DOMAIN_MAP.get("cooking_workshop") || DOMAIN_MAP.get("cafe_food_service");
-    if (d) { console.log(`[detectDomain] Intent override -> ${d.id} (cooking workshop)`); return d; }
+    if (d) {  return d; }
   }
 
   if (detectZeroWasteIntent(text)) {
     const d = DOMAIN_MAP.get("zero_waste_store");
-    if (d) { console.log("[detectDomain] Intent override -> zero_waste_store"); return d; }
+    if (d) {  return d; }
   }
 
   if (detectChildrensContentIntent(text)) {
     const d = DOMAIN_MAP.get("childrens_storybook_business");
-    if (d) { console.log("[detectDomain] Intent override -> childrens_storybook_business"); return d; }
+    if (d) {  return d; }
   }
 
   if (detectMobileHealthIntent(text)) {
     const d = DOMAIN_MAP.get("mobile_iv_therapy") || DOMAIN_MAP.get("health_wellness");
-    if (d) { console.log(`[detectDomain] Intent override -> ${d.id} (mobile health)`); return d; }
+    if (d) {  return d; }
   }
 
   if (detectVintageRentalIntent(text)) {
     const d = DOMAIN_MAP.get("vintage_camera_rental");
-    if (d) { console.log("[detectDomain] Intent override -> vintage_camera_rental"); return d; }
+    if (d) {  return d; }
   }
 
   if (detectDevotionalArtIntent(text)) {
     const d = DOMAIN_MAP.get("devotional_art_business");
-    if (d) { console.log("[detectDomain] Intent override -> devotional_art_business"); return d; }
+    if (d) {  return d; }
   }
 
   if (detectAIVoiceoverIntent(text)) {
     const d = DOMAIN_MAP.get("ai_voiceover_regional");
-    if (d) { console.log("[detectDomain] Intent override -> ai_voiceover_regional"); return d; }
+    if (d) {  return d; }
   }
 
   if (detectSkincareInstagramIntent(text)) {
     const d = DOMAIN_MAP.get("instagram_skincare_growth") || DOMAIN_MAP.get("social_media_branding");
-    if (d) { console.log(`[detectDomain] Intent override -> ${d.id} (skincare/instagram)`); return d; }
+    if (d) {  return d; }
   }
 
   if (detectBusinessBuildingIntent(text)) {
@@ -300,7 +298,6 @@ function detectDomain(text) {
       const targetDomain = DOMAIN_MAP.get("freelancing_consulting") ||
                            DOMAIN_MAP.get("startup_fundraising");
       if (targetDomain) {
-        console.log(`[detectDomain] Intent override -> business building (travel agency -> ${targetDomain.id})`);
         return targetDomain;
       }
     }
@@ -311,7 +308,6 @@ function detectDomain(text) {
     const targetId = hasEduContext ? "edtech_product" : "product_development";
     const overrideDomain = DOMAIN_MAP.get(targetId);
     if (overrideDomain) {
-      console.log(`[detectDomain] Intent override -> ${targetId}`);
       return overrideDomain;
     }
   }
@@ -319,7 +315,6 @@ function detectDomain(text) {
   if (detectTutorialIntent(text) && !detectWebsiteBuildIntent(text)) {
     const tutDomain = DOMAIN_MAP.get("technical_tutorial");
     if (tutDomain) {
-      console.log("[detectDomain] Intent override -> technical_tutorial");
       return tutDomain;
     }
   }
@@ -395,7 +390,6 @@ function getDetectionResult(text, extractConstraintsFn, shouldSuggestDeepModeFn)
   if (!domain) {
     // Phase 2 fallback: use UNIVERSAL_FALLBACK_DOMAIN so UI can still show
     // Skill Mode and Deep Mode while async getDynamicDomain() runs server-side.
-    console.log(`[detectDomain] No hardcoded match â using UNIVERSAL_FALLBACK_DOMAIN for UI. Dynamic classification will run at prompt-build time. text="${text.slice(0, 60)}"`);
     domain = UNIVERSAL_FALLBACK_DOMAIN;
   }
 

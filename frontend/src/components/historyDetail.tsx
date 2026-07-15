@@ -1,8 +1,3 @@
-
-
-
-
-
 // src/pages/historyDetail.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -295,59 +290,6 @@ pb-8 sm:pb-10
                 <img src="/icons/cop1.png" alt="" className="w-5 h-5 object-contain" />
               </span>
             </div>
-
-            {/* Developer Favourite block — prominent like before */}
-          {/* Developer Favourite block — full width, 150px tall, minimal text */}
-{/* Developer Favourite Banner — matches DetailsPrompt look */}
-<div
-  className="
-    mt-8
-    bg-[#333335]
-    border border-white/10
-    rounded-[12px]
-    px-6 py-4
-    flex items-center justify-between gap-4
-    w-full
-  "
-  style={{ height: "100px" }}
->
-  {/* Left: Logo + Text */}
-  <div className="flex items-center gap-4 min-w-0">
-    <img
-      src="/icons/dtlogo.svg"
-      onError={(e) => {
-        const img = e.currentTarget as HTMLImageElement;
-        img.src = "/icons/dtlogo.png";
-      }}
-      alt="DT Logo"
-      className="shrink-0 object-contain h-10 w-10"
-    />
-
-    <div className="min-w-0">
-      <div className="truncate text-[18px] leading-snug font-medium text-white">
-        Power Your Storefronts with Auto-Generated Descriptions
-      </div>
-      <div className="text-white/70 truncate text-[13px] mt-1 leading-snug">
-        Generate compelling product descriptions that convert visitors into customers
-      </div>
-    </div>
-  </div>
-
-  {/* Right: Static Rating */}
-  <div className="flex flex-col items-center gap-1 shrink-0">
-    <span className="text-[13px] font-semibold leading-none">4.9</span>
-    <div className="flex items-center gap-[3px] leading-none">
-      {[...Array(5)].map((_, i) => (
-        <svg key={i} width="15" height="15" viewBox="0 0 24 24">
-          <path
-            d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
-            fill="#FFFFFF"
-          />
-        </svg>
-      ))}
-    </div>
-  </div>
-</div>
 
 {/* Full Prompt Text */}
 {owned && prompt.fullPrompt && (

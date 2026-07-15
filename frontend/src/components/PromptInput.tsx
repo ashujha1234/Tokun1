@@ -1794,14 +1794,6 @@ const handleConfirmEndSession = () => {
     }
 
     const config = llmService.getConfig();
-    if (!config.apiKey) {
-      toast({
-        title: "API key missing",
-        description: `Please set your ${config.provider.toUpperCase()} API key in the settings`,
-        variant: "destructive",
-      });
-      return;
-    }
 
     setIsProcessing(true);
     try {

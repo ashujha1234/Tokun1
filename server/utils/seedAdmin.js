@@ -8,7 +8,6 @@ async function seedDefaultAdmin() {
   const exists = await AdminUser.findOne({ email: email.toLowerCase() });
 
   if (exists) {
-    console.log("✅ Default admin already exists:", exists.email);
     return;
   }
 
@@ -21,7 +20,6 @@ async function seedDefaultAdmin() {
     role: "ADMIN",
   });
 
-  console.log("✅ Seeded default admin:", { email: admin.email, id: admin._id.toString() });
 }
 
 module.exports = { seedDefaultAdmin };

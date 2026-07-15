@@ -23,7 +23,6 @@ const logActivity = async ({
       targetId, targetType, targetName,
       meta,
     });
-    console.log("✅ Activity saved:", type, actorName);
   } catch (e) {
     console.error("❌ activityLogger ERROR:", e.message);
   }

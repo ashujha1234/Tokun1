@@ -91,9 +91,7 @@ async function renewUserPlanFromDue(user) {
 
 /** First purchase for ORG — sets anchor and due date from now. */
 async function startOrgEnterprise(org, cycle) {
-  console.log("start call")
   const plan = PLANS.enterprise;
-    console.log("plan org",plan);
 
   if (!plan?.forOrganization) throw new Error("plan_not_for_organizations");
 
@@ -115,7 +113,6 @@ async function startOrgEnterprise(org, cycle) {
 
  
   await org.save();
-  console.log(org);
 
   return org;
 }
@@ -131,7 +128,6 @@ async function renewOrgFromDue(org) {
 
   // reset org pool usage; keep caps same (or recalc from plan)
   const plan = PLANS.enterprise;
-  console.log("plans details",plan);
   org.orgPoolCap = plan.monthlyTokens; // if plan changed, you could recalc
   org.orgPoolUsed = 0;
   // policy on extras: usually keep extras as-is across periods, or zero if “use it or lose it”

@@ -995,7 +995,6 @@ router.post("/start", requireAuth, async (req, res) => {
 
 router.post("/sendCollabInvite", requireAuth, async (req, res) => {
   try {
-    console.log("hi i am");
     const { name, email, message, promptId , sessionId  } = req.body;
 
     if (!email || !message) {
