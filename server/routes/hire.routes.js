@@ -351,6 +351,7 @@ const fs = require("fs");
 const User = require("../models/User");
 const router = express.Router();
 const Wallet = require("../models/Wallet");
+const PlatformWallet = require("../models/PlatformWallet");
 const { requireAuth } = require("../utils/auth");
 const HireDeal = require("../models/HireDeal");
 const Notification = require("../models/Notification");
@@ -445,6 +446,12 @@ router.post("/create-proposal", requireAuth, async (req, res) => {
       });
     }
 
+    // Same commission % as prompt purchases (server/.env TOKUN_COMMISSION_PERCENT) —
+    // Tokun's cut comes out of the freelancer's payout, the client pays `amount` as agreed.
+    const commissionPercent = Number(process.env.TOKUN_COMMISSION_PERCENT || 0);
+    const platformFee = +(amount * commissionPercent / 100).toFixed(2);
+    const freelancerAmount = +(amount - platformFee).toFixed(2);
+
     const deal = await HireDeal.create({
       clientId: req.user._id,
       freelancerId,
@@ -452,8 +459,8 @@ router.post("/create-proposal", requireAuth, async (req, res) => {
       title: title || "Project Proposal",
       description: description || "",
       amount,
-      platformFee: 0,
-      freelancerAmount: amount,
+      platformFee,
+      freelancerAmount,
       currency: "INR",
       deliveryDate: targetDate ? new Date(targetDate) : undefined,
       status: "PENDING_ACCEPTANCE",
@@ -1050,7 +1057,18 @@ router.post("/:dealId/approve-work", requireAuth, async (req, res) => {
     });
  
     await wallet.save();
- 
+
+    // ── Record Tokun's platform fee cut for this deal (non-fatal) ───────────
+    try {
+      await PlatformWallet.recordCommission(Number(deal.platformFee || 0), {
+        source: "hire_escrow",
+        refId: deal._id,
+        description: `Platform fee: "${deal.title || "Hire Deal"}"`,
+      });
+    } catch (revErr) {
+      console.error("PlatformWallet commission record failed:", revErr);
+    }
+
     // ── Update deal ─────────────────────────────────────────────────────────
     deal.status = "COMPLETED";
     deal.fundsStatus = "RELEASED_TO_FREELANCER";

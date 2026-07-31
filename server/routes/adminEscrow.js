@@ -8,6 +8,7 @@ const Notification = require("../models/Notification");
 const Message = require("../models/Message");
 const User = require("../models/User");
 const Wallet = require("../models/Wallet");   // ✅ NEW — wallet model
+const PlatformWallet = require("../models/PlatformWallet");
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -211,6 +212,17 @@ router.post("/:dealId/release", async (req, res) => {
 
     await wallet.save();
     // ─────────────────────────────────────────────────────────────────────
+
+    // ── Record Tokun's platform fee cut for this deal (non-fatal) ─────────
+    try {
+      await PlatformWallet.recordCommission(Number(deal.platformFee || 0), {
+        source: "hire_escrow",
+        refId: deal._id,
+        description: `Platform fee: "${deal.title || "Hire Deal"}"`,
+      });
+    } catch (revErr) {
+      console.error("PlatformWallet commission record failed:", revErr);
+    }
 
     // ── Deal update ───────────────────────────────────────────────────────
     deal.status = "COMPLETED";

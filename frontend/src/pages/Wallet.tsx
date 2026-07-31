@@ -6245,12 +6245,10 @@ const Wallet = () => {
                   </p>
 
                   <h2
-                    className="mt-5 text-white"
+                    className="mt-5 text-white text-4xl sm:text-6xl leading-none break-all"
                     style={{
                       fontFamily: fontBase,
                       fontWeight: 900,
-                      fontSize: 60,
-                      lineHeight: "60px",
                     }}
                   >
                     {walletLoading

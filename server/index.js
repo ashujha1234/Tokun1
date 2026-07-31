@@ -4380,6 +4380,7 @@ const sellerRoutes = require("./routes/sellerRoutes");
 const kycRoutes = require("./routes/kycRoutes");
 const hireRoutes = require("./routes/hire.routes");
 const adminEscrowRouter = require("./routes/adminEscrow");
+const adminPlatformRevenueRouter = require("./routes/adminPlatformRevenue");
 const activityRoutes = require("./routes/activityRoutes");
 const userAdminRoutes = require("./routes/userAdminRoutes");
 const walletRoutes = require("./routes/walletRoutes");
@@ -5133,6 +5134,7 @@ app.use("/api/activity", activityRoutes);
 app.use("/api/wallet", walletRoutes);
 app.use("/api/hire", hireRoutes);
 app.use("/api/admin/escrow", adminEscrowRouter);
+app.use("/api/admin/platform-revenue", adminPlatformRevenueRouter);
 app.use("/api/report", reportRoutes);
 app.use("/api/screen-recording", screenRecordingRoutes);
 

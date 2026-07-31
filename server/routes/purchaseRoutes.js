@@ -382,6 +382,7 @@ const Razorpay = require("../utils/razorpay");
 const Prompt = require("../models/Prompt");
 const Purchase = require("../models/Purchase");
 const Wallet = require("../models/Wallet");
+const PlatformWallet = require("../models/PlatformWallet");
 const { requireAuth } = require("../utils/auth");
 const { requireKycVerified } = require("../utils/requireKycVerified");
 const { logActivity } = require("../utils/activityLogger");
@@ -501,11 +502,16 @@ router.post("/verify/:promptId", requireAuth, async (req, res) => {
       });
     }
 
+    // Buyer pays tokun_price (price + commission markup) — seller only ever gets
+    // prompt.price, so the difference is Tokun's cut for this sale.
+    const platformCommission = Math.max(0, +(Number(pricePaid || 0) - Number(prompt.price || 0)).toFixed(2));
+
     // Create purchase record
     const purchase = await Purchase.create({
       buyer: req.user._id,
       prompt: prompt._id,
       pricePaid,
+      platformCommission,
       razorpayPaymentId,
       razorpayOrderId,
       paymentStatus: "SUCCESS",
@@ -559,6 +565,17 @@ router.post("/verify/:promptId", requireAuth, async (req, res) => {
         error: "wallet_credit_failed",
         message: walletErr.message,
       });
+    }
+
+    // Record Tokun's commission cut for this sale (non-fatal — purchase already succeeded)
+    try {
+      await PlatformWallet.recordCommission(platformCommission, {
+        source: "prompt_purchase",
+        refId: purchase._id,
+        description: `Commission: "${prompt.title}"`,
+      });
+    } catch (revErr) {
+      console.error("PlatformWallet commission record failed:", revErr);
     }
 
     // Update buyer's purchasedPrompts

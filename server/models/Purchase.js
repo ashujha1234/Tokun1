@@ -38,6 +38,10 @@ const PurchaseSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    platformCommission: {
+      type: Number,
+      default: 0,
+    },
     razorpayPaymentId: {
       type: String,
     },

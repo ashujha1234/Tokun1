@@ -3,6 +3,7 @@
 const cron = require("node-cron");
 const HireDeal = require("../models/HireDeal");       // adjust path
 const Wallet = require("../models/Wallet");            // adjust path
+const PlatformWallet = require("../models/PlatformWallet");
 const Notification = require("../models/Notification"); // adjust path
 const Message = require("../models/Message");          // adjust path
 const User = require("../models/User");                // adjust path
@@ -44,6 +45,17 @@ async function releaseEscrowToWallet(deal) {
   });
 
   await wallet.save();
+
+  // 1b. Record Tokun's platform fee cut for this deal (non-fatal)
+  try {
+    await PlatformWallet.recordCommission(Number(deal.platformFee || 0), {
+      source: "hire_escrow",
+      refId: deal._id,
+      description: `Platform fee: "${deal.title || "Hire Deal"}" (auto-released)`,
+    });
+  } catch (revErr) {
+    console.error(`[AutoRelease] PlatformWallet commission record failed for deal ${deal._id}:`, revErr.message);
+  }
 
   // 2. Update deal
   deal.status = "COMPLETED";

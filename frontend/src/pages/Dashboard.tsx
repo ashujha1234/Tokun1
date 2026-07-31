@@ -14188,6 +14188,17 @@ const [userSearch, setUserSearch] = useState("");
   totalSellers: 0,
 });
 const [pendingApprovals, setPendingApprovals] = useState(0);
+const [platformRevenue, setPlatformRevenue] = useState({
+  availableBalance: 0,
+  totalRevenue: 0,
+  totalWithdrawn: 0,
+  transactions: [] as Array<{ _id: string; type: string; amount: number; source: string; description: string; createdAt: string }>,
+});
+const [platformRevenueLoading, setPlatformRevenueLoading] = useState(false);
+const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
+const [withdrawAmount, setWithdrawAmount] = useState("");
+const [withdrawNote, setWithdrawNote] = useState("");
+const [withdrawSubmitting, setWithdrawSubmitting] = useState(false);
 
 
 
@@ -15102,6 +15113,63 @@ const [sellerSearch, setSellerSearch] = useState("");
   fetchAllSellers();
 }, []);
 
+const fetchPlatformRevenue = async () => {
+  setPlatformRevenueLoading(true);
+  try {
+    const token = getToken();
+    const res = await fetch(`${API_BASE}/api/admin/platform-revenue`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      credentials: "include",
+    });
+    const data = await res.json();
+    if (data?.success) {
+      setPlatformRevenue({
+        availableBalance: Number(data.availableBalance || 0),
+        totalRevenue: Number(data.totalRevenue || 0),
+        totalWithdrawn: Number(data.totalWithdrawn || 0),
+        transactions: Array.isArray(data.transactions) ? data.transactions : [],
+      });
+    }
+  } catch (e) {
+    console.error("fetchPlatformRevenue failed:", e);
+  } finally {
+    setPlatformRevenueLoading(false);
+  }
+};
+
+useEffect(() => {
+  fetchPlatformRevenue();
+}, []);
+
+const handleMarkWithdrawn = async () => {
+  const amount = Number(withdrawAmount);
+  if (!Number.isFinite(amount) || amount <= 0) return;
+  setWithdrawSubmitting(true);
+  try {
+    const token = getToken();
+    const res = await fetch(`${API_BASE}/api/admin/platform-revenue/withdraw`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: "include",
+      body: JSON.stringify({ amount, note: withdrawNote.trim() }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.error || "withdraw_failed");
+    }
+    setWithdrawModalOpen(false);
+    setWithdrawAmount("");
+    setWithdrawNote("");
+    await fetchPlatformRevenue();
+  } catch (e: any) {
+    alert(e?.message === "insufficient_balance" ? "Amount exceeds available balance." : "Could not record withdrawal.");
+  } finally {
+    setWithdrawSubmitting(false);
+  }
+};
 
 useEffect(() => {
   const loadPendingApprovals = async () => {
@@ -18907,20 +18975,15 @@ const AccountView = ({
     <section className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
       <div className={`${kpiCardBase} p-6`}>
         <div className="text-xs tracking-[0.2em] text-white/60">
-          TOTAL REVENUE
+          TOTAL REVENUE <span className="normal-case tracking-normal text-white/35">(Tokun's commission)</span>
         </div>
         <div className="mt-4 flex items-end justify-between">
-          {/* TOTAL REVENUE */}
+          {/* TOTAL REVENUE — Tokun's own commission cut (5% of prompt sales + hire deals), not seller payouts */}
 <div className="text-3xl font-semibold">
-  ${stats.totalRevenue.toLocaleString()}
+  {platformRevenueLoading ? "…" : `$${platformRevenue.totalRevenue.toLocaleString()}`}
 </div>
-
-{/* ACTIVE SELLERS (now total sellers) */}
-{/* <div className="text-3xl font-semibold">
-  {stats.totalSellers}
-</div> */}
-          <div className="text-sm text-emerald-400 font-medium">
-            +12%
+          <div className="text-sm text-white/50 font-medium">
+            ${platformRevenue.availableBalance.toLocaleString()} available
           </div>
         </div>
       </div>
@@ -18966,6 +19029,119 @@ const AccountView = ({
         </div>
       </div>
     </section>
+
+    {/* Platform Revenue — Tokun's own commission wallet + withdraw */}
+    <section className={`${kpiCardBase} mt-6 p-6`}>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-semibold">Tokun Platform Revenue</h2>
+          <p className="mt-1 text-sm text-white/55">
+            5% commission from prompt sales + hire deals. Not included in seller payouts.
+          </p>
+        </div>
+        <div className="flex items-center gap-6">
+          <div>
+            <div className="text-xs text-white/50">Available</div>
+            <div className="text-2xl font-semibold">${platformRevenue.availableBalance.toLocaleString()}</div>
+          </div>
+          <div>
+            <div className="text-xs text-white/50">Withdrawn so far</div>
+            <div className="text-2xl font-semibold text-white/70">${platformRevenue.totalWithdrawn.toLocaleString()}</div>
+          </div>
+          <button
+            onClick={() => { setWithdrawAmount(""); setWithdrawNote(""); setWithdrawModalOpen(true); }}
+            disabled={platformRevenue.availableBalance <= 0}
+            className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ background: "linear-gradient(270deg,#7c3aed,#2563eb)" }}
+          >
+            Mark as Withdrawn
+          </button>
+        </div>
+      </div>
+
+      {platformRevenue.transactions.length > 0 && (
+        <div className="mt-5 max-h-56 overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-white/40 text-xs">
+                <th className="pb-2 font-medium">Date</th>
+                <th className="pb-2 font-medium">Type</th>
+                <th className="pb-2 font-medium">Description</th>
+                <th className="pb-2 font-medium text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {platformRevenue.transactions.map((t) => (
+                <tr key={t._id} className="border-t border-white/5">
+                  <td className="py-2 text-white/60">{new Date(t.createdAt).toLocaleDateString()}</td>
+                  <td className="py-2 text-white/60 capitalize">{t.type}</td>
+                  <td className="py-2 text-white/80">{t.description}</td>
+                  <td className={`py-2 text-right font-medium ${t.type === "withdrawal" ? "text-red-300" : "text-emerald-300"}`}>
+                    {t.type === "withdrawal" ? "-" : "+"}${t.amount.toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+
+    {withdrawModalOpen && (
+      <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/70 px-4" onClick={() => setWithdrawModalOpen(false)}>
+        <div
+          className="w-full max-w-[420px] rounded-2xl bg-[#141416] border border-white/10 p-6"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h3 className="text-lg font-semibold text-white">Mark as Withdrawn</h3>
+          <p className="mt-1 text-sm text-white/55">
+            Record that this amount was manually transferred to Tokun's bank account. Available: ${platformRevenue.availableBalance.toLocaleString()}
+          </p>
+
+          <label className="mt-4 block text-sm text-white/70">Amount ($)</label>
+          <input
+            type="number"
+            min={0}
+            max={platformRevenue.availableBalance}
+            value={withdrawAmount}
+            onChange={(e) => setWithdrawAmount(e.target.value)}
+            className="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-white/10"
+            placeholder="0.00"
+          />
+
+          <label className="mt-3 block text-sm text-white/70">Note (optional)</label>
+          <input
+            type="text"
+            value={withdrawNote}
+            onChange={(e) => setWithdrawNote(e.target.value)}
+            className="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-white/10"
+            placeholder="e.g. Transferred to HDFC a/c ending 4321"
+          />
+
+          <div className="mt-5 flex justify-end gap-3">
+            <button
+              onClick={() => setWithdrawModalOpen(false)}
+              className="rounded-lg px-4 py-2 text-sm text-white/70 hover:text-white"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleMarkWithdrawn}
+              disabled={
+                withdrawSubmitting ||
+                !Number(withdrawAmount) ||
+                Number(withdrawAmount) <= 0 ||
+                Number(withdrawAmount) > platformRevenue.availableBalance
+              }
+              className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ background: "linear-gradient(270deg,#7c3aed,#2563eb)" }}
+            >
+              {withdrawSubmitting ? "Saving…" : "Confirm"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
     {/* Chart + Activities */}
     <section className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
