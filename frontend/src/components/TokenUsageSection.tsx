@@ -1856,6 +1856,12 @@ const TokenUsageSection: React.FC<Props> = ({ className = "" }) => {
     return () => window.removeEventListener("focus", handleFocus);
   }, []);
 
+  // Team Members have their own per-member allocation (orgAssignedCap /
+  // orgTokensRemaining) — separate from the Owner's whole-org pool
+  // (orgPoolCap / orgPoolUsed) and from an individual's own plan quota
+  // (monthlyTokensCap / monthlyTokensUsed).
+  const isTeamMember = user?.userType === "TM";
+
   const isOrg = useMemo(() => {
     const hasOrgId = !!user?.orgId || user?.userType === "ORG" || user?.role === "Owner";
     const hasOrgPool = typeof (user as any)?.orgPoolCap === "number";
@@ -1863,15 +1869,19 @@ const TokenUsageSection: React.FC<Props> = ({ className = "" }) => {
     return hasOrgId && (hasOrgPool || isEnterprise);
   }, [user]);
 
-  const finalLimit = useMemo(
-    () => (isOrg ? (user as any)?.orgPoolCap ?? 0 : user?.monthlyTokensCap ?? 0),
-    [isOrg, user]
-  );
+  const finalLimit = useMemo(() => {
+    if (isTeamMember) return (user as any)?.orgAssignedCap ?? 0;
+    return isOrg ? (user as any)?.orgPoolCap ?? 0 : user?.monthlyTokensCap ?? 0;
+  }, [isOrg, isTeamMember, user]);
 
-  const finalUsed = useMemo(
-    () => (isOrg ? (user as any)?.orgPoolUsed ?? 0 : user?.monthlyTokensUsed ?? 0),
-    [isOrg, user]
-  );
+  const finalUsed = useMemo(() => {
+    if (isTeamMember) {
+      const cap = (user as any)?.orgAssignedCap ?? 0;
+      const remaining = (user as any)?.orgTokensRemaining ?? 0;
+      return Math.max(0, cap - remaining);
+    }
+    return isOrg ? (user as any)?.orgPoolUsed ?? 0 : user?.monthlyTokensUsed ?? 0;
+  }, [isOrg, isTeamMember, user]);
 
   // DEBUG: Token change detect
   useEffect(() => {

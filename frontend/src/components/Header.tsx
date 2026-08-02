@@ -4205,7 +4205,13 @@ useEffect(() => {
     {[
       { label: "Pricing",          onClick: () => navigate("/subscription") },
       { label: "Support",          onClick: () => navigate("/support") },
-      { label: "Admin",            onClick: () => navigate("/admin") },
+      // Only the org Owner or a team member explicitly given the "Admin"
+      // role should see the team-management page — not plain Members or
+      // unrelated individual users.
+      ...(((user?.userType === "ORG" && user?.role === "Owner") ||
+           (user?.userType === "TM" && user?.role === "Admin"))
+        ? [{ label: "Admin", onClick: () => navigate("/admin") }]
+        : []),
     ].map(({ label, onClick }) => (
       <button
         key={label}

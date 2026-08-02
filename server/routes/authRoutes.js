@@ -1,5 +1,6 @@
 // routes/authRoutes.js
 const express = require("express");
+const dns = require("dns").promises;
 const crypto = require("crypto");
 const {rateLimit , ipKeyGenerator }= require("express-rate-limit");
 const jwt = require("jsonwebtoken");
@@ -41,6 +42,72 @@ function gen4DigitOtp() {
 }
 function hashOTP(otp) {
   return crypto.createHash("sha256").update(otp).digest("hex");
+}
+
+// Basic RFC-ish email format check — rejects obviously-fake input (missing
+// "@", missing domain/dot, spaces) before we ever attempt to send an OTP.
+const EMAIL_FORMAT_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function isValidEmailFormat(email) {
+  return typeof email === "string" && EMAIL_FORMAT_REGEX.test(email.trim());
+}
+
+// Common one-letter-off misspellings of major providers. These domains often
+// exist (typo-squatters run catch-all mail servers on them), so an MX lookup
+// alone won't catch them — only a direct name match will.
+const COMMON_TYPO_DOMAINS = {
+  "gmai.com": "gmail.com",
+  "gmial.com": "gmail.com",
+  "gmali.com": "gmail.com",
+  "gamil.com": "gmail.com",
+  "gmail.co": "gmail.com",
+  "gmail.cm": "gmail.com",
+  "gmailc.om": "gmail.com",
+  "gnail.com": "gmail.com",
+  "yaho.com": "yahoo.com",
+  "yahho.com": "yahoo.com",
+  "yhoo.com": "yahoo.com",
+  "outlok.com": "outlook.com",
+  "outllook.com": "outlook.com",
+  "hotmial.com": "hotmail.com",
+  "hotmil.com": "hotmail.com",
+  "iclod.com": "icloud.com",
+  "icoud.com": "icloud.com",
+};
+
+// DNS lookups can occasionally hang — never let a single check block the
+// request past a few seconds.
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("dns_timeout")), ms)),
+  ]);
+}
+
+/**
+ * Full pre-send check: format -> known-typo-domain -> real MX records.
+ * Returns { ok: true } or { ok: false, error, suggestion? }.
+ */
+async function checkEmailDeliverable(email) {
+  if (!isValidEmailFormat(email)) {
+    return { ok: false, error: "invalid_email_format" };
+  }
+
+  const domain = email.trim().toLowerCase().split("@")[1];
+
+  if (COMMON_TYPO_DOMAINS[domain]) {
+    return { ok: false, error: "likely_typo_domain", suggestion: COMMON_TYPO_DOMAINS[domain] };
+  }
+
+  try {
+    const records = await withTimeout(dns.resolveMx(domain), 4000);
+    if (!records || records.length === 0) {
+      return { ok: false, error: "domain_has_no_mail_server" };
+    }
+  } catch {
+    return { ok: false, error: "domain_has_no_mail_server" };
+  }
+
+  return { ok: true };
 }
 
 /* ----------------------- SIGNUP (OTP -> verify) ----------------------- */
@@ -142,6 +209,12 @@ router.post("/signup/initiate", otpLimiter, async (req, res) => {
     const { name, email, userType = "IND", orgName } = req.body || {};
     if (!name || !email) {
       return res.status(400).json({ success: false, error: "name_and_email_required" });
+    }
+    const emailCheck = await checkEmailDeliverable(email);
+    if (!emailCheck.ok) {
+      return res.status(400).json(emailCheck.error === "likely_typo_domain"
+        ? { success: false, error: emailCheck.error, suggestion: emailCheck.suggestion }
+        : { success: false, error: emailCheck.error });
     }
 
     const normalizedEmail = String(email).toLowerCase().trim();
@@ -514,6 +587,12 @@ router.post("/login/initiate", otpLimiter, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ success: false, error: "email_required" });
+    const emailCheck = await checkEmailDeliverable(email);
+    if (!emailCheck.ok) {
+      return res.status(400).json(emailCheck.error === "likely_typo_domain"
+        ? { success: false, error: emailCheck.error, suggestion: emailCheck.suggestion }
+        : { success: false, error: emailCheck.error });
+    }
 
     const normalizedEmail = String(email).toLowerCase().trim();
     const user = await User.findOne({ email: normalizedEmail });

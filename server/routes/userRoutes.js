@@ -60,18 +60,25 @@ const path = require("path");
 
 const User = require("../models/User");
 const { requireAuth } = require("../utils/auth");
+const uploadToAzure = require("../utils/uploadToAzure");
 
-/* ================= STORAGE ================= */
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/profile");
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
-  },
+/* ================= STORAGE =================
+   Memory storage — the file buffer goes straight to Azure Blob Storage
+   (uploads/profile local-disk storage doesn't survive a redeploy/restart,
+   same reasoning as services/prompts already using uploadToAzure). */
+const fileFilter = (_req, file, cb) => {
+  const allowed = /jpeg|jpg|png|webp/;
+  const extOk = allowed.test(path.extname(file.originalname).toLowerCase());
+  const mimeOk = file.mimetype.startsWith("image/");
+  if (extOk && mimeOk) cb(null, true);
+  else cb(new Error("Invalid file type — only JPG, PNG, or WEBP images are allowed"));
+};
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
-
-const upload = multer({ storage });
 
 /* ================= UPLOAD AVATAR ================= */
 router.post(
@@ -102,12 +109,19 @@ router.post(
         });
       }
 
-      user.avatar = `/uploads/profile/${req.file.filename}`;
+      const azureUrl = await uploadToAzure(req.file.buffer, req.file.originalname, "avatars");
+
+      // NOTE: the schema field is `avatarUrl` (not `avatar`) — writing to
+      // `user.avatar` here was a silent no-op under Mongoose's strict mode,
+      // which is why uploads never actually persisted past the current
+      // session. Keep the JSON response key as `avatar` so existing
+      // frontend callers don't need to change.
+      user.avatarUrl = azureUrl;
       await user.save();
 
       return res.json({
         success: true,
-        avatar: user.avatar,
+        avatar: user.avatarUrl,
         userId: user._id, // 🔥 send back owner id
       });
     } catch (err) {

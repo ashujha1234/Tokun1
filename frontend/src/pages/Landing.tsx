@@ -14100,6 +14100,8 @@ const FOOTER_NAV = [
   { label: 'Blog', href: '/blog' },
   { label: 'Careers', href: '/careers' },
   { label: 'Support', href: '/support' },
+  { label: 'Privacy Policy', href: '/privacy-policy' },
+  { label: 'Terms & Conditions', href: '/terms' },
 ]
 
 function Footer() {

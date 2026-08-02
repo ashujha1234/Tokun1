@@ -649,6 +649,7 @@ const multer = require("multer");
 const path = require("path");
 const Prompt = require("../models/Prompt");
 const Purchase = require("../models/Purchase");
+const User = require("../models/User");
 const uploadToAzure = require("../utils/uploadToAzure");
 const Category = require("../models/Category");
 const { requireKycVerified } = require("../middleware/requireKycVerified");
@@ -902,7 +903,11 @@ router.get("/my", requireAuth, async (req, res) => {
       .populate("userId", "name")
       .sort({ createdAt: -1 });
 
-    res.json({ success: true, prompts });
+    res.json({
+      success: true,
+      user: { name: req.user.name, avatarUrl: req.user.avatarUrl },
+      prompts,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: "server_error" });
@@ -916,17 +921,22 @@ router.get("/user/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const prompts = await Prompt.find({
-      userId,
-      deleted: { $ne: true },
-    })
-      .populate("categories", "name")
-      .populate("userId", "name") // REQUIRED for uploader info
-      .sort({ createdAt: -1 });
+    const [profileUser, prompts] = await Promise.all([
+      // Looked up directly (not derived from prompts[0]) so a creator with
+      // zero uploads still shows their name/avatar on their profile page.
+      User.findById(userId).select("name avatarUrl").lean(),
+      Prompt.find({
+        userId,
+        deleted: { $ne: true },
+      })
+        .populate("categories", "name")
+        .populate("userId", "name") // REQUIRED for uploader info
+        .sort({ createdAt: -1 }),
+    ]);
 
     return res.json({
       success: true,
-      user: prompts[0]?.userId || null,
+      user: profileUser,
       prompts,
     });
   } catch (err) {

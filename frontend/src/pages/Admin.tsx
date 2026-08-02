@@ -3,6 +3,7 @@
 
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import TokenUsageSection from "@/components/TokenUsageSection";
@@ -35,7 +36,6 @@ type ApiMember = {
 };
 
 const API_BASE = import.meta.env?.VITE_API_URL || "http://localhost:5000";
-const ORG_LIMIT = 100_000;
 
 /* ---------------- Metric Card ---------------- */
 function MetricCard({
@@ -373,6 +373,12 @@ useEffect(() => {
     const data = await res.json().catch(() => ({} as any));
 
     if (!res.ok || !data?.success) {
+      if (data?.error === "team_member_limit_exceeded") {
+        window.alert(
+          `You've used all your team seats (${data.currentlyAdded}/${data.maxAllowed}). Remove a member or upgrade your plan to add more.`
+        );
+        return;
+      }
       window.alert(
         `Invite failed: ${
           data?.error || data?.results?.[0]?.error || "unknown_error"
@@ -548,7 +554,25 @@ function DeleteConfirmModal({
 /* ---------------- Main Page ---------------- */
 export default function BlogPage() {
   const [members, setMembers] = useState<Member[]>([]);
-  const { token } = useAuth();
+  const [teamMembersLimit, setTeamMembersLimit] = useState(0);
+  const [teamMembersLimitRemaining, setTeamMembersLimitRemaining] = useState(0);
+  const { token, user, isReady } = useAuth() as any;
+  const navigate = useNavigate();
+
+  // Only the org Owner or a team member explicitly given the "Admin" role
+  // may view this page — everyone else (plain Members, unrelated individual
+  // users) gets redirected away, even if they land here via a direct URL.
+  const canAccessAdmin =
+    (user?.userType === "ORG" && user?.role === "Owner") ||
+    (user?.userType === "TM" && user?.role === "Admin");
+
+  useEffect(() => {
+    if (!isReady) return;
+    if (!canAccessAdmin) {
+      navigate("/self-dash", { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady, canAccessAdmin]);
 
   const addMember = (m: Member) => setMembers((prev) => [m, ...prev]);
   const removeMember = (email: string) =>
@@ -584,6 +608,8 @@ export default function BlogPage() {
       }));
 
       setMembers(mapped);
+      setTeamMembersLimit(data.teamMembersLimit || 0);
+      setTeamMembersLimitRemaining(data.teamMembersLimitRemaining || 0);
     } catch (err) {
       console.error(err);
     }
@@ -597,7 +623,10 @@ export default function BlogPage() {
     () => members.reduce((s, m) => s + m.tokens, 0),
     [members]
   );
-  const remaining = Math.max(0, ORG_LIMIT - totalDistributed);
+  // Real org pool (matches TokenUsageSection's own numbers above this page),
+  // not the old hardcoded ORG_LIMIT placeholder.
+  const orgTokenPool = (user?.orgPoolCap ?? 0) + (user?.orgExtraTokensRemaining ?? 0);
+  const remaining = Math.max(0, orgTokenPool - totalDistributed);
 
   const [openModal, setOpenModal] = useState(false);
 const [modalMode, setModalMode] = useState<"add" | "edit" | "rejoin">("add");
@@ -702,8 +731,17 @@ const handleResendInvite = async (memberId: string) => {
 };
 
 
+  // Don't flash the team-management UI while auth is still loading, or for
+  // a user who isn't the Owner / an Admin-role team member — the redirect
+  // above already sends them away, this just avoids a one-frame flash.
+  if (!isReady || !canAccessAdmin) {
+    return (
+      <div className="relative min-h-screen w-full bg-[#07080A]" />
+    );
+  }
+
   return (
-    
+
   <div className="relative min-h-screen w-full bg-[#07080A] text-white overflow-x-hidden">
     <div aria-hidden className="fixed inset-0 z-0 bg-[#07080A]" />
 
@@ -718,7 +756,11 @@ const handleResendInvite = async (memberId: string) => {
 
         <div className="mt-6 w-full flex justify-center">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <MetricCard label="Total Members" value={members.length} icon={<span>👥</span>} />
+            <MetricCard
+              label="Team Seats"
+              value={teamMembersLimit ? `${members.length} / ${teamMembersLimit}` : members.length}
+              icon={<span>👥</span>}
+            />
             <MetricCard label="Total Tokens Distributed" value={totalDistributed.toLocaleString()} icon={<span>🎁</span>} />
             <MetricCard label="Total Tokens Remaining" value={remaining.toLocaleString()} icon={<span>🪙</span>} />
           </div>
@@ -726,7 +768,14 @@ const handleResendInvite = async (memberId: string) => {
 
         <section className="mt-8">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Team Members</h2>
+            <div>
+              <h2 className="text-lg font-semibold">Team Members</h2>
+              {teamMembersLimit > 0 && teamMembersLimitRemaining <= 0 && (
+                <p className="mt-1 text-xs text-amber-400">
+                  All {teamMembersLimit} team seats are in use — remove a member or upgrade your plan to add more.
+                </p>
+              )}
+            </div>
             <button
               onClick={() => {
                 setModalMode("add");

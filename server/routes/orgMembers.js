@@ -2109,12 +2109,31 @@ router.get("/", requireAuth, async (req, res) => {
     if (!req.user.orgId) {
       return res.status(400).json({ success: false, error: "no_org" });
     }
+
+    // Only the Owner or a member explicitly given the "Admin" role may see
+    // the team roster (names/emails/token allocations) — plain Members
+    // should not be able to enumerate the rest of the org.
+    const isOwner = req.user.userType === "ORG" && req.user.role === "Owner";
+    const isAdminMember = req.user.userType === "TM" && req.user.role === "Admin";
+    if (!isOwner && !isAdminMember) {
+      return res.status(403).json({ success: false, error: "not_authorized" });
+    }
+
+    const org = await Organization.findById(req.user.orgId).select(
+      "teamMembersLimit teamMembersLimitRemaining"
+    );
+
     const members = await User.find({ orgId: req.user.orgId })
      .select("_id name email role isVerified isDeletedFromOrg orgAssignedCap orgTokensRemaining")
 
       .lean();
 
-    return res.json({ success: true, members });
+    return res.json({
+      success: true,
+      members,
+      teamMembersLimit: org?.teamMembersLimit || 0,
+      teamMembersLimitRemaining: org?.teamMembersLimitRemaining || 0,
+    });
   } catch (err) {
     console.error("org/members", err);
     return res.status(500).json({ success: false, error: "server_error" });
@@ -2361,23 +2380,42 @@ router.patch("/rejoin/:memberId", requireAuth, async (req, res) => {
       return res.status(404).json({ success: false, error: "member_not_found_or_not_deleted" });
     }
 
+    // Same seat-limit gate as /add — rejoining still counts against the cap.
+    const maxMembers = org.teamMembersLimit || PLANS.enterprise.features.teamMembersLimit || 0;
+    const currentMembersCount = org.members.length || 0;
+    if (currentMembersCount + 1 > maxMembers) {
+      return res.status(400).json({
+        success: false,
+        error: "team_member_limit_exceeded",
+        maxAllowed: maxMembers,
+        currentlyAdded: currentMembersCount,
+      });
+    }
+
+    // Same token-budget gate as /add.
+    const rejoinTokens = Number(tokens) || 0;
+    if (rejoinTokens > orgAssignableRemaining(org)) {
+      return res.status(400).json({ success: false, error: "insufficient_org_assignable_tokens" });
+    }
+
     // Restore member details
     member.isDeletedFromOrg = false;
     member.deletedAt = null;
     member.role = role || "Member";
-    member.orgTokensRemaining = tokens || 0;
-    member.orgAssignedCap = tokens || 0;
+    member.orgTokensRemaining = rejoinTokens;
+    member.orgAssignedCap = rejoinTokens;
     await member.save();
 
     // Re-add to organization
     org.members.push({
       userId: member._id,
       role: role?.toUpperCase() || "MEMBER",
-      assignedCap: tokens || 0,
+      assignedCap: rejoinTokens,
       usedThisPeriod: 0,
       sectionUsage: {},
     });
-    org.totalAssignedCap += tokens || 0;
+    org.totalAssignedCap += rejoinTokens;
+    org.teamMembersLimitRemaining = Math.max(0, maxMembers - org.members.length);
     await org.save();
 
     res.json({

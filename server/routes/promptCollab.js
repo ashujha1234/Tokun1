@@ -744,10 +744,14 @@ router.post("/org/share/:promptId", requireAuth, async (req, res) => {
 router.get("/notifications", requireAuth, async (req, res) => {
   try {
     const user = req.user;
-    const filter =
-      user.userType === "ORG"
-        ? { receiverOrgId: user.orgId }
-        : { receiverUserId: user._id };
+    // Org-wide notifications (TM_REQUEST, ORG_SHARE, etc.) are stored against
+    // the org's receiverOrgId, not any single user — the Owner AND any team
+    // member explicitly given the "Admin" role should both see those, on top
+    // of anything addressed to them personally (receiverUserId).
+    const isOrgWide = user.userType === "ORG" || (user.userType === "TM" && user.role === "Admin");
+    const filter = isOrgWide
+      ? { $or: [{ receiverOrgId: user.orgId }, { receiverUserId: user._id }] }
+      : { receiverUserId: user._id };
 
     const notifs = await Notification.find(filter)
       .populate("promptId", "title price free exclusive attachment")

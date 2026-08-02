@@ -2776,7 +2776,7 @@ import { useParams } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Card, CardContent } from "@/components/ui/card";
-import { User, Star } from "lucide-react";
+import { User, Star, Camera } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/use-toast";
 import { LuBadgeCheck } from "react-icons/lu"; 
@@ -2982,10 +2982,15 @@ useEffect(() => {
 
 
 useEffect(() => {
+  // Only the logged-in user's OWN avatar should come from AuthContext —
+  // otherwise viewing someone else's profile would show the viewer's own
+  // photo instead of the profile owner's (see the prompts-fetch effect
+  // below for how another user's avatar gets loaded instead).
+  if (userId !== user?._id) return;
   if (user?.avatar) {
-    setAvatar(API_BASE + user.avatar);
+    setAvatar(user.avatar.startsWith("http") ? user.avatar : API_BASE + user.avatar);
   }
-}, [user]);
+}, [user, userId]);
  
 const [messagePopupTab, setMessagePopupTab] = useState<
   "message" | "hire" | "services"
@@ -3086,6 +3091,13 @@ return {
 
         setPrompts(mapped);
         setUserName(data.user?.name || user?.name || "");
+
+        // Viewing someone else's profile — their avatar comes from this
+        // fetch (not AuthContext, which only ever holds the viewer's own).
+        if (userId !== user?._id && data.user?.avatarUrl) {
+          const url = data.user.avatarUrl;
+          setAvatar(url.startsWith("http") ? url : API_BASE + url);
+        }
       })
       .finally(() => setLoading(false));
   }, [userId, user, token]);
@@ -3298,7 +3310,7 @@ const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
 
     // 🔐 VERIFY OWNER
     if (data.success && data.avatar && data.userId === user._id) {
-      setAvatar(API_BASE + data.avatar);
+      setAvatar(data.avatar.startsWith("http") ? data.avatar : API_BASE + data.avatar);
 
       persistAuth({
         user: {
@@ -3391,7 +3403,15 @@ const sendMessage = () => {
       Change
     </div>
 
-        
+    {/* Camera icon — always visible, marks this avatar as clickable/uploadable */}
+    <div
+      className="absolute bottom-0 right-0 w-6 h-6 rounded-full flex items-center justify-center border-2 border-[#0B0B0B]"
+      style={{ background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)" }}
+    >
+      <Camera className="w-3 h-3 text-white" />
+    </div>
+
+
   {/* Hidden file input */}
   <input
     ref={fileRef}
