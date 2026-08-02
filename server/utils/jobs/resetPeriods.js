@@ -8,6 +8,12 @@ const Organization = require("../../models/organization");
 const User = require("../../models/User");
 const { PLANS } = require("../../config/plans");
 
+function nextPeriodEnd(cycle) {
+  return cycle === "yearly"
+    ? dayjs().utc().add(1, "year").toDate()
+    : dayjs().utc().add(1, "month").toDate();
+}
+
 // Run this with node-cron (e.g., every hour): 0 * * * *
 async function resetDuePeriods() {
   const now = dayjs().utc().toDate();

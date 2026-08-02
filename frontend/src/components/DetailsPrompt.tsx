@@ -1053,6 +1053,7 @@ interface DetailsPromptProps {
   owned?: boolean;
   onPurchase?: (prompt: MarketplacePrompt) => void;
   showImages?: boolean;
+  onEnlargeMedia?: (media: { url: string; type: "image" | "video"; title?: string }) => void;
 }
 
 
@@ -1142,23 +1143,20 @@ const isOwnPrompt =
         <DialogContent
           className="
             bg-[#17171A] text-white p-0 border-none
-            w-[min(96vw,1600px)]
-            max-h-[96vh]
-            rounded-3xl md:rounded-[40px]
-            overflow-hidden flex flex-col
+            w-[min(92vw,1040px)] max-w-[1040px]
+            top-[50%] translate-y-[-50%]
+            md:h-[620px] max-h-[85vh]
+            rounded-3xl md:rounded-[32px]
+            overflow-hidden flex flex-col md:flex-row
           "
         >
-          {/* MEDIA */}
+          {/* MEDIA — left "page" of the book on desktop, full-width on mobile */}
           <div
             className="
-              relative mx-auto
-              w-[calc(100%-3rem)] max-w-[1300px]
-              aspect-[3/2]
+              relative w-full md:w-[45%] md:h-full shrink-0
+              aspect-[4/3] md:aspect-auto
               bg-[#333335]
               overflow-hidden
-              rounded-[18px] md:rounded-[22px]
-              mt-8
-              shrink-0
             "
           >
             <div className="absolute top-4 left-4 z-10">
@@ -1265,13 +1263,13 @@ const isOwnPrompt =
             </div>
           </div>
 
-          {/* DETAILS */}
+          {/* DETAILS — right "page" of the book on desktop, scrolls independently of the media */}
           <div
             className="
-              px-12 md:px-14
+              px-8 md:px-10
               pt-8 md:pt-10
               pb-10 md:pb-12
-              min-h-0 flex-1 overflow-y-auto no-scrollbar
+              min-h-0 md:h-full flex-1 overflow-y-auto no-scrollbar
             "
           >
             {/* Title */}
@@ -1316,116 +1314,85 @@ const isOwnPrompt =
             {/* Horizontal line */}
             <div className="border-t border-white/10 mt-6 mb-6"></div>
 
-            {/* Price + Buttons */}
-              {/* Price + Buttons */}
-            
-          <div
-  className="
-    mt-8
-    flex flex-col md:flex-row
-    md:items-center md:justify-between
-    gap-4 md:gap-3
-  "
->
-  <div className="text-[22px] font-semibold text-white shrink-0">
-    ₹{prompt.price.toLocaleString()}
-  </div>
+            {/* Price + Buttons — top row is price+Share (small), then one big
+                full-width primary action button per row below, matching the
+                reference layout (compact price/share row + one prominent
+                unlock/buy button underneath). */}
+          <div className="mt-8 space-y-3">
+            {/* Price + Share row */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[22px] font-semibold text-white shrink-0">
+                ₹{prompt.price.toLocaleString()}
+              </div>
+              <button
+                className="h-9 px-4 rounded-[8px] border border-white/10 bg-[#1C1C1E] flex items-center justify-center gap-1.5 text-white text-[13px] hover:bg-[#2A2A2D] transition-all whitespace-nowrap shrink-0"
+                onClick={() => setShowRequestModal(true)}
+              >
+                <RiShareForwardLine className="w-4 h-4" />
+                Share
+              </button>
+            </div>
 
-  <div
-    className="
-      w-full md:w-auto
-      flex flex-col sm:flex-row
-      md:flex-nowrap
-      md:items-center
-      gap-2
-      md:shrink-0
-    "
-  >
-    {/* Share */}
-    <button
-      className="
-        w-full sm:w-auto
-        h-9
-        px-3 md:px-4
-        rounded-[8px]
-        border border-white/10
-        bg-[#1C1C1E]
-        flex items-center justify-center gap-1.5
-        text-white text-[12px] md:text-[13px]
-        hover:bg-[#2A2A2D]
-        transition-all
-        whitespace-nowrap
-        shrink-0
-      "
-      onClick={() => setShowRequestModal(true)}
-    >
-      <RiShareForwardLine className="w-4 h-4" />
-      Share
-    </button>
+            {/* Cart — big, full-width */}
+            {!isOwnPrompt && !owned && Number(prompt.price || 0) > 0 && (
+              <button
+                disabled={isTeamMember}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isTeamMember) return;
 
-    {/* Cart */}
-    {!isOwnPrompt && !owned && Number(prompt.price || 0) > 0 && (
-      <button
-        disabled={isTeamMember}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (isTeamMember) return;
+                  addToCart(prompt.id);
+                  toast({
+                    title: "Added to Cart",
+                    description: `"${prompt.title}" was added.`,
+                  });
+                  onOpenChange(false);
+                }}
+                className={`w-full h-12 flex items-center justify-center gap-2 rounded-[10px] border border-white/10 text-white text-[15px] font-medium transition-all ${
+                  isTeamMember
+                    ? "opacity-50 cursor-not-allowed bg-[#1C1C1E]"
+                    : "bg-[#1C1C1E] hover:bg-gradient-to-r hover:from-[#5A3FFF] hover:to-[#FF14EF]"
+                }`}
+              >
+                <ShoppingCart className="w-5 h-5" />
+                Add to Cart
+              </button>
+            )}
 
-          addToCart(prompt.id);
-          toast({
-            title: "Added to Cart",
-            description: `"${prompt.title}" was added.`,
-          });
-          onOpenChange(false);
-        }}
-        className={`w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 md:px-4 h-9 rounded-[8px] border border-white/10 text-white text-[12px] md:text-[13px] transition-all whitespace-nowrap shrink-0 ${
-          isTeamMember
-            ? "opacity-50 cursor-not-allowed bg-[#1C1C1E]"
-            : "bg-[#1C1C1E] hover:bg-gradient-to-r hover:from-[#5A3FFF] hover:to-[#FF14EF]"
-        }`}
-      >
-        <ShoppingCart className="w-4 h-4" />
-        Cart
-      </button>
-    )}
+            {/* Primary action — big, full-width */}
+            {!isOwnPrompt && (
+              owned ? (
+                <div className="w-full h-12 rounded-[10px] bg-[#14532D] text-[#BBF7D0] text-[15px] font-semibold flex items-center justify-center">
+                  Purchased
+                </div>
+              ) : Number(prompt.price || 0) <= 0 ? (
+                <button
+                  onClick={handleCopy}
+                  className="w-full h-12 flex items-center justify-center rounded-[10px] font-semibold text-white text-[15px] transition-all bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] hover:opacity-90"
+                >
+                  Copy
+                </button>
+              ) : !(prompt.exclusive && prompt.sold) ? (
+                <button
+                  disabled={isTeamMember}
+                  onClick={() => !isTeamMember && onPurchase?.(prompt)}
+                  className={`w-full h-12 flex items-center justify-center rounded-[10px] font-semibold text-white text-[15px] transition-all ${
+                    isTeamMember
+                      ? "opacity-50 cursor-not-allowed bg-gradient-to-r from-gray-600 to-gray-500"
+                      : "bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] hover:opacity-90"
+                  }`}
+                >
+                  Buy Now
+                </button>
+              ) : null
+            )}
 
-    {/* Buy Now */}
-   {/* Action Button */}
-{!isOwnPrompt && (
-  owned ? (
-    <div className="w-full sm:w-auto px-4 md:px-5 h-9 rounded-[8px] bg-[#14532D] text-[#BBF7D0] text-[12px] md:text-[13px] font-medium flex items-center justify-center whitespace-nowrap shrink-0">
-      Purchased
-    </div>
-  ) : Number(prompt.price || 0) <= 0 ? (
-    <button
-      onClick={handleCopy}
-      className="w-full sm:w-auto flex items-center justify-center px-4 md:px-5 h-9 rounded-[8px] font-medium text-white text-[12px] md:text-[13px] transition-all whitespace-nowrap shrink-0 bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] hover:opacity-90"
-    >
-      Copy
-    </button>
-  ) : !(prompt.exclusive && prompt.sold) ? (
-    <button
-      disabled={isTeamMember}
-      onClick={() => !isTeamMember && onPurchase?.(prompt)}
-      className={`w-full sm:w-auto flex items-center justify-center px-4 md:px-5 h-9 rounded-[8px] font-medium text-white text-[12px] md:text-[13px] transition-all whitespace-nowrap shrink-0 ${
-        isTeamMember
-          ? "opacity-50 cursor-not-allowed bg-gradient-to-r from-gray-600 to-gray-500"
-          : "bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] hover:opacity-90"
-      }`}
-    >
-      Buy Now
-    </button>
-  ) : null
-)}
-
-    {/* Own prompt */}
-    {isOwnPrompt && (
-      <div className="w-full sm:w-auto px-4 h-9 rounded-[8px] bg-[#2A2A2A] text-white/80 text-[12px] md:text-[13px] flex items-center justify-center whitespace-nowrap shrink-0">
-        Your Prompt
-      </div>
-    )}
-  </div>
-</div>
+            {isOwnPrompt && (
+              <div className="w-full h-12 rounded-[10px] bg-[#2A2A2A] text-white/80 text-[15px] font-medium flex items-center justify-center">
+                Your Prompt
+              </div>
+            )}
+          </div>
           </div>
         </DialogContent>
       </Dialog>

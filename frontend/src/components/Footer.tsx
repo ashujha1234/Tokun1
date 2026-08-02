@@ -290,6 +290,8 @@ const NAV_LINKS = [
   { label: "Blog", href: "/blog" },
   { label: "Careers", href: "/careers" },
   { label: "Support", href: "/support" },
+  { label: "Privacy Policy", href: "/privacy-policy" },
+  { label: "Terms & Conditions", href: "/terms" },
 ];
 
 export default function Footer() {

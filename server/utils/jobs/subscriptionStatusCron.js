@@ -6,8 +6,9 @@ const Organization = require("../../models/organization");
 async function updateSubscriptionStatuses() {
   const now = dayjs().utc();
 
-  // IND
-  const users = await User.find({ userType: "IND", plan: { $ne: null }, subscriptionStatus: { $ne: "canceled" } });
+  // IND — only paid plans have a real billing cycle to lapse; free plan has
+  // no payment, so it must never be marked past_due/suspended.
+  const users = await User.find({ userType: "IND", plan: "pro", subscriptionStatus: { $ne: "canceled" } });
   for (const u of users) {
     if (!u.currentPeriodEnd) continue;
     const due = dayjs(u.currentPeriodEnd).utc();

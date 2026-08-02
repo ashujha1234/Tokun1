@@ -256,7 +256,10 @@ const AppNavigation = ({ activeSection, onSectionChange }: AppNavigationProps) =
     { id: "smartgen", label: "Smartgen", ext: "svg" },
     { id: "prompt-optimization", label: "Prompt Optimiser", ext: "svg" },
     { id: "prompt-marketplace", label: "Prompt Marketplace", badge: "NEW", ext: "png" },
-    { id: "prompt-library", label: "Prompt Library", ext: "png" },
+    // Prompt Library — hidden from nav for now, per explicit request. Not
+    // deleted so it can come back easily; routing/pathToId logic below is
+    // left untouched.
+    // { id: "prompt-library", label: "Prompt Library", ext: "png" },
   ];
 
   const pathToId = (pathname: string) => {

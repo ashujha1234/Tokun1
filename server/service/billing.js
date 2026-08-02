@@ -19,6 +19,7 @@ async function applyUserPlan(user, planKey, cycle /* 'monthly' | 'yearly' */) {
   user.plan = planKey;                          // 'free' or 'pro'
   user.billingCycle = cycle || "monthly";
   user.currentPeriodEnd = nextPeriodEnd(user.billingCycle);               // optional: set on real payment; or compute next period date
+  user.subscriptionStatus = "active";
   user.monthlyTokensCap = plan.monthlyTokens;   // e.g., 5,000 for free
   user.monthlyTokensUsed = 0;
   user.extraTokensRemaining = 0;

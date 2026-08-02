@@ -5776,6 +5776,7 @@
 
 // src/pages/PromptMarketplacePage.tsx
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -5786,6 +5787,7 @@ import {
   LifeBuoy, Briefcase, Image as ImageIcon, ArrowLeft,
   SlidersHorizontal, Check, X,
   Database, Building2, HeartPulse, Zap, Tag, Share2, Layers,
+  TrendingUp, ShieldCheck, ArrowRight, ArrowUpRight, Wallet, Rocket, Shirt, Play,
 } from "lucide-react";
 import { User } from "lucide-react";
 
@@ -5834,6 +5836,7 @@ type LicenseType = "all" | "free" | "premium" | "one-time";
 
 
 const GRADIENT = "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)";
+const GRADIENT_90 = "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)";
 
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 const PROMPTS_BASE = `${API_BASE}/api/prompt`;
@@ -5926,14 +5929,11 @@ function VideoReelCard({
         <div className="reel-card__author" onClick={(e) => { e.stopPropagation(); onNavigateToProfile(prompt.uploaderId); }}>
           <span className="reel-card__avatar">{authorInitials(prompt.uploaderName)}</span>
           <span className="reel-card__author-name">{prompt.uploaderName || "Unknown"}</span>
-          {prompt.rating != null && (
-            <span className="reel-card__rating">★ {prompt.rating.toFixed(1)}</span>
-          )}
         </div>
         <h3 className="reel-card__title">{prompt.title}</h3>
         <button
           className="reel-card__details-btn"
-          onClick={(e) => { e.stopPropagation(); setShowPanel(true); }}
+          onClick={(e) => { e.stopPropagation(); onOpenDetails(prompt); }}
         >
           Details ›
         </button>
@@ -6289,6 +6289,779 @@ const CategoriesScroller: React.FC<{
   );
 };
 
+/* ========================================================================
+   NEW LIBRARY-STYLE DESIGN — ported 1:1 from PromptLibraryPage.tsx per
+   explicit request ("prompt marketplace me same esa karo jo library me kiya
+   hai"). Wired to THIS page's own real state/handlers below (prompts,
+   categoriesData, purchasedPrompts, handlePurchase, detailsOpen/detailsPrompt,
+   addToCart) rather than duplicating data-fetching. Old design (title/
+   filters/grid) is disabled further down via {false && (...)}, not deleted.
+   ======================================================================== */
+const LIB_BANNERS = {
+  hero: "/icons/banner-nebula-core.png",
+  crystal: "/icons/banner-crystal-tower.png",
+  brandIdentity: "/icons/banner-logo-identity.png",
+};
+
+const libStockImage = (seed: string, w = 900, h = 700) => `https://picsum.photos/seed/${seed}/${w}/${h}`;
+
+const formatCardPrice = (p: Prompt) =>
+  p.isFree || !p.price ? "Free" : `₹${Number(p.price).toFixed(2)}`;
+
+const LibEyebrow = ({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) => (
+  <div className="flex items-center gap-2 text-[12px] font-semibold tracking-wide" style={{ color: "#22D3EE" }}>
+    {icon}
+    <span>{children}</span>
+  </div>
+);
+
+const LibArrowNav = ({ onLeft, onRight }: { onLeft: () => void; onRight: () => void }) => (
+  <div className="flex items-center gap-2">
+    <button
+      onClick={onLeft}
+      aria-label="Scroll left"
+      className="w-9 h-9 rounded-full grid place-items-center text-white/80 hover:text-white transition-colors"
+      style={{ background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.12)" }}
+    >
+      <ChevronLeft className="h-4 w-4" />
+    </button>
+    <button
+      onClick={onRight}
+      aria-label="Scroll right"
+      className="w-9 h-9 rounded-full grid place-items-center text-white/80 hover:text-white transition-colors"
+      style={{ background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.12)" }}
+    >
+      <ChevronRight className="h-4 w-4" />
+    </button>
+  </div>
+);
+
+const LibPromptMedia = ({
+  imageUrl,
+  videoUrl,
+  className,
+  children,
+}: {
+  imageUrl: string;
+  videoUrl?: string;
+  className?: string;
+  children?: React.ReactNode;
+}) => {
+  const [hovering, setHovering] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
+  const popupVideoRef = useRef<HTMLVideoElement>(null);
+  const showVideo = Boolean(videoUrl) && !videoFailed;
+
+  const handleEnter = () => setHovering(true);
+  const handleLeave = () => {
+    setHovering(false);
+    if (popupVideoRef.current) {
+      popupVideoRef.current.pause();
+      popupVideoRef.current.currentTime = 0;
+    }
+  };
+
+  return (
+    <div
+      className={`relative bg-[#0B0B0B] ${className ?? ""}`}
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+    >
+      <img
+        src={imageUrl}
+        alt=""
+        className="w-full h-full object-cover transition-transform duration-500 ease-out"
+        style={{ transform: hovering ? "scale(1.06)" : "scale(1)" }}
+      />
+
+      {showVideo && (
+        <div
+          className="absolute bottom-2 right-2 w-6 h-6 rounded-full grid place-items-center transition-opacity duration-300"
+          style={{ background: "rgba(0,0,0,0.55)", opacity: hovering ? 0 : 1 }}
+        >
+          <Play className="h-3 w-3 text-white" fill="white" />
+        </div>
+      )}
+
+      {children}
+
+      {hovering &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-0 flex items-center justify-center pointer-events-none px-6" style={{ zIndex: 999 }}>
+            <style>{`
+              @keyframes libPromptPopupFadeIn { from { opacity: 0; } to { opacity: 1; } }
+              @keyframes libPromptPopupZoomIn { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }
+            `}</style>
+            <div
+              className="absolute inset-0"
+              style={{ background: "rgba(6,6,8,0.72)", backdropFilter: "blur(10px)", animation: "libPromptPopupFadeIn 0.2s ease-out" }}
+            />
+            <div
+              className="relative rounded-[24px] overflow-hidden shadow-2xl"
+              style={{
+                width: showVideo ? "min(680px, 88vw)" : "min(520px, 88vw)",
+                aspectRatio: showVideo ? "16 / 9" : "4 / 3",
+                border: "1px solid rgba(255,255,255,0.15)",
+                background: "#0B0B0B",
+                animation: "libPromptPopupZoomIn 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
+              }}
+            >
+              {showVideo ? (
+                <video
+                  ref={popupVideoRef}
+                  src={videoUrl}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  onError={() => setVideoFailed(true)}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <img src={imageUrl} alt="" className="w-full h-full object-cover" />
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
+    </div>
+  );
+};
+
+const LibHeroBanner = ({
+  searchQuery,
+  onSearchChange,
+  onBrowse,
+}: {
+  searchQuery: string;
+  onSearchChange: (q: string) => void;
+  onBrowse: () => void;
+}) => {
+  const navigate = useNavigate();
+
+  return (
+  <div className="relative w-full overflow-hidden rounded-[28px]" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+    <img
+      src={LIB_BANNERS.hero}
+      alt="Prompt Marketplace"
+      className="absolute inset-0 w-full h-full object-cover"
+    />
+    <div
+      className="absolute inset-0"
+      style={{ background: "linear-gradient(180deg, rgba(6,6,8,0.55) 0%, rgba(6,6,8,0.78) 55%, rgba(6,6,8,0.94) 100%)" }}
+    />
+
+    <button
+      onClick={() => navigate("/self-dash?tab=prompts&p=purchased")}
+      className="absolute top-5 right-5 flex items-center gap-2 text-[12px] font-medium text-white px-4 py-2 rounded-full hover:bg-white/10 transition-colors"
+      style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.25)", backdropFilter: "blur(6px)" }}
+    >
+      <History className="h-3.5 w-3.5" />
+      Purchase History
+    </button>
+
+    <div
+      className="hidden lg:block absolute bottom-8 right-8 rounded-2xl px-4 py-3 text-white"
+      style={{ background: "rgba(15,15,17,0.55)", border: "1px solid rgba(255,255,255,0.15)", backdropFilter: "blur(10px)" }}
+    >
+      <p className="text-[11px] text-white/60">Asset ID: <span className="text-white/90">#9982</span></p>
+      <p className="text-[11px] text-white/60">Creator: <span className="text-white/90">NeonForge</span></p>
+      <p className="text-[11px] text-white/60">Current Bid: <span className="font-semibold" style={{ color: "#22D3EE" }}>1.5 ETH</span></p>
+    </div>
+
+    <div className="relative z-10 px-6 sm:px-10 py-16 sm:py-24 flex flex-col items-center text-center">
+      <LibEyebrow icon={<TrendingUp className="h-4 w-4" />}>GLOBAL LEADERBOARD</LibEyebrow>
+
+      <h1
+        className="mt-4 text-white text-[32px] sm:text-[44px] md:text-[52px] font-semibold leading-[1.05]"
+        style={{ fontFamily: "Inter" }}
+      >
+        Prompt{" "}
+        <span style={{ background: GRADIENT_90, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+          Marketplace
+        </span>
+      </h1>
+
+      <p className="mt-4 text-white/75 max-w-[560px] text-[14px] sm:text-[15px] leading-relaxed">
+        Access 310k+ high-quality AI prompts for art, logic, architecture, and business optimization.
+      </p>
+
+      <form
+        className="mt-8 flex items-center w-full max-w-[700px] h-[46px] sm:h-[50px] rounded-[200px] overflow-hidden px-2"
+        style={{ background: "rgba(18,18,19,0.85)", border: "1px solid rgba(255,255,255,0.18)", backdropFilter: "blur(8px)" }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          onBrowse();
+        }}
+      >
+        <Search className="h-5 w-5 text-white/40 ml-2" />
+        <input
+          name="q"
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder="Search prompts for 'Hyper-realistic architecture'..."
+          className="ml-3 flex-1 bg-transparent outline-none text-white placeholder:text-white/40 text-sm"
+        />
+        <button
+          type="submit"
+          className="text-white font-medium text-sm"
+          style={{ width: "90px", height: "36px", borderRadius: "200px", background: GRADIENT_90 }}
+        >
+          Search
+        </button>
+      </form>
+
+      <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+        <button
+          onClick={onBrowse}
+          className="flex items-center gap-2 h-11 px-6 rounded-full text-white text-[13px] font-semibold"
+          style={{ background: GRADIENT_90 }}
+        >
+          Browse Collection
+          <ArrowRight className="h-4 w-4" />
+        </button>
+
+        <div className="flex items-center gap-2">
+          <div className="flex -space-x-2">
+            {[12, 32, 47].map((imgId) => (
+              <img
+                key={imgId}
+                src={`https://i.pravatar.cc/64?img=${imgId}`}
+                alt=""
+                className="w-7 h-7 rounded-full border-2 object-cover"
+                style={{ borderColor: "#0B0B0B" }}
+              />
+            ))}
+          </div>
+          <span className="text-[12px] text-white/60">Used by 12k+ creators today</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  );
+};
+
+const LibCreateAppBanner = () => {
+  const navigate = useNavigate();
+  return (
+    <div
+      className="relative overflow-hidden rounded-[24px] px-6 sm:px-8 py-6 sm:py-7 flex flex-col sm:flex-row items-center justify-between gap-5"
+      style={{ background: "linear-gradient(120deg, #14141A 0%, #1C1420 60%, #14141A 100%)", border: "1px solid rgba(255,255,255,0.08)" }}
+    >
+      <div className="flex items-center gap-4 text-center sm:text-left">
+        <div className="w-12 h-12 rounded-2xl grid place-items-center shrink-0" style={{ background: GRADIENT }}>
+          <Rocket className="h-6 w-6 text-white" />
+        </div>
+        <div>
+          <h4 className="text-white text-[17px] font-semibold">Create an AI app using prompts</h4>
+          <p className="text-white/60 text-[13px] mt-1 max-w-[420px]">
+            Turn any prompt into a shareable AI app in minutes — no code required.
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={() => navigate("/smartgen")}
+        className="shrink-0 h-11 px-6 rounded-full text-white text-[13px] font-semibold"
+        style={{ background: GRADIENT_90 }}
+      >
+        Get Started
+      </button>
+    </div>
+  );
+};
+
+/* Restored old-style card (per explicit request): video prompts reuse the
+   existing VideoReelCard (9:16 reel), image prompts reuse the old
+   ".mp-card" markup (uploader avatar+name, Cart + Buy Now buttons) — same
+   size/content as the pre-redesign marketplace, just placed inside the new
+   horizontal-scroll rows via a fixed-width wrapper. */
+const LibOldStyleCard = ({
+  prompt,
+  mediaKind,
+  isPurchased,
+  isOwn,
+  isPlaying,
+  onVideoPlay,
+  onAddToCart,
+  onBuyNow,
+  onOpenDetails,
+  onNavigateToProfile,
+}: {
+  prompt: Prompt;
+  mediaKind: "video" | "image";
+  isPurchased: boolean;
+  isOwn: boolean;
+  isPlaying: boolean;
+  onVideoPlay: (id: string | number) => void;
+  onAddToCart: (id: string | number) => void;
+  onBuyNow: (p: Prompt) => void;
+  onOpenDetails: (p: Prompt) => void;
+  onNavigateToProfile: (id: string | null | undefined) => void;
+}) => {
+  if (mediaKind === "video") {
+    return (
+      <div style={{ width: 260, flexShrink: 0 }}>
+        <VideoReelCard
+          prompt={prompt}
+          isPurchased={isPurchased}
+          isOwn={isOwn}
+          isPlaying={isPlaying}
+          onVideoPlay={onVideoPlay}
+          onAddToCart={onAddToCart}
+          onBuyNow={(p) => onBuyNow(p as Prompt)}
+          onOpenDetails={(p) => onOpenDetails(p as Prompt)}
+          onNavigateToProfile={onNavigateToProfile}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="mp-card"
+      style={{ width: 300, flexShrink: 0 }}
+      onClick={() => onOpenDetails(prompt)}
+    >
+      {/* MEDIA */}
+      <div className="mp-card__media">
+        <div className="mp-card__preview group">
+          <img src={prompt.imageUrl} alt={prompt.title} className="mp-card__img" />
+        </div>
+
+        <div className="mp-card__badges">
+          <span className="mp-card__cat">{prompt.category?.toUpperCase()}</span>
+          {!isPurchased ? (
+            <span
+              className="mp-card__unlock"
+              style={{
+                background: prompt.exclusive ? "#2A2A2A" : undefined,
+                color: prompt.exclusive ? "#4ADE80" : undefined,
+              }}
+            >
+              {prompt.exclusive ? "ONE-TIME PURCHASE" : "PURCHASE TO UNLOCK"}
+            </span>
+          ) : (
+            <span className="mp-card__unlock" style={{ background: "#14532D", color: "#BBF7D0" }}>
+              PURCHASED
+            </span>
+          )}
+        </div>
+
+        {!prompt.isFree && prompt.price && prompt.price > 0 ? (
+          <div className="mp-card__crown">
+            <img src="/icons/premium.png" alt="Premium" className={prompt.exclusive ? "filter-green" : ""} />
+          </div>
+        ) : null}
+      </div>
+
+      {/* BODY */}
+      <div className="mp-card__body">
+        <div className="mp-card__meta">
+          <span className="mp-card__avatar">{authorInitials(prompt.uploaderName)}</span>
+          <span
+            className="mp-card__author-name"
+            onClick={(e) => { e.stopPropagation(); onNavigateToProfile(prompt.uploaderId); }}
+          >
+            {prompt.uploaderName || "Unknown"}
+          </span>
+        </div>
+
+        <h3 className="mp-card__title">{prompt.title}</h3>
+        <p className="mp-card__desc">{prompt.description}</p>
+
+        <div className="mp-card__footer">
+          {prompt.isFree ? (
+            <div className="mp-card__pill mp-card__pill--free">FREE</div>
+          ) : (
+            <>
+              <div className="mp-card__pill mp-card__pill--muted">
+                ₹{(prompt.price ?? 0).toFixed(2)}
+              </div>
+
+              {!isOwn && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onAddToCart(prompt.id); }}
+                  className="mp-card__pill mp-card__pill--cart"
+                >
+                  <ShoppingCart className="h-4 w-4" />
+                  Cart
+                </button>
+              )}
+
+              {!isOwn && !isPurchased && !(prompt.exclusive && prompt.sold) && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onBuyNow(prompt); }}
+                  className="mp-card__pill mp-card__pill--buy"
+                >
+                  Buy Now
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const LibPromptRow = ({
+  eyebrowIcon,
+  eyebrow,
+  title,
+  items,
+  renderCard,
+}: {
+  eyebrowIcon: React.ReactNode;
+  eyebrow: string;
+  title: string;
+  items: Prompt[];
+  renderCard: (p: Prompt) => React.ReactNode;
+}) => {
+  const railRef = useRef<HTMLDivElement>(null);
+  const scroll = (dir: "left" | "right") =>
+    railRef.current?.scrollBy({ left: dir === "left" ? -280 : 280, behavior: "smooth" });
+
+  if (items.length === 0) return null;
+
+  return (
+    <section>
+      <div className="flex items-end justify-between flex-wrap gap-3 mb-5">
+        <div>
+          <LibEyebrow icon={eyebrowIcon}>{eyebrow}</LibEyebrow>
+          <h3 className="mt-2 text-white text-[22px] sm:text-[26px] font-semibold">{title}</h3>
+        </div>
+        <LibArrowNav onLeft={() => scroll("left")} onRight={() => scroll("right")} />
+      </div>
+
+      <div ref={railRef} className="flex gap-5 overflow-x-auto scroll-smooth pb-2 no-scrollbar">
+        {items.map((p) => renderCard(p))}
+      </div>
+    </section>
+  );
+};
+
+const LibFeaturedSection = ({
+  prompts,
+  onOpenDetails,
+  onAddToCart,
+  onBuyNow,
+  onNavigateToProfile,
+  isOwn,
+  isPurchased,
+}: {
+  prompts: Prompt[];
+  onOpenDetails: (p: Prompt) => void;
+  onAddToCart: (id: string | number) => void;
+  onBuyNow: (p: Prompt) => void;
+  onNavigateToProfile: (id: string | null | undefined) => void;
+  isOwn: (p: Prompt) => boolean;
+  isPurchased: (p: Prompt) => boolean;
+}) => {
+  if (prompts.length === 0) return null;
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <LibEyebrow icon={<ShieldCheck className="h-4 w-4" />}>VERIFIED EXCELLENCE</LibEyebrow>
+          <h3 className="mt-2 text-white text-[22px] sm:text-[26px] font-semibold">Featured Prompts</h3>
+        </div>
+      </div>
+      <p className="text-white/60 text-[13px] max-w-[520px] mb-6">
+        Curated selection of professional-grade prompts hand-picked by our prompt engineering specialists.
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {prompts.map((p) => {
+          const badge = p.exclusive ? "PREMIUM" : "STAFF PICK";
+          const own = isOwn(p);
+          const purchased = isPurchased(p);
+          return (
+            <Card
+              key={p.id}
+              className="overflow-hidden transition-transform duration-300 hover:-translate-y-1 cursor-pointer"
+              style={{ borderRadius: 24, background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.1)" }}
+              onClick={() => onOpenDetails(p)}
+            >
+              <CardContent className="p-0">
+                <div className="relative w-full h-[220px] bg-[#0B0B0B] overflow-hidden">
+                  {p.videoUrl ? (
+                    <video
+                      src={p.videoUrl}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <img src={p.imageUrl} alt={p.title} className="w-full h-full object-cover" />
+                  )}
+                  <div
+                    className="absolute top-4 right-4 px-3 py-1 rounded-full text-[10px] font-semibold text-white"
+                    style={{ background: badge === "STAFF PICK" ? "rgba(255,255,255,0.15)" : GRADIENT, backdropFilter: "blur(4px)" }}
+                  >
+                    {badge}
+                  </div>
+                </div>
+
+                <div className="p-6">
+                  <div className="flex items-center gap-2 text-[11px] text-white/50 mb-2">
+                    <span>{p.category}</span>
+                    {p.uploaderName && (
+                      <>
+                        <span>•</span>
+                        <span
+                          onClick={(e) => { e.stopPropagation(); onNavigateToProfile(p.uploaderId); }}
+                        >
+                          {p.uploaderName}
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  <h4 className="text-[18px] font-semibold text-white">{p.title}</h4>
+                  <p className="mt-2 text-[13px] leading-relaxed text-white/65 max-w-[420px]">{p.description}</p>
+
+                  <div className="mt-5 flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-[18px] font-semibold text-white">{formatCardPrice(p)}</span>
+
+                    {p.isFree ? (
+                      <div className="mp-card__pill mp-card__pill--free">FREE</div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        {!own && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onAddToCart(p.id); }}
+                            className="mp-card__pill mp-card__pill--cart"
+                          >
+                            <ShoppingCart className="h-4 w-4" />
+                            Cart
+                          </button>
+                        )}
+                        {!own && !purchased && !(p.exclusive && p.sold) && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onBuyNow(p); }}
+                            className="mp-card__pill mp-card__pill--buy"
+                          >
+                            Buy Now
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    </section>
+  );
+};
+
+const LibBrandIdentitySpotlight = ({ onExplore }: { onExplore: () => void }) => {
+  const checklist = [
+    "Vector-ready minimalist aesthetics",
+    "High-contrast tech branding logic",
+    "Corporate color palette consistency",
+  ];
+
+  return (
+    <div
+      className="relative overflow-hidden rounded-[28px] p-8 sm:p-10"
+      style={{ background: "linear-gradient(135deg, #16161A 0%, #1C1C24 100%)", border: "1px solid rgba(255,255,255,0.08)" }}
+    >
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+        <div>
+          <span
+            className="inline-block px-3 py-1 rounded-full text-[11px] font-semibold text-white/85"
+            style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)" }}
+          >
+            SPECIALIZED PROMPTS
+          </span>
+
+          <h3 className="mt-4 text-white text-[26px] sm:text-[30px] font-semibold leading-tight">
+            Logo &amp; Brand Identity
+            <br />
+            <span style={{ background: GRADIENT_90, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+              Engineered for Pro Designers
+            </span>
+          </h3>
+
+          <p className="mt-4 text-white/65 text-[14px] leading-relaxed max-w-[440px]">
+            Elevate your branding workflow with prompts specifically designed for vector-style
+            logos, consistent brand assets, and crystalline geometric designs.
+          </p>
+
+          <ul className="mt-5 space-y-2.5">
+            {checklist.map((item) => (
+              <li key={item} className="flex items-center gap-2.5 text-[13px] text-white/80">
+                <span
+                  className="w-5 h-5 rounded-full grid place-items-center shrink-0"
+                  style={{ background: "rgba(26,115,232,0.15)" }}
+                >
+                  <Check className="h-3 w-3" style={{ color: "#1A73E8" }} />
+                </span>
+                {item}
+              </li>
+            ))}
+          </ul>
+
+          <button
+            onClick={onExplore}
+            className="mt-7 h-11 px-6 rounded-full text-white text-[13px] font-semibold"
+            style={{ background: GRADIENT }}
+          >
+            Explore Brand Prompts
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.1)" }}>
+            <img src={LIB_BANNERS.brandIdentity} alt="Logo & Brand Identity AI prompts" className="w-full h-[220px] object-cover" />
+            <p className="text-center text-[12px] text-white/60 py-2">Crystalline Logic</p>
+          </div>
+          <div className="rounded-2xl overflow-hidden self-end" style={{ border: "1px solid rgba(255,255,255,0.1)" }}>
+            <img src={LIB_BANNERS.crystal} alt="Retro brand kit" className="w-full h-[170px] object-cover" />
+            <p className="text-center text-[12px] text-white/60 py-2">Retro Brand Kit</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const LibGlassCTACard = ({
+  bgSeed,
+  bgGradient,
+  title,
+  description,
+  ctaLabel,
+  ctaBg,
+  onClick,
+}: {
+  bgSeed: string;
+  bgGradient: string;
+  title: string;
+  description: string;
+  ctaLabel: string;
+  ctaBg: string;
+  onClick: () => void;
+}) => {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  return (
+    <div
+      className="relative overflow-hidden rounded-[24px]"
+      style={{ border: "1px solid rgba(255,255,255,0.08)", background: bgGradient }}
+    >
+      {!imgFailed && (
+        <img
+          src={libStockImage(bgSeed, 900, 700)}
+          alt=""
+          onError={() => setImgFailed(true)}
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+      )}
+      <div
+        className="absolute inset-0"
+        style={{ background: "linear-gradient(160deg, rgba(10,10,12,0.35) 0%, rgba(8,8,10,0.85) 100%)" }}
+      />
+
+      <div
+        className="relative m-3 sm:m-4 rounded-[20px] p-6 sm:p-7"
+        style={{
+          background: "rgba(255,255,255,0.06)",
+          border: "1px solid rgba(255,255,255,0.15)",
+          backdropFilter: "blur(16px)",
+          WebkitBackdropFilter: "blur(16px)",
+        }}
+      >
+        <h4 className="text-white text-[20px] font-semibold">{title}</h4>
+        <p className="mt-3 text-white/75 text-[13px] leading-relaxed max-w-[360px]">{description}</p>
+        <button
+          onClick={onClick}
+          className="mt-6 h-10 px-5 rounded-full text-white text-[13px] font-semibold"
+          style={{ background: ctaBg }}
+        >
+          {ctaLabel}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const LibSellHireSection = ({ onSell, onHire }: { onSell: () => void; onHire: () => void }) => (
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <LibGlassCTACard
+      bgSeed="sell-your-prompts-bg"
+      bgGradient="linear-gradient(135deg, #1C1620 0%, #14141A 100%)"
+      title="Sell your prompts"
+      description="Upload your prompts, connect your payout method, and join a global community of creators. Become a seller in just 2 minutes."
+      ctaLabel="Start Selling"
+      ctaBg={GRADIENT}
+      onClick={onSell}
+    />
+
+    <LibGlassCTACard
+      bgSeed="hire-an-ai-expert-bg"
+      bgGradient="linear-gradient(135deg, #101A1E 0%, #14141A 100%)"
+      title="Hire an AI Expert"
+      description="Commission custom prompt solutions and fine-tuned AI workflows from world-class prompt engineers for your specific business needs."
+      ctaLabel="Find a Creator"
+      ctaBg="#1A73E8"
+      onClick={onHire}
+    />
+  </div>
+);
+
+const LibCategoriesRow = ({
+  categories,
+  selected,
+  onSelect,
+}: {
+  categories: string[];
+  selected: string;
+  onSelect: (c: string) => void;
+}) => {
+  const railRef = useRef<HTMLDivElement>(null);
+  const scroll = (dir: "left" | "right") =>
+    railRef.current?.scrollBy({ left: dir === "left" ? -280 : 280, behavior: "smooth" });
+
+  if (categories.length === 0) return null;
+  const pills = ["All", ...categories];
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-4">
+        <LibEyebrow icon={<Sparkles className="h-4 w-4" />}>BROWSE BY CATEGORY</LibEyebrow>
+        <LibArrowNav onLeft={() => scroll("left")} onRight={() => scroll("right")} />
+      </div>
+      <div ref={railRef} className="flex gap-3 overflow-x-auto scroll-smooth pb-2 no-scrollbar">
+        {pills.map((c) => {
+          const isActive = c === selected;
+          return (
+            <button
+              key={c}
+              onClick={() => onSelect(c)}
+              className="shrink-0 px-4 py-2 rounded-full text-[13px] font-medium text-white transition-colors"
+              style={
+                isActive
+                  ? { background: GRADIENT }
+                  : { background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.12)" }
+              }
+            >
+              {c}
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+};
 
 const PromptMarketplacePage = () => {
   const navigate = useNavigate();
@@ -6321,6 +7094,8 @@ const [apiCategories, setApiCategories] = useState<{ name: string; previewImage?
   const [showHistory, setShowHistory] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsPrompt, setDetailsPrompt] = useState<any>(null);
+  const browseRef = useRef<HTMLDivElement>(null);
+  const [sellOpen, setSellOpen] = useState(false);
   // top-level state (near other state)
 const [saveForPromptId, setSaveForPromptId] = useState<string | null>(null);
 const [saveForPrompt, setSaveForPrompt] = useState<Prompt | null>(null);
@@ -6950,7 +7725,27 @@ const savePromptToCollections = async ({
 //     }
 //     scrollToBrowse();
 //   };
-// 
+//
+
+  const renderOldStyleCard = (p: Prompt) => (
+    <LibOldStyleCard
+      key={p.id}
+      prompt={p}
+      mediaKind={decideMediaType(p)}
+      isPurchased={purchasedPrompts.includes(String(p.id))}
+      isOwn={isOwnPrompt(p)}
+      isPlaying={playingVideo === p.id}
+      onVideoPlay={handleVideoPlay}
+      onAddToCart={(id) => {
+        addToCart(String(id));
+        toast({ title: "Added to Cart", description: `"${p.title}" was added.` });
+      }}
+      onBuyNow={(prompt) => handlePurchase(prompt)}
+      onOpenDetails={(prompt) => { setDetailsPrompt(prompt); setDetailsOpen(true); }}
+      onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
+    />
+  );
+
   return (
     <div className="marketplace dark text-foreground">
       {/* Background (landing-page style) */}
@@ -6962,6 +7757,9 @@ const savePromptToCollections = async ({
       </div>
 
       {/* Main Content */}
+      {/* OLD DESIGN — disabled (not deleted) via dead-code guard, per
+          explicit request to replace with the Library-style design below */}
+      {false && (
       <div className="marketplace__main">
         {/* Title + blurb */}
         <div className="marketplace__head">
@@ -7264,6 +8062,105 @@ const savePromptToCollections = async ({
           </>
         )}
       </div>
+      )}
+
+      {/* ================= NEW Library-style design (live) ================= */}
+      <div className="marketplace__main">
+        <LibHeroBanner
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onBrowse={() => browseRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        />
+
+        <div className="space-y-16 mt-16">
+          <div ref={browseRef} className="marketplace__filters" style={{ justifyContent: "center", display: "flex", flexWrap: "wrap", gap: 16 }}>
+            <SegmentedTabs
+              label="Format"
+              value={fileType}
+              onChange={(v) => setFileType(v as FileType)}
+              options={[
+                { label: "All", value: "all" },
+                { label: "Video", value: "video", icon: Video },
+                { label: "Image", value: "image", icon: ImageIcon },
+                { label: "Code", value: "code", icon: Code2 },
+              ]}
+            />
+            <SegmentedTabs
+              label="License"
+              value={licenseType}
+              onChange={(v) => setLicenseType(v as LicenseType)}
+              options={[
+                { label: "All", value: "all" },
+                { label: "Free", value: "free" },
+                { label: "Premium", value: "premium" },
+                { label: "One-time", value: "one-time" },
+              ]}
+            />
+          </div>
+
+          <LibCategoriesRow
+            categories={categoriesData.map((c) => c.id).filter((id) => id !== "All")}
+            selected={selectedCategory}
+            onSelect={(category) => {
+              setSelectedCategories([]);
+              setSelectedCategory(category);
+            }}
+          />
+
+          <LibCreateAppBanner />
+
+          {loading && <p className="text-white/60 text-sm">Loading prompts…</p>}
+          {!!loadError && !loading && <p className="text-red-400 text-sm">{loadError}</p>}
+
+          {!loading && !loadError && (
+            <>
+              <LibPromptRow
+                eyebrowIcon={<Sparkles className="h-4 w-4" />}
+                eyebrow="JUST ADDED"
+                title="Newest Prompts"
+                items={filteredPrompts}
+                renderCard={renderOldStyleCard}
+              />
+
+              <LibPromptRow
+                eyebrowIcon={<TrendingUp className="h-4 w-4" />}
+                eyebrow="TRENDING THIS MONTH"
+                title="Most Popular Prompts This Month"
+                items={[...filteredPrompts].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))}
+                renderCard={renderOldStyleCard}
+              />
+
+              <LibPromptRow
+                eyebrowIcon={<Shirt className="h-4 w-4" />}
+                eyebrow="APPAREL"
+                title="T-Shirt Design Prompts"
+                items={filteredPrompts}
+                renderCard={renderOldStyleCard}
+              />
+
+              <LibFeaturedSection
+                prompts={filteredPrompts.slice(0, 4)}
+                onOpenDetails={(p) => { setDetailsPrompt(p); setDetailsOpen(true); }}
+                onAddToCart={(id) => {
+                  addToCart(String(id));
+                  toast({ title: "Added to Cart", description: "Prompt was added." });
+                }}
+                onBuyNow={(p) => handlePurchase(p)}
+                onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
+                isOwn={isOwnPrompt}
+                isPurchased={(p) => purchasedPrompts.includes(String(p.id))}
+              />
+            </>
+          )}
+
+          <LibBrandIdentitySpotlight onExplore={() => navigate("/brand-prompts")} />
+
+          <LibSellHireSection
+            onSell={() => setSellOpen(true)}
+            onHire={() => navigate("/find-creators")}
+          />
+        </div>
+      </div>
 
       <div className="relative z-10 mt-20">
         <Footer />
@@ -7314,7 +8211,7 @@ const savePromptToCollections = async ({
         owned={detailsPrompt ? purchasedPrompts.includes(String(detailsPrompt.id)) : false}
         onPurchase={(p) => {
           setDetailsOpen(false);
-          handlePurchase(p);
+          handlePurchase({ ...p, id: String(p.id) });
         }}
         // showImages removed; DetailsPrompt can infer using prompt.videoUrl / prompt.imageUrl
         onEnlargeMedia={(m) => {
@@ -7507,6 +8404,12 @@ const savePromptToCollections = async ({
           </div>
         </div>
       )}
+
+      <SellPromptModal
+        open={sellOpen}
+        onOpenChange={setSellOpen}
+        onPromptSubmitted={() => {}}
+      />
 
     </div>
   );

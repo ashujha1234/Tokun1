@@ -2470,7 +2470,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import { Info, Landmark, X, Check } from "lucide-react";
+import { Info, Landmark, Smartphone, X, Check } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 type WalletAccount = {
@@ -2482,14 +2482,18 @@ type WalletAccount = {
   iconBg: string;
   iconColor: string;
   isLocalOnly?: boolean;
+  payoutMethod?: "bank" | "upi";
+  displayLabel?: string;
 };
 
 type BankForm = {
+  payoutMethod: "bank" | "upi";
   holder: string;
   accNum: string;
   confirmAccNum: string;
   ifsc: string;
   bankName: string;
+  upiId: string;
 };
 
 const WithdrawFunds = () => {
@@ -2549,7 +2553,7 @@ const WithdrawFunds = () => {
   const [formError, setFormError] = useState("");
 
   const [bankForm, setBankForm] = useState<BankForm>({
-    holder: "", accNum: "", confirmAccNum: "", ifsc: "", bankName: "",
+    payoutMethod: "bank", holder: "", accNum: "", confirmAccNum: "", ifsc: "", bankName: "", upiId: "",
   });
 
   const withdrawAmount = Number(amount || 0);
@@ -2581,22 +2585,39 @@ const WithdrawFunds = () => {
   const onlyDigits = (value: string) => value.replace(/\D/g, "").slice(0, 18);
 
   const resetBankForm = () => {
-    setBankForm({ holder: "", accNum: "", confirmAccNum: "", ifsc: "", bankName: "" });
+    setBankForm({ payoutMethod: "bank", holder: "", accNum: "", confirmAccNum: "", ifsc: "", bankName: "", upiId: "" });
     setFormError("");
   };
 
   const isMongoId = (id: string) => /^[a-f\d]{24}$/i.test(id);
 
-  const mapApiAccount = (ba: any): WalletAccount => ({
-    id: String(ba?._id || ""),
-    name: String(ba?.bankName || "Bank Account"),
-    last4: String(ba?.accountNumber || "").slice(-4) || "0000",
-    ifsc: String(ba?.ifscCode || "").toUpperCase(),
-    isDefault: !!ba?.default,
-    iconBg: "bg-[#1A73E8]/25",
-    iconColor: "text-[#1A73E8]",
-    isLocalOnly: false,
-  });
+  const mapApiAccount = (ba: any): WalletAccount => {
+    if (ba?.payoutMethod === "upi") {
+      const masked = String(ba?.maskedUpiId || ba?.upiId || "");
+      return {
+        id: String(ba?._id || ""),
+        name: "UPI",
+        last4: masked,
+        isDefault: !!ba?.default,
+        iconBg: "bg-[#7C3AED]/25",
+        iconColor: "text-[#C084FC]",
+        isLocalOnly: false,
+        payoutMethod: "upi",
+        displayLabel: masked,
+      };
+    }
+    return {
+      id: String(ba?._id || ""),
+      name: String(ba?.bankName || "Bank Account"),
+      last4: String(ba?.accountNumber || "").slice(-4) || "0000",
+      ifsc: String(ba?.ifscCode || "").toUpperCase(),
+      isDefault: !!ba?.default,
+      iconBg: "bg-[#1A73E8]/25",
+      iconColor: "text-[#1A73E8]",
+      isLocalOnly: false,
+      payoutMethod: "bank",
+    };
+  };
 
   const fetchBankAccounts = async () => {
     const authToken = getAuthToken();
@@ -2637,20 +2658,29 @@ const WithdrawFunds = () => {
   };
 
   const handleSaveBank = async () => {
+    const isUpi = bankForm.payoutMethod === "upi";
     const holder = bankForm.holder.trim();
     const accNum = bankForm.accNum.trim();
     const confirmAccNum = bankForm.confirmAccNum.trim();
     const ifsc = bankForm.ifsc.trim().toUpperCase();
     const bankName = bankForm.bankName.trim();
+    const upiId = bankForm.upiId.trim();
     setFormError("");
 
-    if (!holder || !accNum || !confirmAccNum || !ifsc || !bankName) {
-      setFormError("Please fill out all fields.");
-      return;
-    }
-    if (accNum !== confirmAccNum) {
-      setFormError("Account numbers do not match.");
-      return;
+    if (isUpi) {
+      if (!holder || !upiId || !/^[\w.+-]{2,}@[a-zA-Z]{2,}$/.test(upiId)) {
+        setFormError("Please enter the account holder name and a valid UPI ID.");
+        return;
+      }
+    } else {
+      if (!holder || !accNum || !confirmAccNum || !ifsc || !bankName) {
+        setFormError("Please fill out all fields.");
+        return;
+      }
+      if (accNum !== confirmAccNum) {
+        setFormError("Account numbers do not match.");
+        return;
+      }
     }
 
     setSaveLoading(true);
@@ -2658,14 +2688,22 @@ const WithdrawFunds = () => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (authToken) headers.Authorization = `Bearer ${authToken}`;
 
-    const body = {
-      accountHolderName: holder,
-      accountNumber: accNum,
-      confirmAccountNumber: confirmAccNum,
-      ifscCode: ifsc,
-      bankName,
-      default: accounts.length === 0,
-    };
+    const body = isUpi
+      ? {
+          payoutMethod: "upi",
+          accountHolderName: holder,
+          upiId,
+          default: accounts.length === 0,
+        }
+      : {
+          payoutMethod: "bank",
+          accountHolderName: holder,
+          accountNumber: accNum,
+          confirmAccountNumber: confirmAccNum,
+          ifscCode: ifsc,
+          bankName,
+          default: accounts.length === 0,
+        };
 
     try {
       let newAccount: WalletAccount | null = null;
@@ -2683,9 +2721,10 @@ const WithdrawFunds = () => {
           const code = data?.error || `http_${res.status}`;
           const message =
             code === "all_fields_required"     ? "Please fill out all fields." :
+            code === "valid_upi_id_required"    ? "Please enter a valid UPI ID." :
             code === "account_numbers_mismatch" ? "Account numbers do not match." :
-            code === "account_already_exists"   ? "This bank account is already saved." :
-            "Could not add bank account.";
+            code === "account_already_exists"   ? "This account is already saved." :
+            "Could not add account.";
           throw new Error(message);
         }
 
@@ -2693,16 +2732,29 @@ const WithdrawFunds = () => {
 
       } catch (apiErr: any) {
         if (authToken) throw apiErr;
-        newAccount = {
-          id: crypto.randomUUID(),
-          name: bankName,
-          last4: accNum.slice(-4),
-          ifsc,
-          isDefault: accounts.length === 0,
-          iconBg: "bg-[#1A73E8]/25",
-          iconColor: "text-[#1A73E8]",
-          isLocalOnly: true,
-        };
+        newAccount = isUpi
+          ? {
+              id: crypto.randomUUID(),
+              name: "UPI",
+              last4: upiId,
+              isDefault: accounts.length === 0,
+              iconBg: "bg-[#7C3AED]/25",
+              iconColor: "text-[#C084FC]",
+              isLocalOnly: true,
+              payoutMethod: "upi",
+              displayLabel: upiId,
+            }
+          : {
+              id: crypto.randomUUID(),
+              name: bankName,
+              last4: accNum.slice(-4),
+              ifsc,
+              isDefault: accounts.length === 0,
+              iconBg: "bg-[#1A73E8]/25",
+              iconColor: "text-[#1A73E8]",
+              isLocalOnly: true,
+              payoutMethod: "bank",
+            };
       }
 
       setAccounts((prev) => {
@@ -2928,14 +2980,16 @@ const WithdrawFunds = () => {
                               boxShadow: active ? "inset -1px 0 0 #1A73E8" : "none",
                             }}>
                             <div className={`grid h-10 w-10 place-items-center rounded-full ${account.iconBg}`}>
-                              <Landmark className={`h-5 w-5 ${account.iconColor}`} />
+                              {account.payoutMethod === "upi"
+                                ? <Smartphone className={`h-5 w-5 ${account.iconColor}`} />
+                                : <Landmark className={`h-5 w-5 ${account.iconColor}`} />}
                             </div>
                             <p className="mt-5 truncate px-3"
                               style={{ fontFamily: fontBase, fontWeight: 700, fontSize: 14, color: "#FFFFFF", maxWidth: "100%" }}>
                               {account.name}
                             </p>
-                            <p className="mt-3" style={{ fontFamily: fontBase, fontWeight: 400, fontSize: 10, color: "rgba(255,255,255,0.35)" }}>
-                              •••• {account.last4}
+                            <p className="mt-3 truncate px-3" style={{ fontFamily: fontBase, fontWeight: 400, fontSize: 10, color: "rgba(255,255,255,0.35)", maxWidth: "100%" }}>
+                              {account.payoutMethod === "upi" ? account.displayLabel : `•••• ${account.last4}`}
                             </p>
                             {account.isLocalOnly && (
                               <span className="absolute top-2 right-2 text-[9px] rounded px-1 py-0.5"
@@ -3045,13 +3099,35 @@ const WithdrawFunds = () => {
               <X className="h-4 w-4 text-white/90" />
             </button>
             <h3 className="text-[22px] font-semibold text-white">Account Details</h3>
-            <p className="mt-2 text-sm text-white/55">Add your bank account details to receive withdrawals.</p>
+            <p className="mt-2 text-sm text-white/55">Add a bank account or UPI ID to receive withdrawals.</p>
             {formError && (
               <div className="mt-5 rounded-xl border px-4 py-3 text-sm text-white"
                 style={{ background: "#2A1717", borderColor: "rgba(239,68,68,0.35)" }}>
                 {formError}
               </div>
             )}
+
+            <div className="mt-6 grid grid-cols-2 gap-2 rounded-lg border border-white/10 bg-black/20 p-1">
+              <button type="button"
+                onClick={() => setBankForm((p) => ({ ...p, payoutMethod: "bank" }))}
+                className="flex items-center justify-center gap-2 rounded-md py-2.5 text-sm font-medium"
+                style={{
+                  background: bankForm.payoutMethod === "bank" ? "linear-gradient(270deg,#FF14EF 0%,#1A73E8 100%)" : "transparent",
+                  color: bankForm.payoutMethod === "bank" ? "#FFFFFF" : "rgba(255,255,255,0.55)",
+                }}>
+                <Landmark className="h-4 w-4" /> Bank Transfer
+              </button>
+              <button type="button"
+                onClick={() => setBankForm((p) => ({ ...p, payoutMethod: "upi" }))}
+                className="flex items-center justify-center gap-2 rounded-md py-2.5 text-sm font-medium"
+                style={{
+                  background: bankForm.payoutMethod === "upi" ? "linear-gradient(270deg,#FF14EF 0%,#1A73E8 100%)" : "transparent",
+                  color: bankForm.payoutMethod === "upi" ? "#FFFFFF" : "rgba(255,255,255,0.55)",
+                }}>
+                <Smartphone className="h-4 w-4" /> UPI
+              </button>
+            </div>
+
             <div className="mt-6 space-y-5">
               <div>
                 <label className="mb-2 block text-sm text-white/80">Account holder name</label>
@@ -3060,43 +3136,56 @@ const WithdrawFunds = () => {
                   className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none"
                   placeholder="Enter account holder name" />
               </div>
-              <div>
-                <label className="mb-2 block text-sm text-white/80">Account number</label>
-                <input value={bankForm.accNum}
-                  onChange={(e) => setBankForm((p) => ({ ...p, accNum: onlyDigits(e.target.value) }))}
-                  inputMode="numeric"
-                  className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none"
-                  placeholder="Enter account number" />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm text-white/80">Confirm account number</label>
-                <input value={bankForm.confirmAccNum}
-                  onChange={(e) => setBankForm((p) => ({ ...p, confirmAccNum: onlyDigits(e.target.value) }))}
-                  inputMode="numeric"
-                  className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none"
-                  placeholder="Re-enter account number" />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm text-white/80">IFSC Code</label>
-                <div className="relative">
-                  <input value={bankForm.ifsc}
-                    onChange={(e) => setBankForm((p) => ({ ...p, ifsc: e.target.value.toUpperCase() }))}
-                    className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 pr-[112px] text-white placeholder-white/35 outline-none"
-                    placeholder="IFSC Code" />
-                  <button type="button"
-                    className="absolute bottom-1 right-1 top-1 rounded-md px-4 text-sm text-white"
-                    style={{ background: "linear-gradient(270deg,#FF14EF 0%,#1A73E8 100%)" }}>
-                    Find IFSC
-                  </button>
+
+              {bankForm.payoutMethod === "upi" ? (
+                <div>
+                  <label className="mb-2 block text-sm text-white/80">UPI ID</label>
+                  <input value={bankForm.upiId}
+                    onChange={(e) => setBankForm((p) => ({ ...p, upiId: e.target.value.trim() }))}
+                    className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none"
+                    placeholder="yourname@upi" />
                 </div>
-              </div>
-              <div>
-                <label className="mb-2 block text-sm text-white/80">Bank name</label>
-                <input value={bankForm.bankName}
-                  onChange={(e) => setBankForm((p) => ({ ...p, bankName: e.target.value }))}
-                  className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none"
-                  placeholder="Bank name" />
-              </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="mb-2 block text-sm text-white/80">Account number</label>
+                    <input value={bankForm.accNum}
+                      onChange={(e) => setBankForm((p) => ({ ...p, accNum: onlyDigits(e.target.value) }))}
+                      inputMode="numeric"
+                      className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none"
+                      placeholder="Enter account number" />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm text-white/80">Confirm account number</label>
+                    <input value={bankForm.confirmAccNum}
+                      onChange={(e) => setBankForm((p) => ({ ...p, confirmAccNum: onlyDigits(e.target.value) }))}
+                      inputMode="numeric"
+                      className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none"
+                      placeholder="Re-enter account number" />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm text-white/80">IFSC Code</label>
+                    <div className="relative">
+                      <input value={bankForm.ifsc}
+                        onChange={(e) => setBankForm((p) => ({ ...p, ifsc: e.target.value.toUpperCase() }))}
+                        className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 pr-[112px] text-white placeholder-white/35 outline-none"
+                        placeholder="IFSC Code" />
+                      <button type="button"
+                        className="absolute bottom-1 right-1 top-1 rounded-md px-4 text-sm text-white"
+                        style={{ background: "linear-gradient(270deg,#FF14EF 0%,#1A73E8 100%)" }}>
+                        Find IFSC
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm text-white/80">Bank name</label>
+                    <input value={bankForm.bankName}
+                      onChange={(e) => setBankForm((p) => ({ ...p, bankName: e.target.value }))}
+                      className="w-full rounded-md border border-white/15 bg-[#17171A] px-4 py-3 text-white placeholder-white/35 outline-none"
+                      placeholder="Bank name" />
+                  </div>
+                </>
+              )}
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button type="button"
                   onClick={() => { setAddBankOpen(false); resetBankForm(); }}
@@ -3133,9 +3222,13 @@ const WithdrawFunds = () => {
               </div>
             </div>
             <div className="mt-6 text-center">
-              <h3 style={{ fontFamily: fontBase, fontWeight: 700, fontSize: 22, color: "#FFFFFF" }}>Bank account added</h3>
+              <h3 style={{ fontFamily: fontBase, fontWeight: 700, fontSize: 22, color: "#FFFFFF" }}>
+                {latestAddedAccount?.payoutMethod === "upi" ? "UPI ID added" : "Bank account added"}
+              </h3>
               <p className="mt-3" style={{ fontFamily: fontBase, fontWeight: 400, fontSize: 18, color: "#FFFFFF" }}>
-                {latestAddedAccount?.name || "Bank"} ••{latestAddedAccount?.last4 || "0000"} added successfully
+                {latestAddedAccount?.payoutMethod === "upi"
+                  ? `${latestAddedAccount?.displayLabel || latestAddedAccount?.last4 || ""} added successfully`
+                  : `${latestAddedAccount?.name || "Bank"} ••${latestAddedAccount?.last4 || "0000"} added successfully`}
               </p>
             </div>
             <div className="mt-8 flex items-center justify-center gap-6">

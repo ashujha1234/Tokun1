@@ -28,6 +28,12 @@ const BankAccountSchema = new mongoose.Schema(
       index: true,
     },
 
+    payoutMethod: {
+      type: String,
+      enum: ["bank", "upi"],
+      default: "bank",
+    },
+
     accountHolderName: {
       type: String,
       required: true,
@@ -36,20 +42,34 @@ const BankAccountSchema = new mongoose.Schema(
 
     accountNumber: {
       type: String,
-      required: true,
+      required: function () {
+        return this.payoutMethod !== "upi";
+      },
       trim: true,
     },
 
     ifscCode: {
       type: String,
-      required: true,
+      required: function () {
+        return this.payoutMethod !== "upi";
+      },
       trim: true,
       uppercase: true,
     },
 
     bankName: {
       type: String,
-      required: true,
+      required: function () {
+        return this.payoutMethod !== "upi";
+      },
+      trim: true,
+    },
+
+    upiId: {
+      type: String,
+      required: function () {
+        return this.payoutMethod === "upi";
+      },
       trim: true,
     },
 

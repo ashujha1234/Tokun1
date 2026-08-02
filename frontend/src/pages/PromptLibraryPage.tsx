@@ -1,5 +1,5 @@
 // src/pages/PromptMarketplacePage.tsx
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,6 +11,17 @@ import { toast } from "@/components/ui/use-toast";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import AppNavigation from "@/components/AppNavigation";
+import DetailsPrompt from "@/components/DetailsPrompt";
+import { useAuth } from "@/contexts/AuthContext";
+import { useCart } from "@/contexts/CartContext";
+
+/* ---------------------------------------------------------------------- */
+/*  Backend wiring (same endpoints/pattern as PromptMarketplacePage.tsx)   */
+/* ---------------------------------------------------------------------- */
+const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+const PROMPTS_BASE = `${API_BASE}/api/prompt`;
+const PURCHASE_BASE = `${API_BASE}/api/purchase`;
+const RAZORPAY_KEY_ID = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || "rzp_test_aNNdd7yTcNuzYQ";
 
 /* ---------------------------------------------------------------------- */
 /*  Shared constants                                                      */
@@ -56,108 +67,47 @@ const stockImage = (seed: string, w = 600, h = 400) => `https://picsum.photos/se
  */
 
 /* ---------------------------------------------------------------------- */
-/*  Types + mock data                                                     */
+/*  Types — real backend-shaped prompt (same fields PromptMarketplacePage   */
+/*  maps from GET /api/prompt/others). No more mock data below this point:  */
+/*  every section on this page now renders from the `prompts` state that's  */
+/*  fetched further down, in the page component.                           */
 /* ---------------------------------------------------------------------- */
 type Prompt = {
-  id: number;
-  title: string;
-  model: string;
-  price: string;
-  imageUrl: string;
-  videoUrl?: string;
-};
-
-type FeaturedPrompt = {
-  id: number;
+  id: string;
   title: string;
   description: string;
-  model: string;
   category: string;
-  price: string;
-  badge: "STAFF PICK" | "PREMIUM";
-  imageUrl: string;
+  price: number;
+  rating?: number;
+  imageUrl?: string;
   videoUrl?: string;
+  fullPrompt?: string;
+  isFree?: boolean;
+  exclusive?: boolean;
+  sold?: boolean;
+  uploaderId?: string | null;
+  uploaderName?: string;
+  ownerEmail?: string;
 };
 
-/**
- * 🎬 Hover-preview videos
- * These point to real, publicly hosted sample films (Blender Foundation /
- * Google's open sample bucket — free to use, always online) just so the
- * hover-preview actually plays something right now. Swap any of these for
- * your own short prompt-preview clips whenever you have them — the player
- * logic doesn't change, only the URL does.
- */
-const sampleVideo = (name: string) =>
-  `https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/${name}.mp4`;
+const formatPrice = (p: Prompt) => (p.isFree || !p.price ? "Free" : `₹${Number(p.price).toFixed(2)}`);
 
-const newestPrompts: Prompt[] = [
-  { id: 101, title: "Aurora Ink Portrait", model: "Midjourney v6", price: "$9.50", imageUrl: stockImage("aurora-ink-portrait") },
-  { id: 102, title: "Glassmorphic UI Kit", model: "DALL-E 3", price: "$11.00", imageUrl: stockImage("glassmorphic-ui-kit") },
-  { id: 103, title: "Solarpunk Skyline", model: "Midjourney v6", price: "$12.25", imageUrl: stockImage("solarpunk-skyline"), videoUrl: sampleVideo("ElephantsDream") },
-  { id: 104, title: "Obsidian Jewelry Macro", model: "Stable Diffusion", price: "$8.75", imageUrl: stockImage("obsidian-jewelry-macro") },
-  { id: 105, title: "Paper-cut Wildlife Diorama", model: "DALL-E 3", price: "$10.00", imageUrl: stockImage("papercut-wildlife-diorama") },
-];
-
-const popularThisMonthPrompts: Prompt[] = [
-  { id: 1, title: "Neon Luminescence", model: "Midjourney v6", price: "$8.99", imageUrl: stockImage("neon-luminescence"), videoUrl: sampleVideo("Sintel") },
-  { id: 2, title: "Cyberpunk Metropolis", model: "DALL-E 3", price: "$12.50", imageUrl: stockImage("cyberpunk-metropolis"), videoUrl: sampleVideo("ForBiggerFun") },
-  { id: 3, title: "Fluorescent Portraits", model: "Stable Diffusion", price: "$9.00", imageUrl: stockImage("fluorescent-portraits") },
-  { id: 4, title: "Crystalline Geometry", model: "Midjourney v6", price: "$11.99", imageUrl: stockImage("crystalline-geometry") },
-  { id: 5, title: "Quantum Dreamscape", model: "Midjourney v6", price: "$10.50", imageUrl: stockImage("quantum-dreamscape") },
-  { id: 6, title: "Chrome Botanica", model: "DALL-E 3", price: "$13.25", imageUrl: stockImage("chrome-botanica") },
-];
-
-const tshirtDesignPrompts: Prompt[] = [
-  { id: 201, title: "Retro Streetwear Graphic", model: "Midjourney v6", price: "$7.99", imageUrl: stockImage("retro-streetwear-graphic") },
-  { id: 202, title: "Minimalist Line Art Tee", model: "DALL-E 3", price: "$6.50", imageUrl: stockImage("minimalist-line-art-tee") },
-  { id: 203, title: "Y2K Neon Print", model: "Midjourney v6", price: "$8.25", imageUrl: stockImage("y2k-neon-print"), videoUrl: sampleVideo("BigBuckBunny") },
-  { id: 204, title: "Vintage Band Tee Design", model: "Stable Diffusion", price: "$7.00", imageUrl: stockImage("vintage-band-tee-design") },
-  { id: 205, title: "Bold Typographic Slogan", model: "DALL-E 3", price: "$6.99", imageUrl: stockImage("bold-typographic-slogan") },
-];
-
-const featuredPrompts: FeaturedPrompt[] = [
-  {
-    id: 1,
-    title: "Modern Architectural Renders",
-    description: "Master golden hour lighting for minimalist interior and exterior villa designs with perfect shadows.",
-    model: "Midjourney v6",
-    category: "Architecture",
-    price: "$12.99",
-    badge: "STAFF PICK",
-    imageUrl: stockImage("modern-architectural-renders"),
-  },
-  {
-    id: 2,
-    title: "Hyper-Realistic Oil Texture",
-    description: "Emulate thick impasto brushstrokes and classic lighting for digital paintings that look physical.",
-    model: "DALL-E 3",
-    category: "Illustration",
-    price: "$15.00",
-    badge: "PREMIUM",
-    imageUrl: stockImage("hyper-realistic-oil-texture"),
-  },
-  {
-    id: 3,
-    title: "Vaporwave Album Art",
-    description: "Retro-futuristic gradients, chrome type, and sunset grids built for cover art that pops on a shelf.",
-    model: "Midjourney v6",
-    category: "Music",
-    price: "$10.50",
-    badge: "STAFF PICK",
-    imageUrl: stockImage("vaporwave-album-art"),
-    videoUrl: sampleVideo("TearsOfSteel"),
-  },
-  {
-    id: 4,
-    title: "Minimalist Product Renders",
-    description: "Studio-clean product shots with soft shadows and premium materials, ready for e-commerce.",
-    model: "DALL-E 3",
-    category: "Product",
-    price: "$13.75",
-    badge: "PREMIUM",
-    imageUrl: stockImage("minimalist-product-renders"),
-  },
-];
+const toDetailsPrompt = (p: Prompt) => ({
+  id: p.id,
+  title: p.title,
+  description: p.description,
+  price: p.price,
+  rating: p.rating ?? 0,
+  downloads: 0,
+  category: p.category,
+  videoUrl: p.videoUrl,
+  imageUrl: p.imageUrl,
+  fullPrompt: p.fullPrompt,
+  uploaderId: p.uploaderId || undefined,
+  ownerEmail: p.ownerEmail,
+  exclusive: p.exclusive,
+  sold: p.sold,
+});
 
 /* ---------------------------------------------------------------------- */
 /*  Small shared bits                                                     */
@@ -445,27 +395,28 @@ const CreateAppBanner = () => {
 /* ---------------------------------------------------------------------- */
 /*  Generic scrollable prompt row (Newest / Most Popular / T-Shirt, etc.) */
 /* ---------------------------------------------------------------------- */
-const PromptCard = ({ prompt, onGet }: { prompt: Prompt; onGet: () => void }) => (
+const PromptCard = ({ prompt, onOpenDetails }: { prompt: Prompt; onOpenDetails: () => void }) => (
   <Card
-    className="shrink-0 overflow-hidden transition-transform duration-300 hover:-translate-y-1"
+    className="shrink-0 overflow-hidden transition-transform duration-300 hover:-translate-y-1 cursor-pointer"
     style={{ width: 240, borderRadius: 20, background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.1)" }}
+    onClick={onOpenDetails}
   >
     <CardContent className="p-3">
-      <PromptMedia imageUrl={prompt.imageUrl} videoUrl={prompt.videoUrl} className="w-full h-[140px] rounded-[14px] overflow-hidden">
+      <PromptMedia imageUrl={prompt.imageUrl || ""} videoUrl={prompt.videoUrl} className="w-full h-[140px] rounded-[14px] overflow-hidden">
         <div
           className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-medium text-white"
           style={{ background: "rgba(0,0,0,0.55)", border: "1px solid rgba(255,255,255,0.2)" }}
         >
-          {prompt.model}
+          {prompt.category}
         </div>
       </PromptMedia>
 
       <h4 className="mt-3 text-[14px] font-semibold text-white leading-snug">{prompt.title}</h4>
 
       <div className="mt-3 flex items-center justify-between">
-        <span className="text-[14px] font-semibold" style={{ color: "#22D3EE" }}>{prompt.price}</span>
+        <span className="text-[14px] font-semibold" style={{ color: "#22D3EE" }}>{formatPrice(prompt)}</span>
         <button
-          onClick={onGet}
+          onClick={(e) => { e.stopPropagation(); onOpenDetails(); }}
           className="text-[12px] font-medium text-white px-3 py-1.5 rounded-full"
           style={{ background: "#333335" }}
         >
@@ -482,20 +433,19 @@ const PromptRow = ({
   title,
   exploreHref,
   items,
+  onOpenDetails,
 }: {
   eyebrowIcon: ReactNode;
   eyebrow: string;
   title: string;
   exploreHref: string;
   items: Prompt[];
+  onOpenDetails: (p: Prompt) => void;
 }) => {
   const railRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const scroll = (dir: "left" | "right") =>
     railRef.current?.scrollBy({ left: dir === "left" ? -280 : 280, behavior: "smooth" });
-
-  const handleGetPrompt = (t: string) =>
-    toast({ title: "Added to cart", description: `"${t}" is ready for checkout.` });
 
   return (
     <section>
@@ -520,7 +470,7 @@ const PromptRow = ({
 
       <div ref={railRef} className="flex gap-5 overflow-x-auto scroll-smooth pb-2 no-scrollbar">
         {items.map((p) => (
-          <PromptCard key={p.id} prompt={p} onGet={() => handleGetPrompt(p.title)} />
+          <PromptCard key={p.id} prompt={p} onOpenDetails={() => onOpenDetails(p)} />
         ))}
       </div>
     </section>
@@ -530,10 +480,7 @@ const PromptRow = ({
 /* ---------------------------------------------------------------------- */
 /*  Featured prompts (2-up grid)                                          */
 /* ---------------------------------------------------------------------- */
-const FeaturedSection = () => {
-  const handleQuickView = (title: string) =>
-    toast({ title: "Quick view", description: `Opening preview for "${title}".` });
-
+const FeaturedSection = ({ prompts, onOpenDetails }: { prompts: Prompt[]; onOpenDetails: (p: Prompt) => void }) => {
   return (
     <section>
       <div className="flex items-center justify-between mb-2">
@@ -547,47 +494,55 @@ const FeaturedSection = () => {
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {featuredPrompts.map((p) => (
-          <Card
-            key={p.id}
-            className="overflow-hidden transition-transform duration-300 hover:-translate-y-1"
-            style={{ borderRadius: 24, background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.1)" }}
-          >
-            <CardContent className="p-0">
-              <PromptMedia imageUrl={p.imageUrl} videoUrl={p.videoUrl} className="w-full h-[220px]">
-                <div
-                  className="absolute top-4 right-4 px-3 py-1 rounded-full text-[10px] font-semibold text-white"
-                  style={{ background: p.badge === "STAFF PICK" ? "rgba(255,255,255,0.15)" : GRADIENT, backdropFilter: "blur(4px)" }}
-                >
-                  {p.badge}
-                </div>
-              </PromptMedia>
-
-              <div className="p-6">
-                <div className="flex items-center gap-2 text-[11px] text-white/50 mb-2">
-                  <span>{p.model}</span>
-                  <span>•</span>
-                  <span>{p.category}</span>
-                </div>
-
-                <h4 className="text-[18px] font-semibold text-white">{p.title}</h4>
-                <p className="mt-2 text-[13px] leading-relaxed text-white/65 max-w-[420px]">{p.description}</p>
-
-                <div className="mt-5 flex items-center justify-between">
-                  <span className="text-[18px] font-semibold text-white">{p.price}</span>
-                  <button
-                    onClick={() => handleQuickView(p.title)}
-                    className="flex items-center gap-2 text-[13px] font-medium text-white px-4 py-2 rounded-full"
-                    style={{ background: GRADIENT }}
+        {prompts.map((p) => {
+          const badge = p.exclusive ? "PREMIUM" : "STAFF PICK";
+          return (
+            <Card
+              key={p.id}
+              className="overflow-hidden transition-transform duration-300 hover:-translate-y-1 cursor-pointer"
+              style={{ borderRadius: 24, background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.1)" }}
+              onClick={() => onOpenDetails(p)}
+            >
+              <CardContent className="p-0">
+                <PromptMedia imageUrl={p.imageUrl || ""} videoUrl={p.videoUrl} className="w-full h-[220px]">
+                  <div
+                    className="absolute top-4 right-4 px-3 py-1 rounded-full text-[10px] font-semibold text-white"
+                    style={{ background: badge === "STAFF PICK" ? "rgba(255,255,255,0.15)" : GRADIENT, backdropFilter: "blur(4px)" }}
                   >
-                    <Eye className="h-3.5 w-3.5" />
-                    Quick View
-                  </button>
+                    {badge}
+                  </div>
+                </PromptMedia>
+
+                <div className="p-6">
+                  <div className="flex items-center gap-2 text-[11px] text-white/50 mb-2">
+                    <span>{p.category}</span>
+                    {p.uploaderName && (
+                      <>
+                        <span>•</span>
+                        <span>{p.uploaderName}</span>
+                      </>
+                    )}
+                  </div>
+
+                  <h4 className="text-[18px] font-semibold text-white">{p.title}</h4>
+                  <p className="mt-2 text-[13px] leading-relaxed text-white/65 max-w-[420px]">{p.description}</p>
+
+                  <div className="mt-5 flex items-center justify-between">
+                    <span className="text-[18px] font-semibold text-white">{formatPrice(p)}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onOpenDetails(p); }}
+                      className="flex items-center gap-2 text-[13px] font-medium text-white px-4 py-2 rounded-full"
+                      style={{ background: GRADIENT }}
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      Quick View
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
     </section>
   );
@@ -765,9 +720,278 @@ const SellHireSection = () => {
 };
 
 /* ---------------------------------------------------------------------- */
+/*  Categories — backend-driven pill row, sits right under the hero banner */
+/* ---------------------------------------------------------------------- */
+const CategoriesRow = ({
+  categories,
+  selected,
+  onSelect,
+}: {
+  categories: string[];
+  selected: string;
+  onSelect: (c: string) => void;
+}) => {
+  const railRef = useRef<HTMLDivElement>(null);
+  const scroll = (dir: "left" | "right") =>
+    railRef.current?.scrollBy({ left: dir === "left" ? -280 : 280, behavior: "smooth" });
+
+  if (categories.length === 0) return null;
+
+  const pills = ["All", ...categories];
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-4">
+        <Eyebrow icon={<Sparkles className="h-4 w-4" />}>BROWSE BY CATEGORY</Eyebrow>
+        <ArrowNav onLeft={() => scroll("left")} onRight={() => scroll("right")} />
+      </div>
+      <div ref={railRef} className="flex gap-3 overflow-x-auto scroll-smooth pb-2 no-scrollbar">
+        {pills.map((c) => {
+          const isActive = c === selected;
+          return (
+            <button
+              key={c}
+              onClick={() => onSelect(c)}
+              className="shrink-0 px-4 py-2 rounded-full text-[13px] font-medium text-white transition-colors"
+              style={
+                isActive
+                  ? { background: GRADIENT }
+                  : { background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.12)" }
+              }
+            >
+              {c}
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+};
+
+/* ---------------------------------------------------------------------- */
 /*  Page                                                                  */
 /* ---------------------------------------------------------------------- */
 const PromptMarketplacePage = () => {
+  const { token, user } = useAuth?.() || ({} as any);
+  const { addToCart } = useCart();
+  const currentUserId = user?._id || user?.id || null;
+
+  const [prompts, setPrompts] = useState<Prompt[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [purchasedPrompts, setPurchasedPrompts] = useState<string[]>([]);
+
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsPrompt, setDetailsPrompt] = useState<any>(null);
+
+  const [rzpReady, setRzpReady] = useState(false);
+
+  /* ---------- Load Razorpay checkout script once ---------- */
+  useEffect(() => {
+    if ((window as any).Razorpay) {
+      setRzpReady(true);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => setRzpReady(true);
+    script.onerror = () => setRzpReady(false);
+    document.body.appendChild(script);
+  }, []);
+
+  /* ---------- Fetch prompts (same endpoint as Prompt Marketplace) ---------- */
+  useEffect(() => {
+    const fetchPrompts = async () => {
+      try {
+        setLoading(true);
+        const res = await fetch(`${PROMPTS_BASE}/others`, {
+          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          credentials: "include",
+        });
+        const data = await res.json();
+        if (!res.ok || !data?.success) throw new Error(data?.error || "server_error");
+
+        const mapped: Prompt[] = (data.prompts || []).map((doc: any) => {
+          const att = doc?.attachment || null;
+          const mediaPath = att?.path
+            ? att.path.startsWith("http") ? att.path : `${API_BASE}${att.path}`
+            : undefined;
+          return {
+            id: String(doc._id),
+            title: doc.title || "Untitled",
+            description: doc.description || "",
+            category:
+              (doc.categories?.[0]?.name as string) ||
+              (Array.isArray(doc.categories) ? doc.categories.join(", ") : "") ||
+              "General",
+            price: typeof doc.price === "number" ? doc.price : 0,
+            rating: typeof doc.averageRating === "number" ? doc.averageRating : undefined,
+            imageUrl: att?.type === "image" ? mediaPath : undefined,
+            videoUrl: att?.type === "video" ? mediaPath : undefined,
+            fullPrompt: doc.promptText || "",
+            isFree: !!doc.free,
+            exclusive: !!doc.exclusive,
+            sold: !!doc.sold,
+            uploaderId: doc?.userId?._id || null,
+            uploaderName: doc?.userId?.name || "Unknown",
+            ownerEmail: doc?.userId?.email || "",
+          };
+        });
+
+        setPrompts(mapped);
+      } catch (err: any) {
+        console.error("Failed to load prompts", err);
+        toast({
+          title: "Couldn't load prompts",
+          description: err?.message || "Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPrompts();
+  }, [token]);
+
+  /* ---------- Fetch categories (same endpoint as Prompt Marketplace) ---------- */
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/category`);
+        const data = await res.json();
+        if (res.ok && data?.success) {
+          setCategories((data.categories || []).map((c: any) => c.name).filter(Boolean));
+        }
+      } catch (err) {
+        console.error("Failed to load categories", err);
+      }
+    };
+    loadCategories();
+  }, []);
+
+  /* ---------- Fetch purchase history (drives "owned" state in DetailsPrompt) ---------- */
+  useEffect(() => {
+    if (!token) return;
+    (async () => {
+      try {
+        const res = await fetch(`${PURCHASE_BASE}/history`, {
+          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
+        });
+        const body = await res.json();
+        if (!res.ok || !body?.success) return;
+        const ownedIds = (body.purchases || [])
+          .map((p: any) => {
+            if (p?.prompt && typeof p.prompt === "object") return String(p.prompt._id);
+            if (p?.prompt && typeof p.prompt === "string") return p.prompt;
+            return null;
+          })
+          .filter(Boolean);
+        setPurchasedPrompts((prev) => Array.from(new Set([...(prev || []), ...ownedIds])));
+      } catch (e) {
+        console.error("[History] fetch failed", e);
+      }
+    })();
+  }, [token]);
+
+  const isOwnPrompt = (prompt: Prompt) =>
+    !!currentUserId && !!prompt.uploaderId && String(prompt.uploaderId) === String(currentUserId);
+
+  const handleOpenDetails = (prompt: Prompt) => {
+    setDetailsPrompt(toDetailsPrompt(prompt));
+    setDetailsOpen(true);
+  };
+
+  /* ---------- Purchase flow (same Razorpay create-order/verify pattern as Prompt Marketplace) ---------- */
+  const handlePurchase = async (detailsP: any) => {
+    const promptId = String(detailsP.id);
+    const prompt = prompts.find((p) => p.id === promptId);
+    if (prompt && isOwnPrompt(prompt)) {
+      toast({ title: "Not allowed", description: "You cannot buy your own prompt.", variant: "destructive" });
+      return;
+    }
+    if (!token) {
+      toast({ title: "Please log in", description: "You must be logged in to purchase.", variant: "destructive" });
+      return;
+    }
+    if (!rzpReady) {
+      toast({ title: "Loading payment…", description: "Razorpay is still initializing." });
+      return;
+    }
+
+    try {
+      const res = await fetch(`${PURCHASE_BASE}/create-order/${promptId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success || !data?.order) {
+        throw new Error(data?.error || "order_create_failed");
+      }
+
+      const order = data.order;
+      const options: any = {
+        key: RAZORPAY_KEY_ID,
+        amount: Number(order.amount),
+        currency: order.currency || "INR",
+        name: "Tokun",
+        description: `Purchase: ${detailsP.title}`,
+        order_id: order.id,
+        notes: { promptId },
+        theme: { color: "#1A73E8" },
+        handler: async (response: any) => {
+          try {
+            const vr = await fetch(`${PURCHASE_BASE}/verify/${promptId}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+              credentials: "include",
+              body: JSON.stringify({
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpayOrderId: response.razorpay_order_id,
+                razorpaySignature: response.razorpay_signature,
+                pricePaid: order.amount / 100,
+              }),
+            });
+            const vb = await vr.json();
+            if (vb?.success) {
+              setPurchasedPrompts((prev) => (prev.includes(promptId) ? prev : [...prev, promptId]));
+              setDetailsOpen(false);
+              toast({ title: "Payment Successful", description: "You now own this prompt." });
+            } else {
+              toast({ title: "Verification Failed", description: vb?.error || "Unknown error", variant: "destructive" });
+            }
+          } catch (err) {
+            console.error("Verify error", err);
+            toast({ title: "Verification Error", description: "Could not verify payment.", variant: "destructive" });
+          }
+        },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on("payment.failed", () => {
+        toast({ title: "Payment Failed", description: "Please try again.", variant: "destructive" });
+      });
+      rzp.open();
+    } catch (err: any) {
+      console.error("Purchase flow error", err);
+      toast({ title: "Purchase Error", description: err?.message || "Something went wrong.", variant: "destructive" });
+    }
+  };
+
+  /* ---------- Derived sections — all real backend prompts for now; proper
+     bifurcation (true "newest"/"trending"/"featured" logic) comes later. ---------- */
+  const filteredPrompts =
+    selectedCategory === "All" ? prompts : prompts.filter((p) => p.category === selectedCategory);
+
+  const newestPrompts = filteredPrompts;
+  const popularThisMonthPrompts = [...filteredPrompts].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+  const tshirtDesignPrompts = filteredPrompts;
+  const featuredPrompts = filteredPrompts.slice(0, 4);
+
   return (
     <div className="dark min-h-screen bg-background text-foreground">
       <div className="sticky top-0 z-50">
@@ -781,33 +1005,45 @@ const PromptMarketplacePage = () => {
         </div>
 
         <div className="space-y-16 mt-16">
+          <CategoriesRow categories={categories} selected={selectedCategory} onSelect={setSelectedCategory} />
+
           <CreateAppBanner />
 
-          <PromptRow
-            eyebrowIcon={<Sparkles className="h-4 w-4" />}
-            eyebrow="JUST ADDED"
-            title="Newest Prompts"
-            exploreHref="/marketplace?sort=newest"
-            items={newestPrompts}
-          />
+          {loading && <p className="text-white/60 text-sm">Loading prompts…</p>}
 
-          <PromptRow
-            eyebrowIcon={<TrendingUp className="h-4 w-4" />}
-            eyebrow="TRENDING THIS MONTH"
-            title="Most Popular Prompts This Month"
-            exploreHref="/marketplace?sort=popular&range=month"
-            items={popularThisMonthPrompts}
-          />
+          {!loading && (
+            <>
+              <PromptRow
+                eyebrowIcon={<Sparkles className="h-4 w-4" />}
+                eyebrow="JUST ADDED"
+                title="Newest Prompts"
+                exploreHref="/marketplace?sort=newest"
+                items={newestPrompts}
+                onOpenDetails={handleOpenDetails}
+              />
 
-          <PromptRow
-            eyebrowIcon={<Shirt className="h-4 w-4" />}
-            eyebrow="APPAREL"
-            title="T-Shirt Design Prompts"
-            exploreHref="/marketplace/category/tshirt-design"
-            items={tshirtDesignPrompts}
-          />
+              <PromptRow
+                eyebrowIcon={<TrendingUp className="h-4 w-4" />}
+                eyebrow="TRENDING THIS MONTH"
+                title="Most Popular Prompts This Month"
+                exploreHref="/marketplace?sort=popular&range=month"
+                items={popularThisMonthPrompts}
+                onOpenDetails={handleOpenDetails}
+              />
 
-          <FeaturedSection />
+              <PromptRow
+                eyebrowIcon={<Shirt className="h-4 w-4" />}
+                eyebrow="APPAREL"
+                title="T-Shirt Design Prompts"
+                exploreHref="/marketplace/category/tshirt-design"
+                items={tshirtDesignPrompts}
+                onOpenDetails={handleOpenDetails}
+              />
+
+              <FeaturedSection prompts={featuredPrompts} onOpenDetails={handleOpenDetails} />
+            </>
+          )}
+
           <BrandIdentitySpotlight />
           <SellHireSection />
         </div>
@@ -825,6 +1061,14 @@ const PromptMarketplacePage = () => {
       <div className="mt-20">
         <Footer />
       </div>
+
+      <DetailsPrompt
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+        prompt={detailsPrompt}
+        owned={detailsPrompt ? purchasedPrompts.includes(String(detailsPrompt.id)) : false}
+        onPurchase={handlePurchase}
+      />
     </div>
   );
 };

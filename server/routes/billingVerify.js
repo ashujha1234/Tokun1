@@ -671,6 +671,7 @@ const SubscriptionPeriod = require("../models/SubscriptionPeriod");
 const Payment = require("../models/Payment");
 const User = require("../models/User");
 const Organization = require("../models/organization");
+const PlatformWallet = require("../models/PlatformWallet");
 
 const {
   startUserPlan,
@@ -791,6 +792,7 @@ router.post("/verifypayment", async (req, res) => {
             },
           ],
           total: total.toFixed(2),
+          planCard: { plan: planKey, billingCycle, price: subtotal },
         });
 
         if (user.email) {
@@ -819,6 +821,19 @@ router.post("/verifypayment", async (req, res) => {
           "⚠️ USER invoice/email failed (payment still success):",
           invoiceErr.message
         );
+      }
+
+      // Subscriptions have no seller to split with — the full amount is
+      // Tokun's own revenue, so it goes straight into the admin dashboard's
+      // platform-revenue ledger (safe — payment already saved above).
+      try {
+        await PlatformWallet.recordCommission(amount, {
+          source: "subscription",
+          refId: payment._id,
+          description: `${planKey.toUpperCase()} subscription (${billingCycle})`,
+        });
+      } catch (revErr) {
+        console.error("⚠️ PlatformWallet commission record failed (USER subscription):", revErr.message);
       }
 
       return res.json({
@@ -908,6 +923,7 @@ router.post("/verifypayment", async (req, res) => {
               },
             ],
             total: total.toFixed(2),
+            planCard: { plan: "enterprise", billingCycle: payment.billingCycle, price: subtotal },
           });
 
           if (owner.email) {
@@ -937,6 +953,19 @@ router.post("/verifypayment", async (req, res) => {
           "⚠️ ORG invoice/email failed (payment still success):",
           invoiceErr.message
         );
+      }
+
+      // Subscriptions have no seller to split with — the full amount is
+      // Tokun's own revenue, so it goes straight into the admin dashboard's
+      // platform-revenue ledger (safe — payment already saved above).
+      try {
+        await PlatformWallet.recordCommission(amount, {
+          source: "subscription",
+          refId: payment._id,
+          description: `ENTERPRISE subscription (${payment.billingCycle})`,
+        });
+      } catch (revErr) {
+        console.error("⚠️ PlatformWallet commission record failed (ORG subscription):", revErr.message);
       }
 
       return res.json({

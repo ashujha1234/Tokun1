@@ -1148,7 +1148,7 @@ const formatDashboardDate = (value: string) => {
     .toUpperCase();
 };
 
-type DashTab = "dashboard" | "requests" | "prompts" | "subscription";
+type DashTab = "dashboard" | "requests" | "serviceBookings" | "prompts" | "subscription";
 type PromptsTab = "purchased" | "uploaded";
 type PlanKey = "Free" | "Pro" | "Enterprise";
 
@@ -3103,6 +3103,155 @@ const RequestCard = ({ item }: { item: any }) => {
     );
   };
 
+  /* ── SERVICE BOOKINGS — separate section from Hire deals ── */
+  const ServiceBookingsContent = () => {
+    const [summary, setSummary] = useState<{
+      totalEarnings: number;
+      activeRequests: number;
+      totalProjects: number;
+      requests: any[];
+      projects: any[];
+    } | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [submitFor, setSubmitFor] = useState<any | null>(null);
+
+    const fetchSummary = async () => {
+      if (!token) return;
+      try {
+        setLoading(true);
+        const res = await fetch(`${API_BASE}/api/services/orders/seller-summary`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (data?.success) setSummary(data);
+      } catch {
+        // silently ignore — tab still renders with empty state
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    useEffect(() => {
+      fetchSummary();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [token]);
+
+    const statusBadge = (status: string) => {
+      const map: Record<string, { label: string; color: string; bg: string }> = {
+        PENDING_PAYMENT: { label: "Awaiting NDA & Payment", color: "#FABC4E", bg: "rgba(250,188,78,0.12)" },
+        FUNDED: { label: "Funded — Start Work", color: "#1A73E8", bg: "rgba(26,115,232,0.12)" },
+        IN_PROGRESS: { label: "In Progress", color: "#1A73E8", bg: "rgba(26,115,232,0.12)" },
+        WORK_SUBMITTED: { label: "Submitted — Awaiting Review", color: "#C084FC", bg: "rgba(192,132,252,0.12)" },
+        REVISION_REQUESTED: { label: "Revision Requested", color: "#FABC4E", bg: "rgba(250,188,78,0.12)" },
+        COMPLETED: { label: "Completed & Paid", color: "#19E66C", bg: "rgba(25,230,108,0.12)" },
+      };
+      const s = map[status] || { label: status, color: "#8F8996", bg: "rgba(255,255,255,0.06)" };
+      return (
+        <span style={{ fontSize: 11, fontWeight: 700, color: s.color, background: s.bg, padding: "4px 10px", borderRadius: 999 }}>
+          {s.label}
+        </span>
+      );
+    };
+
+    const canSubmit = (status: string) => ["FUNDED", "IN_PROGRESS", "REVISION_REQUESTED"].includes(status);
+
+    return (
+      <div className="flex h-full flex-col overflow-hidden">
+        <div className="shrink-0">
+          <h1 style={{ margin: 0, fontFamily: "Inter, sans-serif", fontWeight: 800, fontSize: 28, lineHeight: "100%", color: "#FFFFFF" }}>
+            Service Bookings
+          </h1>
+          <p style={{ margin: "6px 0 0", fontFamily: "Inter, sans-serif", fontWeight: 400, fontSize: 13, lineHeight: "100%", color: "#8F8996" }}>
+            Bookings clients have made for the services you sell.
+          </p>
+        </div>
+
+        {/* Stat tiles */}
+        <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-4 shrink-0">
+          {[
+            { label: "Active Requests", value: summary?.activeRequests ?? 0 },
+            { label: "Earnings", value: `₹${(summary?.totalEarnings ?? 0).toLocaleString("en-IN")}` },
+            { label: "Total Projects", value: summary?.totalProjects ?? 0 },
+          ].map((s) => (
+            <div
+              key={s.label}
+              className="rounded-2xl border border-white/10 p-4"
+              style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.035) 100%)" }}
+            >
+              <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "1.2px", color: "#8F8996", textTransform: "uppercase" }}>{s.label}</p>
+              <p style={{ margin: "6px 0 0", fontSize: 24, fontWeight: 800, color: "#FFFFFF" }}>{s.value}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6 min-h-0 flex-1 overflow-y-auto pr-1">
+          {loading ? (
+            <p className="text-white/45 text-sm">Loading bookings…</p>
+          ) : (
+            <>
+              <h2 style={{ fontFamily: "Inter, sans-serif", fontWeight: 700, fontSize: 16, color: "#FFFFFF", margin: "0 0 12px" }}>New Requests</h2>
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 mb-8">
+                {summary?.requests?.length ? (
+                  summary.requests.map((r) => (
+                    <div key={r._id} style={{ borderRadius: 16, background: "#FFFFFF05", border: "1px solid #FFFFFF0F", padding: "16px" }}>
+                      <div className="flex items-center justify-between gap-3 mb-2">
+                        <span style={{ fontWeight: 700, color: "#FFFFFF", fontSize: 14 }}>{r.title}</span>
+                        {statusBadge(r.status)}
+                      </div>
+                      <p style={{ margin: 0, fontSize: 12, color: "#8F8996" }}>
+                        From {r.buyerName} · ₹{Number(r.amount).toLocaleString("en-IN")}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-5 text-white/45">No new booking requests yet.</div>
+                )}
+              </div>
+
+              <h2 style={{ fontFamily: "Inter, sans-serif", fontWeight: 700, fontSize: 16, color: "#FFFFFF", margin: "0 0 12px" }}>Active Bookings</h2>
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                {summary?.projects?.length ? (
+                  summary.projects.map((p) => (
+                    <div key={p._id} style={{ borderRadius: 16, background: "#FFFFFF05", border: "1px solid #FFFFFF0F", padding: "16px" }}>
+                      <div className="flex items-center justify-between gap-3 mb-2">
+                        <span style={{ fontWeight: 700, color: "#FFFFFF", fontSize: 14 }}>{p.title}</span>
+                        {statusBadge(p.status)}
+                      </div>
+                      <p style={{ margin: 0, fontSize: 12, color: "#8F8996" }}>
+                        {p.buyerName} · ₹{Number(p.sellerAmount ?? p.amount).toLocaleString("en-IN")}
+                      </p>
+                      {canSubmit(p.status) && (
+                        <button
+                          type="button"
+                          onClick={() => setSubmitFor(p)}
+                          className="mt-3 w-full h-9 rounded-lg text-sm font-semibold text-white"
+                          style={{ background: GRAD }}
+                        >
+                          Submit Work
+                        </button>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-5 text-white/45">No active bookings yet.</div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {submitFor && (
+          <SubmitServiceWorkModal
+            order={submitFor}
+            token={token}
+            onClose={() => setSubmitFor(null)}
+            onSubmitted={fetchSummary}
+          />
+        )}
+      </div>
+    );
+  };
+
   /* ── MY PROMPTS — with Purchased / Uploaded toggle ── */
   const PromptsContent = () => {
     const isPurchased = promptsTab === "purchased";
@@ -3406,10 +3555,11 @@ const RequestCard = ({ item }: { item: any }) => {
                   {displayName}
                 </h2>
                 <nav className="no-scrollbar mt-4 flex gap-2 overflow-x-auto lg:mt-10 lg:block lg:space-y-3">
-                  <NavButton id="dashboard"    label="DASHBOARD"       icon="/icons/self.svg" />
-                  <NavButton id="requests"     label="REQUESTS"        icon="/icons/req.svg"  />
-                  <NavButton id="prompts"      label="MY PROMPTS"      icon="/icons/self.svg" />
-                  <NavButton id="subscription" label="MY SUBSCRIPTION" icon="/icons/req.svg"  />
+                  <NavButton id="dashboard"       label="DASHBOARD"       icon="/icons/self.svg" />
+                  <NavButton id="requests"        label="REQUESTS"        icon="/icons/req.svg"  />
+                  <NavButton id="serviceBookings" label="SERVICE BOOKINGS" icon="/icons/service.svg" />
+                  <NavButton id="prompts"         label="MY PROMPTS"      icon="/icons/self.svg" />
+                  <NavButton id="subscription"    label="MY SUBSCRIPTION" icon="/icons/req.svg"  />
                 </nav>
               </div>
             </div>
@@ -3488,10 +3638,11 @@ const RequestCard = ({ item }: { item: any }) => {
             )}
 
             <div className={activeTab === "requests" ? "relative z-10 h-[calc(100%-0px)]" : "relative z-10 mt-6"}>
-              {activeTab === "dashboard"    && <DashboardContent />}
-              {activeTab === "requests"     && <RequestsContent />}
-              {activeTab === "prompts"      && <PromptsContent />}
-              {activeTab === "subscription" && <SubscriptionContent />}
+              {activeTab === "dashboard"       && <DashboardContent />}
+              {activeTab === "requests"        && <RequestsContent />}
+              {activeTab === "serviceBookings" && <ServiceBookingsContent />}
+              {activeTab === "prompts"         && <PromptsContent />}
+              {activeTab === "subscription"    && <SubscriptionContent />}
             </div>
 
             <div className="h-8 lg:hidden" />
@@ -4112,6 +4263,133 @@ function ProposalDetailModal({
   );
 }
 
+/* ── Submit Work modal for a booked service (mirrors ProposalDetailModal's
+   handleSubmitWork, pointed at /api/services/orders/... instead) ── */
+function SubmitServiceWorkModal({
+  order,
+  token,
+  onClose,
+  onSubmitted,
+}: {
+  order: any;
+  token?: string;
+  onClose: () => void;
+  onSubmitted: () => void | Promise<void>;
+}) {
+  const [note, setNote] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const handleSubmit = async () => {
+    if (!token) {
+      toast({ title: "Login required", description: "Please login again.", variant: "destructive" });
+      return;
+    }
+    if (!selectedFiles.length && !note.trim()) {
+      toast({ title: "Nothing to submit", description: "Attach a file or add a note.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const uploadedFiles: any[] = [];
+
+      for (const file of selectedFiles) {
+        const formData = new FormData();
+        formData.append("file", file);
+        const uploadRes = await fetch(`${API_BASE}/api/services/orders/${order._id}/upload-work-file`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+        const uploadData = await uploadRes.json().catch(() => ({}));
+        if (!uploadRes.ok || !uploadData?.success) {
+          throw new Error(uploadData?.error || `Failed to upload ${file.name}`);
+        }
+        uploadedFiles.push({
+          url: uploadData.file.url,
+          name: uploadData.file.name,
+          description: uploadData.file.name,
+          size: uploadData.file.size,
+          mimeType: uploadData.file.mimeType,
+        });
+      }
+
+      const submitRes = await fetch(`${API_BASE}/api/services/orders/${order._id}/submit-work`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ note, deliverables: uploadedFiles }),
+      });
+      const submitData = await submitRes.json().catch(() => ({}));
+      if (!submitRes.ok || !submitData?.success) {
+        throw new Error(submitData?.error || "Failed to submit work");
+      }
+
+      toast({ title: "Work submitted", description: "Sent to the client for review in chat." });
+      await onSubmitted();
+      onClose();
+    } catch (err: any) {
+      toast({ title: "Submit failed", description: err?.message || "Could not submit work.", variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[99999] bg-black/70 backdrop-blur-sm flex items-center justify-center px-4">
+      <div className="w-[440px] max-w-full rounded-2xl bg-[#0E0F12] text-white border border-white/10">
+        <div className="flex items-center justify-between p-4 border-b border-white/10">
+          <div>
+            <p className="font-semibold">Submit Work</p>
+            <p className="text-xs text-white/50">{order?.title}</p>
+          </div>
+          <button onClick={onClose} className="text-white/60 hover:text-white">✕</button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          <div>
+            <p className="text-sm font-medium mb-2">Files</p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              hidden
+              onChange={(e) => setSelectedFiles(Array.from(e.target.files || []))}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full h-11 rounded-lg border border-dashed border-white/20 text-sm text-white/60 hover:border-white/40"
+            >
+              {selectedFiles.length ? `${selectedFiles.length} file(s) selected` : "Attach files"}
+            </button>
+          </div>
+
+          <div>
+            <p className="text-sm font-medium mb-2">Note (optional)</p>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Anything the client should know about this delivery…"
+              className="w-full h-24 rounded-lg bg-[#1A1A1A] border border-white/10 p-3 text-sm outline-none resize-none"
+            />
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-white/10">
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="w-full h-11 rounded-full text-sm font-semibold text-white disabled:opacity-60"
+            style={{ background: GRAD }}
+          >
+            {submitting ? "Submitting…" : "Submit to Client"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default SelfDash;

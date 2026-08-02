@@ -238,11 +238,13 @@ function StepDot({ n, active, done }: { n: number; active: boolean; done: boolea
 
 /* ---------- NDA Modal ---------- */
 
-function NdaModal({ nda, onClose, dealId, token, apiBase }: {
+function NdaModal({ nda, onClose, dealId, token, apiBase, resource = "hire" }: {
   nda: NdaData; onClose: () => void;
   dealId?: string; token?: string; apiBase?: string;
+  resource?: "hire" | "service";
 }) {
   const { user } = useAuth() as any;
+  const basePath = resource === "service" ? "services/orders" : "hire";
   const [tab, setTab] = useState<"preview" | "sign">("preview");
   const [mySig, setMySig] = useState<string>("");                     // my confirmed signature data URL
   const [step, setStep] = useState<1 | 2>(1);                         // 1 = signing, 2 = auto-submitting/submitted
@@ -257,19 +259,26 @@ function NdaModal({ nda, onClose, dealId, token, apiBase }: {
 
   const fetchDealStatus = useCallback(() => {
     if (!dealId || !token || !apiBase) return;
-    fetch(`${apiBase}/api/hire/${dealId}`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${apiBase}/api/${basePath}/${dealId}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(d => {
-        if (d?.deal) {
-          setNdaStatus({ clientUrl: d.deal.ndaClientUrl, freelancerUrl: d.deal.ndaFreelancerUrl });
+        const record = resource === "service" ? d?.order : d?.deal;
+        if (record) {
+          setNdaStatus(
+            resource === "service"
+              ? { clientUrl: record.ndaBuyerUrl, freelancerUrl: record.ndaSellerUrl }
+              : { clientUrl: record.ndaClientUrl, freelancerUrl: record.ndaFreelancerUrl }
+          );
           // Determine role
-          const clientId = String(d.deal.clientId?._id || d.deal.clientId || "");
+          const partyAId = String(
+            (resource === "service" ? record.buyerId?._id || record.buyerId : record.clientId?._id || record.clientId) || ""
+          );
           const myId = String(user?._id || user?.id || "");
-          setRole(clientId === myId ? "client" : "freelancer");
+          setRole(partyAId === myId ? "client" : "freelancer");
         }
       })
       .catch(() => {});
-  }, [dealId, token, apiBase, user]);
+  }, [dealId, token, apiBase, user, basePath, resource]);
 
   useEffect(() => { fetchDealStatus(); }, [fetchDealStatus]);
 
@@ -287,7 +296,7 @@ function NdaModal({ nda, onClose, dealId, token, apiBase }: {
     const form = new FormData();
     form.append("nda", file);
     try {
-      const res = await fetch(`${apiBase}/api/hire/${dealId}/upload-nda`, {
+      const res = await fetch(`${apiBase}/api/${basePath}/${dealId}/upload-nda`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: form,
@@ -304,7 +313,7 @@ function NdaModal({ nda, onClose, dealId, token, apiBase }: {
       }
     } catch { setUploadError("Network error. Try again."); }
     setUploading(false);
-  }, [dealId, token, apiBase, fetchDealStatus]);
+  }, [dealId, token, apiBase, fetchDealStatus, basePath]);
 
   // As soon as the signature is confirmed, build the final signed document
   // right here (same HTML the Preview/Download buttons would produce, with
@@ -331,8 +340,14 @@ function NdaModal({ nda, onClose, dealId, token, apiBase }: {
   const otherUploaded = role === "client" ? !!ndaStatus?.freelancerUrl : !!ndaStatus?.clientUrl;
   const bothSigned = !!(ndaStatus?.clientUrl && ndaStatus?.freelancerUrl);
 
-  const roleLabel = role === "client" ? "Client (Disclosing Party)" : "Freelancer (Receiving Party)";
-  const otherLabel = role === "client" ? "Freelancer" : "Client";
+  const roleLabel =
+    resource === "service"
+      ? role === "client" ? "Buyer (Disclosing Party)" : "Creator (Receiving Party)"
+      : role === "client" ? "Client (Disclosing Party)" : "Freelancer (Receiving Party)";
+  const otherLabel =
+    resource === "service"
+      ? role === "client" ? "Creator" : "Buyer"
+      : role === "client" ? "Freelancer" : "Client";
 
   const tabBtn = (t: "preview" | "sign") => ({
     flex: 1, height: 34, borderRadius: 8, border: "none",
@@ -356,7 +371,11 @@ function NdaModal({ nda, onClose, dealId, token, apiBase }: {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {bothSigned && <span style={{ fontSize: 11, background: "rgba(74,222,128,0.12)", color: "#4ade80", padding: "3px 12px", borderRadius: 20, fontWeight: 700 }}>✓ NDA Complete</span>}
-            {role && !bothSigned && <span style={{ fontSize: 11, background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.45)", padding: "3px 12px", borderRadius: 20 }}>You: {role}</span>}
+            {role && !bothSigned && (
+              <span style={{ fontSize: 11, background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.45)", padding: "3px 12px", borderRadius: 20 }}>
+                You: {resource === "service" ? (role === "client" ? "buyer" : "creator") : role}
+              </span>
+            )}
             <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: "50%", border: "none", background: "rgba(255,255,255,0.08)", color: "#fff", cursor: "pointer", fontSize: 16 }}>✕</button>
           </div>
         </div>
@@ -460,38 +479,56 @@ function NdaModal({ nda, onClose, dealId, token, apiBase }: {
 
 /* ---------- Public NdaButton ---------- */
 
-export default function NdaButton({ dealId, token, apiBase, fallback, variant = "full" }: {
+export default function NdaButton({ dealId, token, apiBase, fallback, variant = "full", resource = "hire" }: {
   dealId?: string; token?: string; apiBase?: string;
   fallback?: Partial<NdaData> & { title?: string };
   variant?: "full" | "compact";
+  resource?: "hire" | "service";
 }) {
   const [open, setOpen] = useState(false);
   const [deal, setDeal] = useState<any>(null);
+  const basePath = resource === "service" ? "services/orders" : "hire";
 
   useEffect(() => {
     if (!dealId || !token || !apiBase) return;
     let alive = true;
     (async () => {
       try {
-        const res = await fetch(`${apiBase}/api/hire/${dealId}`, { headers: { Authorization: `Bearer ${token}` } });
+        const res = await fetch(`${apiBase}/api/${basePath}/${dealId}`, { headers: { Authorization: `Bearer ${token}` } });
         const d = await res.json().catch(() => ({}));
-        if (alive && d?.success && d?.deal) setDeal(d.deal);
+        const record = resource === "service" ? d?.order : d?.deal;
+        if (alive && d?.success && record) setDeal(record);
       } catch { /**/ }
     })();
     return () => { alive = false; };
-  }, [dealId, token, apiBase]);
+  }, [dealId, token, apiBase, basePath, resource]);
 
-  const nda: NdaData = useMemo(() => ({
-    dealId: dealId || fallback?.dealId,
-    projectTitle: deal?.title || fallback?.projectTitle || fallback?.title,
-    description: deal?.description || fallback?.description,
-    budget: deal?.amount ?? fallback?.budget ?? fallback?.amount,
-    amount: deal?.amount ?? fallback?.amount,
-    targetDate: deal?.deliveryDate || fallback?.targetDate,
-    clientName: deal?.clientId?.name || fallback?.clientName,
-    freelancerName: deal?.freelancerId?.name || fallback?.freelancerName,
-    effectiveDate: deal?.acceptedAt || fallback?.effectiveDate,
-  }), [deal, dealId, fallback]);
+  const nda: NdaData = useMemo(() => {
+    if (resource === "service") {
+      return {
+        dealId: dealId || fallback?.dealId,
+        projectTitle: deal?.serviceTitle || fallback?.projectTitle || fallback?.title,
+        description: deal?.note || fallback?.description,
+        budget: deal?.amount ?? fallback?.budget ?? fallback?.amount,
+        amount: deal?.amount ?? fallback?.amount,
+        targetDate: deal?.preferredDate || fallback?.targetDate,
+        clientName: deal?.buyerId?.name || fallback?.clientName,
+        freelancerName: deal?.sellerId?.name || fallback?.freelancerName,
+        effectiveDate: deal?.createdAt || fallback?.effectiveDate,
+      };
+    }
+    return {
+      dealId: dealId || fallback?.dealId,
+      projectTitle: deal?.title || fallback?.projectTitle || fallback?.title,
+      description: deal?.description || fallback?.description,
+      budget: deal?.amount ?? fallback?.budget ?? fallback?.amount,
+      amount: deal?.amount ?? fallback?.amount,
+      targetDate: deal?.deliveryDate || fallback?.targetDate,
+      clientName: deal?.clientId?.name || fallback?.clientName,
+      freelancerName: deal?.freelancerId?.name || fallback?.freelancerName,
+      effectiveDate: deal?.acceptedAt || fallback?.effectiveDate,
+    };
+  }, [deal, dealId, fallback, resource]);
 
   return (
     <>
@@ -509,7 +546,7 @@ export default function NdaButton({ dealId, token, apiBase, fallback, variant = 
       </button>
 
       {open && (
-        <NdaModal nda={nda} onClose={() => setOpen(false)} dealId={dealId} token={token} apiBase={apiBase} />
+        <NdaModal nda={nda} onClose={() => setOpen(false)} dealId={dealId} token={token} apiBase={apiBase} resource={resource} />
       )}
     </>
   );

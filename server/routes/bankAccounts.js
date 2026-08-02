@@ -219,6 +219,25 @@ function maskAccountNumber(accountNumber = "") {
   return `XXXX${raw.slice(-4)}`;
 }
 
+function maskUpiId(upiId = "") {
+  const raw = String(upiId);
+  const atIndex = raw.indexOf("@");
+  if (atIndex <= 1) return raw;
+  const handle = raw.slice(0, atIndex);
+  const domain = raw.slice(atIndex);
+  const visible = handle.slice(0, 2);
+  return `${visible}${"*".repeat(Math.max(handle.length - 2, 1))}${domain}`;
+}
+
+function toSafeAccount(account) {
+  const obj = account.toObject ? account.toObject() : account;
+  return {
+    ...obj,
+    maskedAccountNumber: obj.payoutMethod === "upi" ? null : maskAccountNumber(obj.accountNumber),
+    maskedUpiId: obj.payoutMethod === "upi" ? maskUpiId(obj.upiId) : null,
+  };
+}
+
 function normalizeIfsc(ifsc = "") {
   return String(ifsc).trim().toUpperCase();
 }
@@ -263,6 +282,18 @@ async function createRazorpayFundAccount({ contactId, accountHolderName, account
   return fundAccount;
 }
 
+async function createRazorpayVpaFundAccount({ contactId, upiId }) {
+  const fundAccount = await razorpayRequest("/fund_accounts", {
+    contact_id: contactId,
+    account_type: "vpa",
+    vpa: {
+      address: upiId,
+    },
+  });
+
+  return fundAccount;
+}
+
 async function syncUserDefaultFundAccount(userId) {
   const defaultAccount = await BankAccount.findOne({
     userId,
@@ -297,15 +328,27 @@ async function syncUserDefaultFundAccount(userId) {
 router.post("/add", requireAuth, async (req, res) => {
   try {
     const {
+      payoutMethod,
       accountHolderName,
       accountNumber,
       confirmAccountNumber,
       ifscCode,
       bankName,
+      upiId,
       default: makeDefault,
     } = req.body;
 
-    if (
+    const method = payoutMethod === "upi" ? "upi" : "bank";
+    const cleanUpiId = String(upiId || "").trim();
+
+    if (method === "upi") {
+      if (!accountHolderName || !cleanUpiId || !/^[\w.+-]{2,}@[a-zA-Z]{2,}$/.test(cleanUpiId)) {
+        return res.status(400).json({
+          success: false,
+          error: "valid_upi_id_required",
+        });
+      }
+    } else if (
       !accountHolderName ||
       !accountNumber ||
       !confirmAccountNumber ||
@@ -318,11 +361,11 @@ router.post("/add", requireAuth, async (req, res) => {
       });
     }
 
-    const cleanAccountNumber = normalizeAccountNumber(accountNumber);
-    const cleanConfirmAccountNumber = normalizeAccountNumber(confirmAccountNumber);
-    const cleanIfscCode = normalizeIfsc(ifscCode);
+    const cleanAccountNumber = method === "bank" ? normalizeAccountNumber(accountNumber) : undefined;
+    const cleanConfirmAccountNumber = method === "bank" ? normalizeAccountNumber(confirmAccountNumber) : undefined;
+    const cleanIfscCode = method === "bank" ? normalizeIfsc(ifscCode) : undefined;
 
-    if (cleanAccountNumber !== cleanConfirmAccountNumber) {
+    if (method === "bank" && cleanAccountNumber !== cleanConfirmAccountNumber) {
       return res.status(400).json({
         success: false,
         error: "account_numbers_mismatch",
@@ -338,10 +381,11 @@ router.post("/add", requireAuth, async (req, res) => {
       });
     }
 
-    const existingAccount = await BankAccount.findOne({
-      userId: user._id,
-      accountNumber: cleanAccountNumber,
-    });
+    const existingAccount = await BankAccount.findOne(
+      method === "upi"
+        ? { userId: user._id, payoutMethod: "upi", upiId: cleanUpiId }
+        : { userId: user._id, payoutMethod: { $ne: "upi" }, accountNumber: cleanAccountNumber }
+    );
 
     if (existingAccount) {
       return res.status(400).json({
@@ -372,12 +416,15 @@ router.post("/add", requireAuth, async (req, res) => {
     try {
       contactId = await createOrGetRazorpayContact(user);
 
-      fundAccount = await createRazorpayFundAccount({
-        contactId,
-        accountHolderName: String(accountHolderName).trim(),
-        accountNumber: cleanAccountNumber,
-        ifscCode: cleanIfscCode,
-      });
+      fundAccount =
+        method === "upi"
+          ? await createRazorpayVpaFundAccount({ contactId, upiId: cleanUpiId })
+          : await createRazorpayFundAccount({
+              contactId,
+              accountHolderName: String(accountHolderName).trim(),
+              accountNumber: cleanAccountNumber,
+              ifscCode: cleanIfscCode,
+            });
     } catch (razorpayErr) {
       console.error("Razorpay fund account create error:", razorpayErr);
 
@@ -386,17 +433,22 @@ router.post("/add", requireAuth, async (req, res) => {
         error: "razorpay_fund_account_failed",
         message:
           razorpayErr?.message ||
-          "Bank account could not be linked with Razorpay.",
+          `${method === "upi" ? "UPI ID" : "Bank account"} could not be linked with Razorpay.`,
         details: razorpayErr?.razorpay || null,
       });
     }
 
     const bankAccount = await BankAccount.create({
       userId: user._id,
+      payoutMethod: method,
       accountHolderName: String(accountHolderName).trim(),
-      accountNumber: cleanAccountNumber,
-      ifscCode: cleanIfscCode,
-      bankName: String(bankName).trim(),
+      ...(method === "bank"
+        ? {
+            accountNumber: cleanAccountNumber,
+            ifscCode: cleanIfscCode,
+            bankName: String(bankName).trim(),
+          }
+        : { upiId: cleanUpiId }),
       default: isDefault,
       razorpayContactId: contactId,
       razorpayFundAccountId: fundAccount.id,
@@ -415,10 +467,7 @@ router.post("/add", requireAuth, async (req, res) => {
 
     return res.json({
       success: true,
-      bankAccount: {
-        ...bankAccount.toObject(),
-        maskedAccountNumber: maskAccountNumber(bankAccount.accountNumber),
-      },
+      bankAccount: toSafeAccount(bankAccount),
     });
   } catch (err) {
     console.error("Add Bank Account:", err);
@@ -442,10 +491,7 @@ router.get("/", requireAuth, async (req, res) => {
       createdAt: -1,
     });
 
-    const safeAccounts = accounts.map((account) => ({
-      ...account.toObject(),
-      maskedAccountNumber: maskAccountNumber(account.accountNumber),
-    }));
+    const safeAccounts = accounts.map(toSafeAccount);
 
     return res.json({
       success: true,
@@ -474,12 +520,7 @@ router.get("/default", requireAuth, async (req, res) => {
 
     return res.json({
       success: true,
-      defaultAccount: defaultAccount
-        ? {
-            ...defaultAccount.toObject(),
-            maskedAccountNumber: maskAccountNumber(defaultAccount.accountNumber),
-          }
-        : null,
+      defaultAccount: defaultAccount ? toSafeAccount(defaultAccount) : null,
     });
   } catch (err) {
     console.error("Get Default Account:", err);
@@ -525,10 +566,7 @@ router.post("/repair-default", requireAuth, async (req, res) => {
       return res.json({
         success: true,
         message: "Default bank account already linked",
-        defaultAccount: {
-          ...defaultAccount.toObject(),
-          maskedAccountNumber: maskAccountNumber(defaultAccount.accountNumber),
-        },
+        defaultAccount: toSafeAccount(defaultAccount),
       });
     }
 
@@ -538,12 +576,15 @@ router.post("/repair-default", requireAuth, async (req, res) => {
     try {
       contactId = await createOrGetRazorpayContact(user);
 
-      fundAccount = await createRazorpayFundAccount({
-        contactId,
-        accountHolderName: defaultAccount.accountHolderName,
-        accountNumber: defaultAccount.accountNumber,
-        ifscCode: defaultAccount.ifscCode,
-      });
+      fundAccount =
+        defaultAccount.payoutMethod === "upi"
+          ? await createRazorpayVpaFundAccount({ contactId, upiId: defaultAccount.upiId })
+          : await createRazorpayFundAccount({
+              contactId,
+              accountHolderName: defaultAccount.accountHolderName,
+              accountNumber: defaultAccount.accountNumber,
+              ifscCode: defaultAccount.ifscCode,
+            });
     } catch (razorpayErr) {
       console.error("Repair fund account error:", razorpayErr);
 
@@ -575,10 +616,7 @@ router.post("/repair-default", requireAuth, async (req, res) => {
     return res.json({
       success: true,
       message: "Default bank account repaired and linked with Razorpay",
-      defaultAccount: {
-        ...defaultAccount.toObject(),
-        maskedAccountNumber: maskAccountNumber(defaultAccount.accountNumber),
-      },
+      defaultAccount: toSafeAccount(defaultAccount),
     });
   } catch (err) {
     console.error("Repair Default Account:", err);
@@ -637,10 +675,7 @@ router.post("/set-default/:accountId", requireAuth, async (req, res) => {
 
     return res.json({
       success: true,
-      defaultAccount: {
-        ...account.toObject(),
-        maskedAccountNumber: maskAccountNumber(account.accountNumber),
-      },
+      defaultAccount: toSafeAccount(account),
     });
   } catch (err) {
     console.error("Set Default Account:", err);
@@ -701,12 +736,7 @@ router.delete("/:accountId", requireAuth, async (req, res) => {
     return res.json({
       success: true,
       deletedAccountId: deleted._id,
-      newDefaultAccount: newDefaultAccount
-        ? {
-            ...newDefaultAccount.toObject(),
-            maskedAccountNumber: maskAccountNumber(newDefaultAccount.accountNumber),
-          }
-        : null,
+      newDefaultAccount: newDefaultAccount ? toSafeAccount(newDefaultAccount) : null,
     });
   } catch (err) {
     console.error("Delete Bank Account:", err);

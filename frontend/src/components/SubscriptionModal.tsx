@@ -24,7 +24,7 @@ const SubscriptionModal = ({ open, onOpenChange }: SubscriptionModalProps) => {
   const individualPlans = [
     {
       name: "Basic",
-      price: "$9.99",
+      price: "₹9.99",
       period: "month",
       features: [
         "1,000 optimizations per month",
@@ -35,7 +35,7 @@ const SubscriptionModal = ({ open, onOpenChange }: SubscriptionModalProps) => {
     },
     {
       name: "Pro",
-      price: "$19.99",
+      price: "₹19.99",
       period: "month",
       features: [
         "10,000 optimizations per month",
@@ -50,7 +50,7 @@ const SubscriptionModal = ({ open, onOpenChange }: SubscriptionModalProps) => {
   const businessPlans = [
     {
       name: "Team",
-      price: "$49.99",
+      price: "₹49.99",
       period: "month",
       features: [
         "25,000 optimizations per month",
@@ -63,7 +63,7 @@ const SubscriptionModal = ({ open, onOpenChange }: SubscriptionModalProps) => {
     },
     {
       name: "Business",
-      price: "$99.99",
+      price: "₹99.99",
       period: "month",
       features: [
         "100,000 optimizations per month",

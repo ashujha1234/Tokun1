@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Tokun.world Invoice</title>
+  <title>Tokun.World Invoice</title>
 </head>
 
 <body style="margin:0;padding:0;background:#0b0c0f;font-family:Inter,Arial,sans-serif;color:#ffffff">
@@ -21,7 +21,7 @@
             <table width="100%">
               <tr>
                 <td style="font-size:22px;font-weight:600;color:#ffffff">
-                  Tokun.world
+                  Tokun.World
                 </td>
                 <td align="right" style="font-size:13px;opacity:0.95;color:#ffffff">
                   Invoice #{{INVOICE_NO}}<br/>
@@ -39,7 +39,7 @@
               <tr>
                 <td style="font-size:13px;line-height:1.6;color:#ffffff">
                   <strong>FROM</strong><br/>
-                  Tokun.world<br/>
+                  Tokun.World<br/>
                   support@tokun.world
                 </td>
 
@@ -55,6 +55,20 @@
                 </td>
               </tr>
             </table>
+          </td>
+        </tr>
+
+        <!-- INTRO DESCRIPTION (every invoice) -->
+        <tr>
+          <td style="padding:20px 24px 0;font-size:13px;line-height:1.6;color:rgba(255,255,255,0.7)">
+            {{INTRO_TEXT}}
+          </td>
+        </tr>
+
+        <!-- PLAN CARD (subscriptions only — empty string otherwise) -->
+        <tr>
+          <td style="padding:0 24px">
+            {{PLAN_CARD_HTML}}
           </td>
         </tr>
 

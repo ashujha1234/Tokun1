@@ -40,6 +40,16 @@ const TransactionSchema = new mongoose.Schema(
       ref: "Prompt",
       default: null,
     },
+    hireDealId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "HireDeal",
+      default: null,
+    },
+    serviceOrderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ServiceOrder",
+      default: null,
+    },
     status: {
       type: String,
       enum: ["Completed", "Pending", "Failed"],
@@ -119,6 +129,96 @@ WalletSchema.statics.creditSale = async function (sellerId, amount, meta = {}) {
     {
       new: true,
       upsert: true, // create wallet if it doesn't exist yet
+      setDefaultsOnInsert: true,
+    }
+  );
+
+  return wallet;
+};
+
+/**
+ * Credit the freelancer's wallet when hire-deal escrow is released.
+ * Mirrors creditSale's atomic findOneAndUpdate shape but links a HireDeal
+ * instead of a Purchase/Prompt.
+ *
+ * @param {ObjectId|string} freelancerId
+ * @param {number}          amount     - deal.freelancerAmount (net of platformFee)
+ * @param {object}          meta       - { dealId, dealTitle }
+ */
+WalletSchema.statics.creditHireEscrow = async function (freelancerId, amount, meta = {}) {
+  const { dealId = null, dealTitle = "Hire deal" } = meta;
+
+  const wallet = await this.findOneAndUpdate(
+    { userId: freelancerId },
+    {
+      $inc: {
+        availableBalance: amount,
+        totalRevenue: amount,
+      },
+      $push: {
+        transactions: {
+          $each: [
+            {
+              type: "credit",
+              amount,
+              description: `Escrow released: "${dealTitle}"`,
+              hireDealId: dealId,
+              status: "Completed",
+            },
+          ],
+          $sort: { createdAt: -1 },
+          $slice: 100,
+        },
+      },
+    },
+    {
+      new: true,
+      upsert: true,
+      setDefaultsOnInsert: true,
+    }
+  );
+
+  return wallet;
+};
+
+/**
+ * Credit the seller's wallet when a booked service is paid for.
+ * Mirrors creditSale/creditHireEscrow's atomic findOneAndUpdate shape but
+ * links a ServiceOrder instead.
+ *
+ * @param {ObjectId|string} sellerId
+ * @param {number}          amount     - order.sellerAmount (net of platformFee)
+ * @param {object}          meta       - { orderId, serviceTitle }
+ */
+WalletSchema.statics.creditServiceSale = async function (sellerId, amount, meta = {}) {
+  const { orderId = null, serviceTitle = "Service booked" } = meta;
+
+  const wallet = await this.findOneAndUpdate(
+    { userId: sellerId },
+    {
+      $inc: {
+        availableBalance: amount,
+        totalRevenue: amount,
+      },
+      $push: {
+        transactions: {
+          $each: [
+            {
+              type: "credit",
+              amount,
+              description: `Service booked: "${serviceTitle}"`,
+              serviceOrderId: orderId,
+              status: "Completed",
+            },
+          ],
+          $sort: { createdAt: -1 },
+          $slice: 100,
+        },
+      },
+    },
+    {
+      new: true,
+      upsert: true,
       setDefaultsOnInsert: true,
     }
   );

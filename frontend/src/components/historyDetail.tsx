@@ -211,24 +211,21 @@ async function handleDownloadInvoice() {
   className="
     !z-[999999]
     bg-[#17171A] text-white p-0 border-none
-    w-[95vw] sm:w-[90vw] md:w-[85vw] lg:w-[1200px]
-    rounded-[32px]
-    max-h-[95vh]
-    overflow-hidden
+    w-[min(92vw,1040px)] max-w-[1040px]
+    top-[50%] translate-y-[-50%]
+    md:h-[620px] max-h-[85vh]
+    rounded-3xl md:rounded-[32px]
+    overflow-hidden flex flex-col md:flex-row
   "
 >
-          {/* =================== MEDIA BANNER =================== */}
-        
+          {/* =================== MEDIA BANNER — left "page" of the book on desktop =================== */}
+
 <div
   className="
-    relative mx-auto
-    w-[calc(100%-3rem)] max-w-[1300px]
-    aspect-[3/2]
+    relative w-full md:w-[45%] md:h-full shrink-0
+    aspect-[4/3] md:aspect-auto
     bg-[#333335]
     overflow-hidden
-    rounded-[18px] md:rounded-[22px]
-    mt-8
-    shrink-0
   "
 >
             {/* Top-left single badge (category only) */}
@@ -268,13 +265,13 @@ async function handleDownloadInvoice() {
             </div>
           </div>
 
-          {/* =================== DETAILS =================== */}
+          {/* =================== DETAILS — right "page" of the book on desktop =================== */}
           <div
             className="
-             px-4 sm:px-6 md:px-12
+             px-6 sm:px-8 md:px-10
 pt-6 sm:pt-8
 pb-8 sm:pb-10
-              min-h-0 flex-1 overflow-y-auto no-scrollbar
+              min-h-0 md:h-full flex-1 overflow-y-auto no-scrollbar
             "
           >
             {/* Title row */}

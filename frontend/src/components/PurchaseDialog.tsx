@@ -346,7 +346,7 @@ export default function PurchaseDialog({ open, onOpenChange, prompt, onPurchaseC
                           Billed yearly (Save up to 22%)
                         </span>
                       </div>
-                      <div className="pl-7 text-[20px] leading-[1] mt-2">$19.99/month</div>
+                      <div className="pl-7 text-[20px] leading-[1] mt-2">₹19.99/month</div>
                     </button>
 
                     <button
@@ -365,7 +365,7 @@ export default function PurchaseDialog({ open, onOpenChange, prompt, onPurchaseC
                         </div>
                         <div className="text-sm font-medium break-words">Pay Monthly</div>
                       </div>
-                      <div className="pl-7 text-[20px] leading-[1] mt-2 text-white/80">$19.99/month</div>
+                      <div className="pl-7 text-[20px] leading-[1] mt-2 text-white/80">₹19.99/month</div>
                     </button>
                   </div>
 
@@ -380,7 +380,7 @@ export default function PurchaseDialog({ open, onOpenChange, prompt, onPurchaseC
                       <div className="flex items-start justify-between gap-3">
                         <div className="text-[20px] font-semibold leading-[1] break-words">Basic</div>
                         <div className="text-right shrink-0 leading-[1]">
-                          <span className="text-[24px]">$9.99</span><span className="text-sm text-white/60">/month</span>
+                          <span className="text-[24px]">₹9.99</span><span className="text-sm text-white/60">/month</span>
                         </div>
                       </div>
                       <div className="mt-4 grid gap-3 text-[12px] leading-[1] font-normal text-white/80">
@@ -404,7 +404,7 @@ export default function PurchaseDialog({ open, onOpenChange, prompt, onPurchaseC
                       <div className="flex items-start justify-between gap-3">
                         <div className="text-[20px] font-semibold leading-[1] break-words">Pro</div>
                         <div className="text-right shrink-0 leading-[1]">
-                          <span className="text-[24px]">$19.99</span><span className="text-sm text-white/60">/month</span>
+                          <span className="text-[24px]">₹19.99</span><span className="text-sm text-white/60">/month</span>
                         </div>
                       </div>
                       <div className="mt-4 grid gap-3 text-[12px] leading-[1] font-normal text-white/80">

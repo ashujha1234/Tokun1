@@ -1,12 +1,16 @@
 
 const express = require("express");
 const router = express.Router();
+const fs = require("fs");
+const path = require("path");
 const { requireAuth } = require("../utils/auth"); // your JWT middleware
 const Cart=require('../models/Cart');
 const user=require('../models/User');
 const Prompt=require('../models/Prompt');
 const  razorpay  = require("../utils/razorpay");
 const { route } = require("./authRoutes");
+const { generateInvoicePDF } = require("../services/invoice.service");
+const { sendInvoiceEmail } = require("../services/email.service");
 
 
 // POST /api/cart/add/:promptId
@@ -165,11 +169,16 @@ router.post("/checkout", requireAuth, async (req, res) => {
     // create one Razorpay order for all paid prompts
     let order = null;
     if (totalAmount > 0) {
-      const shortReceipt = `cart${req.user._id.toString().slice(-6)}t${Date.now().toString().slice(-6)}`;
+      const shortReceipt = `tokun_cart${req.user._id.toString().slice(-6)}t${Date.now().toString().slice(-6)}`;
       order = await razorpay.orders.create({
         amount: totalAmount,
         currency: "INR",
         receipt: shortReceipt,
+        notes: {
+          project: "Tokun",
+          kind: "CART_CHECKOUT",
+          userId: String(req.user._id),
+        },
       });
     }
 
@@ -244,6 +253,52 @@ router.post("/verify", requireAuth, async (req, res) => {
 
     await req.user.save();
     await Cart.deleteOne({ user: req.user._id }); // clear cart
+
+    /* -------------------- INVOICE (safe — purchases already saved) -------------------- */
+    try {
+      if (purchases.length > 0 && req.user.email) {
+        const invoiceNo = `INV-${purchases[0]._id}`;
+        const date = new Date().toLocaleDateString("en-GB");
+
+        const items = purchases.map((purchase) => ({
+          title: purchase.promptSnapshot?.title || "Prompt",
+          price: Number(purchase.pricePaid || 0),
+        }));
+        const subtotal = items.reduce((s, it) => s + it.price, 0);
+        const gst = +(subtotal * 0.18).toFixed(2);
+        const total = +(subtotal + gst).toFixed(2);
+
+        const logoPath = path.join(__dirname, "../assets/icons/Tokun.png");
+        const logoBase64 = fs.existsSync(logoPath)
+          ? `data:image/png;base64,${fs.readFileSync(logoPath).toString("base64")}`
+          : "";
+
+        const pdfBuffer = await generateInvoicePDF({
+          logo: logoBase64,
+          date,
+          invoiceNo,
+          buyerName: req.user.name || "Customer",
+          buyerEmail: req.user.email || "",
+          items,
+        });
+
+        await sendInvoiceEmail({
+          to: req.user.email,
+          buyerName: req.user.name || "Customer",
+          buyerEmail: req.user.email,
+          items,
+          invoiceNo,
+          date,
+          subtotal,
+          gst,
+          total,
+          pdfBuffer,
+        });
+      }
+    } catch (invoiceErr) {
+      // Invoice fail hone pe bhi checkout success hi return karo
+      console.error("⚠️ Cart invoice/email failed (checkout still success):", invoiceErr.message);
+    }
 
     res.json({ success: true, purchases });
   } catch (err) {

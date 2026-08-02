@@ -3212,7 +3212,7 @@
 // // //         <div className={`${kpiCardBase} p-6`}>
 // // //           <div className="text-xs tracking-[0.2em] text-white/60">TOTAL EARNINGS</div>
 // // //           <div className="mt-4 text-3xl font-semibold">
-// // //             ${Number(seller.totalEarnings || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+// // //             ₹{Number(seller.totalEarnings || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
 // // //           </div>
 // // //           <div className="mt-3 text-sm text-emerald-400">Vs. last 30 days</div>
 // // //         </div>
@@ -3265,7 +3265,7 @@
 // // //                   </div>
 // // //                   <div className="col-span-3 text-sm text-white/75">{p.category || "General"}</div>
 // // //                   <div className="col-span-2 text-sm text-white/75">
-// // //                     {p.price > 0 ? `$${p.price}` : "FREE"}
+// // //                     {p.price > 0 ? `₹${p.price}` : "FREE"}
 // // //                   </div>
 // // //                   <div className="col-span-2 text-sm text-white/75">—</div>
 // // //                   <div className="col-span-1 flex justify-end gap-3 text-white/70">
@@ -7801,7 +7801,7 @@
 // //         <div className={`${kpiCardBase} p-6`}>
 // //           <div className="text-xs tracking-[0.2em] text-white/60">TOTAL EARNINGS</div>
 // //           <div className="mt-4 text-3xl font-semibold">
-// //             ${Number(seller.totalEarnings || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+// //             ₹{Number(seller.totalEarnings || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
 // //           </div>
 // //           <div className="mt-3 text-sm text-emerald-400">Vs. last 30 days</div>
 // //         </div>
@@ -7854,7 +7854,7 @@
 // //                   </div>
 // //                   <div className="col-span-3 text-sm text-white/75">{p.category || "General"}</div>
 // //                   <div className="col-span-2 text-sm text-white/75">
-// //                     {p.price > 0 ? `$${p.price}` : "FREE"}
+// //                     {p.price > 0 ? `₹${p.price}` : "FREE"}
 // //                   </div>
 // //                   <div className="col-span-2 text-sm text-white/75">—</div>
 // //                   <div className="col-span-1 flex justify-end gap-3 text-white/70">
@@ -12581,7 +12581,7 @@
 //         <div className={`${kpiCardBase} p-6`}>
 //           <div className="text-xs tracking-[0.2em] text-white/60">TOTAL EARNINGS</div>
 //           <div className="mt-4 text-3xl font-semibold">
-//             ${Number(seller.totalEarnings || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+//             ₹{Number(seller.totalEarnings || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
 //           </div>
 //           <div className="mt-3 text-sm text-emerald-400">Vs. last 30 days</div>
 //         </div>
@@ -12634,7 +12634,7 @@
 //                   </div>
 //                   <div className="col-span-3 text-sm text-white/75">{p.category || "General"}</div>
 //                   <div className="col-span-2 text-sm text-white/75">
-//                     {p.price > 0 ? `$${p.price}` : "FREE"}
+//                     {p.price > 0 ? `₹${p.price}` : "FREE"}
 //                   </div>
 //                   <div className="col-span-2 text-sm text-white/75">—</div>
 //                   <div className="col-span-1 flex justify-end gap-3 text-white/70">
@@ -16221,11 +16221,62 @@ const SellersView = () => {
             : s
         )
       );
+      setSelectedSeller((prev) =>
+        prev && prev.id === seller.id
+          ? { ...prev, status: action === "block" ? "SUSPENDED" : "ACTIVE" }
+          : prev
+      );
       setConfirmPopup(null);
     } catch (e: any) {
       setActionError(e?.message || "Action failed");
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  // ✅ Suspend / Reactivate toggle from the Seller Profile page (separate from the
+  // list's confirm-popup flow since this component early-returns past that modal).
+  const [profileSuspendLoading, setProfileSuspendLoading] = useState(false);
+  const [profileSuspendError, setProfileSuspendError] = useState<string | null>(null);
+
+  const handleProfileSuspendToggle = async () => {
+    if (!selectedSeller) return;
+    const action = selectedSeller.status === "SUSPENDED" ? "unblock" : "block";
+    const confirmMsg =
+      action === "block"
+        ? `Suspend "${selectedSeller.name}"? They won't be able to sell on the platform.`
+        : `Reactivate "${selectedSeller.name}"? They will regain access to sell.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      setProfileSuspendLoading(true);
+      setProfileSuspendError(null);
+      const token = getToken();
+      const res = await fetch(`${SELLERS_BASE}/${selectedSeller.id}/block`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || "Failed");
+
+      const newProfileStatus = action === "block" ? "SUSPENDED" : "ACTIVE";
+      setSelectedSeller((prev) => (prev ? { ...prev, status: newProfileStatus } : prev));
+      setSellerRows((prev) =>
+        prev.map((s) =>
+          s.id === selectedSeller.id
+            ? { ...s, status: newProfileStatus === "SUSPENDED" ? "Blocked" : "Active" }
+            : s
+        )
+      );
+    } catch (e: any) {
+      setProfileSuspendError(e?.message || "Action failed");
+    } finally {
+      setProfileSuspendLoading(false);
     }
   };
 
@@ -16413,6 +16464,9 @@ setSelectedSeller({
         loading={sellerLoading}
         error={sellerError}
         onBack={closeSellerProfile}
+        onToggleSuspend={handleProfileSuspendToggle}
+        suspendLoading={profileSuspendLoading}
+        suspendError={profileSuspendError}
       />
     );
   }
@@ -17032,7 +17086,42 @@ const closeSellerProfile = () => {
   setSellerError(null);
 };
 
+const [profileSuspendLoading, setProfileSuspendLoading] = useState(false);
+const [profileSuspendError, setProfileSuspendError] = useState<string | null>(null);
 
+const handleProfileSuspendToggle = async () => {
+  if (!selectedSeller) return;
+  const action = selectedSeller.status === "SUSPENDED" ? "unblock" : "block";
+  const confirmMsg =
+    action === "block"
+      ? `Suspend "${selectedSeller.name}"? They won't be able to sell on the platform.`
+      : `Reactivate "${selectedSeller.name}"? They will regain access to sell.`;
+  if (!window.confirm(confirmMsg)) return;
+
+  try {
+    setProfileSuspendLoading(true);
+    setProfileSuspendError(null);
+    const token = getToken();
+    const res = await fetch(`${SELLERS_BASE}/${selectedSeller.id}/block`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: "include",
+      body: JSON.stringify({ action }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data?.success) throw new Error(data?.error || "Failed");
+
+    const newProfileStatus = action === "block" ? "SUSPENDED" : "ACTIVE";
+    setSelectedSeller((prev) => (prev ? { ...prev, status: newProfileStatus } : prev));
+  } catch (e: any) {
+    setProfileSuspendError(e?.message || "Action failed");
+  } finally {
+    setProfileSuspendLoading(false);
+  }
+};
 
   if (selectedSeller) {
     return (
@@ -17042,6 +17131,9 @@ const closeSellerProfile = () => {
         loading={sellerLoading}
         error={sellerError}
         onBack={closeSellerProfile}
+        onToggleSuspend={handleProfileSuspendToggle}
+        suspendLoading={profileSuspendLoading}
+        suspendError={profileSuspendError}
       />
     );
   }
@@ -17351,12 +17443,18 @@ const SellerProfileView = ({
   loading,
   error,
   onBack,
+  onToggleSuspend,
+  suspendLoading,
+  suspendError,
 }: {
   seller: SellerProfile;
   products: PromptProduct[];
   loading: boolean;
   error: string | null;
   onBack: () => void;
+  onToggleSuspend: () => void;
+  suspendLoading: boolean;
+  suspendError: string | null;
 }) => {
 
 
@@ -17389,7 +17487,12 @@ const SellerProfileView = ({
           <div>
             <div className="flex items-center gap-3">
               <div className="text-xl font-semibold">{seller.name}</div>
-              <span className="px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-200 border border-emerald-500/25">
+              <span className={[
+                "px-3 py-1 rounded-full text-xs font-medium border",
+                seller.status === "SUSPENDED"
+                  ? "bg-red-500/15 text-red-200 border-red-500/25"
+                  : "bg-emerald-500/15 text-emerald-200 border-emerald-500/25",
+              ].join(" ")}>
                 {seller.status || "ACTIVE"}
               </span>
             </div>
@@ -17414,20 +17517,35 @@ const SellerProfileView = ({
     <span className="hidden sm:inline">Export</span>
   </button>
 
-  <button className="h-11 rounded-xl border border-red-500/20 bg-red-500/10 hover:bg-red-500/15 text-sm inline-flex items-center justify-center gap-2 text-red-300">
+  <button
+    onClick={onToggleSuspend}
+    disabled={suspendLoading}
+    className={[
+      "h-11 rounded-xl border text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60",
+      seller.status === "SUSPENDED"
+        ? "border-sky-500/20 bg-sky-500/10 hover:bg-sky-500/15 text-sky-300"
+        : "border-red-500/20 bg-red-500/10 hover:bg-red-500/15 text-red-300",
+    ].join(" ")}
+  >
     <Ban className="h-4 w-4" />
-    <span className="hidden sm:inline">Suspend</span>
+    <span className="hidden sm:inline">
+      {suspendLoading ? "..." : seller.status === "SUSPENDED" ? "Reactivate" : "Suspend"}
+    </span>
   </button>
 </div>
 
       </div>
+
+      {suspendError && (
+        <p className="mt-3 text-sm text-red-300">{suspendError}</p>
+      )}
 
       {/* KPI row */}
       <section className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className={`${kpiCardBase} p-6`}>
           <div className="text-xs tracking-[0.2em] text-white/60">TOTAL EARNINGS</div>
           <div className="mt-4 text-3xl font-semibold">
-            ${Number(seller.totalEarnings || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            ₹{Number(seller.totalEarnings || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </div>
           <div className="mt-3 text-sm text-emerald-400">Vs. last 30 days</div>
         </div>
@@ -17480,7 +17598,7 @@ const SellerProfileView = ({
                   </div>
                   <div className="col-span-3 text-sm text-white/75">{p.category || "General"}</div>
                   <div className="col-span-2 text-sm text-white/75">
-                    {p.price > 0 ? `$${p.price}` : "FREE"}
+                    {p.price > 0 ? `₹${p.price}` : "FREE"}
                   </div>
                   <div className="col-span-2 text-sm text-white/75">—</div>
                   <div className="col-span-1 flex justify-end gap-3 text-white/70">
@@ -17512,8 +17630,8 @@ const SellerProfileView = ({
           <div className="mt-6 space-y-4">
             {[
               { t: "New product listing created", d: "React Dash Template was uploaded", time: "2 minutes ago" },
-              { t: "Payout requested", d: "Request for $1,200.00 processed", time: "1 hour ago" },
-              { t: "Updated “Abstract UI Kit”", d: "Modified price from $45 to $49", time: "3 hours ago" },
+              { t: "Payout requested", d: "Request for ₹1,200.00 processed", time: "1 hour ago" },
+              { t: "Updated “Abstract UI Kit”", d: "Modified price from ₹45 to ₹49", time: "3 hours ago" },
               { t: "Policy update", d: "Updated Terms of Service sent to sellers", time: "Yesterday" },
             ].map((a, idx) => (
               <div key={idx} className="flex gap-4">
@@ -17585,9 +17703,11 @@ type WithdrawalRow = {
   userName: string;
   userEmail: string;
   userAvatar?: string;
+  payoutMethod: "bank" | "upi";
   bankName: string;
   accountLast4: string;
   ifscCode?: string;
+  upiId?: string;
   amount: number;
   serviceFee: number;
   netAmount: number;
@@ -17730,10 +17850,12 @@ const WithdrawalsView = () => {
     userName: w.userId?.name || "Unknown",
     userEmail: w.userId?.email || "—",
     userAvatar: w.userId?.avatarUrl || w.userId?.avatar || "",
+    payoutMethod: w.bankAccountId?.payoutMethod === "upi" ? "upi" : "bank",
     bankName: w.bankAccountId?.bankName || "Bank",
     accountLast4:
       String(w.bankAccountId?.accountNumber || "").slice(-4) || "0000",
     ifscCode: w.bankAccountId?.ifscCode || "",
+    upiId: w.bankAccountId?.upiId || "",
     amount: Number(w.amount || 0),
     serviceFee: Number(w.serviceFee || 0),
     netAmount: Number(w.netAmount || 0),
@@ -17915,6 +18037,7 @@ const WithdrawalsView = () => {
           r.userEmail.toLowerCase().includes(q) ||
           r.bankName.toLowerCase().includes(q) ||
           r.ifscCode?.toLowerCase().includes(q) ||
+          r.upiId?.toLowerCase().includes(q) ||
           r.id.toLowerCase().includes(q) ||
           String(r.amount).includes(q) ||
           String(r.netAmount).includes(q)
@@ -18257,23 +18380,31 @@ const WithdrawalsView = () => {
                         </div>
                       </div>
 
-                      {/* Bank */}
+                      {/* Bank / UPI */}
                       <div className="min-w-0">
                         <div className="text-[9px] uppercase tracking-[0.14em] text-white/35">
-                          Bank
+                          {r.payoutMethod === "upi" ? "UPI" : "Bank"}
                         </div>
 
-                        <div className="mt-2 truncate text-[13px] text-white/85">
-                          {r.bankName}
-                        </div>
+                        {r.payoutMethod === "upi" ? (
+                          <div className="mt-2 truncate text-[13px] text-white/85">
+                            {r.upiId || "—"}
+                          </div>
+                        ) : (
+                          <>
+                            <div className="mt-2 truncate text-[13px] text-white/85">
+                              {r.bankName}
+                            </div>
 
-                        <div className="text-[11px] text-white/45">
-                          •••• {r.accountLast4}
-                        </div>
+                            <div className="text-[11px] text-white/45">
+                              •••• {r.accountLast4}
+                            </div>
 
-                        <div className="truncate text-[9px] text-white/35">
-                          IFSC: {r.ifscCode || "—"}
-                        </div>
+                            <div className="truncate text-[9px] text-white/35">
+                              IFSC: {r.ifscCode || "—"}
+                            </div>
+                          </>
+                        )}
                       </div>
 
                       {/* Amount */}
@@ -18486,20 +18617,28 @@ const WithdrawalsView = () => {
 
                 <div className="text-right">
                   <div className="text-[11px] uppercase tracking-wide text-white/45">
-                    Bank
+                    {r.payoutMethod === "upi" ? "UPI" : "Bank"}
                   </div>
 
-                  <div className="mt-1 text-sm text-white/80">
-                    {r.bankName}
-                  </div>
+                  {r.payoutMethod === "upi" ? (
+                    <div className="mt-1 text-sm text-white/80">
+                      {r.upiId || "—"}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-1 text-sm text-white/80">
+                        {r.bankName}
+                      </div>
 
-                  <div className="text-xs text-white/40">
-                    •••• {r.accountLast4}
-                  </div>
+                      <div className="text-xs text-white/40">
+                        •••• {r.accountLast4}
+                      </div>
 
-                  <div className="text-xs text-white/35">
-                    {r.ifscCode || "—"}
-                  </div>
+                      <div className="text-xs text-white/35">
+                        {r.ifscCode || "—"}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -18587,9 +18726,84 @@ const AccountView = ({
   activeToday: number;
   pendingInvite: number;
 }) => {
+  const [emailInput, setEmailInput] = useState(adminEmail);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [profileSaveLoading, setProfileSaveLoading] = useState(false);
+  const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
+  const [profileSaveSuccess, setProfileSaveSuccess] = useState<string | null>(null);
+
+  const handleUpdateAdminProfile = async () => {
+    setProfileSaveError(null);
+    setProfileSaveSuccess(null);
+
+    const emailChanged = emailInput.trim().toLowerCase() !== adminEmail.trim().toLowerCase();
+    const wantsPasswordChange = !!(newPassword || confirmNewPassword);
+
+    if (!currentPassword) {
+      setProfileSaveError("Enter your current password to save changes.");
+      return;
+    }
+    if (!emailChanged && !wantsPasswordChange) {
+      setProfileSaveError("Change the email or enter a new password first.");
+      return;
+    }
+    if (wantsPasswordChange && newPassword !== confirmNewPassword) {
+      setProfileSaveError("New password and confirmation do not match.");
+      return;
+    }
+
+    try {
+      setProfileSaveLoading(true);
+      const token =
+        localStorage.getItem("token") ||
+        localStorage.getItem("tokun_token") ||
+        localStorage.getItem("accessToken") ||
+        localStorage.getItem("authToken") ||
+        localStorage.getItem("adminToken") ||
+        localStorage.getItem("tokun_admin_token") ||
+        "";
+      const res = await fetch(`${API_BASE}/api/admin/auth/profile`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          currentPassword,
+          ...(emailChanged ? { newEmail: emailInput.trim() } : {}),
+          ...(wantsPasswordChange ? { newPassword } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        const messages: Record<string, string> = {
+          invalid_current_password: "Current password is incorrect.",
+          email_already_in_use: "That email is already in use by another admin.",
+          invalid_email: "Enter a valid email address.",
+          password_too_short: "New password must be at least 8 characters.",
+        };
+        throw new Error(messages[data?.error] || data?.error || "Could not update profile.");
+      }
+
+      if (emailChanged) {
+        localStorage.setItem("tokun_admin_email", data.admin.email);
+      }
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setProfileSaveSuccess("Profile updated successfully.");
+      if (emailChanged) {
+        window.location.reload();
+      }
+    } catch (e: any) {
+      setProfileSaveError(e?.message || "Could not update profile.");
+    } finally {
+      setProfileSaveLoading(false);
+    }
+  };
 
   const teamRows = [
     { name: "Abstract UI Kit", status: "Live Listing", role: "Super admin", lastActive: "Online Now" },
@@ -18640,8 +18854,8 @@ const AccountView = ({
             <div>
               <label className="text-xs text-white/60">Email address</label>
               <input
-                value={adminEmail || "—"}
-                readOnly
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
                 className="mt-2 w-full h-11 rounded-xl bg-black/30 border border-white/10 px-4 text-sm text-white/80"
               />
             </div>
@@ -18670,6 +18884,9 @@ const AccountView = ({
       {/* Security Management */}
       <section className={`${kpiCardBase} mt-6 p-6`}>
         <h2 className="text-lg font-semibold">Security Management</h2>
+        <p className="mt-1 text-xs text-white/45">
+          Enter your current password to save an email change, a new password, or both.
+        </p>
 
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-5 items-end">
           <div>
@@ -18705,16 +18922,21 @@ const AccountView = ({
           <div className="flex justify-start lg:justify-end">
             <button
               type="button"
-              onClick={() => {
-                // TODO: call your update password API
-                console.log("update password");
-              }}
-              className="h-11 px-6 rounded-xl bg-[#1677FF] hover:opacity-90 text-sm font-medium"
+              disabled={profileSaveLoading}
+              onClick={handleUpdateAdminProfile}
+              className="h-11 px-6 rounded-xl bg-[#1677FF] hover:opacity-90 text-sm font-medium disabled:opacity-60"
             >
-              Update password
+              {profileSaveLoading ? "Saving..." : "Save changes"}
             </button>
           </div>
         </div>
+
+        {profileSaveError && (
+          <p className="mt-4 text-sm text-red-300">{profileSaveError}</p>
+        )}
+        {profileSaveSuccess && (
+          <p className="mt-4 text-sm text-emerald-300">{profileSaveSuccess}</p>
+        )}
       </section>
 
       {/* KPI Cards */}
@@ -18980,10 +19202,10 @@ const AccountView = ({
         <div className="mt-4 flex items-end justify-between">
           {/* TOTAL REVENUE — Tokun's own commission cut (5% of prompt sales + hire deals), not seller payouts */}
 <div className="text-3xl font-semibold">
-  {platformRevenueLoading ? "…" : `$${platformRevenue.totalRevenue.toLocaleString()}`}
+  {platformRevenueLoading ? "…" : `₹${platformRevenue.totalRevenue.toLocaleString()}`}
 </div>
           <div className="text-sm text-white/50 font-medium">
-            ${platformRevenue.availableBalance.toLocaleString()} available
+            ₹{platformRevenue.availableBalance.toLocaleString()} available
           </div>
         </div>
       </div>
@@ -19042,11 +19264,11 @@ const AccountView = ({
         <div className="flex items-center gap-6">
           <div>
             <div className="text-xs text-white/50">Available</div>
-            <div className="text-2xl font-semibold">${platformRevenue.availableBalance.toLocaleString()}</div>
+            <div className="text-2xl font-semibold">₹{platformRevenue.availableBalance.toLocaleString()}</div>
           </div>
           <div>
             <div className="text-xs text-white/50">Withdrawn so far</div>
-            <div className="text-2xl font-semibold text-white/70">${platformRevenue.totalWithdrawn.toLocaleString()}</div>
+            <div className="text-2xl font-semibold text-white/70">₹{platformRevenue.totalWithdrawn.toLocaleString()}</div>
           </div>
           <button
             onClick={() => { setWithdrawAmount(""); setWithdrawNote(""); setWithdrawModalOpen(true); }}
@@ -19077,7 +19299,7 @@ const AccountView = ({
                   <td className="py-2 text-white/60 capitalize">{t.type}</td>
                   <td className="py-2 text-white/80">{t.description}</td>
                   <td className={`py-2 text-right font-medium ${t.type === "withdrawal" ? "text-red-300" : "text-emerald-300"}`}>
-                    {t.type === "withdrawal" ? "-" : "+"}${t.amount.toLocaleString()}
+                    {t.type === "withdrawal" ? "-" : "+"}₹{t.amount.toLocaleString()}
                   </td>
                 </tr>
               ))}
@@ -19095,10 +19317,10 @@ const AccountView = ({
         >
           <h3 className="text-lg font-semibold text-white">Mark as Withdrawn</h3>
           <p className="mt-1 text-sm text-white/55">
-            Record that this amount was manually transferred to Tokun's bank account. Available: ${platformRevenue.availableBalance.toLocaleString()}
+            Record that this amount was manually transferred to Tokun's bank account. Available: ₹{platformRevenue.availableBalance.toLocaleString()}
           </p>
 
-          <label className="mt-4 block text-sm text-white/70">Amount ($)</label>
+          <label className="mt-4 block text-sm text-white/70">Amount (₹)</label>
           <input
             type="number"
             min={0}

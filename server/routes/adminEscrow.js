@@ -6,21 +6,12 @@ const BankAccount = require("../models/BankAccount");
 const HireDeal = require("../models/HireDeal");
 const Notification = require("../models/Notification");
 const Message = require("../models/Message");
-const User = require("../models/User");
-const Wallet = require("../models/Wallet");   // ✅ NEW — wallet model
-const PlatformWallet = require("../models/PlatformWallet");
+const { releaseEscrowToFreelancer, EscrowAlreadyReleasedError } = require("../services/escrowRelease.service");
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
-
-// ─── Wallet helper ──────────────────────────────────────────────────────────
-const getOrCreateWallet = async (userId) => {
-  let wallet = await Wallet.findOne({ userId });
-  if (!wallet) wallet = await Wallet.create({ userId });
-  return wallet;
-};
 
 
 
@@ -188,56 +179,26 @@ router.post("/:dealId/release", async (req, res) => {
       });
     }
 
-    // ── ✅ Wallet mein credit karo ────────────────────────────────────────
-    const wallet = await getOrCreateWallet(deal.freelancerId._id);
-
-    wallet.availableBalance += payoutAmount;
-
-    // totalRevenue bhi update karo (Wallet.tsx mein "Total Earning" dikhta hai)
-    wallet.totalRevenue = (wallet.totalRevenue || 0) + payoutAmount;
-
-    wallet.transactions.unshift({
-      type: "credit",
-      status: "Completed",
-      amount: payoutAmount,
-      description: `Escrow released: ${deal.title || "Hire Deal"}`,
-      createdAt: new Date(),
-      meta: {
-        source: "escrow_release",
-        hireDealId: String(deal._id),
-        clientName: deal.clientId?.name || "",
-        clientId: deal.clientId?._id || null,
-      },
-    });
-
-    await wallet.save();
-    // ─────────────────────────────────────────────────────────────────────
-
-    // ── Record Tokun's platform fee cut for this deal (non-fatal) ─────────
+    // ── Atomically claim + credit freelancer wallet + record commission ────
+    // (shared with the client approve-work route and the auto-release cron,
+    // so the same deal can never be credited twice)
+    let releaseResult;
     try {
-      await PlatformWallet.recordCommission(Number(deal.platformFee || 0), {
-        source: "hire_escrow",
-        refId: deal._id,
-        description: `Platform fee: "${deal.title || "Hire Deal"}"`,
-      });
-    } catch (revErr) {
-      console.error("PlatformWallet commission record failed:", revErr);
+      releaseResult = await releaseEscrowToFreelancer(deal._id, "admin_released");
+    } catch (releaseErr) {
+      if (releaseErr instanceof EscrowAlreadyReleasedError) {
+        return res.status(400).json({
+          success: false,
+          error: "Escrow was already released for this deal",
+        });
+      }
+      throw releaseErr;
     }
-
-    // ── Deal update ───────────────────────────────────────────────────────
-    deal.status = "COMPLETED";
-    deal.fundsStatus = "RELEASED_TO_FREELANCER";
-    deal.approvedAt = new Date();
-    // razorpayPayoutId set nahi kar rahe — wallet se gaya hai
-    await deal.save();
-
-    // ── User stats update ─────────────────────────────────────────────────
-    await User.findByIdAndUpdate(deal.freelancerId._id, {
-      $inc: {
-        totalEarnings: payoutAmount,
-        completedDeals: 1,
-      },
-    });
+    const wallet = releaseResult.wallet;
+    deal.status = releaseResult.deal.status;
+    deal.fundsStatus = releaseResult.deal.fundsStatus;
+    deal.approvedAt = releaseResult.deal.approvedAt;
+    deal.releasedAt = releaseResult.deal.releasedAt;
 
     // ── Chat message ──────────────────────────────────────────────────────
     if (deal.chatId && deal.clientId?._id) {
@@ -305,7 +266,7 @@ router.post("/:dealId/refund", async (req, res) => {
       });
     }
 
-    const refundAmount = Number(deal.amount || 0);
+    const refundAmount = Number(deal.totalPayable || deal.amount || 0);
 
     if (!refundAmount || refundAmount <= 0) {
       return res.status(400).json({
@@ -314,33 +275,45 @@ router.post("/:dealId/refund", async (req, res) => {
       });
     }
 
-    // ── Razorpay refund (agar original payment ID hai) ────────────────────
-    let refund = null;
-
-    if (deal.razorpayPaymentId) {
-      try {
-        refund = await razorpay.payments.refund(deal.razorpayPaymentId, {
-          amount: Math.round(refundAmount * 100),
-          notes: {
-            reason: reason || "Admin refund",
-            dealId: String(deal._id),
-          },
-        });
-      } catch (razorpayErr) {
-        console.error("Razorpay refund failed:", razorpayErr);
-        // Razorpay fail ho toh bhi deal update karo — manually process hoga
-      }
+    if (!deal.razorpayPaymentId) {
+      return res.status(400).json({
+        success: false,
+        error: "no_payment_id_on_deal",
+        message: "This deal has no Razorpay payment ID on record — cannot process a real refund.",
+      });
     }
 
-    // ── Deal update ───────────────────────────────────────────────────────
+    // ── Razorpay refund — if this call throws, the deal is left untouched
+    // (still HELD_BY_TOKUN) so it can be retried. Previously the deal was
+    // marked REFUNDED even when this failed, letting the DB claim money
+    // was returned when Razorpay had actually rejected the refund.
+    let refund;
+    try {
+      refund = await razorpay.payments.refund(deal.razorpayPaymentId, {
+        amount: Math.round(refundAmount * 100),
+        notes: {
+          reason: reason || "Admin refund",
+          dealId: String(deal._id),
+        },
+      });
+    } catch (razorpayErr) {
+      console.error("Razorpay refund failed:", razorpayErr);
+      return res.status(502).json({
+        success: false,
+        error: "razorpay_refund_failed",
+        message:
+          razorpayErr?.error?.description ||
+          razorpayErr?.message ||
+          "Razorpay rejected the refund — deal was NOT marked as refunded, retry once resolved.",
+      });
+    }
+
+    // ── Deal update — only reached once Razorpay actually confirmed the refund ──
     deal.status = "REFUNDED";
     deal.fundsStatus = "REFUNDED_TO_CLIENT";
     deal.refundedAt = new Date();
     deal.refundReason = reason || "Admin decision";
-
-    if (refund?.id) {
-      deal.razorpayRefundId = refund.id;
-    }
+    deal.razorpayRefundId = refund.id;
 
     await deal.save();
 

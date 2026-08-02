@@ -85,6 +85,7 @@
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
   }
 }
 
@@ -176,6 +177,7 @@
 .gradient-text {
   background: linear-gradient(90deg, #1EAEDB 0%, #33C3F0 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 

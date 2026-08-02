@@ -3,7 +3,8 @@ const mongoose = require("mongoose");
 
 /**
  * PlatformWallet — a single singleton document tracking Tokun's own commission
- * earnings across the whole platform (prompt purchases + hire escrow releases).
+ * earnings across the whole platform (prompt purchases, hire escrow releases,
+ * and subscription payments — subscriptions are 100% Tokun revenue).
  *
  * Fields:
  *  availableBalance: commission not yet marked as withdrawn
@@ -27,7 +28,7 @@ const TransactionSchema = new mongoose.Schema(
     },
     source: {
       type: String,
-      enum: ["prompt_purchase", "hire_escrow", "manual_withdrawal"],
+      enum: ["prompt_purchase", "hire_escrow", "service_purchase", "subscription", "manual_withdrawal"],
       required: true,
     },
     description: {

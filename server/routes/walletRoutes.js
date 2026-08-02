@@ -2041,6 +2041,13 @@ const { requireAuth } = require("../utils/auth");
 const BankAccount = require("../models/BankAccount");
 const WalletWithdrawal = require("../models/WalletWithdrawal");
 
+function describePayoutDestination(bankAccount) {
+  if (bankAccount.payoutMethod === "upi") {
+    return `UPI ${bankAccount.upiId}`;
+  }
+  return `${bankAccount.bankName} ••••${String(bankAccount.accountNumber).slice(-4)}`;
+}
+
 const getRazorpayKeyId = () => process.env.RAZORPAY_KEY_ID;
 const getRazorpaySecret = () => process.env.RAZORPAY_KEY_SECRET;
 
@@ -2177,13 +2184,15 @@ router.post("/add-fund/create-order", requireAuth, async (req, res) => {
     const serviceFee  = selectedMethod === "card" ? 0 : +(amount * 0.02).toFixed(2);
     const debitAmount = +(amount + serviceFee).toFixed(2);
     const amountInPaise = Math.round(debitAmount * 100);
-    const receipt = `topup_${userId.toString().slice(-8)}_${Date.now()}`;
+    const receipt = `tokun_topup_${userId.toString().slice(-8)}_${Date.now()}`;
 
     const order = await Razorpay.orders.create({
       amount: amountInPaise,
       currency: "INR",
       receipt,
       notes: {
+        project: "Tokun",
+        kind: "WALLET_TOPUP",
         userId: String(userId),
         purpose: "wallet_topup",
         walletAmount: String(amount),
@@ -2553,7 +2562,7 @@ router.post("/add-fund/bank-transfer", requireAuth, async (req, res) => {
       type: "credit",
       status: "Pending",
       amount,
-      description: `Bank transfer from ${bankAccount.bankName} ••••${String(bankAccount.accountNumber).slice(-4)}`,
+      description: `Bank transfer from ${describePayoutDestination(bankAccount)}`,
       createdAt: new Date(),
       meta: {
         source: "bank_transfer",
@@ -2619,7 +2628,7 @@ router.post("/withdraw/request", requireAuth, async (req, res) => {
       serviceFee,
       netAmount,
       status: "Pending",
-      note: `Withdrawal to ${bankAccount.bankName} ending ${String(bankAccount.accountNumber).slice(-4)}`,
+      note: `Withdrawal to ${describePayoutDestination(bankAccount)}`,
     });
 
     wallet.availableBalance -= amount;
@@ -2627,7 +2636,7 @@ router.post("/withdraw/request", requireAuth, async (req, res) => {
       type: "debit",
       status: "Pending",
       amount,
-      description: `Withdrawal to ${bankAccount.bankName} ••••${String(bankAccount.accountNumber).slice(-4)}`,
+      description: `Withdrawal to ${describePayoutDestination(bankAccount)}`,
       createdAt: new Date(),
       meta: {
         source: "withdrawal",
@@ -2658,7 +2667,7 @@ router.get("/withdraw/history", requireAuth, async (req, res) => {
   try {
     const withdrawals = await WalletWithdrawal.find({ userId: req.user._id })
       .sort({ createdAt: -1 })
-      .populate("bankAccountId", "bankName accountNumber ifscCode");
+      .populate("bankAccountId", "bankName accountNumber ifscCode payoutMethod upiId");
     return res.json({ success: true, withdrawals });
   } catch (err) {
     console.error("withdraw/history error:", err);
@@ -2890,7 +2899,7 @@ router.get("/admin/pending-withdrawals", async (req, res) => {
     const withdrawals = await WalletWithdrawal.find({ status: "Pending" })
       .sort({ createdAt: -1 })
       .populate("userId", "name email phone avatarUrl avatar")
-      .populate("bankAccountId", "bankName accountNumber ifscCode");
+      .populate("bankAccountId", "bankName accountNumber ifscCode payoutMethod upiId");
 
     return res.json({
       success: true,
@@ -2917,7 +2926,7 @@ router.get("/admin/all-withdrawals", async (req, res) => {
     const withdrawals = await WalletWithdrawal.find({})
       .sort({ createdAt: -1 })
    .populate("userId", "name email phone avatarUrl avatar")
-      .populate("bankAccountId", "bankName accountNumber ifscCode");
+      .populate("bankAccountId", "bankName accountNumber ifscCode payoutMethod upiId");
 
     return res.json({
       success: true,

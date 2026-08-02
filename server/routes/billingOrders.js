@@ -35,12 +35,13 @@ router.post("/create/user", requireAuth, async (req, res) => {
     }
 
     const amount = priceFor(planKey, billingCycle) * 100; // paise
-const receipt = `user-${user._id.toString().slice(-6)}-${Date.now()}`;
+const receipt = `tokun_user-${user._id.toString().slice(-6)}-${Date.now()}`;
     const order = await razorpay.orders.create({
       amount,
       currency: "INR",
       receipt,
       notes: {
+        project: "Tokun",
         kind: "USER",
         planKey,
         billingCycle,
@@ -93,13 +94,14 @@ router.post("/create/org", requireAuth, async (req, res) => {
     //const planKey = "enterprise";
     const amount = priceFor(planKey, billingCycle) * 100; // paise
    // const receipt = `org-${org._id}-${Date.now()}`;
-const receipt = `org-${org._id.toString().slice(-6)}-${Date.now()}`;
+const receipt = `tokun_org-${org._id.toString().slice(-6)}-${Date.now()}`;
 
     const order = await razorpay.orders.create({
       amount,
       currency: "INR",
       receipt,
       notes: {
+        project: "Tokun",
         kind: "ORG",
         planKey,
         billingCycle,

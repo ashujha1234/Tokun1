@@ -11994,6 +11994,7 @@ import { OrbitControls, useGLTF, Environment } from '@react-three/drei'
 import * as THREE from 'three'
 import { useAuth } from '@/contexts/AuthContext'
 // import Footer from '@/components/Footer'
+import CookieConsentBanner from '@/components/CookieConsentBanner'
 import './landing-page.css'
 
 const TOKUN_LOGO_SRC = '/icons/Tokun.png'
@@ -13716,7 +13717,7 @@ const GLOBE_USERS = [
   { lat: 35.6, lon: 139.7, flag: '🇯🇵', name: 'Yuki Tanaka', city: 'Tokyo, Japan', msg: 'I love SmartGen! Saves me hours every day ✨' },
   { lat: 51.5, lon: -0.1, flag: '🇬🇧', name: 'James Harper', city: 'London, UK', msg: 'Cut my GPT-4 costs by 58% with Tokun!' },
   { lat: 37.7, lon: -122.4, flag: '🇺🇸', name: 'Sarah Chen', city: 'San Francisco, USA', msg: 'Best prompt tool on the market 🔥' },
-  { lat: 48.8, lon: 2.3, flag: '🇫🇷', name: 'Léa Moreau', city: 'Paris, France', msg: 'Tokun marketplace made me $800 this month! 💰' },
+  { lat: 48.8, lon: 2.3, flag: '🇫🇷', name: 'Léa Moreau', city: 'Paris, France', msg: 'Tokun marketplace made me ₹800 this month! 💰' },
   { lat: 28.6, lon: 77.2, flag: '🇮🇳', name: 'Arjun Sharma', city: 'New Delhi, India', msg: 'SmartGen is a total game changer for AI devs!' },
   { lat: -23.5, lon: -46.6, flag: '🇧🇷', name: 'Lucas Oliveira', city: 'São Paulo, Brazil', msg: 'Melhor ferramenta de prompts! 🚀' },
   { lat: 1.4, lon: 103.8, flag: '🇸🇬', name: 'Wei Liang', city: 'Singapore', msg: 'Our whole team switched to Tokun. No regrets!' },
@@ -14832,6 +14833,7 @@ export default function LandingPage() {
 
       <FeedbackButton />
       {showCurtain && <LoadingScreen onComplete={handleComplete} />}
+      {!showCurtain && <CookieConsentBanner />}
     </>
   )
 }

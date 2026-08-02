@@ -3214,6 +3214,18 @@ function parseEscrowReleasedData(text?: string) {
   try { return JSON.parse(text.replace("ESCROW_RELEASED::", "")); } catch { return null; }
 }
 
+function parseServiceCardData(text?: string) {
+  if (!text) return null;
+  if (!text.startsWith("SERVICE_CARD::")) return null;
+  try { return JSON.parse(text.replace("SERVICE_CARD::", "")); } catch { return null; }
+}
+
+function parseServiceWorkSubmittedData(text?: string) {
+  if (!text) return null;
+  if (!text.startsWith("SERVICE_WORK_SUBMITTED::")) return null;
+  try { return JSON.parse(text.replace("SERVICE_WORK_SUBMITTED::", "")); } catch { return null; }
+}
+
 function RevisionReasonPopup({
   open,
   loading,
@@ -4606,7 +4618,597 @@ border: "1px solid rgba(74,222,128,0.10)",
   );
 }
 
+// ─────────────────────────────────────────────
+// ServiceOrderCard — Book Now chat card (fixed-price service booking)
+// ─────────────────────────────────────────────
+function ServiceOrderCard({
+  data,
+  isMine,
+  token,
+}: {
+  data: any;
+  isMine?: boolean;
+  token?: string;
+}) {
+  const ACCENT = "#1A73E8";
+  const CARD_BG = "#151A20";
 
+  const [payState, setPayState] = useState<"idle" | "loading" | "paid">("idle");
+
+  const rawId = data?.serviceOrderId || data?.orderId || data?._id;
+  const orderId =
+    rawId && typeof rawId === "object" && rawId._id ? String(rawId._id) : rawId ? String(rawId) : null;
+
+  const handlePayNow = async () => {
+    if (!token) {
+      alert("Login required. Please login again.");
+      return;
+    }
+    if (!orderId) {
+      console.error("ServiceOrderCard: orderId missing. data =", data);
+      alert("Order ID not found. Please refresh the page and try again.");
+      return;
+    }
+
+    setPayState("loading");
+
+    try {
+      const orderRes = await fetch(`${API_BASE}/api/services/orders/${orderId}/create-payment-order`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      const orderData = await orderRes.json();
+
+      if (!orderRes.ok || !orderData.success) {
+        if (orderData.error === "NDA_NOT_SIGNED") {
+          toast({
+            title: "Sign the NDA first",
+            description: orderData.message || "Both parties must sign the NDA before payment can be made.",
+            variant: "destructive",
+          });
+          setPayState("idle");
+          return;
+        }
+        throw new Error(orderData.error || "Failed to create payment order");
+      }
+
+      const { key, order } = orderData;
+
+      const rzp = new (window as any).Razorpay({
+        key,
+        amount: order.amount,
+        currency: order.currency || "INR",
+        name: "Tokun",
+        description: `Booking: ${data?.title || data?.serviceTitle || "Service"}`,
+        order_id: order.id,
+        theme: { color: ACCENT },
+
+        handler: async (response: any) => {
+          try {
+            const verifyRes = await fetch(`${API_BASE}/api/services/orders/${orderId}/verify-payment`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+              }),
+            });
+            const verifyData = await verifyRes.json();
+
+            if (!verifyRes.ok || !verifyData.success) {
+              throw new Error(verifyData.error || "Payment verification failed");
+            }
+
+            setPayState("paid");
+          } catch (err: any) {
+            console.error("Verify error:", err);
+            alert(err.message || "Payment verification failed");
+            setPayState("idle");
+          }
+        },
+
+        modal: {
+          ondismiss: () => setPayState("idle"),
+        },
+      });
+
+      rzp.open();
+    } catch (err: any) {
+      console.error("Pay error:", err);
+      alert(err.message || "Payment failed");
+      setPayState("idle");
+    }
+  };
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        maxWidth: 505,
+        borderRadius: 24,
+        background: CARD_BG,
+        overflow: "hidden",
+        fontFamily: "Inter, sans-serif",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.35), 0 0 0 1px rgba(26,115,232,0.15)",
+      }}
+    >
+      {/* Top bar */}
+      <div
+        style={{
+          height: 50,
+          background: ACCENT,
+          padding: "0 24px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          boxSizing: "border-box",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.25)",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#fff",
+              flexShrink: 0,
+            }}
+          >
+            🛒
+          </span>
+          <span style={{ fontWeight: 600, fontSize: 11, letterSpacing: "2.4px", color: "#FFFFFF" }}>
+            SERVICE BOOKING
+          </span>
+        </div>
+
+        <span
+          style={{
+            height: 24,
+            padding: "0 14px",
+            borderRadius: 999,
+            display: "inline-flex",
+            alignItems: "center",
+            background: payState === "paid" ? "rgba(255,255,255,0.30)" : "rgba(255,255,255,0.18)",
+            border: "1px solid rgba(255,255,255,0.30)",
+            color: "#FFFFFF",
+            fontWeight: 700,
+            fontSize: 10,
+            letterSpacing: "1px",
+          }}
+        >
+          {payState === "paid" ? "PAID" : "PENDING PAYMENT"}
+        </span>
+      </div>
+
+      {/* Body */}
+      <div style={{ padding: "20px 24px 24px", boxSizing: "border-box" }}>
+        <h3 style={{ margin: "0 0 6px", fontWeight: 600, fontSize: 18, lineHeight: "26px", color: "#FFFFFF" }}>
+          {data?.title || data?.serviceTitle || "Service Booking"}
+        </h3>
+
+        <p style={{ margin: "0 0 22px", fontWeight: 400, fontSize: 13, lineHeight: "18px", color: "rgba(255,255,255,0.55)" }}>
+          {data?.message || "Booking request sent. Complete payment to confirm."}
+        </p>
+
+        <div style={{ display: "flex", gap: 12, marginBottom: 22, flexWrap: "wrap" }}>
+          <div
+            style={{
+              flex: "1 1 120px",
+              borderRadius: 14,
+              background: "#0F1A26",
+              border: "1px solid rgba(26,115,232,0.18)",
+              padding: "10px 16px 12px",
+              boxSizing: "border-box",
+            }}
+          >
+            <p style={{ margin: 0, fontWeight: 700, fontSize: 9, letterSpacing: "1.6px", color: "rgba(26,115,232,0.65)" }}>
+              TOTAL
+            </p>
+            <p style={{ margin: "4px 0 0", fontWeight: 700, fontSize: 20, lineHeight: "1.2", color: "#FFFFFF" }}>
+              ₹{Number(data?.amount || data?.basePrice || 0).toLocaleString("en-IN")}
+            </p>
+          </div>
+
+          {data?.note && (
+            <div
+              style={{
+                flex: "1 1 160px",
+                borderRadius: 14,
+                background: "#0F1A26",
+                border: "1px solid rgba(26,115,232,0.18)",
+                padding: "10px 16px 12px",
+                boxSizing: "border-box",
+              }}
+            >
+              <p style={{ margin: 0, fontWeight: 700, fontSize: 9, letterSpacing: "1.6px", color: "rgba(26,115,232,0.65)" }}>
+                PREFERENCE
+              </p>
+              <p style={{ margin: "4px 0 0", fontWeight: 600, fontSize: 13, lineHeight: "1.3", color: "#FFFFFF" }}>
+                {data.note}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div
+          style={{
+            borderRadius: 12,
+            background: "rgba(26,115,232,0.04)",
+            border: "1px solid rgba(26,115,232,0.10)",
+            padding: "12px 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            marginBottom: 20,
+          }}
+        >
+          <span style={{ fontSize: 18, lineHeight: 1 }}>💳</span>
+          <p style={{ margin: 0, fontWeight: 400, fontSize: 12, lineHeight: "18px", color: "rgba(255,255,255,0.65)" }}>
+            Funds will be securely held by <strong style={{ color: "#1A73E8" }}>Tokun Escrow</strong> until work is completed and approved.
+          </p>
+        </div>
+
+        {orderId && (
+          <NdaButton
+            dealId={orderId}
+            token={token}
+            apiBase={API_BASE}
+            fallback={data}
+            resource="service"
+          />
+        )}
+
+        {/* Buyer (sent the card) pays; seller just sees status */}
+        {isMine ? (
+          payState === "paid" ? (
+            <div
+              style={{
+                height: 48,
+                borderRadius: 8,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                background: "rgba(26,115,232,0.1)",
+                border: "1px solid rgba(26,115,232,0.25)",
+                color: "#1A73E8",
+                fontWeight: 600,
+                fontSize: 14,
+              }}
+            >
+              ✓ Payment Successful — Booking confirmed!
+            </div>
+          ) : (
+            <button
+              onClick={handlePayNow}
+              disabled={payState === "loading"}
+              style={{
+                width: "100%",
+                height: 48,
+                border: "none",
+                borderRadius: 8,
+                background: payState === "loading" ? "rgba(26,115,232,0.5)" : ACCENT,
+                color: "#FFFFFF",
+                cursor: payState === "loading" ? "not-allowed" : "pointer",
+                fontWeight: 600,
+                fontSize: 14,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+              }}
+            >
+              {payState === "loading" ? (
+                "Opening..."
+              ) : (
+                <>
+                  <span
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: "50%",
+                      background: "rgba(255,255,255,0.25)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 11,
+                    }}
+                  >
+                    ₹
+                  </span>
+                  Pay Now — ₹{Number(data?.amount || data?.basePrice || 0).toLocaleString("en-IN")}
+                </>
+              )}
+            </button>
+          )
+        ) : (
+          <div
+            style={{
+              height: 48,
+              borderRadius: 8,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(26,115,232,0.06)",
+              border: "1px solid rgba(26,115,232,0.15)",
+              color: "rgba(26,115,232,0.8)",
+              fontWeight: 500,
+              fontSize: 13,
+              gap: 8,
+            }}
+          >
+            {payState === "paid" ? "✓ Payment received" : "⏳ Waiting for client payment..."}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// ServiceWorkSubmittedCard — forked from WorkSubmittedCard, points at
+// /api/services/orders/... instead of /api/hire/...
+// ─────────────────────────────────────────────
+function ServiceWorkSubmittedCard({
+  data,
+  isMine,
+  token,
+}: {
+  data: any;
+  isMine?: boolean;
+  token?: string;
+}) {
+  const [actionState, setActionState] = useState<"idle" | "approving" | "revising" | "done">("idle");
+  const [result, setResult] = useState<"approved" | "revision" | null>(null);
+  const [revisionOpen, setRevisionOpen] = useState(false);
+
+  const orderId = data?.serviceOrderId || data?.orderId;
+
+  useEffect(() => {
+    if (!orderId || !token) return;
+    fetch(`${API_BASE}/api/services/orders/${orderId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d?.success || !d?.order) return;
+        const order = d.order;
+        if (order.status === "COMPLETED" && ["RELEASED_TO_SELLER", "AUTO_RELEASED"].includes(order.fundsStatus)) {
+          setResult("approved");
+          setActionState("done");
+        } else if (order.status === "REVISION_REQUESTED") {
+          setResult("revision");
+          setActionState("done");
+        }
+      })
+      .catch(() => {});
+  }, [orderId, token]);
+
+  const isApproved = actionState === "done" && result === "approved";
+
+  const handleApprove = async () => {
+    if (!token) {
+      alert("Please login again.");
+      return;
+    }
+    if (!orderId) {
+      alert("Order ID missing. Please refresh and try again.");
+      return;
+    }
+    setActionState("approving");
+    try {
+      const res = await fetch(`${API_BASE}/api/services/orders/${orderId}/approve-work`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d?.success) throw new Error(d?.error || "Approval failed");
+      setResult("approved");
+      setActionState("done");
+    } catch (err: any) {
+      alert(err?.message || "Could not approve. Please try again.");
+      setActionState("idle");
+    }
+  };
+
+  const handleRevisionSubmit = async (reason: string) => {
+    if (!token || !orderId) return;
+    setActionState("revising");
+    try {
+      const res = await fetch(`${API_BASE}/api/services/orders/${orderId}/request-revision`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: reason || "Revision requested" }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d?.success) throw new Error(d?.error || "Revision request failed");
+      setRevisionOpen(false);
+      setResult("revision");
+      setActionState("done");
+    } catch (err: any) {
+      alert(err?.message || "Revision request failed");
+      setActionState("idle");
+    }
+  };
+
+  const handleDownload = async (e: React.MouseEvent, fileUrl: string, fileName: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const res = await fetch(fileUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (!res.ok) throw new Error("Download failed");
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = fileName || "work-file";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      window.open(fileUrl, "_blank");
+    }
+  };
+
+  const handlePreview = (e: React.MouseEvent, fileUrl: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.open(fileUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const ACCENT = "#1A73E8";
+
+  return (
+    <>
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 505,
+          borderRadius: 24,
+          background: "#151A20",
+          overflow: "hidden",
+          fontFamily: "Inter, sans-serif",
+          boxShadow: "0 20px 60px rgba(0,0,0,0.35), 0 0 0 1px rgba(26,115,232,0.15)",
+        }}
+      >
+        {/* Top bar */}
+        <div style={{ height: 50, background: ACCENT, padding: "0 24px", display: "flex", alignItems: "center", justifyContent: "space-between", boxSizing: "border-box" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ width: 22, height: 22, borderRadius: "50%", background: "rgba(255,255,255,0.25)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff" }}>
+              📦
+            </span>
+            <span style={{ fontWeight: 600, fontSize: 11, letterSpacing: "2.4px", color: "#FFFFFF" }}>WORK SUBMITTED</span>
+          </div>
+          <span style={{ height: 24, padding: "0 14px", borderRadius: 999, display: "inline-flex", alignItems: "center", background: "rgba(255,255,255,0.18)", border: "1px solid rgba(255,255,255,0.30)", color: "#FFFFFF", fontWeight: 700, fontSize: 10 }}>
+            {result === "approved" ? "APPROVED" : result === "revision" ? "REVISION" : "REVIEW"}
+          </span>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: "20px 24px 24px", boxSizing: "border-box" }}>
+          <h3 style={{ margin: "0 0 6px", fontWeight: 600, fontSize: 18, color: "#FFFFFF" }}>{data?.title || "Service Booking"}</h3>
+          <p style={{ margin: "0 0 20px", fontSize: 13, color: "rgba(255,255,255,0.55)", lineHeight: "18px" }}>
+            {data?.message || "Work has been submitted for review."}
+          </p>
+
+          {data?.deliverables?.length > 0 && (
+            <div style={{ borderRadius: 14, background: "rgba(26,115,232,0.06)", border: "1px solid rgba(26,115,232,0.15)", padding: "14px", marginBottom: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <span style={{ fontSize: 18 }}>📁</span>
+                <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: "1.6px", color: "rgba(26,115,232,0.85)" }}>DELIVERED FILES</p>
+                {!isApproved && !isMine && (
+                  <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, letterSpacing: "0.8px", color: "rgba(250,188,78,0.9)", background: "rgba(250,188,78,0.12)", border: "1px solid rgba(250,188,78,0.25)", borderRadius: 999, padding: "3px 8px" }}>
+                    🔒 APPROVE TO DOWNLOAD
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                {data.deliverables.map((d: any, i: number) => {
+                  const fileUrl = d.url?.startsWith("http") ? d.url : `${API_BASE}${d.url}`;
+                  const fileName = d.name || d.description || `file-${i + 1}`;
+                  return (
+                    <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, borderRadius: 10, background: "rgba(0,0,0,0.22)", border: "1px solid rgba(255,255,255,0.08)", padding: "10px 12px", color: "#FFFFFF" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0, flex: 1 }}>
+                        <span style={{ fontSize: 15 }}>📎</span>
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, color: "#D6E7FB" }}>{fileName}</span>
+                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                        <span style={{ fontSize: 10, color: "rgba(255,255,255,0.38)" }}>
+                          {d.size ? (d.size < 1024 * 1024 ? `${(d.size / 1024).toFixed(1)} KB` : `${(d.size / 1024 / 1024).toFixed(2)} MB`) : ""}
+                        </span>
+                        <button onClick={(e) => handlePreview(e, fileUrl)} title="Preview file" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 6, border: "1px solid rgba(26,115,232,0.22)", color: "#63A6F2", fontSize: 13, cursor: "pointer", background: "none" }}>
+                          👁
+                        </button>
+                        {isApproved || isMine ? (
+                          <button onClick={(e) => handleDownload(e, fileUrl, fileName)} title="Download file" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 6, background: "rgba(25,230,108,0.10)", border: "1px solid rgba(25,230,108,0.22)", color: "#19E66C", fontSize: 16, cursor: "pointer", fontWeight: 700 }}>
+                            ↓
+                          </button>
+                        ) : (
+                          <div title="Download unlocks after you approve and release payment" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 6, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)", color: "rgba(255,255,255,0.22)", fontSize: 13, cursor: "not-allowed" }}>
+                            🔒
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {data?.note && (
+                <div style={{ marginTop: 12, borderRadius: 10, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", padding: "10px 12px", fontSize: 12, lineHeight: "18px", color: "rgba(255,255,255,0.65)", whiteSpace: "pre-line" }}>
+                  {data.note}
+                </div>
+              )}
+
+              {!isMine && !isApproved && (
+                <div style={{ marginTop: 10, borderRadius: 8, background: "rgba(26,115,232,0.08)", border: "1px solid rgba(26,115,232,0.15)", padding: "8px 12px", fontSize: 11, color: "rgba(255,255,255,0.45)", lineHeight: "17px" }}>
+                  ⏱ Payment auto-releases to the creator in <strong style={{ color: "rgba(255,255,255,0.65)" }}>72 hours</strong> if no action is taken. Preview files, then approve or request revision.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Buyer action buttons */}
+          {!isMine && actionState !== "done" && (
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                onClick={handleApprove}
+                disabled={actionState !== "idle"}
+                style={{ flex: "1 1 150px", height: 48, border: "none", borderRadius: 8, background: "linear-gradient(90deg, #19E66C 0%, #0BA84A 100%)", color: "#fff", cursor: actionState !== "idle" ? "not-allowed" : "pointer", fontWeight: 600, fontSize: 14, opacity: actionState !== "idle" ? 0.6 : 1 }}
+              >
+                {actionState === "approving" ? "Releasing Payment..." : "✓ Approve & Release Payment"}
+              </button>
+
+              <button
+                onClick={() => setRevisionOpen(true)}
+                disabled={actionState !== "idle"}
+                style={{ flex: "1 1 130px", height: 48, borderRadius: 8, background: "#202020", border: "1px solid rgba(26,115,232,0.22)", color: "rgba(255,255,255,0.75)", cursor: actionState !== "idle" ? "not-allowed" : "pointer", fontWeight: 400, fontSize: 14, opacity: actionState !== "idle" ? 0.6 : 1 }}
+              >
+                ↺ Request Revision
+              </button>
+            </div>
+          )}
+
+          {actionState === "done" && result === "approved" && (
+            <div style={{ height: 48, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(25,230,108,0.1)", border: "1px solid rgba(25,230,108,0.25)", color: "#19E66C", fontWeight: 600, fontSize: 14 }}>
+              ✓ Payment Released — Files unlocked for download
+            </div>
+          )}
+
+          {actionState === "done" && result === "revision" && (
+            <div style={{ height: 48, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(250,188,78,0.1)", border: "1px solid rgba(250,188,78,0.25)", color: "#FABC4E", fontWeight: 600, fontSize: 14 }}>
+              ↺ Revision requested — Creator will resubmit
+            </div>
+          )}
+
+          {isMine && (
+            <div style={{ height: 48, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(26,115,232,0.06)", border: "1px solid rgba(26,115,232,0.15)", color: "rgba(26,115,232,0.8)", fontWeight: 500, fontSize: 13 }}>
+              ⏳ Waiting for client review — Payment auto-releases in 72 hours
+            </div>
+          )}
+        </div>
+      </div>
+
+      <RevisionReasonPopup
+        open={revisionOpen}
+        loading={actionState === "revising"}
+        onClose={() => {
+          if (actionState !== "revising") setRevisionOpen(false);
+        }}
+        onSubmit={handleRevisionSubmit}
+      />
+    </>
+  );
+}
 
 // ─────────────────────────────────────────────
 // CounterOfferPopup
@@ -5381,7 +5983,9 @@ const startMeetCall = () => {
                       const hireAcceptedData = parseHireAcceptedData(m.text);
 
                        const workSubmittedData = parseWorkSubmittedData(m.text);   // ← nayi
-const escrowReleasedData = parseEscrowReleasedData(m.text); 
+const escrowReleasedData = parseEscrowReleasedData(m.text);
+const serviceCardData = parseServiceCardData(m.text);
+const serviceWorkSubmittedData = parseServiceWorkSubmittedData(m.text);
                       return (
                         <div key={m._id} className={`mt-4 sm:mt-5 flex items-start gap-2 sm:gap-4 ${isMine ? "justify-end" : "justify-start"}`}>
                           {!isMine && <UserAvatar user={activeConvo.otherUser} size="sm" online={false} />}
@@ -5396,6 +6000,10 @@ const escrowReleasedData = parseEscrowReleasedData(m.text);
   <WorkSubmittedCard data={workSubmittedData} isMine={isMine} token={token} />
 ) : escrowReleasedData ? (
   <EscrowReleasedCard data={escrowReleasedData} />
+) : serviceCardData ? (
+  <ServiceOrderCard data={serviceCardData} isMine={isMine} token={token} />
+) : serviceWorkSubmittedData ? (
+  <ServiceWorkSubmittedCard data={serviceWorkSubmittedData} isMine={isMine} token={token} />
 ) : (
                               m.text && (
                                 <div

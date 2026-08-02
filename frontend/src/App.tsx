@@ -13,6 +13,8 @@ import Signup from "./pages/Signup";
 import NotFound from "./pages/NotFound";
 import PromptLibraryPage from "./pages/PromptLibraryPage";
 import PromptMarketplacePage from "./pages/PromptMarketplacePage";
+import FindCreatorsPage from "./pages/FindCreatorsPage";
+import BrandPromptsPage from "./pages/BrandPromptsPage";
 import VerifySignup from "./pages/VerifySignup";
 import VerifyLogin from "./pages/VerifyLogin"; 
 import SmartGenPage from "./pages/SmartGen";
@@ -35,6 +37,8 @@ import AboutPage from "@/pages/AboutPage";
 import SupportPage from "@/pages/SupportPage";
 import CareersPage from "@/pages/CareersPage";
 import BlogPage from "@/pages/BlogPage";
+import PrivacyPolicyPage from "@/pages/PrivacyPolicyPage";
+import TermsPage from "@/pages/TermsPage";
 import ScrollToTop from "@/components/ScrollToTop";
 import Wallet from "@/pages/Wallet";
 import WithdrawFunds from "@/pages/WithdrawFunds";
@@ -155,6 +159,8 @@ export default function App() {
 <Route path="/about" element={<AboutPage />} />
 <Route path="/support" element={<SupportPage />} />
 <Route path="/careers" element={<CareersPage />} />
+<Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+<Route path="/terms" element={<TermsPage />} />
 <Route path="/subscription" element={<Subscription />} />
   <Route path="/prompty-history" element={<PromptHistory />} />
 <Route
@@ -173,6 +179,8 @@ export default function App() {
              // ✅ App.tsx — protect the marketplace route so direct hits also require login
 // ✅ Allow viewing marketplace without login
 <Route path="/prompt-marketplace" element={<PromptMarketplacePage />} />
+<Route path="/find-creators" element={<FindCreatorsPage />} />
+<Route path="/brand-prompts" element={<BrandPromptsPage />} />
 
 
               <Route path="*" element={<NotFound />} />

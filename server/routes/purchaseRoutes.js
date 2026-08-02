@@ -415,7 +415,7 @@ router.post("/create-order/:promptId", requireAuth, requireKycVerified, async (r
 
     const amount = Math.round(prompt.tokun_price * 100);
 
-    const shortReceipt = `p${prompt._id
+    const shortReceipt = `tokun_p${prompt._id
       .toString()
       .slice(-6)}u${req.user._id.toString().slice(-6)}`;
 
@@ -423,6 +423,12 @@ router.post("/create-order/:promptId", requireAuth, requireKycVerified, async (r
       amount,
       currency: "INR",
       receipt: shortReceipt,
+      notes: {
+        project: "Tokun",
+        kind: "PROMPT_PURCHASE",
+        promptId: String(prompt._id),
+        userId: String(req.user._id),
+      },
     });
 
     return res.json({

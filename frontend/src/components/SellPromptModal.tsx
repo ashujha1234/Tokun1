@@ -2249,7 +2249,7 @@ export default function SellPromptModal({
         title: "Prompt uploaded!",
         description: data.prompt?.free
           ? "Your prompt is listed as FREE."
-          : `Your prompt is listed for $${data.prompt?.price} (Tokun price: $${data.prompt?.tokun_price}).`,
+          : `Your prompt is listed for ₹${data.prompt?.price} (Tokun price: ₹${data.prompt?.tokun_price}).`,
       });
 
       onPromptSubmitted?.(data.prompt);
@@ -2438,14 +2438,14 @@ export default function SellPromptModal({
 
             {isPaid && (
               <div className="space-y-2">
-                <Label className="text-sm text-white/80">Price (USD) *</Label>
+                <Label className="text-sm text-white/80">Price (INR) *</Label>
                 <Input
                   type="number"
                   step="0.01"
                   min="0.99"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
-                  placeholder="$9.99"
+                  placeholder="₹9.99"
                   className={fieldBase}
                   required
                 />

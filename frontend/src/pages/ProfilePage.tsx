@@ -2768,7 +2768,7 @@
 
 
 
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { ShieldCheck } from "lucide-react";
 
 import { useEffect, useState , useRef } from "react";
@@ -2778,6 +2778,7 @@ import Footer from "@/components/Footer";
 import { Card, CardContent } from "@/components/ui/card";
 import { User, Star } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "@/components/ui/use-toast";
 import { LuBadgeCheck } from "react-icons/lu"; 
 import { CiMenuKebab } from "react-icons/ci";
 import { FiPhone, FiVideo } from "react-icons/fi";
@@ -2871,6 +2872,7 @@ export default function ProfilePage() {
    const { userId } = useParams<{ userId: string }>();
   // const { user, token } = useAuth() as any;
    const { user, token, persistAuth } = useAuth() as AuthContextType;
+   const location = useLocation();
       const [openDocModal, setOpenDocModal] = useState(false);
 
   const [prompts, setPrompts] = useState<Prompt[]>([]);
@@ -2887,6 +2889,11 @@ const [openBookPopup, setOpenBookPopup] = useState(false);
 
 const [openHirePopup, setOpenHirePopup] = useState(false);
 
+useEffect(() => {
+  if ((location.state as any)?.openHire) {
+    setOpenHirePopup(true);
+  }
+}, [location.state]);
 
 const [openMessagePopup, setOpenMessagePopup] = useState(false);
 const [popupMessage, setPopupMessage] = useState("");
@@ -4492,7 +4499,7 @@ const sendMessage = () => {
 
           <p className="text-white/50 text-sm">Starting at</p>
           <p className="text-3xl font-semibold mt-1">
-            ${selectedService.price}
+            ₹{Number(selectedService.price).toLocaleString("en-IN")}
           </p>
 
           <div className="flex gap-4 text-sm text-white/50 mt-3">
@@ -4542,7 +4549,14 @@ const sendMessage = () => {
 )}
 
 {openBookPopup && (
-  <BookNowPopup onClose={() => setOpenBookPopup(false)} />
+  <BookNowPopup
+    onClose={() => setOpenBookPopup(false)}
+    service={selectedService}
+    token={token}
+    sellerId={userId}
+    sellerName={userName}
+    buyerId={user?._id}
+  />
 )}
 
 
@@ -5022,13 +5036,101 @@ function RequestSentPopup({
 }
 
 
-function BookNowPopup({ onClose }: { onClose: () => void }) {
+function BookNowPopup({
+  onClose,
+  service,
+  token,
+  sellerId,
+  sellerName,
+  buyerId,
+}: {
+  onClose: () => void;
+  service: Service | null;
+  token?: string | null;
+  sellerId?: string;
+  sellerName?: string;
+  buyerId?: string;
+}) {
   const GRADIENT = "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)";
+  const navigate = useNavigate();
+  const now = new Date();
+  const monthLabel = now.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
 
   const [targetDate, setTargetDate] = useState("weeks");
   const [customDateEnabled, setCustomDateEnabled] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(6);
+  const [selectedDate, setSelectedDate] = useState(Math.min(now.getDate() + 1, daysInMonth));
   const [selectedTime, setSelectedTime] = useState("11:00 AM");
+  const [sending, setSending] = useState(false);
+
+  const targetDateLabel =
+    ({
+      days: "Within the next few days",
+      weeks: "Within the next few weeks",
+      month: "In a month or more",
+      unsure: "Not sure",
+    } as Record<string, string>)[targetDate] || "";
+
+  // Mirrors confirmHire: ensure a conversation exists, record the booking,
+  // then drop a SERVICE_CARD:: message into chat where the buyer actually
+  // pays — same flow as the Hire proposal → chat card → Pay Now pattern.
+  const handleConfirm = async () => {
+    if (!service) return;
+    if (!token || !buyerId || !sellerId) {
+      toast({ title: "Please log in to book this service" });
+      return;
+    }
+
+    try {
+      setSending(true);
+
+      const convRes = await fetch(`${API_BASE}/api/chat/conversation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ userId: sellerId }),
+      });
+      const convData = await convRes.json();
+      const convoId = convData?.conversation?._id;
+
+      if (!convRes.ok || !convoId) {
+        throw new Error(convData?.error || "Could not start conversation");
+      }
+
+      const preferredDate = customDateEnabled
+        ? new Date(now.getFullYear(), now.getMonth(), selectedDate).toISOString()
+        : undefined;
+
+      const bookRes = await fetch(`${API_BASE}/api/services/${service._id}/book`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          note: `${targetDateLabel} · Preferred time: ${selectedTime}`,
+          preferredDate,
+          conversationId: convoId,
+        }),
+      });
+      const bookData = await bookRes.json();
+
+      if (!bookRes.ok || !bookData.success) {
+        throw new Error(bookData.error || "Booking failed");
+      }
+
+      socket.emit("join-chat", { conversationId: convoId });
+      socket.emit("send-message", {
+        conversationId: convoId,
+        senderId: buyerId,
+        text: `SERVICE_CARD::${JSON.stringify(bookData.cardPayload)}`,
+      });
+
+      toast({ title: "Booking request sent!", description: "Complete payment in chat to confirm." });
+      onClose();
+      navigate("/chat", { state: { conversationId: convoId } });
+    } catch (err: any) {
+      toast({ title: "Booking failed", description: err.message || "Something went wrong.", variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[99999] bg-black/70 backdrop-blur-sm flex items-center justify-center">
@@ -5037,8 +5139,10 @@ function BookNowPopup({ onClose }: { onClose: () => void }) {
         {/* HEADER */}
         <div className="flex items-start justify-between p-4 border-b border-white/10">
           <div>
-            <p className="font-semibold">Connect with BitePal —</p>
-            <p className="text-xs text-white/60">Responds in about 1 hour</p>
+            <p className="font-semibold">Book: {service?.title || "Service"}</p>
+            <p className="text-xs text-white/60">
+              {sellerName ? `by ${sellerName} · pay in chat` : "You'll pay from the chat after sending"}
+            </p>
           </div>
           <button onClick={onClose} className="text-white/60 hover:text-white">
             ✕
@@ -5096,14 +5200,14 @@ function BookNowPopup({ onClose }: { onClose: () => void }) {
           {/* CALENDAR */}
           {customDateEnabled && (
             <div>
-              <p className="text-sm font-medium mb-2">January 2026</p>
+              <p className="text-sm font-medium mb-2">{monthLabel}</p>
 
               <div className="grid grid-cols-7 gap-2 text-center text-sm">
                 {["S","M","T","W","T","F","S"].map(d => (
                   <span key={d} className="text-white/40">{d}</span>
                 ))}
 
-                {[...Array(31)].map((_, i) => (
+                {[...Array(daysInMonth)].map((_, i) => (
                   <button
                     key={i}
                     onClick={() => setSelectedDate(i + 1)}
@@ -5138,16 +5242,25 @@ function BookNowPopup({ onClose }: { onClose: () => void }) {
               ))}
             </div>
           </div>
+
+          {/* PRICE SUMMARY */}
+          {service && (
+            <div className="rounded-xl bg-white/5 border border-white/10 p-3 flex items-center justify-between">
+              <span className="text-sm text-white/60">Total</span>
+              <span className="text-lg font-semibold">₹{Number(service.price).toLocaleString("en-IN")}</span>
+            </div>
+          )}
         </div>
 
         {/* FOOTER */}
         <div className="p-4 border-t border-white/10">
           <button
-            className="w-full h-11 rounded-full text-sm font-semibold text-white"
+            className="w-full h-11 rounded-full text-sm font-semibold text-white disabled:opacity-60"
             style={{ background: GRADIENT }}
-            onClick={onClose}
+            onClick={handleConfirm}
+            disabled={sending || !service}
           >
-            Confirm
+            {sending ? "Sending…" : "Send Booking Request"}
           </button>
         </div>
       </div>

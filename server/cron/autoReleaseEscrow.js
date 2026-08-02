@@ -2,22 +2,15 @@
 
 const cron = require("node-cron");
 const HireDeal = require("../models/HireDeal");       // adjust path
-const Wallet = require("../models/Wallet");            // adjust path
-const PlatformWallet = require("../models/PlatformWallet");
 const Notification = require("../models/Notification"); // adjust path
 const Message = require("../models/Message");          // adjust path
-const User = require("../models/User");                // adjust path
+const { releaseEscrowToFreelancer, EscrowAlreadyReleasedError } = require("../services/escrowRelease.service");
 
 const AUTO_RELEASE_HOURS = 72; // change as needed
 
-// ── Wallet helper (same as adminEscrow.js) ──────────────────────────────────
-const getOrCreateWallet = async (userId) => {
-  let wallet = await Wallet.findOne({ userId });
-  if (!wallet) wallet = await Wallet.create({ userId });
-  return wallet;
-};
-
-// ── Core release logic (mirrors POST /api/admin/escrow/:dealId/release) ──────
+// ── Core release logic — delegates the actual credit/commission/status-claim
+// to the shared service (same one used by client approve-work and admin
+// force-release) so all three paths can never double-credit the same deal.
 async function releaseEscrowToWallet(deal) {
   const payoutAmount = Number(deal.freelancerAmount || 0);
 
@@ -25,55 +18,17 @@ async function releaseEscrowToWallet(deal) {
     throw new Error(`Deal ${deal._id}: invalid freelancerAmount`);
   }
 
-  // 1. Credit freelancer wallet
-  const wallet = await getOrCreateWallet(deal.freelancerId._id);
-  wallet.availableBalance = (wallet.availableBalance || 0) + payoutAmount;
-  wallet.totalRevenue = (wallet.totalRevenue || 0) + payoutAmount;
-
-  wallet.transactions.unshift({
-    type: "credit",
-    status: "Completed",
-    amount: payoutAmount,
-    description: `Auto-released after 72h: ${deal.title || "Hire Deal"}`,
-    createdAt: new Date(),
-    meta: {
-      source: "auto_escrow_release",
-      hireDealId: String(deal._id),
-      clientName: deal.clientId?.name || "",
-      clientId: deal.clientId?._id || null,
-    },
-  });
-
-  await wallet.save();
-
-  // 1b. Record Tokun's platform fee cut for this deal (non-fatal)
   try {
-    await PlatformWallet.recordCommission(Number(deal.platformFee || 0), {
-      source: "hire_escrow",
-      refId: deal._id,
-      description: `Platform fee: "${deal.title || "Hire Deal"}" (auto-released)`,
-    });
-  } catch (revErr) {
-    console.error(`[AutoRelease] PlatformWallet commission record failed for deal ${deal._id}:`, revErr.message);
+    await releaseEscrowToFreelancer(deal._id, "auto_released");
+  } catch (err) {
+    if (err instanceof EscrowAlreadyReleasedError) {
+      // Client approved or admin released it in the same window — nothing to do.
+      return;
+    }
+    throw err;
   }
 
-  // 2. Update deal
-  deal.status = "COMPLETED";
-  deal.fundsStatus = "AUTO_RELEASED";
-  deal.approvedAt = new Date();
-  deal.autoReleased = true;
-  deal.autoReleasedAt = new Date();
-  await deal.save();
-
-  // 3. Update freelancer user stats
-  await User.findByIdAndUpdate(deal.freelancerId._id, {
-    $inc: {
-      totalEarnings: payoutAmount,
-      completedDeals: 1,
-    },
-  });
-
-  // 4. Chat message
+  // Chat message
   if (deal.chatId && deal.clientId?._id) {
     await Message.create({
       conversationId: deal.chatId,
@@ -89,7 +44,7 @@ async function releaseEscrowToWallet(deal) {
     });
   }
 
-  // 5. Notify freelancer
+  // Notify freelancer
   await Notification.create({
     senderId: deal.clientId?._id,
     senderName: "Tokun",
@@ -100,7 +55,7 @@ async function releaseEscrowToWallet(deal) {
     message: `Payment of ₹${payoutAmount} was auto-released to your Tokun Wallet after 72 hours. You can withdraw to your bank from the wallet.`,
   });
 
-  // 6. Notify client
+  // Notify client
   await Notification.create({
     senderId: deal.freelancerId?._id,
     senderName: "Tokun",

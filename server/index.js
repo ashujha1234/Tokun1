@@ -4399,6 +4399,7 @@ const { requireAuth } = require("./utils/auth");
 const smartgenDetectRoutes = require("./routes/smartgenDetectRoutes");
 
 require("./cron/autoReleaseEscrow");
+require("./cron/autoReleaseServiceEscrow");
 
 const app = express();
 
@@ -4428,6 +4429,16 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
+
+// Razorpay webhook needs the RAW request body for HMAC signature verification —
+// must be registered before the global express.json() below, since that
+// middleware would otherwise consume/parse the stream first.
+const { handleRazorpayWebhook } = require("./routes/razorpayWebhook");
+app.post(
+  "/api/hire/webhook/razorpay",
+  express.raw({ type: "application/json" }),
+  handleRazorpayWebhook
+);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

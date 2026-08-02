@@ -262,6 +262,17 @@ const HireDealSchema = new mongoose.Schema(
       required: true,
     },
 
+    // Client-side commission (Tokun charges both sides — same % as platformFee)
+    clientFee: {
+      type: Number,
+      default: 0,
+    },
+
+    // amount + clientFee — the real Razorpay order amount and refund amount
+    totalPayable: {
+      type: Number,
+    },
+
     currency: {
       type: String,
       default: "INR",
@@ -337,6 +348,24 @@ const HireDealSchema = new mongoose.Schema(
     workSubmittedAt: Date,
     approvedAt: Date,
     releasedAt: Date,
+
+    // Refund audit trail (previously set in code but not persisted — schema bug)
+    refundedAt: Date,
+    refundReason: { type: String, default: "" },
+    razorpayRefundId: { type: String, default: "" },
+
+    // Auto-release audit trail (same previously-silent-drop issue)
+    autoReleased: { type: Boolean, default: false },
+    autoReleasedAt: Date,
+
+    // Cancel/decline (pre-payment only)
+    cancelledAt: Date,
+    cancelReason: { type: String, default: "" },
+    cancelledBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
 
     ndaClientUrl: { type: String, default: "" },
     ndaFreelancerUrl: { type: String, default: "" },

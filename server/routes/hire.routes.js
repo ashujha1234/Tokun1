@@ -356,6 +356,9 @@ const { requireAuth } = require("../utils/auth");
 const HireDeal = require("../models/HireDeal");
 const Notification = require("../models/Notification");
 const Message = require("../models/Message");
+const { releaseEscrowToFreelancer, EscrowAlreadyReleasedError } = require("../services/escrowRelease.service");
+const { generateInvoicePDF } = require("../services/invoice.service");
+const { sendInvoiceEmail } = require("../services/email.service");
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -446,11 +449,13 @@ router.post("/create-proposal", requireAuth, async (req, res) => {
       });
     }
 
-    // Same commission % as prompt purchases (server/.env TOKUN_COMMISSION_PERCENT) —
-    // Tokun's cut comes out of the freelancer's payout, the client pays `amount` as agreed.
+    // Tokun charges the same commission % on BOTH sides: platformFee comes out
+    // of the freelancer's payout, clientFee is added on top of what the client pays.
     const commissionPercent = Number(process.env.TOKUN_COMMISSION_PERCENT || 0);
     const platformFee = +(amount * commissionPercent / 100).toFixed(2);
     const freelancerAmount = +(amount - platformFee).toFixed(2);
+    const clientFee = +(amount * commissionPercent / 100).toFixed(2);
+    const totalPayable = +(amount + clientFee).toFixed(2);
 
     const deal = await HireDeal.create({
       clientId: req.user._id,
@@ -461,6 +466,8 @@ router.post("/create-proposal", requireAuth, async (req, res) => {
       amount,
       platformFee,
       freelancerAmount,
+      clientFee,
+      totalPayable,
       currency: "INR",
       deliveryDate: targetDate ? new Date(targetDate) : undefined,
       status: "PENDING_ACCEPTANCE",
@@ -707,6 +714,48 @@ router.post("/:dealId/accept", requireAuth, async (req, res) => {
   }
 });
 
+// ─── CANCEL / DECLINE (pre-payment only) ────────────────────────────────────────
+router.post("/:dealId/cancel", requireAuth, async (req, res) => {
+  try {
+    const { reason } = req.body || {};
+    const deal = await HireDeal.findById(req.params.dealId);
+
+    if (!deal) {
+      return res.status(404).json({ success: false, error: "Hire deal not found" });
+    }
+
+    const isClient = String(deal.clientId) === String(req.user._id);
+    const isFreelancer = String(deal.freelancerId) === String(req.user._id);
+    if (!isClient && !isFreelancer) {
+      return res.status(403).json({ success: false, error: "Not part of this deal" });
+    }
+
+    if (!["PENDING_ACCEPTANCE", "ACCEPTED_WAITING_PAYMENT"].includes(deal.status)) {
+      return res.status(400).json({
+        success: false,
+        error: "Deal can only be cancelled before payment. Use the refund flow once funded.",
+      });
+    }
+    if (deal.paymentStatus !== "NOT_PAID") {
+      return res.status(400).json({
+        success: false,
+        error: "Deal has already been paid for — cancellation isn't available anymore.",
+      });
+    }
+
+    deal.status = "CANCELLED";
+    deal.cancelledAt = new Date();
+    deal.cancelReason = String(reason || "").slice(0, 500);
+    deal.cancelledBy = req.user._id;
+    await deal.save();
+
+    return res.json({ success: true, message: "Deal cancelled", deal });
+  } catch (err) {
+    console.error("cancel hire deal error:", err);
+    return res.status(500).json({ success: false, error: "Failed to cancel deal" });
+  }
+});
+
 // ─── CREATE RAZORPAY ORDER ──────────────────────────────────────────────────────
 router.post("/:dealId/create-payment-order", requireAuth, async (req, res) => {
   try {
@@ -737,11 +786,15 @@ router.post("/:dealId/create-payment-order", requireAuth, async (req, res) => {
       });
     }
 
+    const chargeAmount = Number(deal.totalPayable || deal.amount);
+
     const order = await razorpay.orders.create({
-      amount: Math.round(Number(deal.amount) * 100),
+      amount: Math.round(chargeAmount * 100),
       currency: deal.currency || "INR",
-      receipt: `hire_${deal._id}`,
+      receipt: `tokun_hire_${deal._id}`,
       notes: {
+        project: "Tokun",
+        kind: "HIRE_ESCROW",
         dealId: String(deal._id),
         clientId: String(deal.clientId),
         freelancerId: String(deal.freelancerId),
@@ -826,6 +879,57 @@ router.post("/:dealId/verify-payment", requireAuth, async (req, res) => {
         fundsStatus: "HELD_BY_TOKUN",
       },
     });
+
+    /* -------------------- INVOICE (safe — deal already saved) -------------------- */
+    try {
+      const client = deal.clientId;
+      if (client?.email) {
+        const invoiceNo = `INV-${deal._id}`;
+        const date = new Date(deal.paidAt || Date.now()).toLocaleDateString("en-GB");
+
+        const chargeAmount = Number(deal.totalPayable || deal.amount);
+        const items = [
+          {
+            title: `Hire: ${deal.title || "Custom work"}`,
+            subtitle: deal.freelancerId?.name ? `Freelancer: ${deal.freelancerId.name}` : undefined,
+            price: chargeAmount,
+          },
+        ];
+        const subtotal = chargeAmount;
+        const gst = +(subtotal * 0.18).toFixed(2);
+        const total = +(subtotal + gst).toFixed(2);
+
+        const logoPath = path.join(__dirname, "../assets/icons/Tokun.png");
+        const logoBase64 = fs.existsSync(logoPath)
+          ? `data:image/png;base64,${fs.readFileSync(logoPath).toString("base64")}`
+          : "";
+
+        const pdfBuffer = await generateInvoicePDF({
+          logo: logoBase64,
+          date,
+          invoiceNo,
+          buyerName: client.name || "Customer",
+          buyerEmail: client.email || "",
+          items,
+        });
+
+        await sendInvoiceEmail({
+          to: client.email,
+          buyerName: client.name || "Customer",
+          buyerEmail: client.email,
+          items,
+          invoiceNo,
+          date,
+          subtotal,
+          gst,
+          total,
+          pdfBuffer,
+        });
+      }
+    } catch (invoiceErr) {
+      // Invoice fail hone pe bhi payment-verified success hi return karo
+      console.error("⚠️ Hire invoice/email failed (payment still verified):", invoiceErr.message);
+    }
 
     return res.json({
       success: true,
@@ -1029,60 +1133,35 @@ router.post("/:dealId/approve-work", requireAuth, async (req, res) => {
       return res
         .status(400)
         .json({ success: false, error: "Funds not in escrow" });
- 
+
     const payoutAmount = Number(deal.freelancerAmount || 0);
- 
+
     if (!payoutAmount || payoutAmount <= 0)
       return res
         .status(400)
         .json({ success: false, error: "Invalid payout amount" });
- 
-    // ── Credit freelancer Tokun Wallet ──────────────────────────────────────
-    const wallet = await getOrCreateWallet(deal.freelancerId._id);
-    wallet.availableBalance = (wallet.availableBalance || 0) + payoutAmount;
-    wallet.totalRevenue = (wallet.totalRevenue || 0) + payoutAmount;
- 
-    wallet.transactions.unshift({
-      type: "credit",
-      status: "Completed",
-      amount: payoutAmount,
-      description: `Escrow released: ${deal.title || "Hire Deal"}`,
-      createdAt: new Date(),
-      meta: {
-        source: "escrow_release",
-        hireDealId: String(deal._id),
-        clientName: deal.clientId?.name || "",
-        clientId: deal.clientId?._id || null,
-      },
-    });
- 
-    await wallet.save();
 
-    // ── Record Tokun's platform fee cut for this deal (non-fatal) ───────────
+    // ── Atomically claim + credit freelancer wallet + record commission ────
+    // (shared with admin force-release and the auto-release cron so this
+    // logic only exists once, and the same deal can never be credited twice)
+    let releaseResult;
     try {
-      await PlatformWallet.recordCommission(Number(deal.platformFee || 0), {
-        source: "hire_escrow",
-        refId: deal._id,
-        description: `Platform fee: "${deal.title || "Hire Deal"}"`,
-      });
-    } catch (revErr) {
-      console.error("PlatformWallet commission record failed:", revErr);
+      releaseResult = await releaseEscrowToFreelancer(deal._id, "client_approved");
+    } catch (releaseErr) {
+      if (releaseErr instanceof EscrowAlreadyReleasedError) {
+        return res.status(400).json({
+          success: false,
+          error: "Escrow was already released for this deal",
+        });
+      }
+      throw releaseErr;
     }
+    const wallet = releaseResult.wallet;
+    deal.status = releaseResult.deal.status;
+    deal.fundsStatus = releaseResult.deal.fundsStatus;
+    deal.approvedAt = releaseResult.deal.approvedAt;
+    deal.releasedAt = releaseResult.deal.releasedAt;
 
-    // ── Update deal ─────────────────────────────────────────────────────────
-    deal.status = "COMPLETED";
-    deal.fundsStatus = "RELEASED_TO_FREELANCER";
-    deal.approvedAt = new Date();
-    await deal.save();
- 
-    // ── Update freelancer user stats ────────────────────────────────────────
-    await User.findByIdAndUpdate(deal.freelancerId._id, {
-      $inc: {
-        totalEarnings: payoutAmount,
-        completedDeals: 1,
-      },
-    });
- 
     // ── Notify freelancer ───────────────────────────────────────────────────
     await Notification.create({
       senderId: deal.clientId._id,
