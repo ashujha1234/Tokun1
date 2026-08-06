@@ -39,6 +39,8 @@ import CareersPage from "@/pages/CareersPage";
 import BlogPage from "@/pages/BlogPage";
 import PrivacyPolicyPage from "@/pages/PrivacyPolicyPage";
 import TermsPage from "@/pages/TermsPage";
+import RefundPolicyPage from "@/pages/RefundPolicyPage";
+import ReportPolicyPage from "@/pages/ReportPolicyPage";
 import ScrollToTop from "@/components/ScrollToTop";
 import Wallet from "@/pages/Wallet";
 import WithdrawFunds from "@/pages/WithdrawFunds";
@@ -171,6 +173,8 @@ export default function App() {
 <Route path="/careers" element={<CareersPage />} />
 <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
 <Route path="/terms" element={<TermsPage />} />
+<Route path="/refund-policy" element={<RefundPolicyPage />} />
+<Route path="/report-policy" element={<ReportPolicyPage />} />
 <Route path="/subscription" element={<Subscription />} />
   <Route path="/prompty-history" element={<PromptHistory />} />
 <Route

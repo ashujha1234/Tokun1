@@ -1,9 +1,9 @@
 // routes/adminRoutes.js
 const express = require("express");
 const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
 const AdminUser = require("../models/AdminUser");
 const { requireAuth } = require("../utils/auth");
+const { signAdminToken } = require("../utils/authTokens");
 
 const router = express.Router();
 
@@ -36,12 +36,11 @@ router.post("/auth/login", async (req, res) => {
     admin.lastLoginAt = new Date();
     await admin.save();
 
-    // ✅ Admin JWT — "type: admin" se requireAuth ise AdminUser samajhta hai
-    const token = jwt.sign(
-      { sub: admin._id.toString(), type: "admin" },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    // ✅ Admin JWT — "type: admin" se requireAuth ise AdminUser samajhta hai.
+    // TTL is now 12h (was 7d). An admin can approve refunds, suspend sellers and
+    // remove listings, so a stolen admin token is worth much more than a user's
+    // and must not stay valid for a week. Admin sessions are not auto-renewed.
+    const token = signAdminToken(admin);
 
     return res.json({
       success: true,

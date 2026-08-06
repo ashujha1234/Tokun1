@@ -578,11 +578,16 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
     member_cap_exceeded: "You've used up your assigned token cap.",
     insufficient_quota: "You've used up your monthly token quota.",
   };
-  const warnIfQuotaSaveFailed = (res: {success:boolean; error?: string}) => {
+  const warnIfQuotaSaveFailed = (res: {success:boolean; error?: string; message?: string}) => {
     if (res.success) return;
     toast({
       title: "Couldn't record token usage",
-      description: quotaSaveErrorMessages[res.error || ""] || `This generation won't count toward your usage widget (${res.error}).`,
+      // The server now sends a written reason for every quota/plan failure, so
+      // prefer it; the local map stays as a fallback for older responses.
+      description:
+        res.message
+        || quotaSaveErrorMessages[res.error || ""]
+        || `This generation won't count toward your usage widget (${res.error}).`,
     });
   };
 
@@ -593,6 +598,16 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
     // Token limit reached → block generation and prompt to subscribe.
     if (isOutOfTokens(user)) { toast(TOKEN_LIMIT_TOAST); return; }
     if (isGenerating) { abortRef.current?.abort(); return; }
+
+    // Server-side gate, asked BEFORE the model runs. isOutOfTokens above only
+    // reads the cached user, so it can't see things like an organisation that
+    // never bought a plan — that used to surface only when saving, after the
+    // generation had already streamed onto the screen.
+    const gate = await llmService.checkSmartgenEligibility();
+    if (!gate.allowed) {
+      toast({ title: "Can't generate", description: gate.message, variant: "destructive" });
+      return;
+    }
 
     setShowDeepModal(false);
     setIsGenerating(true); setGenerated(""); setStreamedText(""); setIsEditing(false); setTokensUsed(null);
@@ -670,6 +685,16 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
     if (!user) { navigate("/login"); return; }
     if (!attachedPdf) return;
     if (isGenerating) { abortRef.current?.abort(); return; }
+
+    // This path spends tokens too (see saveSmartgen below), so it needs the same
+    // gate as doGenerate — otherwise a user with no plan pays nothing and still
+    // gets a converted prompt.
+    if (isOutOfTokens(user)) { toast(TOKEN_LIMIT_TOAST); return; }
+    const gate = await llmService.checkSmartgenEligibility();
+    if (!gate.allowed) {
+      toast({ title: "Can't generate", description: gate.message, variant: "destructive" });
+      return;
+    }
 
     setIsGenerating(true); setGenerated(""); setStreamedText(""); setIsEditing(false); setTokensUsed(null);
 

@@ -60,7 +60,14 @@ type CartItem = {
   title: string;
   description?: string;
   category: string;
+  /**
+   * What checkout will charge for this item — list price plus Tokun's platform
+   * fee. Deliberately not the seller's list price: this figure is summed into
+   * the cart total the buyer sees, and /api/cart/checkout bills the same one.
+   */
   price?: number;
+  /** The seller's list price, kept so a fee breakdown can be shown. */
+  listPrice?: number;
   imageUrl?: string;
   videoUrl?: string;
   preview?: string;
@@ -103,7 +110,11 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
             title: i.prompt.title,
             description: i.prompt.description,
             category: i.prompt.categories?.[0]?.name || "General",
-            price: i.prompt.price,
+            // Falls back to the list price rather than 0 — a prompt saved before
+            // the tokun_price hook existed would otherwise show up as free.
+            price:
+              Number(i.prompt.tokun_price) > 0 ? Number(i.prompt.tokun_price) : i.prompt.price,
+            listPrice: i.prompt.price,
             imageUrl: i.prompt.attachment?.type === "image"
   ? (i.prompt.attachment.path?.startsWith("http")
       ? i.prompt.attachment.path

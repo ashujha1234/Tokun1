@@ -237,12 +237,9 @@ import Header from "@/components/Header";
 import PromptInput from "@/components/PromptInput";
 import SuggestionsPanel from "@/components/SuggestionsPanel";
 import TokenCircle from "@/components/TokenCircle";
-import ApiKeyModal from "@/components/ApiKeyModal";
 import TokenUsageSection from "@/components/TokenUsageSection";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import AppNavigation from "@/components/AppNavigation";
-import { llmService } from "@/services/llmService";
 
 type NavState = { initialText?: string } | null;
 
@@ -258,12 +255,9 @@ export default function PromptOptimizationPage() {
     setOptimizerInput,
     optimizerResult,
     setOptimizerResult,
-    clearOptimizer,
   } = usePrompt();
 
   const [isLoading, setIsLoading] = useState(true);
-  const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false);
-  const [isKeySet, setIsKeySet] = useState(false);
 
   const [originalTokens, setOriginalTokens] = useState(0);
   const [originalWords, setOriginalWords] = useState(0);
@@ -274,9 +268,6 @@ export default function PromptOptimizationPage() {
   useEffect(() => {
     setIsLoading(false);
     if (!isAuthenticated) navigate("/login");
-
-    const cfg = llmService.getConfig();
-    setIsKeySet(!!cfg.apiKey);
 
     if (navState?.initialText && !optimizerInput) {
       setOptimizerInput(navState.initialText);
@@ -306,17 +297,6 @@ export default function PromptOptimizationPage() {
       console.error("PromptOptimization: Refresh failed", error);
     }
   };
-
-  const handleClearAll = () => {
-    clearOptimizer();
-    setSuggestions([]);
-    setOriginalTokens(0);
-    setOriginalWords(0);
-    setOptimizedTokens(0);
-    setOptimizedWords(0);
-  };
-
-  const onSetApi = () => setApiKeyModalOpen(true);
 
   if (isLoading) return null;
 
@@ -387,38 +367,6 @@ export default function PromptOptimizationPage() {
               </CardContent>
             </Card>
 
-            {/* Quick Actions */}
-            <Card
-              className="border-none shadow-lg w-full"
-              style={{ backgroundColor: "#121213" }}
-            >
-              <CardHeader className="pb-2">
-                <CardTitle className="text-center text-white text-xl font-semibold">
-                  Quick Actions
-                </CardTitle>
-              </CardHeader>
-
-              <CardContent className="space-y-3 flex flex-col items-center">
-
-                <Button
-                  className="w-full max-w-[500px] h-[50px] rounded-[16px] border border-[#282829] bg-transparent text-white justify-start pl-5 hover:bg-white/5"
-                  variant="ghost"
-                  onClick={onSetApi}
-                >
-                  {isKeySet ? "Update API Settings" : "Set API Settings"}
-                </Button>
-
-                <Button
-                  className="w-full max-w-[500px] h-[50px] rounded-[16px] border border-[#282829] bg-transparent text-white justify-start pl-5 hover:bg-white/5"
-                  variant="ghost"
-                  onClick={handleClearAll}
-                >
-                  Clear Optimizer Data
-                </Button>
-
-              </CardContent>
-            </Card>
-
             {/* Suggestions (Mobile only) */}
             <div className="block lg:hidden">
               <SuggestionsPanel
@@ -435,12 +383,6 @@ export default function PromptOptimizationPage() {
        
 
       </div>
-
-      <ApiKeyModal
-        open={apiKeyModalOpen}
-        onOpenChange={setApiKeyModalOpen}
-        onSave={() => setIsKeySet(true)}
-      />
 
       <div>
         <Footer />

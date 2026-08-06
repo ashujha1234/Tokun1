@@ -1020,6 +1020,7 @@ import React, { useMemo, useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   Image as ImageIcon,
+  ImageOff,
   Video,
   CheckCircle2,
   ShoppingCart,
@@ -1029,11 +1030,15 @@ import { useAuth } from "@/contexts/AuthContext";
 import RequestToBuyModal from "@/components/RequestToBuyModel";
 import { toast } from "@/components/ui/use-toast";
 import { useCart } from "@/contexts/CartContext";
+import { isTeamMember as isTeamMemberUser, isOrgOwner } from "@/lib/orgRoles";
 export interface MarketplacePrompt {
   id: number | string;
   title: string;
   description: string;
+  /** The seller's list price — what they earn from, NOT what the buyer pays. */
   price: number;
+  /** List price plus Tokun's platform fee — the amount actually charged. */
+  tokunPrice?: number;
   rating: number;
   downloads: number;
   category: string;
@@ -1082,9 +1087,18 @@ export default function DetailsPrompt({
   const { user } = useAuth();
   const { addToCart } = useCart();
 
-  const isOrg = user?.userType === "ORG";
-  const isOwner = user?.role === "Owner" || user?.role === "Admin";
-  const isTeamMember = isOrg && !isOwner;
+  // A team member's userType is "TM"; "ORG" is the Owner's own type. Deriving
+  // this as `isOrg && !isOwner` (as this did) never matched a real TM, so the
+  // disabled states below were dead and Buy Now stayed live for them.
+  const isTeamMember = isTeamMemberUser(user);
+  const isOrgOwnerUser = isOrgOwner(user);
+
+  // What the buyer is charged: list price plus Tokun's platform fee. This panel
+  // showed `price`, so the total on Razorpay's sheet was higher than the number
+  // the buyer had just agreed to. Shown broken out below for the same reason.
+  const listPrice = Number(prompt?.price || 0);
+  const chargedPrice = Number(prompt?.tokunPrice || 0) > 0 ? Number(prompt.tokunPrice) : listPrice;
+  const platformFee = +(chargedPrice - listPrice).toFixed(2);
 
    const currentUserId = user?._id || user?.id || null;
 
@@ -1106,9 +1120,12 @@ const isOwnPrompt =
     const hasImage = !!prompt.imageUrl?.trim();
 
     if (showImages || !hasVideo) {
+      // null rather than "/icons/fallback.png" — that file isn't in public/, so
+      // a prompt with no picture pointed <img> at a 404 and the browser filled
+      // the panel with its broken-image "?".
       return {
         type: "image" as const,
-        url: hasImage ? prompt.imageUrl! : "/icons/fallback.png",
+        url: hasImage ? prompt.imageUrl! : null,
       };
     } else {
       return { type: "video" as const, url: prompt.videoUrl! };
@@ -1178,13 +1195,22 @@ const isOwnPrompt =
 </div>
 
             <div className="absolute inset-0">
-              {media?.type === "image" ? (
+              {media?.type === "image" && !media.url ? (
+                <div className="w-full h-full grid place-items-center bg-white/[0.04]">
+                  <div className="flex flex-col items-center gap-2 text-white/30">
+                    <ImageOff className="w-8 h-8" />
+                    <span className="text-xs">No preview</span>
+                  </div>
+                </div>
+              ) : media?.type === "image" ? (
                 <img
                   src={media.url}
                   alt={prompt.title}
                   className="w-full h-full object-cover"
+                  // Hide rather than swap in a fallback file that doesn't exist,
+                  // which just re-broke the image.
                   onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src = "/icons/fallback.png";
+                    (e.currentTarget as HTMLImageElement).style.display = "none";
                   }}
                 />
               ) : (
@@ -1321,26 +1347,39 @@ const isOwnPrompt =
           <div className="mt-8 space-y-3">
             {/* Price + Share row */}
             <div className="flex items-center justify-between gap-3">
-              <div className="text-[22px] font-semibold text-white shrink-0">
-                ₹{prompt.price.toLocaleString()}
+              <div className="shrink-0">
+                <div className="text-[22px] font-semibold text-white">
+                  ₹{chargedPrice.toLocaleString()}
+                </div>
+                {/* Spelled out so the total isn't a surprise at the payment
+                    sheet. Only when there is actually a fee to explain. */}
+                {platformFee > 0 && (
+                  <div className="text-[11px] text-white/40 mt-0.5">
+                    ₹{listPrice.toLocaleString()} + ₹{platformFee.toLocaleString()} platform fee
+                  </div>
+                )}
               </div>
-              <button
-                className="h-9 px-4 rounded-[8px] border border-white/10 bg-[#1C1C1E] flex items-center justify-center gap-1.5 text-white text-[13px] hover:bg-[#2A2A2D] transition-all whitespace-nowrap shrink-0"
-                onClick={() => setShowRequestModal(true)}
-              >
-                <RiShareForwardLine className="w-4 h-4" />
-                Share
-              </button>
+              {/* Only an Owner/Admin can suggest a prompt to their team — the
+                  same modal serves the TM's own "request to buy" below, so this
+                  button is hidden for everyone it wouldn't work for. */}
+              {isOrgOwnerUser && (
+                <button
+                  className="h-9 px-4 rounded-[8px] border border-white/10 bg-[#1C1C1E] flex items-center justify-center gap-1.5 text-white text-[13px] hover:bg-[#2A2A2D] transition-all whitespace-nowrap shrink-0"
+                  onClick={() => setShowRequestModal(true)}
+                >
+                  <RiShareForwardLine className="w-4 h-4" />
+                  Share with team
+                </button>
+              )}
             </div>
 
-            {/* Cart — big, full-width */}
-            {!isOwnPrompt && !owned && Number(prompt.price || 0) > 0 && (
+            {/* Cart — big, full-width. Hidden entirely for team members: cart
+                checkout is blocked server-side, so an item they add can never
+                be paid for. */}
+            {!isOwnPrompt && !owned && !isTeamMember && Number(prompt.price || 0) > 0 && (
               <button
-                disabled={isTeamMember}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (isTeamMember) return;
-
                   addToCart(prompt.id);
                   toast({
                     title: "Added to Cart",
@@ -1348,11 +1387,7 @@ const isOwnPrompt =
                   });
                   onOpenChange(false);
                 }}
-                className={`w-full h-12 flex items-center justify-center gap-2 rounded-[10px] border border-white/10 text-white text-[15px] font-medium transition-all ${
-                  isTeamMember
-                    ? "opacity-50 cursor-not-allowed bg-[#1C1C1E]"
-                    : "bg-[#1C1C1E] hover:bg-gradient-to-r hover:from-[#5A3FFF] hover:to-[#FF14EF]"
-                }`}
+                className="w-full h-12 flex items-center justify-center gap-2 rounded-[10px] border border-white/10 text-white text-[15px] font-medium transition-all bg-[#1C1C1E] hover:bg-gradient-to-r hover:from-[#5A3FFF] hover:to-[#FF14EF]"
               >
                 <ShoppingCart className="w-5 h-5" />
                 Add to Cart
@@ -1372,19 +1407,31 @@ const isOwnPrompt =
                 >
                   Copy
                 </button>
+              ) : isTeamMember ? (
+                // A team member's route to a paid prompt is asking their Owner,
+                // not paying. Previously this rendered a greyed-out "Buy Now"
+                // with no alternative — a dead end even once the disabled state
+                // worked.
+                <button
+                  onClick={() => setShowRequestModal(true)}
+                  className="w-full h-12 flex items-center justify-center rounded-[10px] font-semibold text-white text-[15px] transition-all bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] hover:opacity-90"
+                >
+                  Request to buy
+                </button>
               ) : !(prompt.exclusive && prompt.sold) ? (
                 <button
-                  disabled={isTeamMember}
-                  onClick={() => !isTeamMember && onPurchase?.(prompt)}
-                  className={`w-full h-12 flex items-center justify-center rounded-[10px] font-semibold text-white text-[15px] transition-all ${
-                    isTeamMember
-                      ? "opacity-50 cursor-not-allowed bg-gradient-to-r from-gray-600 to-gray-500"
-                      : "bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] hover:opacity-90"
-                  }`}
+                  onClick={() => onPurchase?.(prompt)}
+                  className="w-full h-12 flex items-center justify-center rounded-[10px] font-semibold text-white text-[15px] transition-all bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] hover:opacity-90"
                 >
                   Buy Now
                 </button>
               ) : null
+            )}
+
+            {isTeamMember && !isOwnPrompt && !owned && Number(prompt.price || 0) > 0 && (
+              <p className="text-[11px] text-white/40 text-center">
+                Your organization buys prompts for you — your owner can purchase this and share it.
+              </p>
             )}
 
             {isOwnPrompt && (

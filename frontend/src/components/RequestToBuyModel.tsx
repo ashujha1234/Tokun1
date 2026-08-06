@@ -329,7 +329,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { MdOutlineAttachment } from "react-icons/md";
+import PromptThumb from "@/components/PromptThumb";
 
 interface Member {
   userId: string;
@@ -444,22 +444,24 @@ export default function RequestToBuyModal({
           w-[min(96vw,480px)] p-6 shadow-xl
         "
       >
-        {/* Header */}
+        {/* Header — this modal does two different jobs (a TM asking the Owner
+            to buy, an Owner suggesting a prompt to a member), so the title has
+            to say which one is happening. */}
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-[18px] font-semibold">Request to Buy</h2>
+          <h2 className="text-[18px] font-semibold">
+            {userType === "TM" ? "Request to Buy" : "Share with your team"}
+          </h2>
         </div>
 
         {/* Product Info */}
         <div className="flex items-center gap-4 mb-6">
-          <img
-            src={thumbnail || "/icons/fallback.png"}
-            alt="Product"
-            className="w-14 h-14 rounded-lg object-cover"
-          />
-          <div className="flex-1">
+          <PromptThumb src={thumbnail} alt={promptTitle} />
+          <div className="flex-1 min-w-0">
             <h3 className="font-medium text-[15px] text-white">{promptTitle}</h3>
             <p className="text-sm text-gray-400 leading-snug">
-              Create an engaging product description
+              {userType === "TM"
+                ? "Ask your owner to buy this for you"
+                : "Suggest this prompt to a team member"}
             </p>
           </div>
           <div className="text-right font-semibold text-[16px]">
@@ -519,14 +521,11 @@ export default function RequestToBuyModal({
           </div>
         </div>
 
-        {/* Bottom Section */}
-        <div className="flex items-center justify-between mt-8 border-t border-white/10 pt-5">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-[#222225] flex items-center justify-center">
-              <MdOutlineAttachment className="text-white text-[20px]" />
-            </div>
-          </div>
-
+        {/* Bottom Section.
+            The attachment icon that used to sit on the left was decorative only
+            — no handler, nothing attachable in this flow — so it's gone and the
+            actions align right. */}
+        <div className="flex items-center justify-end mt-8 border-t border-white/10 pt-5">
           <div className="flex items-center gap-3">
             <button
               onClick={() => onOpenChange(false)}

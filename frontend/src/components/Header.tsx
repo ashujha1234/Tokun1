@@ -2598,9 +2598,11 @@ import { useCart } from "@/contexts/CartContext";
  import { Zap } from "lucide-react";
 import { Crown } from "lucide-react";
 import { MessageCircle } from "lucide-react";
+import { Users } from "lucide-react";
 import { LuBadgeCheck } from "react-icons/lu";
 import KycGateModal from "@/components/KycGateModal";
 import SellerLinkedAccountForm from "@/components/SellerLinkedAccountForm";
+import { isTeamMember, canManageTeam, TEAM_MEMBER_SELL_TOAST } from "@/lib/orgRoles";
 // import { useAuth } from "@/contexts/AuthContext";
 // import { toast } from "@/components/ui/use-toast";
 
@@ -2635,6 +2637,8 @@ const setStoredChatBadge = (count: number) => {
 };
   // const { user, logout } = useAuth();
   const { user, logout, token } = useAuth() as any;
+ // Drives the Team button in the action row below.
+ const canManageTeamNav = canManageTeam(user);
  const { cart, removeFromCart, fetchCart } = useCart();
  const [unreadChats, setUnreadChats] = useState<number>(() => getStoredChatBadge());
 // Text color based on plan
@@ -2870,6 +2874,14 @@ const handlePostPrompt = async () => {
       variant: "destructive",
     });
     navigate("/login");
+    return;
+  }
+
+  // A team member can't sell — their org lists and gets paid on its own
+  // account. Stopped here rather than in the form, so they never see a payout
+  // onboarding screen for an account they'd have no use for.
+  if (isTeamMember(user)) {
+    toast(TEAM_MEMBER_SELL_TOAST);
     return;
   }
 
@@ -3515,7 +3527,9 @@ const doCheckout = async () => {
     } catch (e) {}
 
     if (!res.ok || !checkoutData.success) {
-      throw new Error(checkoutData?.error || `http_${res.status}`);
+      // Prefer the server's written reason — the bare `error` code used to reach
+      // the user, so a blocked team member saw "team_members_cannot_purchase".
+      throw new Error(checkoutData?.message || checkoutData?.error || `http_${res.status}`);
     }
 
     const { order, prompts } = checkoutData;
@@ -3879,6 +3893,26 @@ useEffect(() => {
 </div>
 
 
+ {/* TEAM — org member management.
+     Moved out of the avatar dropdown's unlabelled secondary list, where an
+     owner had to open a menu and scroll past Pricing/Support to find the page
+     they manage their whole team from. Sits in the action row instead, so it's
+     one click and visible without opening anything.
+     Same visibility rule as before: org Owner, or a TM given the Admin role. */}
+ {canManageTeamNav && (
+   <button
+     type="button"
+     onClick={() => navigate("/admin")}
+     title="Team — manage members and token allowances"
+     aria-label="Team"
+     className="relative flex items-center gap-1.5 rounded-full px-2 py-2 sm:px-3 hover:bg-white/10 transition"
+   >
+     <Users className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+     {/* Label hidden on the narrowest screens so the action row still fits. */}
+     <span className="hidden md:inline text-sm text-white">Team</span>
+   </button>
+ )}
+
  {/* CHAT */}
     <button
   onClick={handleChatClick}
@@ -4201,13 +4235,8 @@ useEffect(() => {
     {[
       { label: "Pricing",          onClick: () => navigate("/subscription") },
       { label: "Support",          onClick: () => navigate("/support") },
-      // Only the org Owner or a team member explicitly given the "Admin"
-      // role should see the team-management page — not plain Members or
-      // unrelated individual users.
-      ...(((user?.userType === "ORG" && user?.role === "Owner") ||
-           (user?.userType === "TM" && user?.role === "Admin"))
-        ? [{ label: "Admin", onClick: () => navigate("/admin") }]
-        : []),
+      // "Admin" used to sit here. It's now the labelled Team button in the
+      // header's action row — see canManageTeam above.
     ].map(({ label, onClick }) => (
       <button
         key={label}

@@ -1,11 +1,15 @@
 // routes/adminRefunds.js
 //
 // Admin review queue for buyer-filed prompt-purchase refund requests.
-// Two branches on approve, depending on how the seller was paid at
-// purchase time:
-//   - Route transfer happened (purchase.routeTransferId set) → refund the
-//     buyer with reverse_all:1 so Razorpay reverses the linked-account
-//     transfer as part of the same call.
+// Three branches on approve, depending on how the seller was paid at
+// purchase time and whether the payment covered more than one prompt:
+//   - Route transfer, payment covers ONE purchase → refund the buyer with
+//     reverse_all:1 so Razorpay reverses the single linked-account transfer as
+//     part of the same call.
+//   - Route transfer, payment covers SEVERAL purchases (a cart checkout, which
+//     carries one transfer per seller) → reverse only this purchase's own
+//     transfer, for its own seller share. reverse_all here would claw back
+//     money from every other seller on that cart too.
 //   - Wallet-ledger fallback (no linked account yet) → the money never left
 //     Tokun's main balance, so a plain refund suffices; the seller's
 //     internal Wallet credit and Tokun's commission record are reversed
@@ -21,6 +25,7 @@ const Wallet = require("../models/Wallet");
 const PlatformWallet = require("../models/PlatformWallet");
 const Notification = require("../models/Notification");
 const { requireAuth } = require("../utils/auth");
+const { reverseTransfer } = require("../utils/routePayouts");
 
 function requireAdmin(req, res, next) {
   if (!req.isAdmin) {
@@ -82,6 +87,22 @@ router.post("/:id/approve", async (req, res) => {
 
     const hasRouteTransfer = Boolean(purchase.routeTransferId);
 
+    // What the seller was actually paid for this one prompt. Derived rather than
+    // stored so it can't drift from what the buyer paid: platformCommission is
+    // defined as (buyerPays − sellerNet), so this is exactly sellerNet.
+    const sellerShare = +(
+      Number(purchase.pricePaid || 0) - Number(purchase.platformCommission || 0)
+    ).toFixed(2);
+
+    // A cart checkout puts several purchases on one payment, each with its own
+    // per-seller transfer. reverse_all would reverse all of them, so it's only
+    // safe when this payment covers this purchase alone.
+    const purchasesOnPayment = purchase.razorpayPaymentId
+      ? await Purchase.countDocuments({ razorpayPaymentId: purchase.razorpayPaymentId })
+      : 1;
+    const isSolePurchaseOnPayment = purchasesOnPayment <= 1;
+    const useReverseAll = hasRouteTransfer && isSolePurchaseOnPayment;
+
     // ── Razorpay refund — if this throws, nothing else in this handler runs,
     // so the request stays PENDING and can be retried (same pattern as the
     // hire-deal refund route in adminEscrow.js).
@@ -94,7 +115,7 @@ router.post("/:id/approve", async (req, res) => {
           refundRequestId: String(refundRequest._id),
           purchaseId: String(purchase._id),
         },
-        ...(hasRouteTransfer ? { reverse_all: 1 } : {}),
+        ...(useReverseAll ? { reverse_all: 1 } : {}),
       });
     } catch (razorpayErr) {
       console.error("Razorpay refund failed:", razorpayErr);
@@ -108,13 +129,29 @@ router.post("/:id/approve", async (req, res) => {
       });
     }
 
-    // ── Internal bookkeeping reversal — only relevant for the Wallet-ledger
-    // fallback path (Route transfers are reversed by Razorpay itself above).
-    // Best-effort: the buyer's refund already succeeded regardless of what
-    // happens here, so failures are logged, not returned as an error.
+    // ── Recover the seller's share.
+    //
+    // Everything below is best-effort: the buyer's refund has already gone
+    // through, so a failure here is logged for manual recovery rather than
+    // returned as an error — a buyer must not be left un-refunded because we
+    // couldn't claw the money back.
+
+    // reverse_all already handled it in the single-purchase case. For a cart
+    // payment we reverse just this purchase's own transfer, by its own amount.
+    if (hasRouteTransfer && !isSolePurchaseOnPayment) {
+      try {
+        await reverseTransfer(purchase.routeTransferId, sellerShare);
+      } catch (reversalErr) {
+        console.error(
+          `Transfer reversal failed for refund ${refundRequest._id} (transfer ${purchase.routeTransferId}, ₹${sellerShare}) — needs manual recovery:`,
+          reversalErr?.message
+        );
+      }
+    }
+
     if (!hasRouteTransfer) {
       try {
-        await Wallet.debitRefund(refundRequest.seller, Number(purchase.pricePaid) - Number(purchase.platformCommission || 0), {
+        await Wallet.debitRefund(refundRequest.seller, sellerShare, {
           purchaseId: purchase._id,
           promptId: refundRequest.prompt,
           promptTitle: purchase.promptSnapshot?.title,
@@ -125,16 +162,20 @@ router.post("/:id/approve", async (req, res) => {
           walletErr.message
         );
       }
+    }
 
-      try {
-        await PlatformWallet.reverseCommission(purchase.platformCommission, {
-          source: "prompt_purchase",
-          refId: purchase._id,
-          description: `Refund reversal: "${purchase.promptSnapshot?.title || "Prompt"}"`,
-        });
-      } catch (platformErr) {
-        console.error("PlatformWallet reversal failed:", platformErr.message);
-      }
+    // Tokun's commission is recorded on EVERY sale, Route or Wallet, so it has
+    // to be reversed on every refund too. This used to sit inside the
+    // Wallet-only branch above, which left PlatformWallet overstated by the
+    // commission on every refunded Route purchase.
+    try {
+      await PlatformWallet.reverseCommission(purchase.platformCommission, {
+        source: "prompt_purchase",
+        refId: purchase._id,
+        description: `Refund reversal: "${purchase.promptSnapshot?.title || "Prompt"}"`,
+      });
+    } catch (platformErr) {
+      console.error("PlatformWallet reversal failed:", platformErr.message);
     }
 
     refundRequest.status = "APPROVED";

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import PromptThumb from "@/components/PromptThumb";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -106,12 +107,8 @@ export default function ShareWithTeamModal({
         </div>
 
         <div className="flex items-center gap-4 mb-6">
-          <img
-            src={thumbnail || "/icons/fallback.png"}
-            alt="Product"
-            className="w-14 h-14 rounded-lg object-cover"
-          />
-          <div className="flex-1">
+          <PromptThumb src={thumbnail} alt={promptTitle} />
+          <div className="flex-1 min-w-0">
             <h3 className="font-medium text-[15px] text-white">{promptTitle}</h3>
             <p className="text-sm text-gray-400 leading-snug">
               Give your team read access to this prompt

@@ -18,6 +18,30 @@ interface User {
   orgPoolCap?: number;
   orgPoolUsed?: number;
   orgExtraTokensRemaining?: number;
+  /** Sum of every member's assigned allowance. */
+  totalAssignedCap?: number;
+  /**
+   * The org pool as the OWNER experiences it, computed server-side by
+   * /api/quota (summarizeOrgTokens). `orgCommitted` is capacity that is no
+   * longer the owner's — assigned to a member or already spent — and
+   * `orgAvailable` is what's left to use or hand out.
+   *
+   * Kept separate from orgPoolUsed, which counts only actual generation and so
+   * showed "0 used / 1,000,000 remaining" right after 10,000 had been handed to
+   * a member. Computed on the server because backing the owner's own spend out
+   * of orgPoolUsed requires every member's live balance.
+   */
+  orgCommitted?: number;
+  orgAvailable?: number;
+  orgMemberSpend?: number;
+  orgOwnerSpend?: number;
+  /** Name of the organization this user belongs to — a team member had no way
+   *  to see which org they were in anywhere in the UI. */
+  orgName?: string;
+  orgAssignedCap?: number;
+  orgTokensRemaining?: number;
+  /** The org's owner, so a team member can message them or open their profile. */
+  orgOwner?: { _id: string; name?: string; email?: string; avatar?: string } | null;
 }
 
 interface AuthContextType {
@@ -28,9 +52,43 @@ interface AuthContextType {
   logout: () => void;
   persistAuth: (payload: { user?: Partial<User>; token?: string }) => void;
   refreshQuota: () => Promise<void>;
+  /** Validate the session now, renewing the token if it's past half its life. */
+  checkSession: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+
+/**
+ * Seconds until this JWT expires, or null if it can't be read.
+ *
+ * Decoded locally — no library — purely to answer "is this already dead?".
+ * Nothing here is a security check: the server verifies the signature on every
+ * request. This exists so the app stops *pretending* to be logged in with a
+ * token it knows is expired, which is what used to happen: isAuthenticated was
+ * `!!token`, so an expired token still rendered a full signed-in UI while every
+ * API call behind it returned 401.
+ */
+function secondsUntilExpiry(token: string | null): number | null {
+  if (!token) return null;
+  try {
+    const [, payload] = token.split(".");
+    if (!payload) return null;
+    const json = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+    if (typeof json?.exp !== "number") return null;
+    return json.exp - Math.floor(Date.now() / 1000);
+  } catch {
+    return null;
+  }
+}
+
+// A token with no readable exp is left alone rather than assumed dead — better
+// to let the server reject it than to log someone out over a parse failure.
+function isExpired(token: string | null): boolean {
+  const left = secondsUntilExpiry(token);
+  return left !== null && left <= 0;
+}
 
 export const useAuth = () => {
   const c = useContext(AuthContext);
@@ -47,8 +105,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const storedUser = localStorage.getItem("tokun_user");
       const storedToken = localStorage.getItem("token");
-      if (storedUser) setUser(JSON.parse(storedUser));
-      if (storedToken) setToken(storedToken);
+
+      // An expired token is cleared on boot instead of being restored. Restoring
+      // it produced the worst possible state: a UI that looked signed in while
+      // every request behind it 401'd, leaving the user to work out on their own
+      // that they had to log out and back in.
+      if (storedToken && isExpired(storedToken)) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("tokun_user");
+      } else {
+        if (storedUser) setUser(JSON.parse(storedUser));
+        if (storedToken) setToken(storedToken);
+      }
     } catch {}
     setIsReady(true);
   }, []);
@@ -90,6 +158,68 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  /**
+   * Keeps a long session alive while it's being used, and ends it cleanly when
+   * it isn't.
+   *
+   * GET /api/auth/session returns a fresh token once the current one is past
+   * half its life — so an active user's 30-day window keeps sliding forward and
+   * they never hit the emailed-OTP login again. A 401 means the session is
+   * genuinely over, which is the one case that logs out.
+   */
+  const checkSession = async (): Promise<void> => {
+    const currentToken =
+      token || (typeof window !== "undefined" ? localStorage.getItem("token") : null);
+    if (!currentToken) return;
+
+    // Already dead — no point asking the server, just end it here.
+    if (isExpired(currentToken)) {
+      logout();
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/session`, {
+        headers: { Authorization: `Bearer ${currentToken}` },
+        credentials: "include",
+      });
+
+      if (res.status === 401) {
+        logout();
+        return;
+      }
+      if (!res.ok) return; // transient server/network issue — keep the session
+
+      const data = await res.json().catch(() => ({}));
+      if (data?.renewed && data?.token) {
+        setToken(data.token);
+        localStorage.setItem("token", data.token);
+      }
+    } catch {
+      // Offline or the API is unreachable. Deliberately NOT a logout — someone
+      // on a flaky connection must not lose their session over it.
+    }
+  };
+
+  // Checked on mount, whenever the tab regains focus, and hourly for a tab left
+  // open. Focus is the important one: it's what catches a session that expired
+  // while the laptop was closed.
+  useEffect(() => {
+    if (!isReady) return;
+
+    checkSession();
+
+    const onFocus = () => checkSession();
+    window.addEventListener("focus", onFocus);
+    const interval = setInterval(checkSession, 60 * 60 * 1000);
+
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady]);
+
   const refreshQuota = async (): Promise<void> => {
     const currentToken =
       token || (typeof window !== "undefined" ? localStorage.getItem("token") : null);
@@ -113,11 +243,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const data = await res.json();
       const apiUser = data?.user || null;
       const org = data?.organization || data?.org || null;
+      const orgTokens = data?.orgTokens || null;
+      const orgOwner = data?.orgOwner || null;
 
       if (apiUser || org) {
         const merged: Partial<User> = {
           ...(user || {}),
           ...(apiUser || {}),
+          ...(orgTokens
+            ? {
+                orgCommitted: orgTokens.committed,
+                orgAvailable: orgTokens.available,
+                orgMemberSpend: orgTokens.memberSpend,
+                orgOwnerSpend: orgTokens.ownerSpend,
+              }
+            : {}),
           ...(org
             ? {
                 plan: org.plan,
@@ -126,7 +266,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 orgPoolCap: org.orgPoolCap,
                 orgPoolUsed: org.orgPoolUsed,
                 orgExtraTokensRemaining: org.orgExtraTokensRemaining ?? 0,
+                totalAssignedCap: org.totalAssignedCap ?? 0,
+                // Carried so a team member can actually be told which org they
+                // belong to — nothing in the UI had the org's name before.
+                orgName: org.name,
                 orgId: org._id,
+                // null for the owner themselves — the server only sends this to
+                // other members, so nobody is offered a chat with themselves.
+                orgOwner,
               }
             : {}),
         };
@@ -146,11 +293,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user,
       token,
       // isAuthenticated: !!user && !!token,
-      isAuthenticated: !!token,
+      // A token that has already expired is not authentication. This was `!!token`
+      // alone, so route guards happily let an expired session through and the app
+      // rendered signed-in while every request behind it failed with 401.
+      isAuthenticated: !!token && !isExpired(token),
       isReady,
       logout,
       persistAuth,
       refreshQuota,
+      checkSession,
     }),
     [user, token, isReady]
   );

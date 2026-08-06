@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   Image as ImageIcon,
+  ImageOff,
   Video,
   AlertCircle,
   Loader2,
@@ -146,9 +147,13 @@ const media = useMemo(() => {
     return { type: "video" as const, url: prompt.videoUrl! };
   }
 
+  // null, not "/icons/fallback.png" — that file doesn't exist in public/, so
+  // pointing <img> at it drew the browser's broken-image "?" on every prompt
+  // without a picture. A missing preview is normal; it gets a real empty state
+  // in the render below.
   return {
     type: "image" as const,
-    url: hasImage ? prompt.imageUrl! : "/icons/fallback.png",
+    url: hasImage ? prompt.imageUrl! : null,
   };
 }, [prompt]); // showImages dependency hatao
 
@@ -268,12 +273,27 @@ async function handleDownloadInvoice() {
 
             {/* Media */}
             <div className="absolute inset-0">
-              {media?.type === "image" ? (
+              {media?.type === "image" && !media.url ? (
+                // No preview on this prompt. Previously this branch rendered an
+                // <img> pointed at a missing file, so the member opening a
+                // shared prompt saw a broken-image "?" filling the whole panel.
+                <div className="w-full h-full grid place-items-center bg-white/[0.04]">
+                  <div className="flex flex-col items-center gap-2 text-white/30">
+                    <ImageOff className="w-8 h-8" />
+                    <span className="text-xs">No preview</span>
+                  </div>
+                </div>
+              ) : media?.type === "image" ? (
                 <img
                   src={media.url}
                   alt={prompt.title}
                   className="w-full h-full object-cover"
-                  onError={(e) => ((e.currentTarget as HTMLImageElement).src = "/icons/fallback.png")}
+                  // Swapping src to a fallback file that doesn't exist just
+                  // re-broke the image (and could loop). Hide it instead and let
+                  // the panel background show through.
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.display = "none";
+                  }}
                 />
               ) : (
                 <video

@@ -11993,7 +11993,10 @@ import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls, useGLTF, Environment } from '@react-three/drei'
 import * as THREE from 'three'
 import { useAuth } from '@/contexts/AuthContext'
-// import Footer from '@/components/Footer'
+// The shared footer. This file used to define a private `Footer()` of its own
+// further down, which shadowed this import — so any link added to the real
+// footer (Refund Policy, Report Policy) never showed up on the landing page.
+import Footer from '@/components/Footer'
 import CookieConsentBanner from '@/components/CookieConsentBanner'
 import './landing-page.css'
 
@@ -14084,67 +14087,11 @@ function FAQSection() {
 }
 
 /* ============================================================
-   Footer
+   Footer — see the `import Footer from '@/components/Footer'` at the top of
+   this file. The local copy that used to live here has been removed: it
+   duplicated the shared footer's markup with its own hardcoded link list, so
+   the two drifted apart and the landing page silently missed new links.
    ============================================================ */
-
-const FOOTER_SOCIALS = [
-  { Icon: Facebook, href: '#' },
-  { Icon: Twitter, href: '#' },
-  { Icon: Instagram, href: '#' },
-  { Icon: Linkedin, href: '#' },
-]
-
-const FOOTER_NAV = [
-  { label: 'About us', href: '/about' },
-  { label: 'Pricing', href: '/subscription' },
-  { label: 'Blog', href: '/blog' },
-  { label: 'Careers', href: '/careers' },
-  { label: 'Support', href: '/support' },
-  { label: 'Privacy Policy', href: '/privacy-policy' },
-  { label: 'Terms & Conditions', href: '/terms' },
-]
-
-function Footer() {
-  return (
-    <footer className="site-footer">
-      <div className="site-footer__inner">
-        <div className="site-footer__center">
-          <Link to="/" className="site-footer__logo">
-            <span className="site-footer__logo-text">TOKUN.WORLD</span>
-          </Link>
-
-          <nav className="site-footer__nav">
-            <ul className="site-footer__links">
-              {FOOTER_NAV.map((item) => (
-                <li key={item.label}>
-                  <Link to={item.href} className="site-footer__link">
-                    <span className="site-footer__link-text">{item.label}</span>
-                    <span className="site-footer__link-underline" aria-hidden="true" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </nav>
-
-          <div className="site-footer__socials">
-            {FOOTER_SOCIALS.map(({ Icon, href }, i) => (
-              <a key={i} href={href} className="site-footer__social" title="Follow us">
-                <Icon />
-              </a>
-            ))}
-          </div>
-
-          <div className="site-footer__subscribe">
-            <input type="email" placeholder="Enter your email" className="site-footer__input" />
-            <button type="button" className="site-footer__subscribe-btn">Subscribe</button>
-          </div>
-        </div>
-
-        <p className="site-footer__copy">© 2025 TOKUN. All rights reserved.</p>
-      </div>
-    </footer>
-  )
-}
 
 /* ============================================================
    LoadingScreen

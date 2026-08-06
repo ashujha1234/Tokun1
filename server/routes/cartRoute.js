@@ -3,12 +3,26 @@ const express = require("express");
 const router = express.Router();
 const fs = require("fs");
 const path = require("path");
+// Node's crypto module. Without this require, `crypto` resolved to the WebCrypto
+// global (Node 18+), which has no createHmac — so /verify threw a TypeError on
+// its very first statement and every cart payment 500'd before a single purchase
+// was written.
+const crypto = require("crypto");
+const mongoose = require("mongoose");
+const Purchase = require("../models/Purchase");
 const { requireAuth, blockIfSuspended, blockOrgTeamMemberPurchase } = require("../utils/auth"); // your JWT middleware
 const Cart=require('../models/Cart');
 const user=require('../models/User');
 const Prompt=require('../models/Prompt');
-const BankAccount = require("../models/BankAccount");
 const  razorpay  = require("../utils/razorpay");
+const { splitPromptSale } = require("../utils/commission");
+const {
+  getSellerLinkedAccountId,
+  fetchTransferIdsByAccount,
+  transferOnHoldUntil,
+} = require("../utils/routePayouts");
+const Wallet = require("../models/Wallet");
+const PlatformWallet = require("../models/PlatformWallet");
 const { route } = require("./authRoutes");
 const { generateInvoicePDF } = require("../services/invoice.service");
 const { sendInvoiceEmail } = require("../services/email.service");
@@ -55,10 +69,13 @@ router.post("/add/:promptId", requireAuth, async (req, res) => {
     let totalPrice = 0;
     let totalTokunPrice = 0;
 
+    // totalPrice is the sum of list prices; totalTokunPrice is what checkout
+    // will actually charge. Routed through the shared split so both agree with
+    // /checkout even when a prompt's stored tokun_price is stale.
     cart.items.forEach((item) => {
-      const p = item.prompt;
-      totalPrice += p.free ? 0 : p.price;
-      totalTokunPrice += p.free ? 0 : p.tokun_price;
+      const s = splitPromptSale(item.prompt);
+      totalPrice += s.listPrice;
+      totalTokunPrice += s.buyerPays;
     });
 
     res.json({
@@ -100,10 +117,13 @@ router.get("/", requireAuth, async (req, res) => {
     let totalPrice = 0;
     let totalTokunPrice = 0;
 
+    // totalPrice is the sum of list prices; totalTokunPrice is what checkout
+    // will actually charge. Routed through the shared split so both agree with
+    // /checkout even when a prompt's stored tokun_price is stale.
     cart.items.forEach((item) => {
-      const p = item.prompt;
-      totalPrice += p.free ? 0 : p.price;
-      totalTokunPrice += p.free ? 0 : p.tokun_price;
+      const s = splitPromptSale(item.prompt);
+      totalPrice += s.listPrice;
+      totalTokunPrice += s.buyerPays;
     });
 
     res.json({
@@ -149,6 +169,12 @@ router.post("/checkout", requireAuth, blockIfSuspended, blockOrgTeamMemberPurcha
     let totalAmount = 0;
     const purchasablePrompts = [];
 
+    // linked account id -> paise owed to that seller across this whole cart.
+    // Aggregated per account rather than per prompt because a cart can hold two
+    // prompts from the same seller, and Razorpay wants one transfer per
+    // recipient on an order.
+    const transferPaiseByAccount = new Map();
+
     for (let item of cart.items) {
       const p = item.prompt;
 
@@ -166,21 +192,31 @@ router.post("/checkout", requireAuth, blockIfSuspended, blockOrgTeamMemberPurcha
       // Same gate as the marketplace feed and single-prompt checkout — a
       // prompt requiring seller verification can't be bought via cart either,
       // even if it was added before the seller's account status changed.
-      if (p.requiresSellerVerification) {
-        const activeAccount = await BankAccount.findOne({
-          userId: p.userId,
-          routeStatus: "CREATED",
-          routeLinkedAccountId: { $ne: null },
+      const linkedAccountId = await getSellerLinkedAccountId(p.userId);
+      if (p.requiresSellerVerification && !linkedAccountId) {
+        return res.status(403).json({
+          success: false,
+          error: `seller_not_verified: ${p.title}`,
         });
-        if (!activeAccount) {
-          return res.status(403).json({
-            success: false,
-            error: `seller_not_verified: ${p.title}`,
-          });
-        }
       }
 
-      totalAmount += p.tokun_price * 100; // Razorpay in paise
+      // Same buyer-facing figure as single-prompt checkout. Routed through the
+      // shared split so a prompt with a stale tokun_price of 0 doesn't silently
+      // contribute ₹0 to the order total.
+      const split = splitPromptSale(p);
+      totalAmount += Math.round(split.buyerPays * 100); // Razorpay in paise
+
+      // Attach this seller's share to the order, exactly as single-prompt
+      // checkout does. Without this the cart took the buyer's money and left it
+      // in Tokun's balance — sellers were never paid for a cart purchase at all.
+      if (linkedAccountId) {
+        const key = String(linkedAccountId);
+        transferPaiseByAccount.set(
+          key,
+          (transferPaiseByAccount.get(key) || 0) + Math.round(split.sellerNet * 100)
+        );
+      }
+
       purchasablePrompts.push(p);
     }
 
@@ -188,7 +224,8 @@ router.post("/checkout", requireAuth, blockIfSuspended, blockOrgTeamMemberPurcha
     let order = null;
     if (totalAmount > 0) {
       const shortReceipt = `tokun_cart${req.user._id.toString().slice(-6)}t${Date.now().toString().slice(-6)}`;
-      order = await razorpay.orders.create({
+
+      const orderPayload = {
         amount: totalAmount,
         currency: "INR",
         receipt: shortReceipt,
@@ -197,7 +234,19 @@ router.post("/checkout", requireAuth, blockIfSuspended, blockOrgTeamMemberPurcha
           kind: "CART_CHECKOUT",
           userId: String(req.user._id),
         },
-      });
+      };
+
+      if (transferPaiseByAccount.size > 0) {
+        orderPayload.transfers = [...transferPaiseByAccount.entries()].map(([account, amount]) => ({
+          account,
+          amount,
+          currency: "INR",
+          on_hold: 1,
+          on_hold_until: transferOnHoldUntil(),
+        }));
+      }
+
+      order = await razorpay.orders.create(orderPayload);
     }
 
     res.json({
@@ -221,9 +270,12 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
       return res.status(400).json({ success: false, error: "cart_empty" });
     }
 
-    // verify signature
+    // verify signature. Keyed off the env var, same as every other Razorpay
+    // signature check in the app — `razorpay.key_secretT` was a typo for a
+    // property the SDK instance doesn't expose either way, so the HMAC key was
+    // undefined and no signature could ever have matched.
     const generatedSignature = crypto
-      .createHmac("sha256", razorpay.key_secretT)
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
       .update(razorpayOrderId + "|" + razorpayPaymentId)
       .digest("hex");
 
@@ -231,46 +283,158 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
       return res.status(400).json({ success: false, error: "invalid_signature" });
     }
 
-    // process each prompt
-    const purchases = [];
-    for (let item of cart.items) {
-      const p = item.prompt;
+    // Which sellers Razorpay already paid via a Route transfer on this order.
+    // Looked up once for the whole payment rather than per item — a cart order
+    // carries one transfer per seller, keyed by their linked account id.
+    //
+    // Failing this lookup is not fatal: the Wallet fallback below still pays
+    // every seller correctly, which is the same trade-off single-prompt checkout
+    // makes. It must NOT throw, or the buyer pays and receives nothing.
+    let transferIdsByAccount = new Map();
+    try {
+      transferIdsByAccount = await fetchTransferIdsByAccount(razorpayPaymentId);
+    } catch (routeErr) {
+      console.error("Cart: Route transfer lookup failed (falling back to Wallet):", routeErr?.message);
+    }
 
-      // skip free prompts (still save record)
-      if (p.free || (!p.free && !p.exclusive) || (p.exclusive && !p.sold)) {
-        const purchase = await Purchase.create({
-          buyer: req.user._id,
-          prompt: p._id,
-          pricePaid: p.free ? 0 : p.tokun_price,
-          razorpayPaymentId,
-          razorpayOrderId,
-          paymentStatus: "SUCCESS",
-          promptSnapshot: {
-            title: p.title,
-            description: p.description,
-            promptText: p.promptText,
-            attachment: p.attachment,
-            uploadCode: p.uploadCode,
-            originalPrice: p.price,
-          },
-        });
-
-        // mark exclusive as sold
-        if (p.exclusive) {
-          p.sold = true;
-        }
-
-        p.salesCount += 1;
-        p.totalRevenue += p.price;
-        await p.save();
-
-        req.user.purchasedPrompts.push(purchase._id);
-        purchases.push(purchase);
+    // Each seller's linked account, resolved BEFORE the transaction opens so no
+    // avoidable reads run inside it.
+    const linkedAccountBySeller = new Map();
+    for (const item of cart.items) {
+      const sellerId = String(item.prompt?.userId || "");
+      if (sellerId && !linkedAccountBySeller.has(sellerId)) {
+        linkedAccountBySeller.set(sellerId, await getSellerLinkedAccountId(item.prompt.userId));
       }
     }
 
-    await req.user.save();
-    await Cart.deleteOne({ user: req.user._id }); // clear cart
+    // ── Everything that records the sale happens in ONE transaction ─────────
+    // A cart can pay several sellers at once. Without this, a failure partway
+    // through left some sellers paid and others not, some prompts marked sold
+    // and others not, and the cart un-cleared — against a payment Razorpay had
+    // already taken in full. Either the whole cart lands or none of it does.
+    //
+    // Nothing in here swallows its error: a failed wallet credit must roll the
+    // purchases back, not be logged and forgotten.
+    const purchases = [];
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        // Reset on retry — withTransaction may run this callback more than once
+        // on a transient error, and appending twice would duplicate the invoice.
+        purchases.length = 0;
+
+        for (let item of cart.items) {
+          const p = item.prompt;
+
+          // skip free prompts (still save record)
+          if (p.free || (!p.free && !p.exclusive) || (p.exclusive && !p.sold)) {
+            // Don't process a prompt the buyer already owns. Guards both a
+            // double-submitted /verify and a retry of this transaction.
+            const alreadyOwned = await Purchase.findOne({
+              buyer: req.user._id,
+              prompt: p._id,
+              paymentStatus: "SUCCESS",
+            })
+              .select({ _id: 1 })
+              .session(session);
+            if (alreadyOwned) continue;
+
+            const split = splitPromptSale(p);
+
+            const [purchase] = await Purchase.create(
+              [
+                {
+                  buyer: req.user._id,
+                  prompt: p._id,
+                  pricePaid: split.buyerPays,
+                  // Tokun's total cut (buyer-side fee + seller-side fee). The
+                  // refund path recovers `pricePaid − platformCommission` from
+                  // the seller, so omitting this — as this route used to — made a
+                  // cart refund try to claw back the full amount from a seller
+                  // who was only ever paid the net.
+                  platformCommission: split.platformCut,
+                  razorpayPaymentId,
+                  razorpayOrderId,
+                  paymentStatus: "SUCCESS",
+                  promptSnapshot: {
+                    title: p.title,
+                    description: p.description,
+                    promptText: p.promptText,
+                    attachment: p.attachment,
+                    uploadCode: p.uploadCode,
+                    originalPrice: p.price,
+                  },
+                },
+              ],
+              { session }
+            );
+
+            // mark exclusive as sold
+            if (p.exclusive) {
+              p.sold = true;
+            }
+
+            p.salesCount += 1;
+            // Net of Tokun's cut — this is surfaced to the seller as earnings.
+            p.totalRevenue += split.sellerNet;
+
+            // ── Pay the seller ──────────────────────────────────────────────
+            // Free prompts owe nobody anything; everything else is paid exactly
+            // once, by whichever of the two paths applies.
+            if (split.sellerNet > 0) {
+              const linkedAccountId = linkedAccountBySeller.get(String(p.userId));
+              const routeTransferId = linkedAccountId
+                ? transferIdsByAccount.get(String(linkedAccountId))
+                : null;
+
+              if (routeTransferId) {
+                // Razorpay already moved it at order time — record which
+                // transfer covered this row so a refund reverses the right one.
+                purchase.routeTransferId = routeTransferId;
+              } else {
+                // Seller isn't on Route (or the transfer didn't land) — credit
+                // the Wallet ledger instead.
+                await Wallet.creditSale(p.userId, split.sellerNet, {
+                  purchaseId: purchase._id,
+                  promptId: p._id,
+                  promptTitle: p.title,
+                  session,
+                });
+              }
+
+              await PlatformWallet.recordCommission(split.platformCut, {
+                source: "prompt_purchase",
+                refId: purchase._id,
+                description: `Commission: "${p.title}"`,
+                session,
+              });
+            }
+
+            await purchase.save({ session });
+            await p.save({ session });
+
+            req.user.purchasedPrompts.push(purchase._id);
+            purchases.push(purchase);
+          }
+        }
+
+        await req.user.save({ session });
+        await Cart.deleteOne({ user: req.user._id }, { session }); // clear cart
+      });
+    } catch (txErr) {
+      // Nothing was written — the buyer's payment stands, so this has to be
+      // visible and retryable rather than reported as success.
+      console.error("Cart verify transaction failed — nothing recorded:", txErr);
+      return res.status(500).json({
+        success: false,
+        error: "cart_verify_failed",
+        message:
+          "Your payment went through but we couldn't record the purchase. Our team has been notified — please contact support with your payment ID.",
+        razorpayPaymentId,
+      });
+    } finally {
+      await session.endSession();
+    }
 
     /* -------------------- INVOICE (safe — purchases already saved) -------------------- */
     try {

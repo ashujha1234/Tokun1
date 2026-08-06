@@ -1817,6 +1817,20 @@ const handleConfirmEndSession = () => {
       return;
     }
 
+    // Server-side gate, asked BEFORE the model runs. isOutOfTokens above only
+    // reads the cached user, so it can't see things like an organisation that
+    // never bought a plan — that used to surface only when saving, long after
+    // the optimised prompt had already been generated and shown.
+    const gate = await checkOptimizeAllowed();
+    if (!gate.allowed) {
+      toast({
+        title: "Can't optimise",
+        description: gate.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
     const config = llmService.getConfig();
 
     setIsProcessing(true);
@@ -1832,11 +1846,7 @@ const handleConfirmEndSession = () => {
       // ✅ FIX: Use the actual optimized text for token counting, not the truncated version
       const { tokens, words } = await llmService.countTokens(optimizedText);
 
-      // 3) Update preview card
-      setOptimizationOption({ ...option, tokens, words });
-      setOptimizerDocId(null);
-
-      // 4) Clean suggestions (max 3)
+      // 3) Clean suggestions (max 3)
       const cleaned = (suggestions || []).map(sanitizeFromModel).filter(Boolean);
       const uniq: string[] = [];
       const seen = new Set<string>();
@@ -1851,10 +1861,10 @@ const handleConfirmEndSession = () => {
         else break;
       }
 
-      // 5) Tell parent about counts (NO usage → only original vs optimized rings)
-      onOptimize(option.text, tokens, words, uniq.slice(0, 3), undefined);
-
-      // 6) SAVE to /api/promptoptimizer HERE (on Optimize button)
+      // 4) SAVE to /api/promptoptimizer BEFORE showing anything. This is the
+      // call that charges tokens, and it is the only place the server can
+      // refuse. Displaying the result first meant a refusal left the optimised
+      // prompt on screen — visible, unsaved, and never paid for.
       console.log(
         "%c[OPTIMIZE] Saving to /api/promptoptimizer…",
         "color:#2563eb;font-weight:bold;"
@@ -1865,7 +1875,11 @@ const handleConfirmEndSession = () => {
         requestTokensEstimated: tokens,
         serverResponse: saved,
       });
-      if (saved?.id) setOptimizerDocId(saved.id);
+
+      // 5) Charged and recorded — now it's safe to show.
+      setOptimizationOption({ ...option, tokens, words });
+      setOptimizerDocId(saved?.id ?? null);
+      onOptimize(option.text, tokens, words, uniq.slice(0, 3), undefined);
 
       // 🚨 ADD THIS: Refresh token counts after optimization
       try {
@@ -1890,6 +1904,34 @@ const handleConfirmEndSession = () => {
 
   const goToOptimizerHistory = () => {
     navigate("/history?tab=optimizer", { replace: false });
+  };
+
+  /**
+   * GET /api/promptoptimizer/eligibility — asks the server whether this user can
+   * spend tokens at all before we pay for an LLM call. Fails open on a network
+   * error: the save step still enforces the real gate, so a flaky pre-check
+   * shouldn't stop someone who is entitled to optimise.
+   */
+  const checkOptimizeAllowed = async (): Promise<{ allowed: boolean; message: string }> => {
+    const token = getAuthToken();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    try {
+      const res = await fetch(`${PROMPT_OPTIMIZER_URL}/eligibility`, {
+        headers,
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return { allowed: true, message: "" };
+
+      return {
+        allowed: data?.allowed !== false,
+        message: data?.message || "You can't optimise prompts right now.",
+      };
+    } catch {
+      return { allowed: true, message: "" };
+    }
   };
 
   /** POST to /api/promptoptimizer with Authorization: Bearer <token> */
@@ -1927,7 +1969,9 @@ const handleConfirmEndSession = () => {
     try { data = JSON.parse(raw); } catch {}
 
     if (!res.ok) {
-      throw new Error(data?.error || `http_${res.status}`);
+      // Prefer the server's sentence — the bare `error` code is what used to
+      // reach the toast, which is why a missing org plan read as "server_error".
+      throw new Error(data?.message || data?.error || `http_${res.status}`);
     }
 
     // Expect your API to return { optimizedPrompt: { _id, inputPrompt, outputPrompt, tokensUsed, ... }, dailyTokensRemaining? }

@@ -4795,7 +4795,7 @@ class LLMService {
     inputPrompt: string;
     detailedPrompt: string;
     tokensUsed: number;
-  }): Promise<{ success: boolean; error?: string }> {
+  }): Promise<{ success: boolean; error?: string; message?: string }> {
     try {
       const token = getToken();
       const res = await fetch(`${API_BASE}/api/smartgen`, {
@@ -4809,11 +4809,41 @@ class LLMService {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) {
-        return { success: false, error: data?.error || `http_${res.status}` };
+        // `message` is the server's own sentence for quota/plan failures; the
+        // caller prefers it over mapping the bare code itself.
+        return { success: false, error: data?.error || `http_${res.status}`, message: data?.message };
       }
       return { success: true };
     } catch (err) {
       return { success: false, error: (err as Error)?.message || "network_error" };
+    }
+  }
+
+  /**
+   * GET /api/smartgen/eligibility — asks the server whether this user can spend
+   * tokens before we pay for a generation. Fails open on a network error: POST
+   * /api/smartgen still enforces the real gate, so a flaky pre-check shouldn't
+   * stop someone who is entitled to generate.
+   */
+  async checkSmartgenEligibility(): Promise<{ allowed: boolean; message: string }> {
+    try {
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/api/smartgen/eligibility`, {
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return { allowed: true, message: "" };
+
+      return {
+        allowed: data?.allowed !== false,
+        message: data?.message || "You can't generate prompts right now.",
+      };
+    } catch {
+      return { allowed: true, message: "" };
     }
   }
 

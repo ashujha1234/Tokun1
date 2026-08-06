@@ -1904,9 +1904,43 @@ const Organization = require("../models/organization");
 const Purchase = require("../models/Purchase");
 const SharedPrompt = require("../models/SharedPrompt");
 const { PLANS } = require("../config/plans");
+const Notification = require("../models/Notification");
 const fs =require("fs");
 const path= require("path");
 const { sendEmail } = require("../utils/SendEmail"); // ← make sure filename & path match exactly
+
+// In-app notification for a member whose org membership or token allowance
+// changed. This file used to send an invitation EMAIL and nothing else, so a
+// member who was already signed in never saw that they'd been added to an org or
+// given an allowance — the notification bell stayed empty.
+//
+// Best-effort by design: a notification failing must never roll back the
+// membership change the owner just made, so it's logged rather than thrown.
+//
+// receiverUserId ONLY — deliberately no receiverOrgId. GET /notifications treats
+// receiverOrgId as "everyone senior in this org", so an Owner (and any TM with
+// the Admin role) receives anything carrying it. Setting both fields here meant
+// these messages landed in the Owner's own bell, addressed to them in the second
+// person: the Owner read "Your access to Pepsi was removed" about a member they
+// had just removed. receiverOrgId belongs on genuinely org-wide notices like
+// TM_REQUEST, not on ones written to one member.
+async function notifyMember({ owner, org, memberId, type, message, meta = {} }) {
+  try {
+    await Notification.create({
+      senderId: owner?._id,
+      senderName: owner?.name || org?.name,
+      senderEmail: owner?.email,
+      receiverUserId: memberId,
+      type,
+      message,
+      // orgId kept here so the notification is still traceable to the org
+      // without making it org-addressed.
+      meta: { ...meta, orgId: org?._id ? String(org._id) : null },
+    });
+  } catch (err) {
+    console.error(`Notification (${type}) failed for member ${memberId}:`, err?.message);
+  }
+}
 
 
 // Helper: YYYY-MM-DD in IST
@@ -2046,11 +2080,25 @@ router.post("/add", requireAuth, async (req, res) => {
       // ✅ Decrease teamMembersLimitRemaining
       org.teamMembersLimitRemaining = Math.max(0, maxMembers - org.members.length);
 
-     
-
+      // In-app notification, independent of the email below — an existing user
+      // who is signed in should see this in their bell immediately, and it still
+      // lands if the invitation email bounces or the SMTP call fails.
+      await notifyMember({
+        owner: req.user,
+        org,
+        memberId: member._id,
+        type: "ORG_MEMBER_ADDED",
+        message: `You were added to ${org.name} as ${role === "Admin" ? "an Admin" : "a Member"} with ${tokens.toLocaleString("en-IN")} tokens.`,
+        meta: { orgName: org.name, role, assignedCap: tokens },
+      });
 
     try {
-        const inviteUrl = `${process.env.SITE_URL}` || "https://tokun.world/login?invite="`${member._id}`;
+        // SITE_URL is the login page; the member id is appended so the invite
+        // link identifies who is joining. The previous expression tagged a
+        // template literal onto a string, which would have thrown had SITE_URL
+        // ever been unset — and dropped the member id entirely when it was set.
+        const base = process.env.SITE_URL || "https://tokun.world/login";
+        const inviteUrl = `${base}${base.includes("?") ? "&" : "?"}invite=${member._id}`;
 
         const html = invitationTemplate
           .replace(/{{memberName}}/g, member.name || member.email.split("@")[0])
@@ -2125,7 +2173,11 @@ router.get("/", requireAuth, async (req, res) => {
       "teamMembersLimit teamMembersLimitRemaining"
     );
 
-    const members = await User.find({ orgId: req.user.orgId })
+    // userType: "TM" matters. The Owner's own User doc also carries this orgId,
+    // so without the filter they came back as a row in their own team roster —
+    // and since an org signs up under the company name, that row rendered as the
+    // organization's name sitting in the Team Members list.
+    const members = await User.find({ orgId: req.user.orgId, userType: "TM" })
      .select("_id name email role isVerified isDeletedFromOrg orgAssignedCap orgTokensRemaining")
 
       .lean();
@@ -2164,16 +2216,26 @@ router.get("/dashboard", requireAuth, async (req, res) => {
       return res.status(404).json({ success: false, error: "org_not_found" });
     }
 
-    const members = await User.find({ orgId: req.user.orgId })
+    // Team members only. The Owner shares this orgId, so without the userType
+    // filter they appeared as one of their own team members — see GET / above.
+    const members = await User.find({ orgId: req.user.orgId, userType: "TM" })
       .select("_id name email role isVerified isDeletedFromOrg orgAssignedCap orgTokensRemaining createdAt")
       .lean();
 
-    // Purchases attributable to the org = the owner's own purchases plus
-    // every team member's — a TM buys under their own userId, same as any
-    // individual buyer.
+    // Purchases attributable to the org = the owner's own purchases plus every
+    // team member's. The owner is added explicitly here precisely because
+    // `members` is now team-members-only; in practice members contribute
+    // nothing, since blockOrgTeamMemberPurchase stops them buying at all.
     const teamUserIds = [org.ownerId, ...members.map((m) => m._id)];
 
-    const [purchaseAgg, recentPurchases, sharedCount, recentShares] = await Promise.all([
+    const [
+      purchaseAgg,
+      recentPurchases,
+      sharedCount,
+      recentShares,
+      requestCount,
+      recentRequests,
+    ] = await Promise.all([
       Purchase.aggregate([
         { $match: { buyer: { $in: teamUserIds }, paymentStatus: "SUCCESS" } },
         { $group: { _id: null, count: { $sum: 1 }, totalSpent: { $sum: "$pricePaid" } } },
@@ -2188,6 +2250,17 @@ router.get("/dashboard", requireAuth, async (req, res) => {
       SharedPrompt.find({ orgId: req.user.orgId })
         .populate("promptId", "title")
         .populate("sharedBy", "name email")
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+
+      // What team members have actually asked for. Members can't buy — they
+      // send a TM_REQUEST via /api/prompt-collab/team/request — and until now
+      // those only existed as a notification the owner had to scroll to find.
+      // The dashboard is where the owner decides what to buy, so it belongs here.
+      Notification.countDocuments({ receiverOrgId: req.user.orgId, type: "TM_REQUEST" }),
+      Notification.find({ receiverOrgId: req.user.orgId, type: "TM_REQUEST" })
+        .populate("promptId", "title price tokun_price")
         .sort({ createdAt: -1 })
         .limit(10)
         .lean(),
@@ -2229,6 +2302,21 @@ router.get("/dashboard", requireAuth, async (req, res) => {
           sharedAt: sp.createdAt,
         })),
       },
+      teamRequests: {
+        count: requestCount,
+        unread: recentRequests.filter((n) => !n.read).length,
+        recent: recentRequests.map((n) => ({
+          id: n._id,
+          promptId: n.promptId?._id || null,
+          promptTitle: n.promptId?.title || "Untitled",
+          // What the owner would pay if they buy it, matching the marketplace.
+          price: n.promptId?.tokun_price || n.promptId?.price || 0,
+          requestedByName: n.senderName || n.senderEmail || "Team member",
+          message: n.message || "",
+          read: Boolean(n.read),
+          requestedAt: n.createdAt,
+        })),
+      },
     });
   } catch (err) {
     console.error("org/members/dashboard error:", err);
@@ -2257,6 +2345,10 @@ router.patch("/edit/:memberId", requireAuth, async (req, res) => {
     if (!member || String(member.orgId) !== String(org._id)) {
       return res.status(404).json({ success: false, error: "member_not_found" });
     }
+
+    // Set below only when the allowance actually changes, so the member isn't
+    // notified about a role-only edit.
+    let tokenChange = null;
 
     // 🧩 Locate the member in organization.members array
     const orgMember = org.members.find((m) => String(m.userId) === String(member._id));
@@ -2310,12 +2402,33 @@ if (tokens !== undefined) {
   member.tokensLastResetDateIST = new Date().toLocaleDateString("en-CA", {
     timeZone: "Asia/Kolkata",
   });
+
+  tokenChange = { from: orgMember.assignedCap - diff, to: numTokens, remaining: newRemaining };
 }
 
 
     // ✅ Save both
     await member.save();
     await org.save();
+
+    // Told only after both saves succeed, so the member is never notified about
+    // an allowance change that didn't persist.
+    if (tokenChange) {
+      const raised = tokenChange.to > tokenChange.from;
+      await notifyMember({
+        owner: req.user,
+        org,
+        memberId: member._id,
+        type: "ORG_TOKENS_UPDATED",
+        message: `Your token allowance in ${org.name} was ${raised ? "increased" : "changed"} to ${tokenChange.to.toLocaleString("en-IN")} (${tokenChange.remaining.toLocaleString("en-IN")} remaining).`,
+        meta: {
+          orgName: org.name,
+          previousCap: tokenChange.from,
+          assignedCap: tokenChange.to,
+          remaining: tokenChange.remaining,
+        },
+      });
+    }
 
     res.json({
       success: true,
@@ -2381,6 +2494,15 @@ router.delete("/:memberId", requireAuth, async (req, res) => {
     
      member.orgId = org._id; // keep orgId reference for easy rejoin
     await member.save();
+
+    await notifyMember({
+      owner: req.user,
+      org,
+      memberId: member._id,
+      type: "ORG_MEMBER_REMOVED",
+      message: `Your access to ${org.name} was removed. Your remaining token allowance has been returned to the organization.`,
+      meta: { orgName: org.name, releasedTokens: unspent },
+    });
 
     res.json({
       success: true,
@@ -2513,6 +2635,15 @@ router.patch("/rejoin/:memberId", requireAuth, async (req, res) => {
     org.totalAssignedCap += rejoinTokens;
     org.teamMembersLimitRemaining = Math.max(0, maxMembers - org.members.length);
     await org.save();
+
+    await notifyMember({
+      owner: req.user,
+      org,
+      memberId: member._id,
+      type: "ORG_MEMBER_REJOINED",
+      message: `You were re-added to ${org.name} with ${rejoinTokens.toLocaleString("en-IN")} tokens.`,
+      meta: { orgName: org.name, role: member.role, assignedCap: rejoinTokens },
+    });
 
     res.json({
       success: true,

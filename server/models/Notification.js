@@ -191,6 +191,14 @@ const NotificationSchema = new mongoose.Schema(
     "ORG_SHARE_PURCHASED",
     "COLLAB_INVITE",
 
+    // Org membership & token allocation. The add-member flow sent an email
+    // invitation and nothing else, so a member who was already signed in got no
+    // in-app signal that they'd joined an org or been given an allowance.
+    "ORG_MEMBER_ADDED",
+    "ORG_TOKENS_UPDATED",
+    "ORG_MEMBER_REMOVED",
+    "ORG_MEMBER_REJOINED",
+
     // Hire flow
     "HIRE_PROPOSAL_ACCEPTED",
     "HIRE_PAYMENT_REQUIRED",

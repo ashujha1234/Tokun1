@@ -5128,6 +5128,7 @@ app.use("/api/purchase", purchaseRoutes);
 app.use("/api/llm-provider", llmProviderRoutes);
 app.use("/api/promptoptimizer", promptoptimizerRoutes);
 app.use("/api/promptreport", promptreportRoutes);
+app.use("/api/newsletter", require("./routes/newsletterRoutes"));
 app.use("/api/bankaccount", bankAccountRoutes);
 app.use("/api/routes/pricing", pricingRoutes);
 app.use("/api/plans/subscribe/order", billingOrders);
@@ -5288,6 +5289,15 @@ async function mirrorUserReplyToAdmin({ conversationId, senderId, text }) {
   io.to(String(adminConvo.adminId)).emit("admin-message:new", payload);
 }
 
+// Presence tracking. There was none before, which is why the chat UI simply
+// hardcoded a green dot on every avatar.
+const {
+  isUserOnline,
+  addPresence,
+  removePresence,
+  onlineFrom,
+} = require("./utils/presence");
+
 // --- REAL-TIME SOCKET LOGIC ---
 io.on("connection", (socket) => {
 
@@ -5300,7 +5310,47 @@ io.on("connection", (socket) => {
     // ✅ New admin-message personal room
     socket.join(`admin-message-user:${userId}`);
 
+    // Announce only on the actual offline -> online transition, so opening a
+    // second tab doesn't spam every client with a redundant "came online".
+    if (addPresence(userId, socket.id)) {
+      io.emit("presence:update", { userId: String(userId), online: true });
+    }
   }
+
+  /* ===============================
+     PRESENCE
+  ================================ */
+
+  // A client asks for the current state of the people in its conversation list,
+  // because it can't infer who was already online before it connected.
+  socket.on("presence:get", ({ userIds } = {}, ack) => {
+    const online = onlineFrom(Array.isArray(userIds) ? userIds : []);
+    if (typeof ack === "function") ack({ online });
+    else socket.emit("presence:state", { online });
+  });
+
+  /* ===============================
+     TYPING
+  ================================ */
+
+  // Relayed to the conversation room but NOT back to the sender — you should
+  // never see your own "typing…". The client also stops it on send and on a
+  // short idle timer, so a dropped stop event can't leave it stuck on.
+  socket.on("typing:start", ({ conversationId, userId: from } = {}) => {
+    if (!conversationId || !from) return;
+    socket.to(String(conversationId)).emit("typing:start", {
+      conversationId: String(conversationId),
+      userId: String(from),
+    });
+  });
+
+  socket.on("typing:stop", ({ conversationId, userId: from } = {}) => {
+    if (!conversationId || !from) return;
+    socket.to(String(conversationId)).emit("typing:stop", {
+      conversationId: String(conversationId),
+      userId: String(from),
+    });
+  });
 
   /* ===============================
      ADMIN MESSAGE SOCKETS
@@ -5354,12 +5404,36 @@ io.on("connection", (socket) => {
         updatedAt: new Date(),
       });
 
+      // Mark delivered for any participant (other than the sender) who is
+      // connected right now. This is what turns one tick into two: "stored" vs
+      // "actually reached the other person's client".
+      let deliveredTo = [];
+      try {
+        const convo = await Conversation.findById(conversationId).select("participants").lean();
+        deliveredTo = (convo?.participants || [])
+          .map(String)
+          .filter((p) => p !== String(senderId) && isUserOnline(p));
+
+        if (deliveredTo.length) {
+          await Message.updateOne(
+            { _id: message._id },
+            { $addToSet: { deliveredTo: { $each: deliveredTo } } }
+          );
+        }
+      } catch (e) {
+        // Non-fatal: the message is already saved and about to be emitted. A
+        // failed receipt just leaves it showing as sent rather than delivered.
+        console.error("delivery receipt failed:", e?.message);
+      }
+
       io.to(String(conversationId)).emit("new-message", {
         _id: message._id,
         conversationId,
         sender: senderId,
         text,
         createdAt: message.createdAt,
+        deliveredTo,
+        readBy: [String(senderId)],
       });
 
       // ✅ REVERSE-MIRROR: agar ye "Tokun Admin" wala conversation hai,
@@ -5375,6 +5449,117 @@ io.on("connection", (socket) => {
         success: false,
         error: "Message send failed",
       });
+    }
+  });
+
+  /* ===============================
+     READ RECEIPTS / EDIT / DELETE
+  ================================ */
+
+  // Sent when the reader actually has the thread open. Marks every message in it
+  // that isn't theirs as read, and tells the room so the sender's ticks turn
+  // blue. Emitted to the whole room (not just the sender) so a third
+  // participant's view stays consistent too.
+  socket.on("message:read", async ({ conversationId, userId: readerId } = {}) => {
+    try {
+      if (!conversationId || !readerId) return;
+
+      const result = await Message.updateMany(
+        {
+          conversationId,
+          sender: { $ne: readerId },
+          readBy: { $ne: readerId },
+        },
+        { $addToSet: { readBy: readerId, deliveredTo: readerId } }
+      );
+
+      // Nothing changed → nothing to tell anyone. Without this, simply having a
+      // thread open re-broadcasts on every focus event.
+      if (!result.modifiedCount) return;
+
+      io.to(String(conversationId)).emit("message:read", {
+        conversationId: String(conversationId),
+        userId: String(readerId),
+        at: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Socket message:read error:", err);
+    }
+  });
+
+  socket.on("message:edit", async ({ messageId, userId: editorId, text } = {}) => {
+    try {
+      const clean = String(text || "").trim();
+      if (!messageId || !editorId || !clean) return;
+
+      const message = await Message.findById(messageId);
+      if (!message) return;
+
+      // Only the author may edit, and never a deleted message. Enforced here
+      // rather than in the UI — the client can't be trusted with either rule.
+      if (String(message.sender) !== String(editorId) || message.deleted) {
+        return socket.emit("message-error", { success: false, error: "not_allowed" });
+      }
+      if (message.text === clean) return;
+
+      // Keep the first version only; editing twice shouldn't lose the original.
+      if (!message.originalText) message.originalText = message.text;
+      message.text = clean;
+      message.editedAt = new Date();
+      await message.save();
+
+      // Keep the conversation preview honest if this was the latest message.
+      const convo = await Conversation.findById(message.conversationId).select("lastMessage lastSender");
+      if (convo && String(convo.lastSender) === String(editorId)) {
+        await Conversation.updateOne({ _id: message.conversationId }, { lastMessage: clean });
+      }
+
+      io.to(String(message.conversationId)).emit("message:edited", {
+        _id: String(message._id),
+        conversationId: String(message.conversationId),
+        text: clean,
+        editedAt: message.editedAt.toISOString(),
+      });
+    } catch (err) {
+      console.error("Socket message:edit error:", err);
+    }
+  });
+
+  socket.on("message:delete", async ({ messageId, userId: deleterId } = {}) => {
+    try {
+      if (!messageId || !deleterId) return;
+
+      const message = await Message.findById(messageId);
+      if (!message) return;
+      if (String(message.sender) !== String(deleterId)) {
+        return socket.emit("message-error", { success: false, error: "not_allowed" });
+      }
+      if (message.deleted) return;
+
+      // Soft delete, but the text is genuinely cleared — hiding it client-side
+      // would leave the content sitting in the database and in any payload the
+      // other participant could inspect.
+      message.deleted = true;
+      message.deletedAt = new Date();
+      message.text = "";
+      message.attachment = undefined;
+      await message.save();
+
+      const convo = await Conversation.findById(message.conversationId).select("lastMessage lastSender");
+      if (convo && String(convo.lastSender) === String(deleterId)) {
+        await Conversation.updateOne(
+          { _id: message.conversationId },
+          { lastMessage: "This message was deleted" }
+        );
+      }
+
+      io.to(String(message.conversationId)).emit("message:deleted", {
+        _id: String(message._id),
+        conversationId: String(message.conversationId),
+        deletedAt: message.deletedAt.toISOString(),
+      });
+    } catch (err) {
+      console.error("Socket message:delete error:", err);
     }
   });
 
@@ -5488,6 +5673,28 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
+    if (!userId) return;
+
+    // Only announce when this was the user's LAST socket — otherwise a closed
+    // tab would mark someone offline while they're still using another one.
+    if (removePresence(userId, socket.id)) {
+      io.emit("presence:update", {
+        userId: String(userId),
+        online: false,
+        lastSeen: new Date().toISOString(),
+      });
+    }
+
+    // A socket can drop mid-typing (tab closed, network gone) and the stop event
+    // never arrives, which would leave "typing…" on screen forever for the other
+    // side. Clear it for every conversation room this socket was in.
+    for (const room of socket.rooms) {
+      if (room === socket.id) continue;
+      socket.to(room).emit("typing:stop", {
+        conversationId: String(room),
+        userId: String(userId),
+      });
+    }
   });
 });
 

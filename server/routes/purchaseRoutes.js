@@ -388,6 +388,7 @@ const Wallet = require("../models/Wallet");
 const PlatformWallet = require("../models/PlatformWallet");
 const BankAccount = require("../models/BankAccount");
 const { requireAuth, blockIfSuspended, blockOrgTeamMemberPurchase } = require("../utils/auth");
+const { splitPromptSale } = require("../utils/commission");
 const { requireKycVerified } = require("../utils/requireKycVerified");
 const { logActivity } = require("../utils/activityLogger");
 const crypto = require("crypto");
@@ -400,46 +401,15 @@ const RefundRequest = require("../models/RefundRequest");
 const Notification = require("../models/Notification");
 const { notifyAdmins } = require("../utils/notifyAdmins");
 
-// How long a buyer has to request a refund after purchase, and — same
-// number — how long the seller's Route transfer is held before it actually
-// moves into their linked-account balance. Keeping both on one env var means
-// the whole refund window is guaranteed reversal-free: as long as it's open,
-// the money hasn't left Tokun's main balance yet.
-const REFUND_WINDOW_HOURS = Number(process.env.REFUND_WINDOW_HOURS || 24);
-
-const fetch = (...args) =>
-  import("node-fetch").then(({ default: fetch }) => fetch(...args));
-
-function getRazorpayAuthHeader() {
-  return `Basic ${Buffer.from(
-    `${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`
-  ).toString("base64")}`;
-}
-
-// Seller's Route Linked Account, if they've onboarded and it's registered —
-// used to attach a transfers[] entry so the split happens at order time.
-async function getSellerLinkedAccountId(sellerId) {
-  const bankAccount = await BankAccount.findOne({
-    userId: sellerId,
-    routeStatus: "CREATED",
-    routeLinkedAccountId: { $ne: null },
-  }).sort({ default: -1, createdAt: -1 });
-
-  return bankAccount?.routeLinkedAccountId || null;
-}
-
-async function fetchTransfersForPayment(paymentId) {
-  const res = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}/transfers`, {
-    headers: { Authorization: getRazorpayAuthHeader() },
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok) {
-    const err = new Error(data?.error?.description || `Fetch transfers failed: ${res.status}`);
-    err.razorpay = data;
-    throw err;
-  }
-  return data;
-}
+// Route plumbing lives in utils/routePayouts so the cart flow uses the exact
+// same rules — a seller must be paid once, by one path, for the same window,
+// whichever checkout they were bought through.
+const {
+  REFUND_WINDOW_HOURS,
+  getSellerLinkedAccountId,
+  fetchTransfersForPayment,
+  transferOnHoldUntil,
+} = require("../utils/routePayouts");
 
 // GET /api/purchase/seller-payout-status/:promptId
 // Buyer-facing check — lets the frontend disable "Buy Now" before the buyer
@@ -495,15 +465,16 @@ router.post("/create-order/:promptId", requireAuth, blockIfSuspended, blockOrgTe
       });
     }
 
-    const amount = Math.round(prompt.tokun_price * 100);
+    const split = splitPromptSale(prompt);
+    const amount = Math.round(split.buyerPays * 100);
 
     const shortReceipt = `tokun_p${prompt._id
       .toString()
       .slice(-6)}u${req.user._id.toString().slice(-6)}`;
 
     // If the seller has a registered Route Linked Account, attach a transfer
-    // for their share (price, net of Tokun's commission). Sellers without
-    // one yet fall back to the existing Wallet-ledger path.
+    // for their share (list price, net of Tokun's seller-side commission).
+    // Sellers without one yet fall back to the existing Wallet-ledger path.
     const linkedAccountId = await getSellerLinkedAccountId(prompt.userId);
 
     // Prompts uploaded after the Route-onboarding-first flow shipped require
@@ -534,14 +505,10 @@ router.post("/create-order/:promptId", requireAuth, blockIfSuspended, blockOrgTe
       orderPayload.transfers = [
         {
           account: linkedAccountId,
-          amount: Math.round(prompt.price * 100),
+          amount: Math.round(split.sellerNet * 100),
           currency: "INR",
-          // Held for the same duration as the buyer's refund window — the
-          // money only actually lands in the seller's linked-account balance
-          // once it's no longer refundable, so an approved refund inside the
-          // window never needs a transfer reversal.
           on_hold: 1,
-          on_hold_until: Math.floor(Date.now() / 1000) + REFUND_WINDOW_HOURS * 3600,
+          on_hold_until: transferOnHoldUntil(),
         },
       ];
     }
@@ -556,6 +523,14 @@ router.post("/create-order/:promptId", requireAuth, blockIfSuspended, blockOrgTe
         title: prompt.title,
         price: prompt.price,
         tokun_price: prompt.tokun_price,
+      },
+      // The buyer's side of the split, so the checkout screen can show what the
+      // platform fee actually is instead of the amount appearing out of nowhere
+      // when Razorpay opens.
+      pricing: {
+        listPrice: split.listPrice,
+        platformFee: split.buyerFee,
+        total: split.buyerPays,
       },
     });
   } catch (err) {
@@ -633,9 +608,13 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
       });
     }
 
-    // Buyer pays tokun_price (price + commission markup) — seller only ever gets
-    // prompt.price, so the difference is Tokun's cut for this sale.
-    const platformCommission = Math.max(0, +(Number(pricePaid || 0) - Number(prompt.price || 0)).toFixed(2));
+    // Tokun's cut is charged on both sides: added on top of the list price for
+    // the buyer, taken off the top of the seller's payout. platformCommission is
+    // the total of the two — and the refund path recovers
+    // `pricePaid − platformCommission` from the seller, which is exactly
+    // split.sellerNet, so the reversal stays symmetric with what was paid out.
+    const split = splitPromptSale(prompt);
+    const platformCommission = split.platformCut;
 
     // Create purchase record
     const purchase = await Purchase.create({
@@ -662,9 +641,11 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
       prompt.sold = true;
     }
 
-    // Update prompt sales stats
+    // Update prompt sales stats. totalRevenue tracks what the SELLER earned,
+    // net of Tokun's cut — it's surfaced to the seller as their earnings, so
+    // crediting the gross list price here would overstate it by the commission.
     prompt.salesCount += 1;
-    prompt.totalRevenue += prompt.price;
+    prompt.totalRevenue += split.sellerNet;
     await prompt.save();
 
     // IMPORTANT:
@@ -699,9 +680,11 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
       purchase.routeTransferId = routeTransferId;
       await purchase.save();
     } else {
-      // Fallback: seller hasn't onboarded to Route yet.
+      // Fallback: seller hasn't onboarded to Route yet. Same net as the Route
+      // transfer above — list price less Tokun's seller-side commission — so a
+      // seller earns the same either way.
       try {
-        await Wallet.creditSale(sellerId, prompt.price, {
+        await Wallet.creditSale(sellerId, split.sellerNet, {
           purchaseId: purchase._id,
           promptId: prompt._id,
           promptTitle: prompt.title,

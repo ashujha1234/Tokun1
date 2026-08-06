@@ -100,7 +100,10 @@ const WalletSchema = new mongoose.Schema(
  * @param {object}          meta       - { purchaseId, promptId, promptTitle }
  */
 WalletSchema.statics.creditSale = async function (sellerId, amount, meta = {}) {
-  const { purchaseId = null, promptId = null, promptTitle = "Prompt sold" } = meta;
+  // `session` is optional: cart checkout credits several sellers inside one
+  // transaction so a mid-loop failure can't leave some paid and some not.
+  // Callers that pass nothing behave exactly as before.
+  const { purchaseId = null, promptId = null, promptTitle = "Prompt sold", session = null } = meta;
 
   const wallet = await this.findOneAndUpdate(
     { userId: sellerId },
@@ -130,6 +133,7 @@ WalletSchema.statics.creditSale = async function (sellerId, amount, meta = {}) {
       new: true,
       upsert: true, // create wallet if it doesn't exist yet
       setDefaultsOnInsert: true,
+      ...(session ? { session } : {}),
     }
   );
 

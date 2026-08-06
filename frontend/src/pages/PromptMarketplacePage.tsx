@@ -5808,6 +5808,12 @@ import KycGateModal from "@/components/KycGateModal";
 import { useCart } from "@/contexts/CartContext";
 import SellPromptModal from "@/components/SellPromptModal";
 import SellerLinkedAccountForm from "@/components/SellerLinkedAccountForm";
+import RequestToBuyModal from "@/components/RequestToBuyModel";
+import {
+  isTeamMember,
+  TEAM_MEMBER_PURCHASE_TOAST,
+  TEAM_MEMBER_SELL_TOAST,
+} from "@/lib/orgRoles";
 import "./PromptMarketplace.css";
 
 type Prompt = {
@@ -5815,7 +5821,15 @@ type Prompt = {
   title: string;
   description: string;
   category: string;
+  /** The seller's list price — what they earn from, NOT what the buyer pays. */
   price?: number;
+  /**
+   * What the buyer is actually charged: list price plus Tokun's platform fee.
+   * This is the figure Razorpay is given at create-order, so it's the one that
+   * has to be on screen — showing `price` meant the payment sheet asked for
+   * more than the card advertised.
+   */
+  tokunPrice?: number;
   rating?: number;
   downloads?: number;
   imageUrl?: string;
@@ -5878,6 +5892,11 @@ function VideoReelCard({
   onOpenDetails: (p: any) => void;
   onNavigateToProfile: (id: string | null | undefined) => void;
 }) {
+  // Read from context rather than a prop: these cards are rendered from several
+  // call sites and the rule is the same everywhere, so threading a flag through
+  // each one only adds places to forget it.
+  const { user: viewer } = useAuth?.() || ({} as any);
+  const teamMember = isTeamMember(viewer);
   const [showPanel, setShowPanel] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -5986,37 +6005,51 @@ function VideoReelCard({
             <div className="reel-card__panel-price">
               {prompt.isFree
                 ? <span className="reel-card__free-badge">FREE</span>
-                : <span className="reel-card__price-tag">₹{(prompt.price ?? 0).toFixed(2)}</span>
+                : <span className="reel-card__price-tag">₹{buyerPrice(prompt).toFixed(2)}</span>
               }
             </div>
 
             {/* Action buttons */}
             {!isPurchased && !isOwn && !prompt.isFree && (
               <div className="reel-card__actions">
-                {hasPayoutSetup === false ? (
-                  <button
-                    type="button"
-                    disabled
-                    title="This seller hasn't set up their payout account yet."
-                    className="reel-card__btn reel-card__btn--buy opacity-50 cursor-not-allowed"
-                  >
-                    Seller setup pending
-                  </button>
-                ) : (
+                {teamMember ? (
+                  // A TM's only route to a paid prompt is asking their Owner —
+                  // onBuyNow opens the request modal for them. No cart button:
+                  // checkout is blocked server-side either way.
                   <button
                     className="reel-card__btn reel-card__btn--buy"
                     onClick={() => { setShowPanel(false); onBuyNow(prompt); }}
                   >
-                    Buy Now
+                    Request to buy
                   </button>
+                ) : (
+                  <>
+                    {hasPayoutSetup === false ? (
+                      <button
+                        type="button"
+                        disabled
+                        title="This seller hasn't set up their payout account yet."
+                        className="reel-card__btn reel-card__btn--buy opacity-50 cursor-not-allowed"
+                      >
+                        Seller setup pending
+                      </button>
+                    ) : (
+                      <button
+                        className="reel-card__btn reel-card__btn--buy"
+                        onClick={() => { setShowPanel(false); onBuyNow(prompt); }}
+                      >
+                        Buy Now
+                      </button>
+                    )}
+                    <button
+                      className="reel-card__btn reel-card__btn--cart"
+                      onClick={() => onAddToCart(prompt.id)}
+                    >
+                      <ShoppingCart size={14} style={{ display: "inline", marginRight: 5, verticalAlign: "middle" }} />
+                      Add to Cart
+                    </button>
+                  </>
                 )}
-                <button
-                  className="reel-card__btn reel-card__btn--cart"
-                  onClick={() => onAddToCart(prompt.id)}
-                >
-                  <ShoppingCart size={14} style={{ display: "inline", marginRight: 5, verticalAlign: "middle" }} />
-                  Add to Cart
-                </button>
               </div>
             )}
             {(isPurchased || prompt.isFree) && (
@@ -6319,8 +6352,17 @@ const LIB_BANNERS = {
 
 const libStockImage = (seed: string, w = 900, h = 700) => `https://picsum.photos/seed/${seed}/${w}/${h}`;
 
+// What the buyer will be charged, for any prompt shape on this page (mapped
+// Prompt objects carry `tokunPrice`; raw API docs carry `tokun_price`). Every
+// price on a card goes through here so the number on screen matches the number
+// Razorpay asks for — they used to differ by Tokun's platform fee.
+const buyerPrice = (p: any): number => {
+  const marked = Number(p?.tokunPrice ?? p?.tokun_price ?? 0);
+  return marked > 0 ? marked : Number(p?.price ?? 0);
+};
+
 const formatCardPrice = (p: Prompt) =>
-  p.isFree || !p.price ? "Free" : `₹${Number(p.price).toFixed(2)}`;
+  p.isFree || !buyerPrice(p) ? "Free" : `₹${buyerPrice(p).toFixed(2)}`;
 
 const LibEyebrow = ({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) => (
   <div className="flex items-center gap-2 text-[12px] font-semibold tracking-wide" style={{ color: "#22D3EE" }}>
@@ -6615,6 +6657,10 @@ const LibOldStyleCard = ({
   onOpenDetails: (p: Prompt) => void;
   onNavigateToProfile: (id: string | null | undefined) => void;
 }) => {
+  // Called before the early return below so the hook order stays fixed.
+  const { user: viewer } = useAuth?.() || ({} as any);
+  const teamMember = isTeamMember(viewer);
+
   if (mediaKind === "video") {
     return (
       <div style={{ width: 260, flexShrink: 0 }}>
@@ -6692,10 +6738,11 @@ const LibOldStyleCard = ({
           ) : (
             <>
               <div className="mp-card__pill mp-card__pill--muted">
-                ₹{(prompt.price ?? 0).toFixed(2)}
+                ₹{buyerPrice(prompt).toFixed(2)}
               </div>
 
-              {!isOwn && (
+              {/* No cart for team members — checkout is blocked server-side. */}
+              {!isOwn && !teamMember && (
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onAddToCart(prompt.id); }}
@@ -6707,7 +6754,15 @@ const LibOldStyleCard = ({
               )}
 
               {!isOwn && !isPurchased && !(prompt.exclusive && prompt.sold) && (
-                hasPayoutSetup === false ? (
+                teamMember ? (
+                  // onBuyNow routes team members to the request modal.
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onBuyNow(prompt); }}
+                    className="mp-card__pill mp-card__pill--buy"
+                  >
+                    Request
+                  </button>
+                ) : hasPayoutSetup === false ? (
                   <button
                     type="button"
                     disabled
@@ -6786,6 +6841,10 @@ const LibFeaturedSection = ({
   isOwn: (p: Prompt) => boolean;
   isPurchased: (p: Prompt) => boolean;
 }) => {
+  // Called before the early return below so the hook order stays fixed.
+  const { user: viewer } = useAuth?.() || ({} as any);
+  const teamMember = isTeamMember(viewer);
+
   if (prompts.length === 0) return null;
   return (
     <section>
@@ -6858,7 +6917,8 @@ const LibFeaturedSection = ({
                       <div className="mp-card__pill mp-card__pill--free">FREE</div>
                     ) : (
                       <div className="flex items-center gap-2">
-                        {!own && (
+                        {/* No cart for team members — checkout is blocked server-side. */}
+                        {!own && !teamMember && (
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); onAddToCart(p.id); }}
@@ -6873,7 +6933,8 @@ const LibFeaturedSection = ({
                             onClick={(e) => { e.stopPropagation(); onBuyNow(p); }}
                             className="mp-card__pill mp-card__pill--buy"
                           >
-                            Buy Now
+                            {/* onBuyNow routes team members to the request modal. */}
+                            {teamMember ? "Request" : "Buy Now"}
                           </button>
                         )}
                       </div>
@@ -7096,6 +7157,12 @@ const PromptMarketplacePage = () => {
   const { token , user} = useAuth?.() || ({} as any);
   const { addToCart } = useCart();
   const currentUserId = user?._id || user?.id || null;
+
+  // Team members can't buy — they ask their org owner instead. Every purchase
+  // and cart action on this page funnels through the two guards below, so a
+  // button that slips past the render-time checks still can't start a payment.
+  const teamMember = isTeamMember(user);
+  const [requestPrompt, setRequestPrompt] = useState<Prompt | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [showTopBg, setShowTopBg] = useState(true);
@@ -7425,6 +7492,14 @@ const mapped: Prompt[] = (data.prompts || []).map((doc: any) => {
       "General",
 
     price: typeof doc.price === "number" ? doc.price : 0,
+    // Falls back to the list price rather than 0 — a prompt saved before the
+    // tokun_price hook existed would otherwise render as free.
+    tokunPrice:
+      typeof doc.tokun_price === "number" && doc.tokun_price > 0
+        ? doc.tokun_price
+        : typeof doc.price === "number"
+          ? doc.price
+          : 0,
     rating: typeof doc.averageRating === "number" ? doc.averageRating : undefined,
     imageUrl: att?.type === "image" ? mediaPath : undefined,
     videoUrl: att?.type === "video" ? mediaPath : undefined,
@@ -7527,7 +7602,28 @@ const filteredPrompts = prompts.filter((p) => {
 };
 
   /** PURCHASE FLOW — integrates CREATE ORDER (+ verify) with detailed consoles */
+ // Single gate for every "add to cart" on this page. Cart checkout is blocked
+ // server-side for team members, so letting them fill a cart they can never pay
+ // for just moves the dead end one screen later. Returns false when it blocked,
+ // so callers skip their own "Added to Cart" confirmation.
+ const guardedAddToCart = (id: string | number): boolean => {
+   if (teamMember) {
+     toast(TEAM_MEMBER_PURCHASE_TOAST);
+     return false;
+   }
+   addToCart(String(id));
+   return true;
+ };
+
  const handlePurchase = async (prompt: Prompt) => {
+  // Team members never pay. Sending them to the request modal here means every
+  // Buy Now on the page lands somewhere useful, including any button whose
+  // render-time check was missed.
+  if (teamMember) {
+    setRequestPrompt(prompt);
+    return;
+  }
+
   if (isOwnPrompt(prompt)) {
     toast({
       title: "Not allowed",
@@ -7577,7 +7673,10 @@ const filteredPrompts = prompts.filter((p) => {
 
 
       if (!res.ok || !data?.success || !data?.order) {
-        throw new Error(data?.error || "order_create_failed");
+        // Prefer the server's written reason — the bare `error` code used to
+        // reach the toast, so a blocked team member saw the literal string
+        // "team_members_cannot_purchase".
+        throw new Error(data?.message || data?.error || "order_create_failed");
       }
  
       const order = data.order;
@@ -7809,7 +7908,7 @@ const savePromptToCollections = async ({
       hasPayoutSetup={sellerPayoutMap[p.id]}
       onVideoPlay={handleVideoPlay}
       onAddToCart={(id) => {
-        addToCart(String(id));
+        if (!guardedAddToCart(id)) return;
         toast({ title: "Added to Cart", description: `"${p.title}" was added.` });
       }}
       onBuyNow={(prompt) => handlePurchase(prompt)}
@@ -7940,7 +8039,7 @@ const savePromptToCollections = async ({
                       isPlaying={playingVideo === prompt.id}
                       onVideoPlay={handleVideoPlay}
                       onAddToCart={(id) => {
-                        addToCart(String(id));
+                        if (!guardedAddToCart(id)) return;
                         toast({ title: "Added to Cart", description: `"${prompt.title}" was added.` });
                       }}
                       onBuyNow={(p) => handlePurchase(p as Prompt)}
@@ -8064,15 +8163,16 @@ const savePromptToCollections = async ({
                         ) : (
                           <>
                             <div className="mp-card__pill mp-card__pill--muted">
-                              ₹{(prompt.price ?? 0).toFixed(2)}
+                              ₹{buyerPrice(prompt).toFixed(2)}
                             </div>
 
-                            {!isOwnPrompt(prompt) && (
+                            {/* No cart for team members — checkout is blocked server-side. */}
+                            {!isOwnPrompt(prompt) && !teamMember && (
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  addToCart(prompt.id);
+                                  if (!guardedAddToCart(prompt.id)) return;
                                   toast({
                                     title: "Added to Cart",
                                     description: `"${prompt.title}" was added.`,
@@ -8090,7 +8190,19 @@ const savePromptToCollections = async ({
                               isPurchased ? (
                                 <div className="mp-card__pill mp-card__pill--owned">Purchased</div>
                               ) : !(prompt.exclusive && prompt.sold) ? (
-                                sellerPayoutMap[prompt.id] === false ? (
+                                teamMember ? (
+                                  // handlePurchase routes team members to the
+                                  // request modal instead of a payment.
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handlePurchase(prompt);
+                                    }}
+                                    className="mp-card__pill mp-card__pill--buy"
+                                  >
+                                    Request
+                                  </button>
+                                ) : sellerPayoutMap[prompt.id] === false ? (
                                   <button
                                     type="button"
                                     disabled
@@ -8225,7 +8337,7 @@ const savePromptToCollections = async ({
                 prompts={filteredPrompts.slice(0, 4)}
                 onOpenDetails={(p) => { setDetailsPrompt(p); setDetailsOpen(true); }}
                 onAddToCart={(id) => {
-                  addToCart(String(id));
+                  if (!guardedAddToCart(id)) return;
                   toast({ title: "Added to Cart", description: "Prompt was added." });
                 }}
                 onBuyNow={(p) => handlePurchase(p)}
@@ -8239,7 +8351,15 @@ const savePromptToCollections = async ({
           <LibBrandIdentitySpotlight onExplore={() => navigate("/brand-prompts")} />
 
           <LibSellHireSection
-            onSell={() => setSellerFormOpen(true)}
+            onSell={() => {
+              // Team members sell through their org, so the payout onboarding
+              // form is never the right next step for them.
+              if (teamMember) {
+                toast(TEAM_MEMBER_SELL_TOAST);
+                return;
+              }
+              setSellerFormOpen(true);
+            }}
             onHire={() => navigate("/find-creators")}
           />
         </div>
@@ -8302,6 +8422,21 @@ const savePromptToCollections = async ({
           setEnlargeModalOpen(true);
         }}
       />
+
+      {/* Team member asking their org owner to buy this. Opened by every Buy
+          Now / Request button on the page via handlePurchase. */}
+      {requestPrompt && (
+        <RequestToBuyModal
+          open={Boolean(requestPrompt)}
+          onOpenChange={(open) => { if (!open) setRequestPrompt(null); }}
+          promptId={String(requestPrompt.id)}
+          promptTitle={requestPrompt.title || ""}
+          price={requestPrompt.price || 0}
+          thumbnail={requestPrompt.imageUrl || ""}
+          userType="TM"
+          role="TM"
+        />
+      )}
 
       {/* ✅ Purchase Success Popup */}
       {showSuccessPopup && (

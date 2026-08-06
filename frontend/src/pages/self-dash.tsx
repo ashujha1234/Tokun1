@@ -1117,6 +1117,7 @@ import { toast } from "@/components/ui/use-toast";
 import DetailsPrompt, { MarketplacePrompt } from "../components/historyDetail";
 import NdaButton from "@/components/NdaCard";
 import SellerLinkedAccountForm from "@/components/SellerLinkedAccountForm";
+import OrgMembershipCard from "@/components/OrgMembershipCard";
 
 const GRADIENT = "linear-gradient(270deg,#FF14EF 0%, #1A73E8 100%)";
 const GRAD = "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)";
@@ -2435,6 +2436,11 @@ useEffect(() => {
 
 // Route payout setup — drives the "set up your payout account" banner below.
 const [hasPayoutSetup, setHasPayoutSetup] = useState<boolean | null>(null);
+// Server's answer to "may this account sell at all". False only for team
+// members, whose org lists and gets paid on its own Route account. Defaults to
+// true so an existing seller never loses their payout banners while the first
+// payout-status response is still in flight.
+const [canSell, setCanSell] = useState(true);
 // CREATED | UNDER_REVIEW | NEEDS_CLARIFICATION | SUSPENDED | REJECTED | ACTIVATED | null
 const [activationStatus, setActivationStatus] = useState<string | null>(null);
 const [payoutAccountId, setPayoutAccountId] = useState<string | null>(null);
@@ -2456,6 +2462,9 @@ const fetchPayoutStatus = async () => {
     });
     const data = await res.json();
     if (res.ok && data?.success) {
+      // Absent on older responses — treat a missing field as "can sell" rather
+      // than hiding a real seller's payout setup.
+      setCanSell(data.canSell !== false);
       setHasPayoutSetup(Boolean(data.hasPayoutSetup));
       setActivationStatus(data.activationStatus || null);
       setPayoutAccountId(data.accountId || null);
@@ -4062,7 +4071,13 @@ const RequestCard = ({ item }: { item: any }) => {
               </div>
             )}
 
-            {hasPayoutSetup === false && !requiresResubmission && (
+            {/* A team member's org identity and allowance. Renders nothing for
+                anyone else, and takes the place of the seller-payout banners
+                below — which a TM should never see, since payout-status reports
+                canSell:false for them. */}
+            <OrgMembershipCard className="relative z-10 mx-4 mt-4" />
+
+            {canSell && hasPayoutSetup === false && !requiresResubmission && (
               <div className="relative z-10 mx-4 mt-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-200">
                 <strong>Action required:</strong> Please set up your bank/linked account so people can buy your prompts.
                 <button
@@ -4075,7 +4090,7 @@ const RequestCard = ({ item }: { item: any }) => {
               </div>
             )}
 
-            {hasPayoutSetup === false && requiresResubmission && (
+            {canSell && hasPayoutSetup === false && requiresResubmission && (
               <div className="relative z-10 mx-4 mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                 <strong>{activationStatus === "REJECTED" ? "Verification failed:" : "Account disabled:"}</strong>{" "}
                 {payoutMessage || "Please resubmit your payout details."}

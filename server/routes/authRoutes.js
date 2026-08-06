@@ -8,6 +8,7 @@ const User = require("../models/User");
 const { sendEmail } = require("../utils/SendEmail"); // ← make sure filename & path match exactly
 const Organization = require("../models/organization");
 const { requireAuth } = require("../utils/auth");
+const { signUserToken, shouldRenew, USER_TOKEN_TTL } = require("../utils/authTokens");
 const { ensureMonthlyQuota } = require("../utils/quota");
 const { buildOtpEmailHtml } = require("../utils/otpemailtemplate"); // adjust path
 const {applyUserPlan} = require("../service/billing");
@@ -538,11 +539,8 @@ await logActivity({
 
 
 
-    const token = jwt.sign(
-      { sub: String(user._id), email: user.email, name: user.name, userType: user.userType, role: user.role, orgId: user.orgId, plan: user.plan },
-      process.env.JWT_SECRET,
-      { expiresIn: "1d" }
-    );
+    // TTL lives in utils/authTokens so signup, login and renew can't drift apart.
+    const token = signUserToken(user);
 
     // Optional org info for UI
    // const orgInfo = user.orgId ? { orgId: user.orgId, userType: user.userType, role: user.role } : null;
@@ -721,11 +719,10 @@ router.post("/login/verify", async (req, res) => {
 
 
 
-    const token = jwt.sign(
-      { sub: String(user._id), email: user.email, name: user.name },
-      process.env.JWT_SECRET,
-      { expiresIn: "1d" }
-    );
+    // Same signer as signup, so a logged-in session and a just-signed-up one
+    // carry the same claims and the same lifetime. This site also used to omit
+    // userType/role/orgId from the payload that signup included.
+    const token = signUserToken(user);
 
    // inside success response after issuing 'token'
 const orgInfo = user.orgId ? { orgId: user.orgId, userType: user.userType, role: user.role } : null;
@@ -924,6 +921,50 @@ router.get(
 
 
 
+
+/* ================= SESSION ================= */
+/**
+ * GET /api/auth/session — is this session still valid, and does it need a fresh
+ * token?
+ *
+ * This is what makes the long session a SLIDING one. The client calls it on
+ * boot, on window focus and on a slow interval; whenever the current token is
+ * past half its life it gets replaced. So somebody using Tokun regularly is
+ * never logged out, while a session nobody touches for USER_TOKEN_TTL really
+ * does expire.
+ *
+ * requireAuth already rejects an expired or tampered token with 401, so reaching
+ * the handler at all means the session is good — the client uses that 401 as its
+ * signal to log out cleanly instead of sitting there looking signed in while
+ * every other request fails.
+ */
+router.get("/session", requireAuth, (req, res) => {
+  // Admins are deliberately left alone: their tokens are short-lived on purpose
+  // and silently extending them would defeat that.
+  if (req.isAdmin) {
+    return res.json({ success: true, valid: true, renewed: false, isAdmin: true });
+  }
+
+  let token = null;
+  try {
+    // Decoded again rather than threaded through requireAuth, so this stays a
+    // self-contained read of iat/exp.
+    const raw = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+    const payload = jwt.decode(raw);
+    if (shouldRenew(payload)) token = signUserToken(req.user);
+  } catch {
+    // Decode problems aren't fatal here — the session is already proven valid by
+    // requireAuth; we just don't rotate this time.
+  }
+
+  return res.json({
+    success: true,
+    valid: true,
+    renewed: Boolean(token),
+    ...(token ? { token } : {}),
+    expiresIn: USER_TOKEN_TTL,
+  });
+});
 
 module.exports = router;
 

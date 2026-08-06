@@ -371,9 +371,28 @@ const multer = require("multer");
 const router = express.Router();
 const path = require("path");
 const { PLANS } = require("../config/plans");
-const { spendTokensForIndividual, spendTokensForTeamMember, spendTokensForOrgOwner } = require("../service/spend");
+const {
+  spendTokensForIndividual,
+  spendTokensForTeamMember,
+  spendTokensForOrgOwner,
+  assertCanSpend,
+  SPEND_ERRORS,
+} = require("../service/spend");
 const User = require("../models/User");
 const Organization = require("../models/organization");
+
+// Turns a spend error into the response the client can act on. Anything not in
+// the table is a genuine bug, so it stays a 500 rather than being dressed up as
+// a billing problem the user could "fix" by paying.
+function spendErrorResponse(res, err) {
+  const known = SPEND_ERRORS[err?.message];
+  if (!known) return null;
+  return res.status(known.status).json({
+    success: false,
+    error: err.message,
+    message: known.message,
+  });
+}
 
 // Enforce history cap for Free users
 async function enforceSmartgenHistoryLimit(user) {
@@ -413,6 +432,38 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 /**
+ * Can this user spend tokens right now?
+ * GET /api/smartgen/eligibility
+ *
+ * Asked by the client before it sends anything to the LLM. The only quota gate
+ * used to be inside POST / — which runs after the model has already answered
+ * and the result is on screen, so a user with no plan saw finished output next
+ * to an error, with nothing saved. Answering up front stops the run entirely.
+ */
+router.get("/eligibility", requireAuth, async (req, res) => {
+  try {
+    await assertCanSpend(req.user._id);
+    return res.json({ success: true, allowed: true });
+  } catch (err) {
+    const known = SPEND_ERRORS[err?.message];
+    if (known) {
+      // 200 with allowed:false — "you have no plan" is a successful answer to
+      // the question being asked, and keeps this off the client's error path.
+      return res.json({
+        success: true,
+        allowed: false,
+        error: err.message,
+        message: known.message,
+      });
+    }
+    console.error("GET /smartgen/eligibility error:", err);
+    // Fail open: a broken pre-check must not lock out a paying user, and POST /
+    // still enforces the real gate before anything is written.
+    return res.json({ success: true, allowed: true });
+  }
+});
+
+/**
  * POST /api/smartgen
  */
 router.post("/", requireAuth, upload.array("attachments", 5), async (req, res) => {
@@ -437,7 +488,10 @@ router.post("/", requireAuth, upload.array("attachments", 5), async (req, res) =
 
     } else if (req.user.userType === "TM") {
       updatedOrg = await Organization.findById(req.user.orgId);
-      if (!updatedOrg.plan) return res.status(403).json({ success: false, error: "not proper plan purchased" });
+      // `updatedOrg` may be null for a member whose org was deleted — reading
+      // .plan off it used to throw and surface as a 500.
+      if (!updatedOrg) throw new Error("org_not_found");
+      if (!updatedOrg.plan) throw new Error("org_subscription_inactive");
       await spendTokensForTeamMember(req.user._id, amount, "smartgen");
       updatedUser = await User.findById(req.user._id);
       updatedOrg = await Organization.findById(req.user.orgId);
@@ -445,14 +499,19 @@ router.post("/", requireAuth, upload.array("attachments", 5), async (req, res) =
 
     } else if (req.user.userType === "ORG" && req.user.role === "Owner") {
       updatedOrg = await Organization.findById(req.user.orgId);
-      if (!updatedOrg.plan) return res.status(403).json({ success: false, error: "not proper plan purchased" });
+      if (!updatedOrg) throw new Error("org_not_found");
+      if (!updatedOrg.plan) throw new Error("org_subscription_inactive");
       await spendTokensForOrgOwner(req.user._id, amount, "smartgen");
       updatedUser = await User.findById(req.user._id);
       updatedOrg = await Organization.findById(req.user.orgId);
       req.user = updatedUser;
 
     } else {
-      return res.status(403).json({ success: false, error: "invalid_user_type" });
+      return res.status(403).json({
+        success: false,
+        error: "invalid_user_type",
+        message: SPEND_ERRORS.invalid_user_type.message,
+      });
     }
 
     const files = (req.files || []).map(f => ({
@@ -488,20 +547,23 @@ router.post("/", requireAuth, upload.array("attachments", 5), async (req, res) =
     });
   } catch (err) {
     if (err?.code === "insufficient_quota") {
-      return res.status(402).json({ success: false, error: "insufficient_quota" });
+      return res.status(402).json({
+        success: false,
+        error: "insufficient_quota",
+        message: SPEND_ERRORS.token_quota_exceeded.message,
+      });
     }
-    // Known quota/plan errors thrown by service/spend.js — surface the real reason
-    // instead of masking every failure as an opaque "server_error".
-    const knownQuotaErrors = [
-      "not_individual", "invalid_plan", "subscription_inactive", "token_quota_exceeded",
-      "not_org_owner", "org_not_found", "org_subscription_inactive", "org_pool_exhausted",
-      "not_team_member", "member_cap_exceeded", "user_not_found",
-    ];
-    if (knownQuotaErrors.includes(err?.message)) {
-      return res.status(402).json({ success: false, error: err.message });
-    }
+    // Quota, subscription and account-type failures thrown by service/spend.js
+    // each carry their own status and sentence — the client showed the bare code
+    // before, so "org_subscription_inactive" reached the user as-is.
+    if (spendErrorResponse(res, err)) return;
+
     console.error("POST /smartgen error:", err);
-    return res.status(500).json({ success: false, error: "server_error" });
+    return res.status(500).json({
+      success: false,
+      error: "server_error",
+      message: "Something went wrong on our end. Please try again.",
+    });
   }
 });
 

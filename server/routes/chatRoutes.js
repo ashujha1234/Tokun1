@@ -195,7 +195,9 @@ router.post("/conversations/:conversationId/read", requireAuth, async (req, res)
         readBy: { $ne: myId }, // sirf unread messages update karo
       },
       {
-        $addToSet: { readBy: myId },
+        // deliveredTo too: reading something necessarily means it reached you,
+        // so a message can never be read-but-not-delivered.
+        $addToSet: { readBy: myId, deliveredTo: myId },
       }
     );
 
@@ -217,7 +219,9 @@ router.post("/conversations/read-all", requireAuth, async (req, res) => {
         readBy: { $ne: myId },
       },
       {
-        $addToSet: { readBy: myId },
+        // deliveredTo too: reading something necessarily means it reached you,
+        // so a message can never be read-but-not-delivered.
+        $addToSet: { readBy: myId, deliveredTo: myId },
       }
     );
 

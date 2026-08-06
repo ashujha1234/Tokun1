@@ -1880,7 +1880,22 @@ const TokenUsageSection: React.FC<Props> = ({ className = "" }) => {
       const remaining = (user as any)?.orgTokensRemaining ?? 0;
       return Math.max(0, cap - remaining);
     }
-    return isOrg ? (user as any)?.orgPoolUsed ?? 0 : user?.monthlyTokensUsed ?? 0;
+    if (isOrg) {
+      // For an owner, "used" means capacity that is no longer theirs — tokens
+      // assigned to a member count, because the owner can neither spend nor
+      // reassign them. Showing raw orgPoolUsed meant handing 10,000 to a member
+      // changed nothing on screen and the pool still read as fully available.
+      // orgCommitted is computed server-side (/api/quota) since separating the
+      // owner's own spend out of orgPoolUsed needs every member's live balance.
+      const committed = (user as any)?.orgCommitted;
+      if (typeof committed === "number") return committed;
+      // Pre-orgTokens response: fall back to the two fields we do have rather
+      // than under-reporting to zero.
+      return (
+        ((user as any)?.totalAssignedCap ?? 0) + ((user as any)?.orgPoolUsed ?? 0)
+      );
+    }
+    return user?.monthlyTokensUsed ?? 0;
   }, [isOrg, isTeamMember, user]);
 
   // DEBUG: Token change detect
@@ -1898,6 +1913,14 @@ const TokenUsageSection: React.FC<Props> = ({ className = "" }) => {
   const remaining = Math.max(0, finalLimit - finalUsed);
   const progress = finalLimit > 0 ? Math.max(0, Math.min(1, finalUsed / finalLimit)) : 0;
   const dashOffset = circumference - progress * circumference;
+
+  // Owner-only breakdown of the "Used" figure above, so the single number is
+  // explainable: how much went to members vs how much the owner spent itself.
+  const isOrgOwner = isOrg && !isTeamMember;
+  const assignedToTeam = Number((user as any)?.totalAssignedCap ?? 0);
+  const ownerSpend = Number((user as any)?.orgOwnerSpend ?? 0);
+  const memberSpend = Number((user as any)?.orgMemberSpend ?? 0);
+  const showAllocation = isOrgOwner && finalLimit > 0;
 
 return (
   <div className={`flex justify-center mb-5 sm:mb-8 px-3 ${className}`}>
@@ -1972,6 +1995,32 @@ return (
           <p className="text-xs sm:text-sm font-bold leading-snug">
             {isLoading ? "Loading..." : `${Number(remaining || 0).toLocaleString()} tokens remaining`}
           </p>
+
+          {showAllocation && (
+            <div className="mt-3 pt-3 border-t border-white/10 space-y-1.5">
+              <p className="text-[11px] uppercase tracking-wide text-gray-500 pb-0.5">
+                Where the used tokens went
+              </p>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-gray-400">Assigned to team</span>
+                <span className="text-xs sm:text-sm font-semibold">
+                  {isLoading ? "..." : assignedToTeam.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-gray-400">Spent by you</span>
+                <span className="text-xs sm:text-sm font-semibold">
+                  {isLoading ? "..." : ownerSpend.toLocaleString()}
+                </span>
+              </div>
+              {memberSpend > 0 && (
+                <p className="text-[11px] text-gray-500 leading-snug pt-0.5">
+                  Your team has generated {memberSpend.toLocaleString()} tokens out
+                  of what you assigned them.
+                </p>
+              )}
+            </div>
+          )}
 
           {lastUpdated && (
             <p className="text-[11px] sm:text-xs text-gray-500 mt-1 sm:mt-2">

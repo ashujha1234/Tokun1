@@ -3088,13 +3088,13 @@
 
 
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import Header from "@/components/Header";
 import { socket } from "@/lib/socket";
 import { useAuth } from "@/contexts/AuthContext";
 import { FiVideo, FiInfo, FiSend } from "react-icons/fi";
-import { Search, Trash2, X, Plus, ArrowLeft,ShieldAlert } from "lucide-react";
+import { Search, Trash2, X, Plus, ArrowLeft, ShieldAlert, Check, Pencil } from "lucide-react";
 import { useAgoraCall } from "@/hooks/useAgoraCall";
 import { ReportModal } from "@/components/ReportModal";
 import NdaButton from "@/components/NdaCard";
@@ -4081,8 +4081,52 @@ function EscrowReleasedCard({ data }: { data: any }) {
 // ─────────────────────────────────────────────
 // UserAvatar
 // ─────────────────────────────────────────────
+/**
+ * Delivery state for one of YOUR OWN messages.
+ *
+ *   ✓    sent      — stored, the recipient wasn't connected
+ *   ✓✓   delivered — reached a connected recipient
+ *   ✓✓   read      — recipient opened the thread (blue)
+ *
+ * Read is checked before delivered because a read message is necessarily
+ * delivered, and `recipientIds` excludes the sender — being in your own
+ * readBy (which the server sets on send) must not count as "they read it".
+ */
+function MessageTicks({
+  message,
+  recipientIds,
+}: {
+  message: any;
+  recipientIds: string[];
+}) {
+  if (!recipientIds.length) return null;
+
+  const readBy = (message?.readBy || []).map(String);
+  const deliveredTo = (message?.deliveredTo || []).map(String);
+
+  const readByAny = recipientIds.some((id) => readBy.includes(id));
+  const deliveredToAny = recipientIds.some((id) => deliveredTo.includes(id));
+
+  const state = readByAny ? "read" : deliveredToAny ? "delivered" : "sent";
+  const label = state === "read" ? "Read" : state === "delivered" ? "Delivered" : "Sent";
+
+  return (
+    <span
+      title={label}
+      aria-label={label}
+      className={`inline-flex items-center ${state === "read" ? "text-sky-400" : "text-zinc-500"}`}
+    >
+      <Check size={13} strokeWidth={3} />
+      {state !== "sent" && <Check size={13} strokeWidth={3} className="-ml-[7px]" />}
+    </span>
+  );
+}
+
 function UserAvatar({
-  user, size = "md", online = true,
+  // Defaults to OFF. It used to default to true and every call site relied on
+  // that, so the green "online" dot appeared on everyone permanently — it
+  // carried no information at all. Callers now pass real presence.
+  user, size = "md", online = false,
 }: {
   user?: any; size?: "sm" | "md" | "lg" | "xl"; online?: boolean;
 }) {
@@ -5684,8 +5728,35 @@ export default function Chat() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
 
+  // Set of userIds the server reports as connected right now. Drives the avatar
+  // presence dot, which used to be hardcoded on for everyone.
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  // conversationId -> userId currently typing in it.
+  const [typingBy, setTypingBy] = useState<Record<string, string>>({});
+  const typingTimers = useRef<Record<string, any>>({});
+  // Our own outgoing typing state, so typing:start is emitted once per burst
+  // rather than on every keystroke.
+  const typingSentRef = useRef(false);
+  const typingStopTimer = useRef<any>(null);
+
+  // Message being edited inline, and the draft text for it.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+
   const { joinCall, leaveCall } = useAgoraCall();
   const sharedResources = messages.filter((m) => m.attachment);
+
+  // Who the ticks are about: everyone in this conversation except me. Excluding
+  // myself matters — the server puts the sender in `readBy` on send, so counting
+  // that would make every message you send instantly show as read.
+  const recipientIds = useMemo(() => {
+    const others = Array.isArray(activeConvo?.participants)
+      ? activeConvo.participants.map((p: any) => String(p?._id || p))
+      : activeConvo?.otherUser?._id
+        ? [String(activeConvo.otherUser._id)]
+        : [];
+    return others.filter((id: string) => id && id !== String(user?._id));
+  }, [activeConvo, user?._id]);
 
   useEffect(() => {
     ringingAudio.current = new Audio("/sounds/messenger.mp3");
@@ -5753,14 +5824,130 @@ export default function Chat() {
 
   useEffect(() => {
     const handleNewMessage = (msg: any) => {
-      if (msg.conversationId === activeConvo?._id) setMessages((prev) => [...prev, msg]);
+      if (msg.conversationId === activeConvo?._id) {
+        setMessages((prev) => [...prev, msg]);
+        // Someone else's message arriving while their thread is open is read
+        // immediately — that's what turns their ticks blue without them having
+        // to reopen anything.
+        if (getMessageSenderId(msg) !== user?._id && user?._id) {
+          socket.emit("message:read", { conversationId: msg.conversationId, userId: user._id });
+        }
+      }
       setConversations((prev) =>
         prev.map((c) => c._id === msg.conversationId ? { ...c, lastMessage: msg.text || c.lastMessage, updatedAt: msg.createdAt || new Date().toISOString() } : c)
       );
     };
     socket.on("new-message", handleNewMessage);
     return () => socket.off("new-message", handleNewMessage);
-  }, [activeConvo]);
+  }, [activeConvo, user?._id]);
+
+  /* ── Presence ──────────────────────────────────────────────────────────
+     Previously every avatar rendered a green dot unconditionally (UserAvatar
+     defaulted `online` to true), so "online" meant nothing. This tracks the set
+     of genuinely-connected users and the avatars read from it. */
+  useEffect(() => {
+    const handleUpdate = ({ userId: id, online }: any) => {
+      setOnlineUsers((prev) => {
+        const next = new Set(prev);
+        if (online) next.add(String(id));
+        else next.delete(String(id));
+        return next;
+      });
+    };
+    const handleState = ({ online }: any) => {
+      setOnlineUsers(new Set((online || []).map(String)));
+    };
+
+    socket.on("presence:update", handleUpdate);
+    socket.on("presence:state", handleState);
+    return () => {
+      socket.off("presence:update", handleUpdate);
+      socket.off("presence:state", handleState);
+    };
+  }, []);
+
+  // Ask for the current state whenever the conversation list changes — presence
+  // broadcasts only cover transitions, so anyone already online before this
+  // client connected would otherwise never show as online.
+  useEffect(() => {
+    const ids = conversations.map((c: any) => c?.otherUser?._id).filter(Boolean).map(String);
+    if (!ids.length) return;
+    socket.emit("presence:get", { userIds: ids }, (res: any) => {
+      if (res?.online) setOnlineUsers(new Set(res.online.map(String)));
+    });
+  }, [conversations]);
+
+  /* ── Typing ───────────────────────────────────────────────────────────
+     The sidebar used to print "Typing..." for whichever conversation was
+     selected, which had nothing to do with typing. This is the real signal. */
+  useEffect(() => {
+    const handleStart = ({ conversationId, userId: from }: any) => {
+      if (String(from) === String(user?._id)) return; // never your own
+      setTypingBy((prev) => ({ ...prev, [String(conversationId)]: String(from) }));
+
+      // Safety net: if the stop event is lost (tab closed, flaky network) the
+      // indicator would otherwise stay on screen forever.
+      if (typingTimers.current[String(conversationId)]) {
+        clearTimeout(typingTimers.current[String(conversationId)]);
+      }
+      typingTimers.current[String(conversationId)] = setTimeout(() => {
+        setTypingBy((prev) => {
+          const next = { ...prev };
+          delete next[String(conversationId)];
+          return next;
+        });
+      }, 5000);
+    };
+
+    const handleStop = ({ conversationId }: any) => {
+      clearTimeout(typingTimers.current[String(conversationId)]);
+      setTypingBy((prev) => {
+        const next = { ...prev };
+        delete next[String(conversationId)];
+        return next;
+      });
+    };
+
+    socket.on("typing:start", handleStart);
+    socket.on("typing:stop", handleStop);
+    return () => {
+      socket.off("typing:start", handleStart);
+      socket.off("typing:stop", handleStop);
+    };
+  }, [user?._id]);
+
+  /* ── Read receipts / edits / deletes ─────────────────────────────────── */
+  useEffect(() => {
+    const handleRead = ({ conversationId, userId: readerId }: any) => {
+      if (conversationId !== activeConvo?._id) return;
+      setMessages((prev) =>
+        prev.map((m: any) =>
+          (m.readBy || []).map(String).includes(String(readerId))
+            ? m
+            : { ...m, readBy: [...(m.readBy || []), readerId], deliveredTo: [...(m.deliveredTo || []), readerId] }
+        )
+      );
+    };
+
+    const handleEdited = ({ _id, text, editedAt }: any) => {
+      setMessages((prev) => prev.map((m: any) => (m._id === _id ? { ...m, text, editedAt } : m)));
+    };
+
+    const handleDeleted = ({ _id, deletedAt }: any) => {
+      setMessages((prev) =>
+        prev.map((m: any) => (m._id === _id ? { ...m, deleted: true, deletedAt, text: "", attachment: null } : m))
+      );
+    };
+
+    socket.on("message:read", handleRead);
+    socket.on("message:edited", handleEdited);
+    socket.on("message:deleted", handleDeleted);
+    return () => {
+      socket.off("message:read", handleRead);
+      socket.off("message:edited", handleEdited);
+      socket.off("message:deleted", handleDeleted);
+    };
+  }, [activeConvo?._id]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
@@ -5790,10 +5977,53 @@ export default function Chat() {
     return () => { socket.off("incoming-call", handleIncomingCall); socket.off("call-ended", handleCallEnded); };
   }, [leaveCall]);
 
+  /* ── Outgoing typing signal ────────────────────────────────────────────
+     Emits typing:start once when a burst begins, then typing:stop after a short
+     idle gap — not one event per keystroke. */
+  const notifyTyping = () => {
+    if (!activeConvo || !user?._id) return;
+
+    if (!typingSentRef.current) {
+      typingSentRef.current = true;
+      socket.emit("typing:start", { conversationId: activeConvo._id, userId: user._id });
+    }
+
+    clearTimeout(typingStopTimer.current);
+    typingStopTimer.current = setTimeout(() => stopTyping(), 2000);
+  };
+
+  const stopTyping = () => {
+    clearTimeout(typingStopTimer.current);
+    if (!typingSentRef.current || !activeConvo || !user?._id) return;
+    typingSentRef.current = false;
+    socket.emit("typing:stop", { conversationId: activeConvo._id, userId: user._id });
+  };
+
+  // Leaving a conversation (or unmounting) must clear our typing state, or the
+  // other side is left looking at "typing…" for a thread we've closed.
+  useEffect(() => {
+    return () => stopTyping();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConvo?._id]);
+
   const sendMessage = () => {
     if (!input.trim() || !activeConvo || !user?._id) return;
     socket.emit("send-message", { conversationId: activeConvo._id, senderId: user._id, text: input });
+    stopTyping(); // sending ends the burst; don't wait for the idle timer
     setInput("");
+  };
+
+  const submitEdit = () => {
+    const clean = editDraft.trim();
+    if (!editingId || !clean || !user?._id) return;
+    socket.emit("message:edit", { messageId: editingId, userId: user._id, text: clean });
+    setEditingId(null);
+    setEditDraft("");
+  };
+
+  const deleteMessage = (messageId: string) => {
+    if (!user?._id) return;
+    socket.emit("message:delete", { messageId, userId: user._id });
   };
 
   const handleAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -5908,14 +6138,27 @@ const startMeetCall = () => {
                         <button key={c._id} onClick={() => { setActiveConvo(c); setShowProfile(false); setMobileView("chat"); }}
                           className={`relative flex w-full gap-4 px-5 sm:px-8 py-4 sm:py-5 text-left transition ${active ? "bg-[#221b2e]" : "hover:bg-white/[0.03]"}`}>
                           {active && <span className="absolute right-0 top-0 h-full w-[3px] bg-gradient-to-b from-fuchsia-500 to-blue-500" />}
-                          <UserAvatar user={c.otherUser} size="lg" online />
+                          <UserAvatar
+                            user={c.otherUser}
+                            size="lg"
+                            online={onlineUsers.has(String(c.otherUser?._id))}
+                          />
                           <div className="min-w-0 flex-1">
                             <div className="flex items-start justify-between gap-3">
                               <p className="truncate text-[14px] font-semibold leading-[20px] text-white" style={{ fontFamily: "Inter, sans-serif" }}>{c.otherUser?.name || "Unknown User"}</p>
                               <span className="shrink-0 text-[11px] leading-[16px] text-zinc-500" style={{ fontFamily: "Inter, sans-serif" }}>{formatTime(c.lastMessage?.createdAt || c.updatedAt) || "Now"}</span>
                             </div>
-                            <p className={`mt-1 truncate text-[14px] font-normal leading-[20px] ${active ? "text-purple-200" : "text-zinc-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>{lastText}</p>
-                            {active && <p className="mt-1 text-[14px] font-normal italic leading-[20px] text-zinc-500" style={{ fontFamily: "Inter, sans-serif" }}>Typing...</p>}
+                            {/* "Typing..." used to render whenever this row was the
+                                SELECTED one — it tracked selection, not typing.
+                                Now it replaces the preview only while the other
+                                person is actually typing. */}
+                            {typingBy[String(c._id)] ? (
+                              <p className="mt-1 text-[14px] font-normal italic leading-[20px] text-emerald-400" style={{ fontFamily: "Inter, sans-serif" }}>
+                                Typing…
+                              </p>
+                            ) : (
+                              <p className={`mt-1 truncate text-[14px] font-normal leading-[20px] ${active ? "text-purple-200" : "text-zinc-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>{lastText}</p>
+                            )}
                           </div>
                         </button>
                       );
@@ -5931,11 +6174,25 @@ const startMeetCall = () => {
                   {activeConvo ? (
                     <div className="flex items-center gap-2 sm:gap-4 min-w-0">
                       <button onClick={() => setMobileView("list")} className="sm:hidden mr-1 grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white shrink-0"><ArrowLeft size={16} /></button>
-                      <UserAvatar user={activeConvo.otherUser} size="md" online />
+                      <UserAvatar
+                        user={activeConvo.otherUser}
+                        size="md"
+                        online={onlineUsers.has(String(activeConvo.otherUser?._id))}
+                      />
                       <div className="min-w-0">
                         <h1 className="truncate text-[13px] sm:text-[14px] font-semibold leading-[20px] text-white" style={{ fontFamily: "Inter, sans-serif" }}>{activeConvo.otherUser?.name || "Unknown User"}</h1>
+                        {/* Was a hardcoded green "Active Now" on every thread.
+                            Reflects real presence now, and typing takes priority
+                            over it while it's happening. */}
                         <p className="text-[11px] sm:text-[12px] font-normal leading-[18px] text-zinc-500" style={{ fontFamily: "Inter, sans-serif" }}>
-                          <span className="text-emerald-400">Active Now</span>{activeConvo.otherUser?.role ? ` • ${activeConvo.otherUser.role}` : ""}
+                          {typingBy[String(activeConvo._id)] ? (
+                            <span className="text-emerald-400 italic">Typing…</span>
+                          ) : onlineUsers.has(String(activeConvo.otherUser?._id)) ? (
+                            <span className="text-emerald-400">Active now</span>
+                          ) : (
+                            <span className="text-zinc-500">Offline</span>
+                          )}
+                          {activeConvo.otherUser?.role ? ` • ${activeConvo.otherUser.role}` : ""}
                         </p>
                       </div>
                     </div>
@@ -6004,13 +6261,65 @@ const serviceWorkSubmittedData = parseServiceWorkSubmittedData(m.text);
   <ServiceOrderCard data={serviceCardData} isMine={isMine} token={token} />
 ) : serviceWorkSubmittedData ? (
   <ServiceWorkSubmittedCard data={serviceWorkSubmittedData} isMine={isMine} token={token} />
+) : m.deleted ? (
+  // Soft-deleted: the row stays so the thread keeps its shape, but the text is
+  // gone server-side too, not just hidden here.
+  <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 sm:px-4 py-2 sm:py-3 text-[13px] italic text-zinc-500">
+    This message was deleted
+  </div>
+) : editingId === m._id ? (
+  <div className="rounded-2xl border border-white/15 bg-[#2b2b2b] p-2">
+    <textarea
+      value={editDraft}
+      onChange={(e) => setEditDraft(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitEdit(); }
+        if (e.key === "Escape") { setEditingId(null); setEditDraft(""); }
+      }}
+      rows={2}
+      autoFocus
+      className="w-full resize-none bg-transparent px-2 py-1 text-[14px] text-white outline-none"
+    />
+    <div className="mt-1 flex items-center justify-end gap-2">
+      <button onClick={() => { setEditingId(null); setEditDraft(""); }} className="rounded-md px-2.5 py-1 text-xs text-zinc-400 hover:bg-white/10">Cancel</button>
+      <button onClick={submitEdit} disabled={!editDraft.trim()} className="rounded-md bg-white px-2.5 py-1 text-xs font-medium text-black disabled:opacity-40">Save</button>
+    </div>
+  </div>
 ) : (
                               m.text && (
-                                <div
-                                  className={`rounded-2xl px-3 sm:px-4 py-2 sm:py-3 text-[14px] sm:text-[15px] font-normal leading-[22px] tracking-[0px] break-words whitespace-pre-line ${isMine ? "text-white" : "bg-[#2b2b2b] text-zinc-200"}`}
-                                  style={{ background: isMine ? GRADIENT : undefined, fontFamily: "Plus Jakarta Sans, sans-serif" }}
-                                >
-                                  {renderMessageText(m.text)}
+                                <div className="group/msg relative">
+                                  <div
+                                    className={`rounded-2xl px-3 sm:px-4 py-2 sm:py-3 text-[14px] sm:text-[15px] font-normal leading-[22px] tracking-[0px] break-words whitespace-pre-line ${isMine ? "text-white" : "bg-[#2b2b2b] text-zinc-200"}`}
+                                    style={{ background: isMine ? GRADIENT : undefined, fontFamily: "Plus Jakarta Sans, sans-serif" }}
+                                  >
+                                    {renderMessageText(m.text)}
+                                  </div>
+
+                                  {/* Edit / delete — own plain-text messages only.
+                                      Deliberately not offered on the hire/service
+                                      cards above: their text is a structured
+                                      payload those flows parse. The server
+                                      re-checks ownership on both events. */}
+                                  {isMine && (
+                                    <div className="absolute -top-2 right-1 hidden items-center gap-1 rounded-full border border-white/10 bg-[#1c1c1e] px-1 py-0.5 shadow-lg group-hover/msg:flex">
+                                      <button
+                                        onClick={() => { setEditingId(m._id); setEditDraft(m.text || ""); }}
+                                        title="Edit message"
+                                        aria-label="Edit message"
+                                        className="grid h-6 w-6 place-items-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white"
+                                      >
+                                        <Pencil size={12} />
+                                      </button>
+                                      <button
+                                        onClick={() => deleteMessage(m._id)}
+                                        title="Delete message"
+                                        aria-label="Delete message"
+                                        className="grid h-6 w-6 place-items-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-red-400"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               )
                             )}
@@ -6024,7 +6333,15 @@ const serviceWorkSubmittedData = parseServiceWorkSubmittedData(m.text);
                                 )}
                               </div>
                             )}
-                            <p className={`mt-1 sm:mt-2 text-xs text-zinc-600 ${isMine ? "text-right" : "text-left"}`}>{formatTime(m.createdAt)}</p>
+                            <div className={`mt-1 sm:mt-2 flex items-center gap-1.5 text-xs text-zinc-600 ${isMine ? "justify-end" : "justify-start"}`}>
+                              <span>{formatTime(m.createdAt)}</span>
+                              {/* Shown so an edit can't quietly change what was
+                                  agreed without the other side noticing. */}
+                              {m.editedAt && !m.deleted && <span className="italic text-zinc-500">edited</span>}
+                              {isMine && !m.deleted && (
+                                <MessageTicks message={m} recipientIds={recipientIds} />
+                              )}
+                            </div>
                           </div>
                           {isMine && <UserAvatar user={user} size="sm" online={false} />}
                         </div>
@@ -6042,7 +6359,18 @@ const serviceWorkSubmittedData = parseServiceWorkSubmittedData(m.text);
                     </button>
                     <input ref={fileInputRef} type="file" hidden onChange={handleAttachment} />
                     <div className="flex h-11 sm:h-12 flex-1 items-center gap-2 sm:gap-4 rounded-2xl bg-white px-3 sm:px-5 text-zinc-900">
-                      <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") sendMessage(); }} disabled={!activeConvo}
+                      <input
+                        value={input}
+                        onChange={(e) => {
+                          setInput(e.target.value);
+                          // Emitting the real typing signal. notifyTyping()
+                          // debounces internally, so this is safe per keystroke.
+                          if (e.target.value.trim()) notifyTyping();
+                          else stopTyping();
+                        }}
+                        onBlur={stopTyping}
+                        onKeyDown={(e) => { if (e.key === "Enter") sendMessage(); }}
+                        disabled={!activeConvo}
                         className="flex-1 bg-transparent text-sm outline-none placeholder:text-zinc-500 disabled:cursor-not-allowed"
                         placeholder={activeConvo ? "Type a message..." : "Select conversation first"} />
                       <button onClick={() => fileInputRef.current?.click()} disabled={!activeConvo} className="disabled:opacity-40 shrink-0">
@@ -6061,7 +6389,7 @@ const serviceWorkSubmittedData = parseServiceWorkSubmittedData(m.text);
                     <button onClick={() => setShowProfile(false)} className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white"><X size={16} /></button>
                   </div>
                   <div className="mt-6 text-center">
-                    <div className="mx-auto flex h-24 w-24 items-center justify-center"><UserAvatar user={activeConvo.otherUser} size="xl" online /></div>
+                    <div className="mx-auto flex h-24 w-24 items-center justify-center"><UserAvatar user={activeConvo.otherUser} size="xl" online={onlineUsers.has(String(activeConvo.otherUser?._id))} /></div>
                     <h3 className="mt-5 text-[14px] font-semibold leading-[20px]" style={{ fontFamily: "Inter, sans-serif" }}>{activeConvo.otherUser?.name}</h3>
                     <p className="mb-6 text-xs text-white/50">{activeConvo.otherUser?.role || "User"}</p>
                     <h4 className="mb-3 text-xs font-semibold uppercase text-white/40">Shared Resources</h4>

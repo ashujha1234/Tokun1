@@ -13,6 +13,88 @@ interface SellerLinkedAccountFormProps {
 
 type Phase = "checking" | "form" | "submitting" | "under_review" | "error";
 
+type SellerType = "individual" | "organization";
+
+// Mirrors ORG_BUSINESS_TYPES in server/routes/bankAccounts.js — these strings
+// are Razorpay's own `business_type` enum and go through to its API verbatim,
+// so the values must stay in sync with the backend's allow-list.
+const BUSINESS_TYPES: { value: string; label: string }[] = [
+  { value: "proprietorship", label: "Proprietorship" },
+  { value: "partnership", label: "Partnership firm" },
+  { value: "private_limited", label: "Private Limited" },
+  { value: "public_limited", label: "Public Limited" },
+  { value: "llp", label: "LLP" },
+  { value: "trust", label: "Trust" },
+  { value: "society", label: "Society" },
+  { value: "ngo", label: "NGO" },
+  { value: "educational_institutes", label: "Educational institute" },
+  { value: "other", label: "Other" },
+];
+
+// The 4th character of a PAN encodes the holder type, so it has to agree with
+// the declared business type. Checked here purely so the seller sees the
+// problem while typing — the backend enforces the same rule authoritatively.
+//
+// This governs the BUSINESS PAN, and Razorpay's own regex for legal_info.pan
+// accepts only C/H/F/A/T/B/J/G/L — "P" (personal) is never valid in that
+// field, for any business type.
+const BUSINESS_TYPE_PAN_LETTERS: Record<string, string[] | null> = {
+  proprietorship: ["C", "H", "F", "A", "T", "B", "J", "G", "L"],
+  partnership: ["F"],
+  llp: ["F"],
+  private_limited: ["C"],
+  public_limited: ["C"],
+  trust: ["T"],
+  society: ["A", "T", "B"],
+  ngo: ["A", "T", "B"],
+  educational_institutes: ["A", "T", "C", "J"],
+  other: null,
+};
+
+const PAN_REGEX = /^[A-Z]{3}[PCHFATBJGL][A-Z]\d{4}[A-Z]$/;
+const GSTIN_REGEX = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+
+// Razorpay's business categories are fetched rather than hardcoded like
+// BUSINESS_TYPES above — there are ~340 sub-categories and they have to match
+// Razorpay's enum exactly, so the backend serves the one copy it also
+// validates against.
+type BusinessCategories = Record<string, string[]>;
+
+// Razorpay's per-business-type KYC matrix, fetched with the categories. See
+// server/constants/kycRequirements.js for what each verdict means; the only
+// two the UI acts on are "required" (star the label, block submit) and
+// "not_applicable" (don't render the field at all).
+type KycVerdict = "required" | "not_required" | "optional" | "conditional" | "not_applicable";
+type KycRule = {
+  signatoryPan: KycVerdict;
+  businessPan: KycVerdict;
+  bankAccount: KycVerdict;
+  gst: KycVerdict;
+};
+
+// Until the matrix arrives every field renders as optional, which is the safe
+// direction to fail: the backend validates against the same table regardless,
+// so nothing invalid gets through — the seller just isn't warned as early.
+const PERMISSIVE_KYC_RULE: KycRule = {
+  signatoryPan: "optional",
+  businessPan: "optional",
+  bankAccount: "required",
+  gst: "optional",
+};
+
+const req = (verdict: KycVerdict) => verdict === "required";
+const shown = (verdict: KycVerdict) => verdict !== "not_applicable";
+// Labels carry the requirement so the seller can tell at a glance which
+// blanks will actually stop them, instead of discovering it on submit.
+const star = (verdict: KycVerdict) => (req(verdict) ? " *" : " (optional)");
+
+// "ecommerce_marketplace" → "Ecommerce marketplace". Razorpay's enum is
+// snake_case machine values with no display names of their own, and deriving
+// labels keeps the fetched list usable without shipping a parallel dictionary
+// that would need updating every time Razorpay adds a value.
+const humanizeCategory = (value: string) =>
+  value.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+
 export default function SellerLinkedAccountForm({
   open,
   onClose,
@@ -24,6 +106,23 @@ export default function SellerLinkedAccountForm({
 
   const [phase, setPhase] = useState<Phase>("checking");
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  // Set from the backend's `field` when Razorpay pinned the failure to one
+  // input. Null for errors that aren't about a specific value.
+  const [errField, setErrField] = useState<string | null>(null);
+
+  // Not a choice the seller makes — the backend derives it from their account
+  // type (an ORG workspace is a registered entity by definition) and returns it
+  // from payout-status. We only use it to decide which fields to render.
+  const [sellerType, setSellerType] = useState<SellerType>("individual");
+
+  // Organization-only.
+  const [businessType, setBusinessType] = useState("");
+  const [legalBusinessName, setLegalBusinessName] = useState("");
+  const [customerFacingBusinessName, setCustomerFacingBusinessName] = useState("");
+  const [businessPan, setBusinessPan] = useState("");
+  const [gstin, setGstin] = useState("");
+  const [stakeholderName, setStakeholderName] = useState("");
+  const [percentageOwnership, setPercentageOwnership] = useState("");
 
   const [accountHolderName, setAccountHolderName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
@@ -38,6 +137,13 @@ export default function SellerLinkedAccountForm({
   const [state, setState] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [country, setCountry] = useState("IN");
+
+  // Asked of both seller types — every Linked Account carries its own
+  // category, describing what that seller sells rather than what Tokun is.
+  const [businessCategories, setBusinessCategories] = useState<BusinessCategories>({});
+  const [kycMatrix, setKycMatrix] = useState<Record<string, KycRule>>({});
+  const [businessCategory, setBusinessCategory] = useState("");
+  const [businessSubcategory, setBusinessSubcategory] = useState("");
 
   // On open, check whether the seller already has a payout account — if so,
   // skip this form entirely and go straight to the prompt-upload form.
@@ -56,10 +162,45 @@ export default function SellerLinkedAccountForm({
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
 
+        // Team members can't sell. Checked BEFORE hasPayoutSetup, because the
+        // server reports that as true for them (they have nothing to set up) —
+        // falling through would call onSubmitted() and open the Sell modal,
+        // which is the one thing a team member must not reach.
+        if (res.ok && data?.canSell === false) {
+          setErrMsg(
+            data?.message ||
+              "Your organization handles selling. Ask your org owner to publish this from the organization account."
+          );
+          setPhase("error");
+          return;
+        }
+
         if (res.ok && data?.success && data.hasPayoutSetup) {
           onSubmitted();
           return;
         }
+
+        if (data?.sellerType === "organization") {
+          setSellerType("organization");
+        }
+
+        // Only fetched once we know the form is actually going to render —
+        // a seller who already has payout set up is redirected above and
+        // never sees these dropdowns.
+        try {
+          const catRes = await fetch(`${normalizedApiBase}/api/bankaccount/business-categories`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const catData = await catRes.json().catch(() => ({}));
+          if (!cancelled && catRes.ok && catData?.categories) {
+            setBusinessCategories(catData.categories);
+            setKycMatrix(catData.kycRequirements ?? {});
+          }
+        } catch {
+          // Left empty — the dropdown renders disabled with an explanatory
+          // note rather than letting the seller submit a pair we can't offer.
+        }
+
         setPhase("form");
       } catch {
         if (!cancelled) setPhase("form"); // don't block upload over a transient check failure
@@ -74,19 +215,59 @@ export default function SellerLinkedAccountForm({
 
   if (!open) return null;
 
+  const isOrganization = sellerType === "organization";
+
+  // Which KYC row applies. An organization that hasn't picked a business type
+  // yet has no row — the permissive default keeps every field un-starred until
+  // the choice that determines them is made, rather than showing requirements
+  // that may be wrong a moment later.
+  const kycRule: KycRule =
+    (isOrganization ? kycMatrix[businessType] : kycMatrix.individual) ?? PERMISSIVE_KYC_RULE;
+
   const requiredMissing =
     !accountHolderName.trim() ||
     !accountNumber.trim() ||
     !confirmAccountNumber.trim() ||
     !ifscCode.trim() ||
     !bankName.trim() ||
-    !panNumber.trim() ||
     !phone.trim() ||
     !street1.trim() ||
     !city.trim() ||
     !state.trim() ||
     !postalCode.trim() ||
-    !country.trim();
+    !country.trim() ||
+    !businessCategory ||
+    !businessSubcategory ||
+    // PAN fields follow the matrix rather than the seller type: a registered
+    // entity doesn't need a signatory PAN at all, while a proprietorship
+    // doesn't need a business PAN.
+    (req(kycRule.signatoryPan) && !panNumber.trim()) ||
+    (isOrganization &&
+      (!businessType.trim() ||
+        !legalBusinessName.trim() ||
+        !stakeholderName.trim() ||
+        (req(kycRule.businessPan) && !businessPan.trim()) ||
+        (req(kycRule.gst) && !gstin.trim())));
+
+  const categoryNames = Object.keys(businessCategories);
+  // Empty until a category is picked, which is what disables the second
+  // dropdown — the pair is only valid within one category, so there is
+  // nothing meaningful to show before then.
+  const subcategoryNames = businessCategories[businessCategory] ?? [];
+
+  // Live hint under the Business PAN field — surfaced as you type rather than
+  // waiting for a submit round-trip, since a PAN/business-type mismatch is the
+  // single most common reason an org account gets flagged during KYC.
+  const allowedPanLetters = BUSINESS_TYPE_PAN_LETTERS[businessType] ?? null;
+  const businessPanTypeWarning =
+    isOrganization &&
+    allowedPanLetters &&
+    businessPan.trim().length >= 4 &&
+    !allowedPanLetters.includes(businessPan.trim()[3])
+      ? `A ${
+          BUSINESS_TYPES.find((b) => b.value === businessType)?.label ?? "business"
+        } PAN normally has "${allowedPanLetters.join('" or "')}" as its 4th character.`
+      : null;
 
   const handleSubmit = async () => {
     if (requiredMissing) {
@@ -97,9 +278,43 @@ export default function SellerLinkedAccountForm({
       setErrMsg("Account number and confirmation don't match.");
       return;
     }
+    // Format is checked only on what was actually filled in — requiredMissing
+    // above has already caught anything mandatory that's blank, so a PAN that
+    // is empty here is one the matrix says may be left empty.
+    if (panNumber.trim() && !PAN_REGEX.test(panNumber.trim().toUpperCase())) {
+      setErrMsg(
+        isOrganization
+          ? "Authorised signatory PAN looks invalid — e.g. ABCPE1234F."
+          : "PAN looks invalid — e.g. ABCPE1234F."
+      );
+      return;
+    }
+
+    if (isOrganization) {
+      if (businessPan.trim() && !PAN_REGEX.test(businessPan.trim().toUpperCase())) {
+        setErrMsg("Business PAN looks invalid — e.g. AAACA1234A.");
+        return;
+      }
+      // Whether a GSTIN was required is already settled above; a malformed one
+      // is always a typo either way.
+      const cleanGstin = gstin.trim().toUpperCase();
+      if (cleanGstin && !GSTIN_REGEX.test(cleanGstin)) {
+        setErrMsg("GSTIN looks invalid — e.g. 27AAACA1234A1Z5.");
+        return;
+      }
+      // Characters 3-12 of every GSTIN are the entity's PAN, so a mismatch
+      // means one of the two fields belongs to a different entity. Only
+      // comparable when a business PAN was given — a proprietorship may
+      // legitimately supply a GSTIN without one.
+      if (cleanGstin && businessPan.trim() && cleanGstin.slice(2, 12) !== businessPan.trim().toUpperCase()) {
+        setErrMsg("The PAN inside this GSTIN doesn't match the Business PAN you entered.");
+        return;
+      }
+    }
 
     setPhase("submitting");
     setErrMsg(null);
+    setErrField(null);
 
     try {
       const res = await fetch(`${normalizedApiBase}/api/bankaccount/add`, {
@@ -110,6 +325,22 @@ export default function SellerLinkedAccountForm({
         },
         body: JSON.stringify({
           payoutMethod: "bank",
+          // No sellerType is sent — the backend derives it from the seller's
+          // own account type and ignores anything the client claims.
+          // Organization-only fields, skipped entirely otherwise.
+          ...(isOrganization
+            ? {
+                businessType,
+                legalBusinessName: legalBusinessName.trim(),
+                customerFacingBusinessName: customerFacingBusinessName.trim(),
+                businessPan: businessPan.trim().toUpperCase(),
+                gstin: gstin.trim().toUpperCase(),
+                stakeholderName: stakeholderName.trim(),
+                percentageOwnership: percentageOwnership.trim(),
+              }
+            : {}),
+          businessCategory,
+          businessSubcategory,
           accountHolderName: accountHolderName.trim(),
           accountNumber: accountNumber.trim(),
           confirmAccountNumber: confirmAccountNumber.trim(),
@@ -133,7 +364,11 @@ export default function SellerLinkedAccountForm({
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data?.success) {
-        throw new Error(data?.message || data?.error || "Could not set up your payout account.");
+        // The backend names the offending input when Razorpay identified one,
+        // so the seller is taken to the box to fix rather than left to work it
+        // out from a banner at the top of a long form.
+        setErrField(data?.field ?? null);
+        throw new Error(data?.message || "Could not set up your payout account.");
       }
 
       setPhase("under_review");
@@ -145,6 +380,10 @@ export default function SellerLinkedAccountForm({
 
   const inputClass =
     "w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#1A73E8]";
+  // Same box, outlined in red — applied to whichever field the backend named.
+  const errorInputClass =
+    "w-full rounded-lg bg-white/5 border border-red-500/60 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-red-400";
+  const fieldClass = (name: string) => (errField === name ? errorInputClass : inputClass);
   const labelClass = "text-xs text-white/60 mb-1 block";
 
   return (
@@ -171,13 +410,35 @@ export default function SellerLinkedAccountForm({
               <p className="text-white/70 text-sm">Checking your payout setup…</p>
             )}
 
+            {/* "error" was in the Phase union but had no branch here, so setting
+                it rendered an empty dialog. It's the state a team member lands
+                in — they need to be told why, not shown a blank box. */}
+            {phase === "error" && (
+              <div className="text-center py-8">
+                <h3 className="text-white text-lg font-semibold mb-2">
+                  Selling is handled by your organization
+                </h3>
+                <p className="text-white/60 text-sm mb-6">
+                  {errMsg || "You can't set up a payout account on this type of account."}
+                </p>
+                <button
+                  onClick={onClose}
+                  className="rounded-lg bg-[#1A73E8] px-5 py-2 text-sm font-medium text-white hover:opacity-90"
+                >
+                  Got it
+                </button>
+              </div>
+            )}
+
             {phase === "under_review" && (
               <div className="text-center py-8">
                 <h3 className="text-white text-lg font-semibold mb-2">Account under review</h3>
                 <p className="text-white/60 text-sm mb-6">
-                  We've received your payout details. We are verifying them now — this
-                  usually takes a few minutes. Your prompt will go live on the marketplace as
-                  soon as verification completes.
+                  We've received your payout details. We are verifying them now —{" "}
+                  {sellerType === "organization"
+                    ? "registered businesses are checked against government records, so this can take a working day or two, and we may ask for your incorporation or GST certificate."
+                    : "this usually takes a few minutes."}{" "}
+                  Your prompt will go live on the marketplace as soon as verification completes.
                 </p>
                 <button
                   onClick={onSubmitted}
@@ -191,72 +452,270 @@ export default function SellerLinkedAccountForm({
             {(phase === "form" || phase === "submitting") && (
               <>
                 <h3 className="text-white text-lg font-semibold mb-1">Set up your payout account</h3>
-                <p className="text-white/50 text-sm mb-5">
+                <p className="text-white/50 text-sm mb-4">
                   Required before you can sell on Tokun — this is how you'll get paid.
                 </p>
 
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                  <p className="sm:col-span-2 text-xs text-white/45 -mt-0.5">
+                    {isOrganization
+                      ? "Pick what your business actually sells — this is checked against the line of business on your GST/incorporation record, so a mismatch will hold up verification."
+                      : "Pick what you sell. This classifies your payout account with Razorpay."}
+                  </p>
+
+                  <div>
+                    <label className={labelClass}>Business category *</label>
+                    <select
+                      className={fieldClass("businessCategory")}
+                      value={businessCategory}
+                      disabled={categoryNames.length === 0}
+                      onChange={(e) => {
+                        setBusinessCategory(e.target.value);
+                        // The old sub-category belongs to the old category and
+                        // would be rejected as a cross-category pair.
+                        setBusinessSubcategory("");
+                      }}
+                    >
+                      <option value="" className="bg-[#0B0F17]">Select category</option>
+                      {categoryNames.map((name) => (
+                        <option key={name} value={name} className="bg-[#0B0F17]">
+                          {humanizeCategory(name)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>Sub-category *</label>
+                    <select
+                      className={fieldClass("businessSubcategory")}
+                      value={businessSubcategory}
+                      disabled={!businessCategory}
+                      onChange={(e) => setBusinessSubcategory(e.target.value)}
+                    >
+                      <option value="" className="bg-[#0B0F17]">
+                        {businessCategory ? "Select sub-category" : "Pick a category first"}
+                      </option>
+                      {subcategoryNames.map((name) => (
+                        <option key={name} value={name} className="bg-[#0B0F17]">
+                          {humanizeCategory(name)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {categoryNames.length === 0 && (
+                    <p className="sm:col-span-2 text-[11px] text-amber-400/80">
+                      Couldn't load the category list. Please close and reopen this form — we
+                      can't submit your account without it.
+                    </p>
+                  )}
+                </div>
+
+                {isOrganization && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                    <p className="sm:col-span-2 text-xs text-white/45 -mt-0.5">
+                      Enter these exactly as they appear on your incorporation or GST
+                      certificate — they're verified against government records.
+                    </p>
+
+                    <div className="sm:col-span-2">
+                      <label className={labelClass}>Business type *</label>
+                      <select
+                        className={fieldClass("businessType")}
+                        value={businessType}
+                        onChange={(e) => setBusinessType(e.target.value)}
+                      >
+                        <option value="" className="bg-[#0B0F17]">Select business type</option>
+                        {BUSINESS_TYPES.map((option) => (
+                          <option key={option.value} value={option.value} className="bg-[#0B0F17]">
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className={labelClass}>Registered business name *</label>
+                      <input
+                        className={fieldClass("legalBusinessName")}
+                        value={legalBusinessName}
+                        onChange={(e) => setLegalBusinessName(e.target.value)}
+                        placeholder="Acme Healthcare Private Limited"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className={labelClass}>Display name shown to buyers (optional)</label>
+                      <input
+                        className={fieldClass("customerFacingBusinessName")}
+                        value={customerFacingBusinessName}
+                        onChange={(e) => setCustomerFacingBusinessName(e.target.value)}
+                        placeholder={legalBusinessName || "Acme Clinic"}
+                      />
+                    </div>
+
+                    {shown(kycRule.businessPan) && (
+                      <div>
+                        <label className={labelClass}>Business PAN{star(kycRule.businessPan)}</label>
+                        <input
+                          className={fieldClass("businessPan")}
+                          value={businessPan}
+                          onChange={(e) => setBusinessPan(e.target.value.toUpperCase())}
+                          placeholder="AAACA1234A"
+                        />
+                        {businessType === "proprietorship" && (
+                          <p className="text-[11px] text-white/40 mt-1">
+                            A proprietorship has no PAN of its own — leave this blank and enter the
+                            proprietor's PAN below instead.
+                          </p>
+                        )}
+                        {businessPanTypeWarning && (
+                          <p className="text-[11px] text-amber-400/80 mt-1">{businessPanTypeWarning}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {shown(kycRule.gst) && (
+                      <div>
+                        <label className={labelClass}>GSTIN{star(kycRule.gst)}</label>
+                        <input
+                          className={fieldClass("gstin")}
+                          value={gstin}
+                          onChange={(e) => setGstin(e.target.value.toUpperCase())}
+                          placeholder="27AAACA1234A1Z5"
+                        />
+                        <p className="text-[11px] text-white/40 mt-1">
+                          {req(kycRule.gst)
+                            ? "Razorpay requires a GSTIN for this business type."
+                            : "Leave blank if you're not GST-registered."}
+                        </p>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className={labelClass}>Authorised signatory name *</label>
+                      <input
+                        className={fieldClass("stakeholderName")}
+                        value={stakeholderName}
+                        onChange={(e) => setStakeholderName(e.target.value)}
+                        placeholder="Director / partner name"
+                      />
+                    </div>
+
+                    <div>
+                      <label className={labelClass}>Their ownership % (optional)</label>
+                      <input
+                        className={fieldClass("percentageOwnership")}
+                        value={percentageOwnership}
+                        onChange={(e) => setPercentageOwnership(e.target.value)}
+                        placeholder="e.g. 60"
+                        inputMode="numeric"
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="sm:col-span-2">
-                    <label className={labelClass}>Account holder name *</label>
-                    <input className={inputClass} value={accountHolderName} onChange={(e) => setAccountHolderName(e.target.value)} />
+                    <label className={labelClass}>
+                      {isOrganization ? "Bank account holder name *" : "Account holder name *"}
+                    </label>
+                    <input className={fieldClass("accountHolderName")} value={accountHolderName} onChange={(e) => setAccountHolderName(e.target.value)} />
+                    {isOrganization && (
+                      <p className="text-[11px] text-white/40 mt-1">
+                        Use your <span className="text-white/60">current account</span> in the
+                        registered business name — a savings account or a personal name here will
+                        fail bank verification.
+                      </p>
+                    )}
                   </div>
 
                   <div>
                     <label className={labelClass}>Bank account number *</label>
-                    <input className={inputClass} value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} />
+                    <input className={fieldClass("accountNumber")} value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} />
                   </div>
                   <div>
                     <label className={labelClass}>Confirm account number *</label>
-                    <input className={inputClass} value={confirmAccountNumber} onChange={(e) => setConfirmAccountNumber(e.target.value)} />
+                    <input className={fieldClass("confirmAccountNumber")} value={confirmAccountNumber} onChange={(e) => setConfirmAccountNumber(e.target.value)} />
                   </div>
 
                   <div>
                     <label className={labelClass}>IFSC code *</label>
-                    <input className={inputClass} value={ifscCode} onChange={(e) => setIfscCode(e.target.value.toUpperCase())} />
+                    <input className={fieldClass("ifscCode")} value={ifscCode} onChange={(e) => setIfscCode(e.target.value.toUpperCase())} />
                   </div>
                   <div>
                     <label className={labelClass}>Bank name *</label>
-                    <input className={inputClass} value={bankName} onChange={(e) => setBankName(e.target.value)} />
+                    <input className={fieldClass("bankName")} value={bankName} onChange={(e) => setBankName(e.target.value)} />
                   </div>
 
                   <div>
-                    <label className={labelClass}>PAN number *</label>
-                    <input className={inputClass} value={panNumber} onChange={(e) => setPanNumber(e.target.value.toUpperCase())} placeholder="ABCPE1234F" />
+                    <label className={labelClass}>
+                      {isOrganization ? "Authorised signatory PAN" : "PAN number"}
+                      {star(kycRule.signatoryPan)}
+                    </label>
+                    <input className={fieldClass("panNumber")} value={panNumber} onChange={(e) => setPanNumber(e.target.value.toUpperCase())} placeholder="ABCPE1234F" />
+                    {isOrganization && (
+                      <p className="text-[11px] text-white/40 mt-1">
+                        {businessType === "proprietorship"
+                          ? "The proprietor's own PAN — this is the PAN your account is verified against."
+                          : "The signatory's personal PAN, not the business PAN above."}
+                        {!req(kycRule.signatoryPan) &&
+                          " Razorpay verifies the entity for this business type, so this is optional — but it speeds up review."}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className={labelClass}>Phone number *</label>
-                    <input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="9000090000" />
+                    <input className={fieldClass("phone")} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="9000090000" />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <p className={labelClass}>
+                      {isOrganization
+                        ? "Registered office address — must match your COI/GST certificate"
+                        : "Address"}
+                    </p>
                   </div>
 
                   <div className="sm:col-span-2">
                     <label className={labelClass}>Address line 1 *</label>
-                    <input className={inputClass} value={street1} onChange={(e) => setStreet1(e.target.value)} />
+                    <input className={fieldClass("street1")} value={street1} onChange={(e) => setStreet1(e.target.value)} />
                   </div>
                   <div className="sm:col-span-2">
                     <label className={labelClass}>Address line 2 (optional)</label>
-                    <input className={inputClass} value={street2} onChange={(e) => setStreet2(e.target.value)} />
+                    <input className={fieldClass("street2")} value={street2} onChange={(e) => setStreet2(e.target.value)} />
                   </div>
 
                   <div>
                     <label className={labelClass}>City *</label>
-                    <input className={inputClass} value={city} onChange={(e) => setCity(e.target.value)} />
+                    <input className={fieldClass("city")} value={city} onChange={(e) => setCity(e.target.value)} />
                   </div>
                   <div>
                     <label className={labelClass}>State *</label>
-                    <input className={inputClass} value={state} onChange={(e) => setState(e.target.value)} />
+                    <input className={fieldClass("state")} value={state} onChange={(e) => setState(e.target.value)} />
                   </div>
 
                   <div>
                     <label className={labelClass}>Postal code *</label>
-                    <input className={inputClass} value={postalCode} onChange={(e) => setPostalCode(e.target.value)} />
+                    <input className={fieldClass("postalCode")} value={postalCode} onChange={(e) => setPostalCode(e.target.value)} />
                   </div>
                   <div>
                     <label className={labelClass}>Country *</label>
-                    <input className={inputClass} value={country} onChange={(e) => setCountry(e.target.value.toUpperCase())} />
+                    <input className={fieldClass("country")} value={country} onChange={(e) => setCountry(e.target.value.toUpperCase())} />
                   </div>
                 </div>
 
-                {errMsg && <p className="text-red-400 text-sm mt-4">{errMsg}</p>}
+                {errMsg && (
+                  <div className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2.5">
+                    <p className="text-red-300 text-sm">{errMsg}</p>
+                    {errField && (
+                      <p className="text-red-400/70 text-[11px] mt-1">
+                        The field to correct is outlined above.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <button
                   onClick={handleSubmit}

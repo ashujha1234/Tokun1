@@ -7,8 +7,11 @@ import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import TokenUsageSection from "@/components/TokenUsageSection";
-import { Pencil, Trash2, Plus, X, ChevronDown, RefreshCcw, Send } from "lucide-react";
+import { Pencil, Trash2, Plus, X, ChevronDown, RefreshCcw, Send, MessageCircle, User as UserIcon } from "lucide-react";
+import { startConversation } from "@/lib/startConversation";
+import { toast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { canManageTeam } from "@/lib/orgRoles";
 
 type Role = "Admin" | "Member";
 type Status = "Active" | "Pending" | "Deleted";
@@ -565,15 +568,52 @@ export default function BlogPage() {
     count: number;
     recent: { id: string; promptTitle: string; sharedByName: string; sharedToCount: number; sharedAt: string }[];
   }>({ count: 0, recent: [] });
+  // What team members have asked the owner to buy. Members can't purchase, so
+  // this — not "Team Purchases" — is the activity an owner actually needs to act
+  // on, and it previously lived only in the notification list.
+  const [teamRequests, setTeamRequests] = useState<{
+    count: number;
+    unread: number;
+    recent: {
+      id: string;
+      promptId: string | null;
+      promptTitle: string;
+      price: number;
+      requestedByName: string;
+      message: string;
+      read: boolean;
+      requestedAt: string;
+    }[];
+  }>({ count: 0, unread: 0, recent: [] });
   const { token, user, isReady } = useAuth() as any;
   const navigate = useNavigate();
+
+  // Which member's chat is being opened, so only that row's button shows a
+  // pending state instead of every row at once.
+  const [messagingId, setMessagingId] = useState<string | null>(null);
+
+  const messageMember = async (m: any) => {
+    if (!m?.id) return;
+    setMessagingId(m.id);
+    const conversationId = await startConversation(token, String(m.id));
+    setMessagingId(null);
+    if (!conversationId) {
+      toast({
+        title: "Couldn't open the chat",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+    navigate("/chat", { state: { conversationId } });
+  };
 
   // Only the org Owner or a team member explicitly given the "Admin" role
   // may view this page — everyone else (plain Members, unrelated individual
   // users) gets redirected away, even if they land here via a direct URL.
-  const canAccessAdmin =
-    (user?.userType === "ORG" && user?.role === "Owner") ||
-    (user?.userType === "TM" && user?.role === "Admin");
+  // Shared with the Header's Team button so the button and this guard can't
+  // disagree and bounce someone straight back out.
+  const canAccessAdmin = canManageTeam(user);
 
   useEffect(() => {
     if (!isReady) return;
@@ -642,6 +682,7 @@ export default function BlogPage() {
         if (!res.ok || !data?.success) return;
         setTeamPurchases(data.teamPurchases || { count: 0, totalSpent: 0, recent: [] });
         setSharedPrompts(data.sharedPrompts || { count: 0, recent: [] });
+        setTeamRequests(data.teamRequests || { count: 0, unread: 0, recent: [] });
       } catch (err) {
         console.error("org dashboard activity fetch failed:", err);
       }
@@ -792,7 +833,10 @@ const handleResendInvite = async (memberId: string) => {
             />
             <MetricCard label="Total Tokens Distributed" value={totalDistributed.toLocaleString()} icon={<span>🎁</span>} />
             <MetricCard label="Total Tokens Remaining" value={remaining.toLocaleString()} icon={<span>🪙</span>} />
-            <MetricCard label="Team Spend" value={`₹${teamPurchases.totalSpent.toLocaleString()}`} icon={<span>🛍️</span>} />
+            {/* "Team Spend" implied members were spending; they can't. This is
+                the org's own spend, all of it the owner's. */}
+            <MetricCard label="Org Spend" value={`₹${teamPurchases.totalSpent.toLocaleString()}`} icon={<span>🛍️</span>} />
+            <MetricCard label="Open Requests" value={String(teamRequests.count)} icon={<span>🙋</span>} />
             <MetricCard label="Prompts Shared" value={sharedPrompts.count} icon={<span>🔗</span>} />
           </div>
         </div>
@@ -895,6 +939,32 @@ const handleResendInvite = async (memberId: string) => {
 
             <td>
               <div className="flex items-center gap-3 flex-wrap">
+                {/* Message + Profile. Offered for anyone still in the org — the
+                    owner had no way to contact a member from the one screen
+                    where they manage them. Hidden for removed members, and for a
+                    Pending one whose account doesn't exist to chat with yet. */}
+                {!m.isDeletedFromOrg && m.status === "Active" && (
+                  <>
+                    <button
+                      onClick={() => messageMember(m)}
+                      disabled={messagingId === m.id}
+                      title={`Message ${m.name || m.email}`}
+                      aria-label={`Message ${m.name || m.email}`}
+                      className="grid place-items-center w-9 h-9 rounded-full border border-white/15 bg-white/[0.06] text-white hover:bg-white/10 disabled:opacity-50"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => navigate(`/profile/${m.id}`)}
+                      title={`View ${m.name || m.email}'s profile`}
+                      aria-label={`View ${m.name || m.email}'s profile`}
+                      className="grid place-items-center w-9 h-9 rounded-full border border-white/15 bg-white/[0.06] text-white hover:bg-white/10"
+                    >
+                      <UserIcon className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
+
                 {/* ✅ Deleted → Rejoin */}
                 {m.isDeletedFromOrg && (
                   <button
@@ -956,8 +1026,68 @@ const handleResendInvite = async (memberId: string) => {
 
         </section>
 
+        {/* Requests from team members. Sits above purchases because it's the
+            list the owner has to act on — members can't buy, so asking is the
+            only move available to them. */}
         <section className="mt-10">
-          <h2 className="text-lg font-semibold">Recent Team Purchases</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold">Team Requests</h2>
+            {teamRequests.unread > 0 && (
+              <span className="rounded-full bg-[#FF14EF]/15 border border-[#FF14EF]/40 px-2.5 py-0.5 text-[11px] font-medium text-[#FF8AF5]">
+                {teamRequests.unread} new
+              </span>
+            )}
+          </div>
+          <div className="mt-3 rounded-2xl overflow-hidden border border-white/10">
+            {teamRequests.recent.length === 0 ? (
+              <div className="px-5 py-6 text-sm text-white/40">
+                No requests yet. When a member asks for a prompt they can't buy
+                themselves, it shows up here.
+              </div>
+            ) : (
+              <div className="divide-y divide-white/10">
+                {teamRequests.recent.map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex items-center justify-between gap-4 px-5 py-3 bg-white/[0.02]"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm text-white/90 truncate">{r.promptTitle}</div>
+                      <div className="text-xs text-white/45">
+                        {r.requestedByName} ·{" "}
+                        {new Date(r.requestedAt).toLocaleDateString("en-IN")}
+                      </div>
+                      {r.message && (
+                        <div className="mt-1 text-xs text-white/55 italic truncate max-w-[420px]">
+                          "{r.message}"
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      {r.price > 0 && (
+                        <span className="text-sm font-medium text-white/80">₹{r.price}</span>
+                      )}
+                      {r.promptId && (
+                        <button
+                          type="button"
+                          onClick={() => navigate("/prompt-marketplace")}
+                          className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white hover:bg-white/10"
+                        >
+                          View & buy
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-10">
+          {/* Team members can't purchase (blockOrgTeamMemberPurchase), so what
+              lands here is the owner's own buying on behalf of the org. */}
+          <h2 className="text-lg font-semibold">Purchases by You</h2>
           <div className="mt-3 rounded-2xl overflow-hidden border border-white/10">
             {teamPurchases.recent.length === 0 ? (
               <div className="px-5 py-6 text-sm text-white/40">No purchases yet.</div>

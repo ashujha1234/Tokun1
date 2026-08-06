@@ -236,12 +236,28 @@ const { requireAuth } = require("../utils/auth");
 const { PLANS } = require("../config/plans");
 
 
-const { ensureMonthlyQuota, spendMonthlyTokens , spendTokensForOrgOwner} = require("../utils/quota");
+const { ensureMonthlyQuota, spendMonthlyTokens } = require("../utils/quota");
 
 const {
   spendTokensForIndividual,
   spendTokensForTeamMember,
+  spendTokensForOrgOwner,
+  assertCanSpend,
+  SPEND_ERRORS,
 } = require("../service/spend");
+
+// Turns a spend error into the response the client can act on. Anything not in
+// the table is a genuine bug, so it stays a 500 rather than being dressed up as
+// a billing problem the user could "fix" by paying.
+function spendErrorResponse(res, err) {
+  const known = SPEND_ERRORS[err?.message];
+  if (!known) return null;
+  return res.status(known.status).json({
+    success: false,
+    error: err.message,
+    message: known.message,
+  });
+}
 
 
 async function enforcePromptOptimizerHistoryLimit(user) {
@@ -272,6 +288,37 @@ async function enforcePromptOptimizerHistoryLimit(user) {
 }
 
 
+
+// Can this user spend tokens right now?
+// GET /api/promptoptimizer/eligibility
+//
+// The client calls this before sending anything to the LLM. Without it the only
+// quota gate was inside POST / — which runs *after* the model has already
+// answered and the optimised prompt is on screen, so a user with no plan saw a
+// finished optimisation next to an error and nothing saved. Answering the
+// question up front means the run never starts.
+router.get("/eligibility", requireAuth, async (req, res) => {
+  try {
+    await assertCanSpend(req.user._id);
+    return res.json({ success: true, allowed: true });
+  } catch (err) {
+    const known = SPEND_ERRORS[err?.message];
+    if (known) {
+      // 200 with allowed:false — "you have no plan" is a successful answer to
+      // the question being asked, and keeps this off the client's error path.
+      return res.json({
+        success: true,
+        allowed: false,
+        error: err.message,
+        message: known.message,
+      });
+    }
+    console.error("PromptOptimizer eligibility error:", err);
+    // Fail open: a broken pre-check must not lock out a paying user, and POST /
+    // still enforces the real gate before anything is written.
+    return res.json({ success: true, allowed: true });
+  }
+});
 
 // Create a new optimized prompt
 // POST /api/prompt-optimizer
@@ -312,7 +359,11 @@ router.post("/", requireAuth, async (req, res) => {
       // Count owner’s own usage like an individual quota
     resuser=await spendTokensForOrgOwner(req.user._id, amount, "prompt-optimizer");
     } else {
-      return res.status(403).json({ success: false, error: "invalid_user_type" });
+      return res.status(403).json({
+        success: false,
+        error: "invalid_user_type",
+        message: "This account type can't use the optimiser.",
+      });
     }
 
     const optimizedPrompt = await PromptOptimizer.create({
@@ -326,15 +377,12 @@ router.post("/", requireAuth, async (req, res) => {
     res.json({ success: true, optimizedPrompt ,user:resuser.user});
   } catch (err) {
 
-     if (
-      err?.message === "token_quota_exceeded" ||
-      err?.message === "member_cap_exceeded" ||
-      err?.message === "org_pool_exhausted"
-    ) {
-      return res.status(402).json({ success: false, error: "insufficient_quota" });
-    }
+    // Quota, subscription and account-type failures are all expected outcomes
+    // with their own message — only unrecognised errors fall through to a 500.
+    if (spendErrorResponse(res, err)) return;
+
     console.error("Create PromptOptimizer error:", err);
-    res.status(500).json({ success: false, error: "server_error" });
+    res.status(500).json({ success: false, error: "server_error", message: "Something went wrong on our end. Please try again." });
   }
 });
 

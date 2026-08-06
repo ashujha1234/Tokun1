@@ -81,7 +81,10 @@ const PlatformWalletSchema = new mongoose.Schema(
  */
 PlatformWalletSchema.statics.recordCommission = async function (amount, meta = {}) {
   if (!amount || amount <= 0) return null;
-  const { source, refId = null, description = "" } = meta;
+  // `session` is optional — see Wallet.creditSale. Cart checkout records the
+  // commission for every item in the same transaction as the purchases, so the
+  // ledger can't end up crediting a sale that was rolled back.
+  const { source, refId = null, description = "", session = null } = meta;
 
   return this.findOneAndUpdate(
     { key: "platform" },
@@ -95,7 +98,7 @@ PlatformWalletSchema.statics.recordCommission = async function (amount, meta = {
         },
       },
     },
-    { new: true, upsert: true, setDefaultsOnInsert: true }
+    { new: true, upsert: true, setDefaultsOnInsert: true, ...(session ? { session } : {}) }
   );
 };
 
