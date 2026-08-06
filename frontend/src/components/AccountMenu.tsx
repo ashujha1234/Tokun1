@@ -522,14 +522,6 @@ const onlyDigits = (value: string) => value.replace(/\D/g, "").slice(0, 18);
             </div>
 
             <div
-              className="py-2 flex items-center gap-2 border-t border-white/10 cursor-pointer"
-              onClick={() => navigate("/settings")}
-            >
-              <Settings className="w-5 h-5" />
-              <span>Settings</span>
-            </div>
-
-            <div
               style={{
                 width: 220,
                 height: 120,

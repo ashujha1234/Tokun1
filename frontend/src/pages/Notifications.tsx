@@ -1227,9 +1227,11 @@ export default function NotificationsPage() {
   const [tab, setTab] = useState<"all" | "shared" | "purchased" | "unread">("all");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsPrompt, setDetailsPrompt] = useState<any>(null);
+  const [detailsOwned, setDetailsOwned] = useState(false);
 
   const [hirePopupOpen, setHirePopupOpen] = useState(false);
   const [selectedHireNotif, setSelectedHireNotif] = useState<Notif | null>(null);
+  const [purchasedPromptIds, setPurchasedPromptIds] = useState<Set<string>>(new Set());
 
   const { token, user } = useAuth();
   const authHeader = token ? { Authorization: `Bearer ${token}` } : undefined;
@@ -1310,10 +1312,28 @@ export default function NotificationsPage() {
     }
   };
 
+  const fetchPurchasedPromptIds = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/purchase/history`, {
+        headers: { ...(authHeader as any) },
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (data?.success) {
+        const ids = (data.purchases || []).map((p: any) => String(p.prompt?._id || p.prompt));
+        setPurchasedPromptIds(new Set(ids));
+      }
+    } catch (err) {
+      console.error("Failed to load purchased prompt ids:", err);
+    }
+  };
+
   useEffect(() => {
     if (!token) return;
 
     fetchNotifications();
+    fetchPurchasedPromptIds();
 
     if (user?.userType === "TM") {
       fetchOrgPurchasedPrompts();
@@ -1374,8 +1394,11 @@ export default function NotificationsPage() {
       return;
     }
 
+    const promptId = String(prompt._id || prompt.id);
+    const uploaderId = String(prompt.userId?._id || prompt.userId || "");
+
     const normalizedPrompt = {
-      id: prompt._id || prompt.id,
+      id: promptId,
       title: prompt.title || "Untitled Prompt",
       description: prompt.description || "",
       price: prompt.price || 0,
@@ -1394,8 +1417,16 @@ export default function NotificationsPage() {
           ? `${API_BASE}${prompt.attachment?.path}`
           : undefined,
       fullPrompt: prompt.promptText || "",
+      uploaderId,
+      exclusive: !!prompt.exclusive,
+      sold: !!prompt.sold,
     };
 
+    const currentUserId = String((user as any)?._id || (user as any)?.id || "");
+    setDetailsOwned(
+      (!!currentUserId && !!uploaderId && uploaderId === currentUserId) ||
+        purchasedPromptIds.has(promptId)
+    );
     setDetailsPrompt(normalizedPrompt);
     setDetailsOpen(true);
   };
@@ -1801,7 +1832,7 @@ export default function NotificationsPage() {
           open={detailsOpen}
           onOpenChange={setDetailsOpen}
           prompt={detailsPrompt}
-          owned={false}
+          owned={detailsOwned}
           onPurchase={(p) => {
             console.log("Purchasing:", p);
             setDetailsOpen(false);

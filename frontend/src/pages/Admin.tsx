@@ -556,6 +556,15 @@ export default function BlogPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [teamMembersLimit, setTeamMembersLimit] = useState(0);
   const [teamMembersLimitRemaining, setTeamMembersLimitRemaining] = useState(0);
+  const [teamPurchases, setTeamPurchases] = useState<{
+    count: number;
+    totalSpent: number;
+    recent: { id: string; promptTitle: string; buyerName: string; pricePaid: number; purchasedAt: string }[];
+  }>({ count: 0, totalSpent: 0, recent: [] });
+  const [sharedPrompts, setSharedPrompts] = useState<{
+    count: number;
+    recent: { id: string; promptTitle: string; sharedByName: string; sharedToCount: number; sharedAt: string }[];
+  }>({ count: 0, recent: [] });
   const { token, user, isReady } = useAuth() as any;
   const navigate = useNavigate();
 
@@ -618,6 +627,26 @@ export default function BlogPage() {
   useEffect(() => {
     reloadMembers();
   }, [reloadMembers]);
+
+  // Team-wide activity (what's been bought, what's been shared) — computed
+  // live from Purchase/SharedPrompt on the backend, separate from the plain
+  // roster call above.
+  useEffect(() => {
+    if (!token) return;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/org/members/dashboard`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (!res.ok || !data?.success) return;
+        setTeamPurchases(data.teamPurchases || { count: 0, totalSpent: 0, recent: [] });
+        setSharedPrompts(data.sharedPrompts || { count: 0, recent: [] });
+      } catch (err) {
+        console.error("org dashboard activity fetch failed:", err);
+      }
+    })();
+  }, [token]);
 
   const totalDistributed = useMemo(
     () => members.reduce((s, m) => s + m.tokens, 0),
@@ -755,7 +784,7 @@ const handleResendInvite = async (memberId: string) => {
       </div>
 
         <div className="mt-6 w-full flex justify-center">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4">
             <MetricCard
               label="Team Seats"
               value={teamMembersLimit ? `${members.length} / ${teamMembersLimit}` : members.length}
@@ -763,6 +792,8 @@ const handleResendInvite = async (memberId: string) => {
             />
             <MetricCard label="Total Tokens Distributed" value={totalDistributed.toLocaleString()} icon={<span>🎁</span>} />
             <MetricCard label="Total Tokens Remaining" value={remaining.toLocaleString()} icon={<span>🪙</span>} />
+            <MetricCard label="Team Spend" value={`₹${teamPurchases.totalSpent.toLocaleString()}`} icon={<span>🛍️</span>} />
+            <MetricCard label="Prompts Shared" value={sharedPrompts.count} icon={<span>🔗</span>} />
           </div>
         </div>
 
@@ -923,6 +954,53 @@ const handleResendInvite = async (memberId: string) => {
   </table>
 </div>
 
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-lg font-semibold">Recent Team Purchases</h2>
+          <div className="mt-3 rounded-2xl overflow-hidden border border-white/10">
+            {teamPurchases.recent.length === 0 ? (
+              <div className="px-5 py-6 text-sm text-white/40">No purchases yet.</div>
+            ) : (
+              <div className="divide-y divide-white/10">
+                {teamPurchases.recent.map((p) => (
+                  <div key={p.id} className="flex items-center justify-between px-5 py-3 bg-white/[0.02]">
+                    <div>
+                      <div className="text-sm text-white/90">{p.promptTitle}</div>
+                      <div className="text-xs text-white/45">
+                        {p.buyerName} · {new Date(p.purchasedAt).toLocaleDateString("en-IN")}
+                      </div>
+                    </div>
+                    <div className="text-sm font-medium text-white/80">₹{p.pricePaid}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-lg font-semibold">Recently Shared with Team</h2>
+          <div className="mt-3 rounded-2xl overflow-hidden border border-white/10">
+            {sharedPrompts.recent.length === 0 ? (
+              <div className="px-5 py-6 text-sm text-white/40">Nothing shared yet.</div>
+            ) : (
+              <div className="divide-y divide-white/10">
+                {sharedPrompts.recent.map((s) => (
+                  <div key={s.id} className="flex items-center justify-between px-5 py-3 bg-white/[0.02]">
+                    <div>
+                      <div className="text-sm text-white/90">{s.promptTitle}</div>
+                      <div className="text-xs text-white/45">by {s.sharedByName}</div>
+                    </div>
+                    <div className="text-xs text-white/50">
+                      {s.sharedToCount} member{s.sharedToCount === 1 ? "" : "s"} ·{" "}
+                      {new Date(s.sharedAt).toLocaleDateString("en-IN")}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </section>
       </main>
 

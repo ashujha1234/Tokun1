@@ -45,10 +45,32 @@ const PurchaseSchema = new mongoose.Schema(
     razorpayPaymentId: {
       type: String,
     },
+    // Set only when the seller had an activated Route Linked Account at
+    // purchase time — the order's transfers[] moved money there directly.
+    routeTransferId: {
+      type: String,
+      default: null,
+    },
     paymentStatus: {
       type: String,
       enum: ["SUCCESS", "FAILED", "PENDING"],
       default: "PENDING",
+    },
+    // Mirrors the linked RefundRequest's lifecycle so purchase-history reads
+    // don't need a second query — RefundRequest stays the source of truth
+    // for the reason/admin note/audit trail.
+    refundStatus: {
+      type: String,
+      enum: ["NONE", "REQUESTED", "APPROVED", "REJECTED", "REFUNDED"],
+      default: "NONE",
+    },
+    refundedAt: {
+      type: Date,
+      default: null,
+    },
+    razorpayRefundId: {
+      type: String,
+      default: null,
     },
     purchasedAt: {
       type: Date,

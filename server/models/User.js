@@ -198,7 +198,6 @@ razorpayFundAccountId: { type: String, default: null },
 totalEarnings: { type: Number, default: 0 },
 completedDeals: { type: Number, default: 0 },
 // models/seller
-sellerStatus: { type: String, default: "ACTIVE" },
 isDeleted: { type: Boolean, default: false },
 deletedAt: { type: Date, default: null },
   },

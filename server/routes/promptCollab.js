@@ -607,6 +607,7 @@ const SharedPrompt = require("../models/SharedPrompt");
 const Organization = require("../models/organization");
 const Prompt = require("../models/Prompt");
 const Purchase = require("../models/Purchase");
+const { embedWatermark } = require("../utils/nvisibleWatermark");
 const { sendEmail } = require("../utils/SendEmail");
 const { requireAuth } = require("../utils/auth");
 const CollabSession = require("../models/CollabSession");
@@ -711,9 +712,17 @@ router.post("/org/share/:promptId", requireAuth, async (req, res) => {
     const prompt = await Prompt.findById(promptId);
     if (!prompt) return res.status(404).json({ success: false, error: "prompt_not_found" });
 
+    // Sharing itself is allowed even for a prompt the owner hasn't bought yet
+    // (lets them line it up for the team in advance) — /shared/team is what
+    // decides whether a member actually sees the full promptText, checked
+    // live against whether the owner has since purchased it.
     const membersToShare = memberIds?.includes("all")
       ? org.members.map((m) => m.userId)
       : memberIds || [];
+
+    if (!membersToShare.length) {
+      return res.status(400).json({ success: false, error: "no_members_selected" });
+    }
 
     await SharedPrompt.create({
       orgId: org._id,
@@ -754,7 +763,7 @@ router.get("/notifications", requireAuth, async (req, res) => {
       : { receiverUserId: user._id };
 
     const notifs = await Notification.find(filter)
-      .populate("promptId", "title price free exclusive attachment")
+      .populate("promptId", "title price free exclusive attachment userId sold")
       .sort({ createdAt: -1 });
 
     res.json({ success: true, notifications: notifs });
@@ -802,13 +811,27 @@ router.get("/shared/team", requireAuth, async (req, res) => {
     if (!sharedRecords.length)
       return res.json({ success: true, count: 0, sharedPrompts: [] });
 
-    const promptIds = sharedRecords.map((sp) => sp.promptId?._id || sp.promptId);
+    // A shared prompt only *unlocks* (full promptText) once the sharer has
+    // actually bought it — checked live here, not at share-time, so a share
+    // made before purchase automatically unlocks once the owner does buy it,
+    // with no need to re-share.
+    const buyerIds = [...new Set(sharedRecords.map((sp) => String(sp.sharedBy?._id || sp.sharedBy)))];
+    const promptIds = [...new Set(sharedRecords.map((sp) => String(sp.promptId?._id || sp.promptId)))];
 
-    const orgPurchases = await Purchase.find({
+    const purchases = await Purchase.find({
+      buyer: { $in: buyerIds },
       prompt: { $in: promptIds },
-      buyer: { $in: [user.orgId, user._id] },
       paymentStatus: "SUCCESS",
-    });
+    }).lean();
+
+    const purchaseByKey = new Map();
+    for (const p of purchases) {
+      const key = `${p.buyer}:${p.prompt}`;
+      const existing = purchaseByKey.get(key);
+      if (!existing || new Date(p.createdAt) > new Date(existing.createdAt)) {
+        purchaseByKey.set(key, p);
+      }
+    }
 
     const results = await Promise.all(
       sharedRecords.map(async (sp) => {
@@ -818,18 +841,36 @@ router.get("/shared/team", requireAuth, async (req, res) => {
               .lean()
           : null;
 
-        const snap = orgPurchases.find(
-          (p) => String(p.prompt) === String(sp.promptId?._id)
-        )?.promptSnapshot || {};
+        if (!fullPrompt) {
+          return {
+            id: sp._id,
+            sharedAt: sp.createdAt,
+            orgId: sp.orgId,
+            senderName: sp.sharedBy?.name || "Organization",
+            senderEmail: sp.sharedBy?.email || "",
+            senderImage: sp.sharedBy?.profileImage || "",
+            prompt: null,
+          };
+        }
 
-        const promptData = fullPrompt
-          ? {
-              id: fullPrompt._id,
-              title: snap.title || fullPrompt.title,
-              price: fullPrompt.price,
-              attachment: fullPrompt.attachment || snap.attachment || {},
-            }
-          : null;
+        const key = `${String(sp.sharedBy?._id || sp.sharedBy)}:${String(sp.promptId?._id || sp.promptId)}`;
+        const purchase = purchaseByKey.get(key);
+        const unlocked = !!purchase;
+        const snap = purchase?.promptSnapshot || {};
+
+        const promptData = {
+          id: fullPrompt._id,
+          title: snap.title || fullPrompt.title,
+          description: snap.description || fullPrompt.description,
+          price: fullPrompt.price,
+          attachment: fullPrompt.attachment || snap.attachment || {},
+          unlocked,
+          // Only present once the org has actually purchased it — until
+          // then the member sees the listing but not the content.
+          promptText: unlocked
+            ? embedWatermark(snap.promptText || fullPrompt.promptText || "", String(user._id))
+            : undefined,
+        };
 
         return {
           id: sp._id,
@@ -1061,7 +1102,7 @@ const finalMessage = `${senderName} invited you to collaborate on a prompt in To
     // 3️⃣ Send email invite
     try {
           const inviteUrl =
-  `${process.env.SITE_URL || "https://tokun.world"}/prompt-optimizer?sessionId=${encodeURIComponent(sessionId)}`;
+  `${process.env.SITE_URL || "https://tokun.world"}/prompt-optimization?sessionId=${encodeURIComponent(sessionId)}`;
  // 👈 nice UX: direct collab link
       const html = inviteCollaborativeTemplate
         .replace(/{{Name}}/g, name || receiverUser.name || "there")
@@ -1081,6 +1122,7 @@ const finalMessage = `${senderName} invited you to collaborate on a prompt in To
     }
 
     return res.status(201).json({
+      success: true,
       message: "Collaboration invite sent successfully",
       notification,
       receiver: {

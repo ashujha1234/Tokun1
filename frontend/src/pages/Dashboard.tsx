@@ -13971,7 +13971,10 @@ import {
   User,
   ShoppingCart,
   Wallet ,
-  RefreshCcw,CheckCircle
+  RefreshCcw,CheckCircle,
+  Landmark,
+  MoreHorizontal,
+  Building2,
 } from "lucide-react";
 
 import {
@@ -13985,7 +13988,10 @@ import {
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
+  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -14001,6 +14007,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import EscrowAdminDashboard from "./EscrowAdminDashboard";
+import PromptValidationAdminDashboard from "./PromptValidationAdminDashboard";
 import ScreenRecordingsAdmin from "./Screenrecordingsadmin ";
 import AdminSellerMessageModal from "@/components/AdminSellerMessageModal";
 
@@ -14026,6 +14033,8 @@ type PromptProduct = {
   category?: string;
   exclusive?: boolean;
   sold?: boolean;
+  salesCount?: number;
+  totalRevenue?: number;
 };
 
 type Category = { _id: string; name: string; description?: string };
@@ -14045,6 +14054,12 @@ type SellerProfile = {
   reviewsCount?: number;
   refundRate?: number;
   refundThreshold?: number;
+
+  // buy-side + plan (for the profile's Purchased / Uploaded / Plan cards)
+  buyProducts?: number;
+  totalUploadedPrompts?: number;
+  plan?: string | null;
+  userType?: "IND" | "ORG" | "TM";
 };
 
 type SellerRow = {
@@ -14060,6 +14075,9 @@ type SellerRow = {
   totalProducts?: number;
   soldProducts?: number;
   totalSpent?: number;
+  buyProducts?: number;
+  plan?: string | null;
+  userType?: "IND" | "ORG" | "TM";
   isDeleted?: boolean;
   kycStatus?: "NOT_SUBMITTED" | "PENDING" | "VERIFIED" | "REJECTED" | "FLAGGED";
 };
@@ -14146,6 +14164,108 @@ type UserRow = {
   totalSpent?: number;
 };
 
+// Full admin view of a single user (mirrors SellerProfile, but user-centric:
+// both buy-side and sell-side, since sellers and buyers are the same User).
+type UserProfile = {
+  id: string;
+  name: string;
+  email?: string;
+  avatar?: string;
+  joined?: string;
+  status?: string;
+  verified?: boolean;
+  userType?: "IND" | "ORG" | "TM";
+  plan?: string | null;
+  // buy-side
+  buyProducts: number;
+  totalSpent: number;
+  // sell/upload-side
+  uploadedCount: number;
+  soldProducts: number;
+  totalEarnings: number;
+};
+
+type UserBoughtItem = {
+  id: string;
+  promptId: string;
+  title: string;
+  pricePaid: number;
+  paymentStatus: string;
+  refundStatus?: string;
+  purchasedAt?: string;
+  deleted?: boolean;
+};
+
+// ─── Org (admin platform view) ────────────────────────────────
+type OrgRow = {
+  id: string;
+  name: string;
+  ownerName: string;
+  ownerEmail: string;
+  ownerId: string;
+  plan: string | null;
+  billingCycle: string | null;
+  subscriptionStatus: string | null;
+  currentPeriodEnd: string | null;
+  orgPoolCap: number;
+  orgPoolUsed: number;
+  orgExtraTokensRemaining: number;
+  teamMembersLimit: number;
+  teamMembersLimitRemaining: number;
+  membersCount: number;
+  adminFrozen: boolean;
+  createdAt: string | null;
+};
+
+type OrgSummary = {
+  kpis: {
+    totalOrgs: number;
+    enterpriseActive: number;
+    seatsTotal: number;
+    seatsUsed: number;
+    poolCap: number;
+    poolUsed: number;
+  };
+  trends: { label: string; newOrgs: number }[];
+  statusBreakdown: { name: string; count: number }[];
+};
+
+type OrgMemberRow = {
+  userId: string;
+  name: string;
+  email: string;
+  avatar: string | null;
+  role: string;
+  assignedCap: number;
+  usedThisPeriod: number;
+};
+
+type OrgDetail = OrgRow & {
+  ownerAvatar: string | null;
+  billingAnchor: string | null;
+  lastInvoiceDueAt: string | null;
+  graceDays: number;
+  totalAssignedCap: number;
+  members: OrgMemberRow[];
+};
+
+
+// Human-readable plan label. Org owners (ORG) and team members (TM) are on the
+// org's Enterprise plan even though their own User.plan is null; individuals
+// carry plan free/pro directly.
+const planLabel = (userType?: string | null, plan?: string | null): "Enterprise" | "Pro" | "Free" => {
+  if (userType === "TM" || userType === "ORG") return "Enterprise";
+  if (plan === "pro") return "Pro";
+  return "Free";
+};
+
+// Tailwind classes for a plan badge, by label.
+const planBadgeClass = (label: string) =>
+  label === "Enterprise"
+    ? "bg-fuchsia-500/15 text-fuchsia-200 border-fuchsia-500/25"
+    : label === "Pro"
+    ? "bg-amber-500/15 text-amber-200 border-amber-500/25"
+    : "bg-white/[0.05] text-white/60 border-white/10";
 
 const useMediaQuery = (query: string) => {
   const [matches, setMatches] = React.useState(false);
@@ -14170,10 +14290,270 @@ const USERS_BASE = `${API_BASE}/api/user`;
 // Optional future:
 // const REPORTS_BASE = `${API_BASE}/api/reports`;
 
+const AccountView = ({
+  adminName,
+  adminEmail,
+}: {
+  adminName: string;
+  adminEmail: string;
+}) => {
+  const [emailInput, setEmailInput] = useState(adminEmail);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [profileSaveLoading, setProfileSaveLoading] = useState(false);
+  const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
+  const [profileSaveSuccess, setProfileSaveSuccess] = useState<string | null>(null);
+
+  const handleUpdateAdminProfile = async () => {
+    setProfileSaveError(null);
+    setProfileSaveSuccess(null);
+
+    const emailChanged = emailInput.trim().toLowerCase() !== adminEmail.trim().toLowerCase();
+    const wantsPasswordChange = !!(newPassword || confirmNewPassword);
+
+    if (!currentPassword) {
+      setProfileSaveError("Enter your current password to save changes.");
+      return;
+    }
+    if (!emailChanged && !wantsPasswordChange) {
+      setProfileSaveError("Change the email or enter a new password first.");
+      return;
+    }
+    if (wantsPasswordChange && newPassword !== confirmNewPassword) {
+      setProfileSaveError("New password and confirmation do not match.");
+      return;
+    }
+
+    try {
+      setProfileSaveLoading(true);
+      // Admin tokens FIRST — this is the admin dashboard, and a stale normal-user
+      // "token" in localStorage would otherwise be sent, making the request
+      // non-admin and getting a 403 "forbidden" from /api/admin/auth/profile.
+      const token = (
+        localStorage.getItem("tokun_admin_token") ||
+        localStorage.getItem("adminToken") ||
+        localStorage.getItem("token") ||
+        localStorage.getItem("tokun_token") ||
+        localStorage.getItem("accessToken") ||
+        localStorage.getItem("authToken") ||
+        ""
+      ).replace(/^Bearer\s+/i, "").trim();
+      const res = await fetch(`${API_BASE}/api/admin/auth/profile`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          currentPassword,
+          ...(emailChanged ? { newEmail: emailInput.trim() } : {}),
+          ...(wantsPasswordChange ? { newPassword } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        const messages: Record<string, string> = {
+          invalid_current_password: "Current password is incorrect.",
+          email_already_in_use: "That email is already in use by another admin.",
+          invalid_email: "Enter a valid email address.",
+          password_too_short: "New password must be at least 8 characters.",
+        };
+        throw new Error(messages[data?.error] || data?.error || "Could not update profile.");
+      }
+
+      if (emailChanged) {
+        localStorage.setItem("tokun_admin_email", data.admin.email);
+      }
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setProfileSaveSuccess("Profile updated successfully.");
+      if (emailChanged) {
+        window.location.reload();
+      }
+    } catch (e: any) {
+      setProfileSaveError(e?.message || "Could not update profile.");
+    } finally {
+      setProfileSaveLoading(false);
+    }
+  };
+
+  return (
+    <>
+      {/* Title */}
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+  <div className="text-center md:text-left">
+    <h1 className="text-[24px] md:text-[34px] leading-[1.1] font-semibold">
+      Admin Profile
+    </h1>
+    <p className="mt-2 text-white/60 text-sm">
+      Manage your account and security settings
+    </p>
+  </div>
+</div>
+
+      {/* Profile Card */}
+      <section className={`${kpiCardBase} mt-8 p-6`}>
+        <div className="flex flex-col lg:flex-row gap-6 lg:items-start">
+          <div className="flex items-center gap-4">
+            <img
+              src={"https://i.pravatar.cc/120?img=12"}
+              alt={adminName}
+              className="h-16 w-16 rounded-full object-cover border border-white/10"
+            />
+            <div>
+              <div className="text-xl font-semibold">{adminName}</div>
+              <div className="text-sm text-white/50">Super Admin</div>
+            </div>
+          </div>
+
+          <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs text-white/60">Full name</label>
+              <input
+                value={adminName}
+                readOnly
+                className="mt-2 w-full h-11 rounded-xl bg-black/30 border border-white/10 px-4 text-sm text-white/80"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-white/60">Email address</label>
+              <input
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                className="mt-2 w-full h-11 rounded-xl bg-black/30 border border-white/10 px-4 text-sm text-white/80"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-white/60">Role</label>
+              <input
+                value={"Super Admin"}
+                readOnly
+                className="mt-2 w-full h-11 rounded-xl bg-black/30 border border-white/10 px-4 text-sm text-white/50"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-white/60">Timezone</label>
+              <input
+                value={"Asia/Kolkata"}
+                readOnly
+                className="mt-2 w-full h-11 rounded-xl bg-black/30 border border-white/10 px-4 text-sm text-white/80"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Security Management */}
+      <section className={`${kpiCardBase} mt-6 p-6`}>
+        <h2 className="text-lg font-semibold">Security Management</h2>
+        <p className="mt-1 text-xs text-white/45">
+          Enter your current password to save an email change, a new password, or both.
+        </p>
+
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-5 items-end">
+          <div>
+            <label className="text-xs text-white/60">Current Password</label>
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              className="mt-2 w-full h-11 rounded-xl bg-black/30 border border-white/10 px-4 text-sm text-white/80"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-white/60">New Password</label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="mt-2 w-full h-11 rounded-xl bg-black/30 border border-white/10 px-4 text-sm text-white/80"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-white/60">Confirm new password</label>
+            <input
+              type="password"
+              value={confirmNewPassword}
+              onChange={(e) => setConfirmNewPassword(e.target.value)}
+              className="mt-2 w-full h-11 rounded-xl bg-black/30 border border-white/10 px-4 text-sm text-white/80"
+            />
+          </div>
+
+          <div className="flex justify-start lg:justify-end">
+            <button
+              type="button"
+              disabled={profileSaveLoading}
+              onClick={handleUpdateAdminProfile}
+              className="h-11 px-6 rounded-xl bg-[#1677FF] hover:opacity-90 text-sm font-medium disabled:opacity-60"
+            >
+              {profileSaveLoading ? "Saving..." : "Save changes"}
+            </button>
+          </div>
+        </div>
+
+        {profileSaveError && (
+          <p className="mt-4 text-sm text-red-300">{profileSaveError}</p>
+        )}
+        {profileSaveSuccess && (
+          <p className="mt-4 text-sm text-emerald-300">{profileSaveSuccess}</p>
+        )}
+      </section>
+
+    </>
+  );
+};
+
+
 const Dashboard = () => {
   const [active, setActive] = useState<NavKey>("dashboard");
-const [currentView, setCurrentView] = useState<"seller" | "user">("seller");
+const [currentView, setCurrentView] = useState<"seller" | "user" | "org">("seller");
  const [showAllUsers, setShowAllUsers] = useState(false);
+
+  // Admin user-profile drawer (click a user row → full profile, mirrors seller)
+  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  const [userProfileLoading, setUserProfileLoading] = useState(false);
+  const [userProfileError, setUserProfileError] = useState<string | null>(null);
+  const [userBought, setUserBought] = useState<UserBoughtItem[]>([]);
+  const [userUploaded, setUserUploaded] = useState<PromptProduct[]>([]);
+
+  // Org (admin platform view) — list, summary/charts, and profile drill-down
+  const [orgRows, setOrgRows] = useState<OrgRow[]>([]);
+  const [orgLoading, setOrgLoading] = useState(false);
+  const [orgError, setOrgError] = useState<string | null>(null);
+  const [orgTotal, setOrgTotal] = useState(0);
+  const [orgTotalPages, setOrgTotalPages] = useState(1);
+  const [orgPage, setOrgPage] = useState(1);
+  const [orgPageSize, setOrgPageSize] = useState(10);
+  const [orgSearch, setOrgSearch] = useState("");
+  const [orgSummary, setOrgSummary] = useState<OrgSummary | null>(null);
+  const [orgSummaryLoading, setOrgSummaryLoading] = useState(false);
+  const [selectedOrg, setSelectedOrg] = useState<OrgDetail | null>(null);
+  const [orgProfileLoading, setOrgProfileLoading] = useState(false);
+  const [orgProfileError, setOrgProfileError] = useState<string | null>(null);
+
+  // Suspend action state (user profile reuses the seller /block endpoint;
+  // org profile uses the whole-org freeze endpoint)
+  const [userSuspendLoading, setUserSuspendLoading] = useState(false);
+  const [userSuspendError, setUserSuspendError] = useState<string | null>(null);
+  const [orgSuspendLoading, setOrgSuspendLoading] = useState(false);
+  const [orgSuspendError, setOrgSuspendError] = useState<string | null>(null);
+
+  // Seller profile opened from the dashboard seller-snapshot list (the same
+  // SellerProfileView the Seller Management page uses).
+  const [selectedSellerMain, setSelectedSellerMain] = useState<SellerProfile | null>(null);
+  const [sellerMainProducts, setSellerMainProducts] = useState<PromptProduct[]>([]);
+  const [sellerMainLoading, setSellerMainLoading] = useState(false);
+  const [sellerMainError, setSellerMainError] = useState<string | null>(null);
+  const [sellerMainSuspendLoading, setSellerMainSuspendLoading] = useState(false);
+  const [sellerMainSuspendError, setSellerMainSuspendError] = useState<string | null>(null);
 const [userRows, setUserRows] = useState<UserRow[]>([]);
 const [userLoading, setUserLoading] = useState(false);
 const [userError, setUserError] = useState<string | null>(null);
@@ -14183,11 +14563,66 @@ const [userTotalPages, setUserTotalPages] = useState(1);
 const [userTotal, setUserTotal] = useState(0);
 const [userSearch, setUserSearch] = useState("");
  const [showAllActivities, setShowAllActivities] = useState(false);
+
+ /* ── Admin notifications (new reports, AI-flagged uploads) ── */
+ const [adminNotifications, setAdminNotifications] = useState<any[]>([]);
+ const adminUnreadCount = adminNotifications.filter((n) => !n.read).length;
+
+ const fetchAdminNotifications = async () => {
+   try {
+     const token = getToken();
+     const res = await fetch(`${API_BASE}/api/admin/notifications`, {
+       headers: { Authorization: `Bearer ${token}` },
+       credentials: "include",
+     });
+     const data = await res.json().catch(() => ({}));
+     if (res.ok && data?.success) setAdminNotifications(data.notifications || []);
+   } catch (err) {
+     console.error("Fetch admin notifications failed:", err);
+   }
+ };
+
+ useEffect(() => {
+   fetchAdminNotifications();
+   const interval = setInterval(fetchAdminNotifications, 30000);
+   return () => clearInterval(interval);
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, []);
+
+ const markAdminNotificationRead = async (id: string) => {
+   setAdminNotifications((prev) => prev.map((n) => (n._id === id ? { ...n, read: true } : n)));
+   try {
+     const token = getToken();
+     await fetch(`${API_BASE}/api/admin/notifications/${id}/read`, {
+       method: "POST",
+       headers: { Authorization: `Bearer ${token}` },
+       credentials: "include",
+     });
+   } catch (err) {
+     console.error("Mark admin notification read failed:", err);
+   }
+ };
+
+ const markAllAdminNotificationsRead = async () => {
+   setAdminNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+   try {
+     const token = getToken();
+     await fetch(`${API_BASE}/api/admin/notifications/read-all`, {
+       method: "POST",
+       headers: { Authorization: `Bearer ${token}` },
+       credentials: "include",
+     });
+   } catch (err) {
+     console.error("Mark all admin notifications read failed:", err);
+   }
+ };
+
  const [stats, setStats] = useState({
   totalRevenue: 0,
   totalSellers: 0,
 });
-const [pendingApprovals, setPendingApprovals] = useState(0);
+const [pendingUsersCount, setPendingUsersCount] = useState(0);
+const [pendingSellersCount, setPendingSellersCount] = useState(0);
 const [platformRevenue, setPlatformRevenue] = useState({
   availableBalance: 0,
   totalRevenue: 0,
@@ -14236,15 +14671,17 @@ const [chartData, setChartData] = useState<ChartDatum[]>(defaultChartData);
     return first.charAt(0).toUpperCase() + first.slice(1);
   }, [adminEmail]);
 
-  // ✅ Token getter (admin + normal user tokens)
+  // ✅ Token getter — this page is admin-only (/admin/dashboard), so the admin
+  // token must win; otherwise a stale non-admin "token" from the same browser
+  // gets sent instead and every admin API call 403s.
   const getToken = () => {
     const token =
+      localStorage.getItem("tokun_admin_token") ||
+      localStorage.getItem("adminToken") ||
       localStorage.getItem("token") ||
       localStorage.getItem("tokun_token") ||
       localStorage.getItem("accessToken") ||
       localStorage.getItem("authToken") ||
-      localStorage.getItem("adminToken") ||
-      localStorage.getItem("tokun_admin_token") ||
       "";
 
     return token.replace(/^Bearer\s+/i, "").trim();
@@ -14707,6 +15144,389 @@ useEffect(() => {
 
   if (active === "dashboard" && currentView === "user") fetchUsers();
 }, [active, currentView, userPage, userPageSize, userSearch]);
+
+  // Open a full admin profile for a clicked user. Reuses GET /api/seller/:id
+  // (works for ANY user — sellers and buyers are the same User model, and it
+  // already returns both buy-side and sell-side stats), GET /api/prompt/user/:id
+  // for their uploaded prompts, and GET /api/purchase/admin/user/:id for the
+  // itemized "bought" list.
+  const openUserProfile = async (userId?: string | null, fallback?: UserRow) => {
+    if (!userId) return;
+    setSelectedUser({
+      id: userId,
+      name: fallback?.name || "Loading…",
+      email: fallback?.email,
+      avatar: fallback?.avatar,
+      userType: fallback?.userType,
+      plan: fallback?.plan ?? null,
+      verified: fallback?.isVerified,
+      joined: fallback?.createdAt,
+      buyProducts: fallback?.buyProducts ?? fallback?.purchasedPrompts ?? 0,
+      totalSpent: fallback?.totalSpent ?? 0,
+      uploadedCount: fallback?.uploadedPrompts ?? fallback?.saleProducts ?? 0,
+      soldProducts: 0,
+      totalEarnings: fallback?.totalEarnings ?? 0,
+    });
+    setUserBought([]);
+    setUserUploaded([]);
+    setUserProfileError(null);
+    setUserProfileLoading(true);
+    try {
+      const headers = { ...getAuthHeaders() };
+
+      const [statsRes, uploadedRes, boughtRes] = await Promise.all([
+        fetch(`${SELLERS_BASE}/${userId}`, { headers, credentials: "include" }),
+        fetch(`${PROMPTS_BASE}/user/${userId}`, { headers, credentials: "include" }),
+        fetch(`${API_BASE}/api/purchase/admin/user/${userId}`, { headers, credentials: "include" }),
+      ]);
+
+      const statsData = await statsRes.json().catch(() => ({}));
+      if (!statsRes.ok || !statsData?.success)
+        throw new Error(statsData?.error || "Failed to load user profile");
+      const s = statsData.seller || {};
+
+      setSelectedUser({
+        id: String(s._id || userId),
+        name: s.name || fallback?.name || "Unknown",
+        email: s.email || fallback?.email,
+        avatar: s.avatar || fallback?.avatar,
+        userType: s.userType || fallback?.userType,
+        plan: s.plan ?? fallback?.plan ?? null,
+        verified: !!s.verified,
+        joined: s.joined || fallback?.createdAt,
+        status: s.isDeleted ? "DELETED" : s.status || "ACTIVE",
+        buyProducts: Number(s.buyProducts || 0),
+        totalSpent: Number(s.totalSpent || 0),
+        uploadedCount: Number(s.totalUploadedPrompts ?? s.totalProducts ?? 0),
+        soldProducts: Number(s.soldProducts || 0),
+        totalEarnings: Number(s.totalEarnings || 0),
+      });
+
+      const uploadedData = await uploadedRes.json().catch(() => ({}));
+      if (uploadedData?.success) {
+        const mapped: PromptProduct[] = (uploadedData.prompts || []).map((doc: any) => {
+          const att = doc?.attachment || null;
+          const status: PromptProduct["status"] =
+            doc?.flagged ? "Flagged" : doc?.draft ? "Draft" : "Published";
+          return {
+            id: String(doc._id),
+            title: doc?.title || "Untitled",
+            uploaderName: doc?.userId?.name || "Unknown",
+            uploaderId: doc?.userId?._id || doc?.userId || null,
+            price: typeof doc?.price === "number" ? doc.price : 0,
+            status,
+            imageUrl: att?.type === "image" ? att?.path : undefined,
+            videoUrl: att?.type === "video" ? att?.path : undefined,
+            category: doc?.categories?.[0]?.name || "General",
+            exclusive: !!doc?.exclusive,
+            sold: !!doc?.sold,
+            salesCount: Number(doc?.salesCount || 0),
+            totalRevenue: Number(doc?.totalRevenue || 0),
+          };
+        });
+        setUserUploaded(mapped);
+      }
+
+      const boughtData = await boughtRes.json().catch(() => ({}));
+      if (boughtData?.success) {
+        setUserBought(boughtData.purchases || []);
+      }
+    } catch (e: any) {
+      setUserProfileError(e?.message || "Error loading user profile");
+    } finally {
+      setUserProfileLoading(false);
+    }
+  };
+
+  const closeUserProfile = () => {
+    setSelectedUser(null);
+    setUserBought([]);
+    setUserUploaded([]);
+    setUserProfileError(null);
+  };
+
+  // Org list — paginated/searchable, admin-only (GET /api/admin/orgs).
+  useEffect(() => {
+    if (active !== "dashboard" || currentView !== "org") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setOrgLoading(true);
+        setOrgError(null);
+        const params = new URLSearchParams();
+        params.set("limit", String(orgPageSize));
+        params.set("page", String(orgPage));
+        if (orgSearch.trim()) params.set("search", orgSearch.trim());
+        const res = await fetch(`${API_BASE}/api/admin/orgs?${params.toString()}`, {
+          headers: { ...getAuthHeaders() },
+          credentials: "include",
+        });
+        const data = await res.json();
+        if (!res.ok || !data?.success)
+          throw new Error(data?.error || "Failed to load organizations");
+        if (cancelled) return;
+        setOrgRows(data.orgs || []);
+        setOrgTotal(data?.pagination?.total || 0);
+        setOrgTotalPages(data?.pagination?.totalPages || 1);
+      } catch (e: any) {
+        if (cancelled) return;
+        setOrgError(e?.message || "Error loading organizations");
+        setOrgRows([]);
+        setOrgTotal(0);
+        setOrgTotalPages(1);
+      } finally {
+        if (!cancelled) setOrgLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [active, currentView, orgPage, orgPageSize, orgSearch]);
+
+  // Org summary — KPIs + charts (GET /api/admin/orgs/summary).
+  useEffect(() => {
+    if (active !== "dashboard" || currentView !== "org") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setOrgSummaryLoading(true);
+        const res = await fetch(`${API_BASE}/api/admin/orgs/summary`, {
+          headers: { ...getAuthHeaders() },
+          credentials: "include",
+        });
+        const data = await res.json();
+        if (!cancelled && data?.success) {
+          setOrgSummary({
+            kpis: data.kpis,
+            trends: data.trends || [],
+            statusBreakdown: data.statusBreakdown || [],
+          });
+        }
+      } catch {
+        /* non-fatal — KPIs/charts just stay empty */
+      } finally {
+        if (!cancelled) setOrgSummaryLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [active, currentView]);
+
+  // Click an org row → full org profile (GET /api/admin/orgs/:orgId).
+  const openOrgProfile = async (orgId?: string | null, fallback?: OrgRow) => {
+    if (!orgId) return;
+    setSelectedOrg(
+      fallback
+        ? {
+            ...fallback,
+            ownerAvatar: null,
+            billingAnchor: null,
+            lastInvoiceDueAt: null,
+            graceDays: 0,
+            totalAssignedCap: 0,
+            members: [],
+          }
+        : null
+    );
+    setOrgProfileError(null);
+    setOrgProfileLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/orgs/${orgId}`, {
+        headers: { ...getAuthHeaders() },
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success)
+        throw new Error(data?.error || "Failed to load organization");
+      setSelectedOrg(data.org);
+    } catch (e: any) {
+      setOrgProfileError(e?.message || "Error loading organization");
+    } finally {
+      setOrgProfileLoading(false);
+    }
+  };
+
+  const closeOrgProfile = () => {
+    setSelectedOrg(null);
+    setOrgProfileError(null);
+  };
+
+  // Suspend / reactivate a user — reuses the seller block endpoint (users and
+  // sellers are the same account; sellerStatus drives blockIfSuspended).
+  const handleUserSuspendToggle = async () => {
+    if (!selectedUser) return;
+    const suspending = selectedUser.status !== "SUSPENDED";
+    const action = suspending ? "block" : "unblock";
+    const ok = window.confirm(
+      suspending
+        ? `Suspend "${selectedUser.name}"? They won't be able to buy, sell, or withdraw.`
+        : `Reactivate "${selectedUser.name}"? They regain full access.`
+    );
+    if (!ok) return;
+    try {
+      setUserSuspendLoading(true);
+      setUserSuspendError(null);
+      const res = await fetch(`${SELLERS_BASE}/${selectedUser.id}/block`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        credentials: "include",
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || "Action failed");
+      const newStatus = suspending ? "SUSPENDED" : "ACTIVE";
+      setSelectedUser((prev) => (prev ? { ...prev, status: newStatus } : prev));
+    } catch (e: any) {
+      setUserSuspendError(e?.message || "Action failed");
+    } finally {
+      setUserSuspendLoading(false);
+    }
+  };
+
+  // Suspend / reactivate a whole org (owner + all members) via the admin freeze
+  // endpoint.
+  const handleOrgSuspendToggle = async () => {
+    if (!selectedOrg) return;
+    const freezing = !selectedOrg.adminFrozen;
+    const action = freezing ? "suspend" : "reactivate";
+    const ok = window.confirm(
+      freezing
+        ? `Suspend the whole org "${selectedOrg.name}"? The owner and all ${selectedOrg.membersCount} members will be blocked until reactivated.`
+        : `Reactivate "${selectedOrg.name}"? The owner and members regain access.`
+    );
+    if (!ok) return;
+    try {
+      setOrgSuspendLoading(true);
+      setOrgSuspendError(null);
+      const res = await fetch(`${API_BASE}/api/admin/orgs/${selectedOrg.id}/suspend`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        credentials: "include",
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || "Action failed");
+      setSelectedOrg((prev) => (prev ? { ...prev, adminFrozen: freezing } : prev));
+      setOrgRows((prev) =>
+        prev.map((o) => (o.id === selectedOrg.id ? { ...o, adminFrozen: freezing } : o))
+      );
+    } catch (e: any) {
+      setOrgSuspendError(e?.message || "Action failed");
+    } finally {
+      setOrgSuspendLoading(false);
+    }
+  };
+
+  // Open a seller profile from the dashboard seller-snapshot list. Same fetch as
+  // SellersView.openSellerProfile, rendered via SellerProfileView.
+  const openSellerMainProfile = async (sellerId?: string | null) => {
+    if (!sellerId) return;
+    setSelectedSellerMain(null);
+    setSellerMainProducts([]);
+    setSellerMainError(null);
+    setSellerMainLoading(true);
+    try {
+      const headers = { ...getAuthHeaders() };
+      const [resSeller, resPrompts] = await Promise.all([
+        fetch(`${SELLERS_BASE}/${sellerId}`, { headers, credentials: "include" }),
+        fetch(`${PROMPTS_BASE}/by-seller/${sellerId}`, { headers, credentials: "include" }),
+      ]);
+      const sellerData = await resSeller.json();
+      if (!resSeller.ok || !sellerData?.success)
+        throw new Error(sellerData?.error || "Failed to load seller profile");
+      const promptData = await resPrompts.json().catch(() => ({ prompts: [] }));
+      const s = sellerData.seller;
+
+      setSelectedSellerMain({
+        id: String(s?._id || sellerId),
+        name: s?.name || "Unknown",
+        email: s?.email,
+        location: s?.location,
+        joined: s?.joined,
+        status: s?.status || "ACTIVE",
+        avatar: s?.avatar,
+        verified: !!s?.verified,
+        totalEarnings: Number(s?.totalEarnings || 0),
+        rating: s?.rating ?? 0,
+        reviewsCount: s?.reviewsCount ?? 0,
+        refundRate: s?.refundRate ?? 0,
+        refundThreshold: s?.refundThreshold ?? 5,
+        buyProducts: Number(s?.buyProducts || 0),
+        totalUploadedPrompts: Number(s?.totalUploadedPrompts ?? s?.totalProducts ?? 0),
+        plan: s?.plan ?? null,
+        userType: s?.userType || "IND",
+      });
+
+      const mapped: PromptProduct[] = (promptData.prompts || []).map((doc: any) => {
+        const att = doc?.attachment || null;
+        const status: PromptProduct["status"] =
+          doc?.flagged ? "Flagged" : doc?.draft ? "Draft" : "Published";
+        return {
+          id: String(doc._id),
+          title: doc?.title || "Untitled",
+          uploaderName: doc?.userId?.name || "Unknown",
+          uploaderId: doc?.userId?._id || doc?.userId || null,
+          price: typeof doc?.price === "number" ? doc.price : 0,
+          status,
+          imageUrl: att?.type === "image" ? att?.path : undefined,
+          videoUrl: att?.type === "video" ? att?.path : undefined,
+          category: doc?.categories?.[0]?.name || "General",
+          exclusive: !!doc?.exclusive,
+          sold: !!doc?.sold,
+          salesCount: Number(doc?.salesCount || 0),
+          totalRevenue: Number(doc?.totalRevenue || 0),
+        };
+      });
+      setSellerMainProducts(mapped);
+    } catch (e: any) {
+      setSellerMainError(e?.message || "Error loading seller profile");
+    } finally {
+      setSellerMainLoading(false);
+    }
+  };
+
+  const closeSellerMainProfile = () => {
+    setSelectedSellerMain(null);
+    setSellerMainProducts([]);
+    setSellerMainError(null);
+  };
+
+  const handleSellerMainSuspendToggle = async () => {
+    if (!selectedSellerMain) return;
+    const action = selectedSellerMain.status === "SUSPENDED" ? "unblock" : "block";
+    const ok = window.confirm(
+      action === "block"
+        ? `Suspend "${selectedSellerMain.name}"? They won't be able to sell on the platform.`
+        : `Reactivate "${selectedSellerMain.name}"? They regain access to sell.`
+    );
+    if (!ok) return;
+    try {
+      setSellerMainSuspendLoading(true);
+      setSellerMainSuspendError(null);
+      const res = await fetch(`${SELLERS_BASE}/${selectedSellerMain.id}/block`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        credentials: "include",
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || "Action failed");
+      const newStatus = action === "block" ? "SUSPENDED" : "ACTIVE";
+      setSelectedSellerMain((prev) => (prev ? { ...prev, status: newStatus } : prev));
+      setSellerRows((prev) =>
+        prev.map((r) =>
+          r.id === selectedSellerMain.id
+            ? { ...r, status: newStatus === "SUSPENDED" ? "Blocked" : "Active" }
+            : r
+        )
+      );
+    } catch (e: any) {
+      setSellerMainSuspendError(e?.message || "Action failed");
+    } finally {
+      setSellerMainSuspendLoading(false);
+    }
+  };
   // =======================
   // Dashboard chart/table/activity data
   // =======================
@@ -14790,6 +15610,81 @@ const formatChartData = (apiData: any[] = []) => {
 
   setChartData(last6Months);
 };
+
+// Validated categorical palette (dark-surface steps) — fixed order, never
+// cycled. Top-N categories get slots 1-6; "Other" always takes slot 7.
+const CATEGORY_SALES_COLORS = [
+  "#3987e5", // blue
+  "#008300", // green
+  "#d55181", // magenta
+  "#c98500", // yellow
+  "#199e70", // aqua
+  "#d95926", // orange
+  "#9085e9", // violet — reserved for "Other"
+];
+
+const [categorySalesSeries, setCategorySalesSeries] = useState<string[]>([]);
+const [categorySalesData, setCategorySalesData] = useState<any[]>([]);
+const [categorySalesLoading, setCategorySalesLoading] = useState(true);
+
+useEffect(() => {
+  const fetchSalesByCategory = async () => {
+    try {
+      setCategorySalesLoading(true);
+      const res = await fetch(`${API_BASE}/api/purchase/analytics/sales-by-category?months=6`);
+      const data = await res.json();
+      if (res.ok && data?.success) {
+        setCategorySalesSeries(data.categories || []);
+        setCategorySalesData(data.data || []);
+      }
+    } catch (err) {
+      console.error("Sales-by-category analytics error:", err);
+    } finally {
+      setCategorySalesLoading(false);
+    }
+  };
+  fetchSalesByCategory();
+}, []);
+
+/* ── Seller trends (real seller signal: payout earnings + active sellers) ── */
+const [sellerTrendsData, setSellerTrendsData] = useState<any[]>([]);
+const [sellerTrendsLoading, setSellerTrendsLoading] = useState(true);
+
+useEffect(() => {
+  const fetchSellerTrends = async () => {
+    try {
+      setSellerTrendsLoading(true);
+      const res = await fetch(`${API_BASE}/api/purchase/analytics/seller-trends?months=6`);
+      const data = await res.json();
+      if (res.ok && data?.success) setSellerTrendsData(data.data || []);
+    } catch (err) {
+      console.error("Seller trends analytics error:", err);
+    } finally {
+      setSellerTrendsLoading(false);
+    }
+  };
+  fetchSellerTrends();
+}, []);
+
+/* ── User trends (real user signal: new signups + buyer spend) ── */
+const [userTrendsData, setUserTrendsData] = useState<any[]>([]);
+const [userTrendsLoading, setUserTrendsLoading] = useState(true);
+
+useEffect(() => {
+  const fetchUserTrends = async () => {
+    try {
+      setUserTrendsLoading(true);
+      const res = await fetch(`${API_BASE}/api/purchase/analytics/user-trends?months=6`);
+      const data = await res.json();
+      if (res.ok && data?.success) setUserTrendsData(data.data || []);
+    } catch (err) {
+      console.error("User trends analytics error:", err);
+    } finally {
+      setUserTrendsLoading(false);
+    }
+  };
+  fetchUserTrends();
+}, []);
 
 
 
@@ -14971,29 +15866,24 @@ const [sellerSearch, setSellerSearch] = useState("");
 
       const headers = getAuthHeaders();
 
-      const [resOrg, resUser, statsByUser] = await Promise.all([
-        fetch(`${SELLERS_BASE}`, {
-          headers,
-          credentials: "include",
-        }),
-        fetch(`${USERS_BASE}?seller=true&limit=1000&page=1`, {
+      // Note: /api/user has no "seller" filter — it returns ALL registered
+      // users regardless of that query param, which used to inflate the
+      // seller count to the total user count once merged in below. /api/seller
+      // is already correctly filtered to users who've uploaded a prompt, so
+      // it's the only source we need here (bumped its limit so pagination
+      // doesn't silently cap the list at the default 10).
+      const [resOrg, statsByUser] = await Promise.all([
+        fetch(`${SELLERS_BASE}?limit=1000`, {
           headers,
           credentials: "include",
         }),
         fetchDashboardStatsMap(headers),
       ]);
 
-      const [orgData, userData] = await Promise.all([
-        resOrg.json(),
-        resUser.json(),
-      ]);
+      const orgData = await resOrg.json();
 
       if (!resOrg.ok || !orgData?.success) {
         throw new Error(orgData?.error || "Org sellers failed");
-      }
-
-      if (!resUser.ok || !userData?.success) {
-        throw new Error(userData?.error || "User sellers failed");
       }
 
       const orgMapped: SellerRow[] = (orgData.sellers || []).map((s: any) => {
@@ -15034,66 +15924,15 @@ const [sellerSearch, setSellerSearch] = useState("");
             s?.totalEarnings ||
             0
           ),
+
+          // ✅ Purchased (bought) count + plan
+          buyProducts: Number(stat.buyProducts || s?.buyProducts || 0),
+          plan: s?.plan ?? null,
+          userType: s?.userType || "IND",
         };
       });
 
-      const userMapped: SellerRow[] = (userData.users || []).map((u: any) => {
-        const uid = String(u._id || u.id);
-        const stat = getStatForUser(statsByUser, u);
-
-        return {
-          id: uid,
-          name: u?.name || "Unknown",
-          email: u?.email || "—",
-          status: u?.isBanned ? "Blocked" : "Active",
-          avatar: u?.avatarUrl,
-          joined: u?.createdAt || null,
-          kycStatus: u?.kycStatus,
-          isDeleted: !!u?.isDeleted || !!u?.deleted,
-
-          // ✅ Sell/upload count
-          totalProducts: Number(
-            stat.uploadedPrompts ||
-            u?.totalProducts ||
-            u?.totalUploadedPrompts ||
-            0
-          ),
-
-          // ✅ Sold count
-          soldProducts: Number(
-            stat.soldProducts ||
-            u?.soldProducts ||
-            u?.totalSoldPrompts ||
-            0
-          ),
-
-          // ✅ Volume = earning
-          volume: Number(
-            stat.totalEarnings ||
-            u?.volume ||
-            u?.totalEarnings ||
-            0
-          ),
-        };
-      });
-
-      const merged = [...orgMapped, ...userMapped].reduce((acc, cur) => {
-        const prev = acc.get(cur.id);
-        if (!prev) {
-          acc.set(cur.id, cur);
-        } else {
-          acc.set(cur.id, {
-            ...prev,
-            ...cur,
-            totalProducts: Number(cur.totalProducts || prev.totalProducts || 0),
-            soldProducts: Number(cur.soldProducts || prev.soldProducts || 0),
-            volume: Number(cur.volume || prev.volume || 0),
-          });
-        }
-        return acc;
-      }, new Map<string, SellerRow>());
-
-      const finalSellers = Array.from(merged.values());
+      const finalSellers = orgMapped;
       const totalRevenue = finalSellers.reduce((sum, seller) => sum + Number(seller.volume ?? 0), 0);
 
       setSellerRows(finalSellers);
@@ -15179,55 +16018,43 @@ useEffect(() => {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       };
 
-      const [usersRes, sellersRes, sellerUsersRes] = await Promise.all([
+      // Users: KYC (identity document) review still pending.
+      // Sellers: uploaded at least one prompt but haven't finished Razorpay
+      // payout verification yet (no ACTIVATED linked account) — a distinct
+      // concept from user KYC, so it needs its own count, not a shared one.
+      const [usersRes, sellersRes] = await Promise.all([
         fetch(`${USERS_BASE}?limit=1000&page=1`, {
           headers,
           credentials: "include",
         }),
-        fetch(`${SELLERS_BASE}`, {
-          headers,
-          credentials: "include",
-        }),
-        fetch(`${USERS_BASE}?seller=true&limit=1000&page=1`, {
+        fetch(`${SELLERS_BASE}?limit=1000`, {
           headers,
           credentials: "include",
         }),
       ]);
 
-      const [usersData, sellersData, sellerUsersData] = await Promise.all([
+      const [usersData, sellersData] = await Promise.all([
         usersRes.json(),
         sellersRes.json(),
-        sellerUsersRes.json(),
       ]);
 
-      // const isPendingUser = (u: any) => {
-      //   const kyc = String(u?.kycStatus || "");
-      //   const verified = !!u?.isVerified;
-      //   return !verified || kyc === "NOT_SUBMITTED" || kyc === "PENDING";
-      // };
-
-      // const isPendingSeller = (s: any) => {
-      //   const kyc = String(s?.kycStatus || "");
-      //   const verified = !!s?.verified || !!s?.isVerified;
-      //   return !verified || kyc === "NOT_SUBMITTED" || kyc === "PENDING";
-      // };
-
       const isPendingUser = (u: any) => {
-  return String(u?.kycStatus || "") === "PENDING";
-};
+        return String(u?.kycStatus || "") === "PENDING";
+      };
 
-const isPendingSeller = (s: any) => {
-  return String(s?.kycStatus || "") === "PENDING";
-};
+      const isPendingSeller = (s: any) => {
+        return s?.linkedAccountActivated === false;
+      };
 
       const pendingUsers = (usersData?.users || []).filter(isPendingUser).length;
-      const pendingOrgSellers = (sellersData?.sellers || []).filter(isPendingSeller).length;
-      const pendingSellerUsers = (sellerUsersData?.users || []).filter(isPendingUser).length;
+      const pendingSellers = (sellersData?.sellers || []).filter(isPendingSeller).length;
 
-      setPendingApprovals(pendingUsers + pendingOrgSellers + pendingSellerUsers);
+      setPendingUsersCount(pendingUsers);
+      setPendingSellersCount(pendingSellers);
     } catch (err) {
       console.error("Pending approvals fetch failed:", err);
-      setPendingApprovals(0);
+      setPendingUsersCount(0);
+      setPendingSellersCount(0);
     }
   };
 
@@ -15385,6 +16212,14 @@ const isPendingSeller = (s: any) => {
   }).length;
 }, [userRows]);
 
+const MOBILE_NAV_MORE_ITEMS: { id: NavKey; label: string; icon: React.ReactNode }[] = [
+  { id: "analytics", label: "Prompt Validation", icon: <ShieldCheck className="h-4 w-4" /> },
+  { id: "withdrawals", label: "Withdrawals", icon: <Wallet className="h-4 w-4" /> },
+  { id: "escrow", label: "Escrow", icon: <Landmark className="h-4 w-4" /> },
+  { id: "recordings", label: "Screen Recordings", icon: <Video className="h-4 w-4" /> },
+  { id: "feedback", label: "Feedback", icon: <MessageSquare className="h-4 w-4" /> },
+];
+
 const MobileBottomNav = () => {
   const Item = ({
     id,
@@ -15413,6 +16248,8 @@ const MobileBottomNav = () => {
     );
   };
 
+  const moreActiveNow = MOBILE_NAV_MORE_ITEMS.some((m) => m.id === active);
+
   return (
     <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-[#07080B]/90 backdrop-blur">
       <div className="mx-auto max-w-[520px] px-3">
@@ -15422,6 +16259,40 @@ const MobileBottomNav = () => {
           <Item id="products" label="Products" icon={<Package className="h-5 w-5" />} />
           <Item id="reports" label="Reports" icon={<ShieldAlert className="h-5 w-5" />} />
           <Item id="account" label="Account" icon={<UserRound className="h-5 w-5" />} />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={[
+                  "flex flex-col items-center justify-center gap-1 flex-1 py-2",
+                  moreActiveNow ? "text-fuchsia-300" : "text-white/60",
+                ].join(" ")}
+              >
+                <div className={moreActiveNow ? "text-fuchsia-300" : "text-white/50"}>
+                  <MoreHorizontal className="h-5 w-5" />
+                </div>
+                <div className="text-[11px]">More</div>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="top"
+              align="end"
+              className="w-52 rounded-xl border border-white/10 bg-[#0B0D12] text-white shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
+            >
+              {MOBILE_NAV_MORE_ITEMS.map((m) => (
+                <DropdownMenuItem
+                  key={m.id}
+                  onClick={() => setActive(m.id)}
+                  className={[
+                    "cursor-pointer focus:bg-white/[0.06] gap-2",
+                    active === m.id ? "text-fuchsia-300" : "",
+                  ].join(" ")}
+                >
+                  {m.icon}
+                  {m.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </div>
@@ -15683,13 +16554,13 @@ useEffect(() => {
         Dismiss Report
       </button>
       <button
-        onClick={() => onFlag(report.listingId)}
+        onClick={() => onFlag(report.id)}
         className="h-10 px-4 rounded-xl bg-[#1677FF] hover:opacity-90 text-sm font-medium w-full"
       >
         Flag Product
       </button>
       <button
-        onClick={() => onSuspend(report.listingId)}
+        onClick={() => onSuspend(report.id)}
         className="h-10 px-4 rounded-xl bg-red-500 hover:opacity-90 text-sm font-medium w-full"
       >
         Suspend Listing
@@ -15892,76 +16763,74 @@ useEffect(() => {
       return list;
     }, [reports, query, status, priority]);
 
-    const dismissReport = (id: string) => {
+    const applyReportAction = (
+      reportId: string,
+      newStatus: ReportItem["status"],
+      actionLabel: string
+    ) => {
       setReports((prev) =>
         prev.map((r) =>
-          r.id === id
+          r.id === reportId
             ? {
                 ...r,
-                status: "Dismissed",
+                status: newStatus,
                 history: [
                   ...(r.history || []),
-                  {
-                    at: new Date().toISOString(),
-                    by: adminName,
-                    action: "Dismissed report",
-                  },
+                  { at: new Date().toISOString(), by: adminName, action: actionLabel },
                 ],
               }
             : r
         )
       );
-
-      // also update selected
       setSelectedReport((prev) =>
-        prev?.id === id ? { ...prev, status: "Dismissed" } : prev
-      );
-    };
-
-    const flagProduct = (listingId: string) => {
-      // TODO: call your backend flag endpoint
-      console.log("Flag listing:", listingId);
-
-      setSelectedReport((prev) =>
-        prev
+        prev?.id === reportId
           ? {
               ...prev,
-              status: "Actioned",
+              status: newStatus,
               history: [
                 ...(prev.history || []),
-                {
-                  at: new Date().toISOString(),
-                  by: adminName,
-                  action: "Flagged product",
-                  note: `Listing: ${listingId}`,
-                },
+                { at: new Date().toISOString(), by: adminName, action: actionLabel },
               ],
             }
           : prev
       );
     };
 
-    const suspendListing = (listingId: string) => {
-      // TODO: call your backend suspend endpoint
-      console.log("Suspend listing:", listingId);
+    const callReportAction = async (reportId: string, action: "dismiss" | "flag" | "suspend") => {
+      const token = getToken();
+      try {
+        const res = await fetch(`${REPORTS_BASE}/${reportId}/${action}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.success) {
+          throw new Error(data?.message || data?.error || `Failed to ${action} report`);
+        }
+        return true;
+      } catch (err: any) {
+        console.error(`${action} report failed:`, err.message);
+        return false;
+      }
+    };
 
-      setSelectedReport((prev) =>
-        prev
-          ? {
-              ...prev,
-              status: "Actioned",
-              history: [
-                ...(prev.history || []),
-                {
-                  at: new Date().toISOString(),
-                  by: adminName,
-                  action: "Suspended listing",
-                  note: `Listing: ${listingId}`,
-                },
-              ],
-            }
-          : prev
-      );
+    const dismissReport = async (id: string) => {
+      const ok = await callReportAction(id, "dismiss");
+      if (ok) applyReportAction(id, "Dismissed", "Dismissed report");
+    };
+
+    const flagProduct = async (reportId: string) => {
+      const ok = await callReportAction(reportId, "flag");
+      if (ok) applyReportAction(reportId, "Reviewed", "Flagged product — hidden from marketplace, seller notified");
+    };
+
+    const suspendListing = async (reportId: string) => {
+      const ok = await callReportAction(reportId, "suspend");
+      if (ok) applyReportAction(reportId, "Actioned", "Suspended listing — removed from marketplace, seller notified");
     };
 
     return (
@@ -16388,6 +17257,10 @@ setSelectedSeller({
   reviewsCount: s?.reviewsCount ?? 0,
   refundRate: s?.refundRate ?? 0,
   refundThreshold: s?.refundThreshold ?? 5,
+  buyProducts: Number(s?.buyProducts || 0),
+  totalUploadedPrompts: Number(s?.totalUploadedPrompts ?? s?.totalProducts ?? 0),
+  plan: s?.plan ?? null,
+  userType: s?.userType || "IND",
 });
 
       const mapped: PromptProduct[] = (promptData.prompts || []).map((doc: any) => {
@@ -16412,6 +17285,8 @@ setSelectedSeller({
           category: doc?.categories?.[0]?.name || "General",
           exclusive: !!doc?.exclusive,
           sold: !!doc?.sold,
+          salesCount: Number(doc?.salesCount || 0),
+          totalRevenue: Number(doc?.totalRevenue || 0),
         };
       });
       setSellerProducts(mapped);
@@ -16560,12 +17435,6 @@ setSelectedSeller({
             </div>
           </div>
           <div className="hidden md:block" />
-          <div className="flex justify-center md:justify-end w-full">
-            <button className="h-9 sm:h-10 px-5 sm:px-6 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium text-white inline-flex items-center justify-center gap-2 bg-gradient-to-r from-[#FF14EF] via-[#8A4BFF] to-[#1A73E8] hover:opacity-90">
-              <Plus className="h-4 w-4" />
-              Add Member
-            </button>
-          </div>
         </div>
       </div>
 
@@ -16644,9 +17513,22 @@ setSelectedSeller({
                   </span>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3 text-center">
+                <div className="mt-3 flex justify-center">
+                  <span className={[
+                    "px-3 py-1 rounded-full text-xs font-medium border",
+                    planBadgeClass(planLabel(r.userType, r.plan)),
+                  ].join(" ")}>
+                    {planLabel(r.userType, r.plan)} plan
+                  </span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-3 gap-3 text-center">
                   <div>
-                    <div className="text-[11px] text-white/45 uppercase tracking-wide">Products</div>
+                    <div className="text-[11px] text-white/45 uppercase tracking-wide">Purchased</div>
+                    <div className="mt-1 text-base text-white/90">{Number(r.buyProducts || 0)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-white/45 uppercase tracking-wide">Uploaded</div>
                     <div className="mt-1 text-base text-white/90">{Number(r.totalProducts || 0)}</div>
                   </div>
                   <div>
@@ -16728,10 +17610,12 @@ setSelectedSeller({
             <>
               <div className="overflow-hidden rounded-2xl border border-white/10">
                 <div className="grid grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
-                  <div className="col-span-4">Seller Name</div>
-                  <div className="col-span-2">Status</div>
+                  <div className="col-span-3">Seller Name</div>
+                  <div className="col-span-2">Plan</div>
+                  <div className="col-span-1">Purchased</div>
+                  <div className="col-span-1">Uploaded</div>
                   <div className="col-span-2">Volume</div>
-                  <div className="col-span-3">Joined Date</div>
+                  <div className="col-span-2">Status</div>
                   <div className="col-span-1 text-right">Actions</div>
                 </div>
 
@@ -16744,7 +17628,7 @@ setSelectedSeller({
                         r.isDeleted ? "bg-red-500/[0.04]" : "bg-white/[0.02]",
                       ].join(" ")}
                     >
-                      <div className="col-span-4 flex items-center gap-4 min-w-0">
+                      <div className="col-span-3 flex items-center gap-4 min-w-0">
                         <img
                           src={r.avatar || "https://i.pravatar.cc/80?img=12"}
                           alt={r.name}
@@ -16766,6 +17650,27 @@ setSelectedSeller({
 
                       <div className="col-span-2">
                         <span className={[
+                          "px-3 py-1 rounded-full text-xs font-medium border inline-flex",
+                          planBadgeClass(planLabel(r.userType, r.plan)),
+                        ].join(" ")}>
+                          {planLabel(r.userType, r.plan)}
+                        </span>
+                      </div>
+
+                      <div className="col-span-1 text-sm text-white/75">
+                        {r.buyProducts ?? 0}
+                      </div>
+
+                      <div className="col-span-1 text-sm text-white/75">
+                        {r.totalProducts ?? 0}
+                      </div>
+
+                      <div className="col-span-2 text-sm text-white/80 font-medium">
+                        ₹{Number(r.volume ?? 0).toLocaleString("en-IN")}
+                      </div>
+
+                      <div className="col-span-2">
+                        <span className={[
                           "px-3 py-1.5 rounded-full text-xs font-medium border inline-flex",
                           r.isDeleted
                             ? "bg-red-500/15 text-red-300 border-red-500/25"
@@ -16775,14 +17680,6 @@ setSelectedSeller({
                         ].join(" ")}>
                           {r.isDeleted ? "Deleted" : r.status}
                         </span>
-                      </div>
-
-                      <div className="col-span-2 text-sm text-white/80 font-medium">
-                        ₹{Number(r.volume ?? 0).toLocaleString("en-IN")}
-                      </div>
-
-                      <div className="col-span-3 text-sm text-white/75">
-                        {formatDate(r.joined)}
                       </div>
 
                       <div className="col-span-1 flex justify-end items-center gap-3">
@@ -17044,6 +17941,10 @@ const openSellerProfile = async (sellerId?: string | null) => {
       reviewsCount: s?.reviewsCount ?? 0,
       refundRate: s?.refundRate ?? 0,
       refundThreshold: s?.refundThreshold ?? 5,
+      buyProducts: Number(s?.buyProducts || 0),
+      totalUploadedPrompts: Number(s?.totalUploadedPrompts ?? s?.totalProducts ?? 0),
+      plan: s?.plan ?? null,
+      userType: s?.userType || "IND",
     });
 
     const mapped: PromptProduct[] = (promptData.prompts || []).map((doc: any) => {
@@ -17069,6 +17970,8 @@ const openSellerProfile = async (sellerId?: string | null) => {
         category: doc?.categories?.[0]?.name || "General",
         exclusive: !!doc?.exclusive,
         sold: !!doc?.sold,
+        salesCount: Number(doc?.salesCount || 0),
+        totalRevenue: Number(doc?.totalRevenue || 0),
       };
     });
 
@@ -17152,12 +18055,7 @@ const handleProfileSuspendToggle = async () => {
             </p>
           </div>
           <div className="hidden md:block" />
-          <div className="flex justify-center md:justify-end w-full">
-            <button className="h-9 sm:h-10 px-5 sm:px-6 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium text-white inline-flex items-center justify-center gap-2 bg-gradient-to-r from-[#FF14EF] via-[#8A4BFF] to-[#1A73E8] hover:opacity-90">
-              <Plus className="h-4 w-4" />
-              Add Product
-            </button>
-          </div>
+          <div className="hidden md:block" />
         </div>
       </div>
 
@@ -17502,8 +18400,8 @@ const SellerProfileView = ({
           </div>
         </div>
 
-{/* ✅ Actions: mobile = 3 equal buttons, desktop = row */}
-<div className="w-full lg:w-auto grid grid-cols-3 gap-3">
+{/* ✅ Actions: Message + Suspend */}
+<div className="w-full lg:w-auto grid grid-cols-2 gap-3">
   <button
   onClick={() => setMessageOpen(true)}
   className="h-11 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] text-sm inline-flex items-center justify-center gap-2"
@@ -17511,11 +18409,6 @@ const SellerProfileView = ({
   <MessageSquare className="h-4 w-4 text-sky-300" />
   <span className="hidden sm:inline">Message</span>
 </button>
-
-  <button className="h-11 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] text-sm inline-flex items-center justify-center gap-2">
-    <Download className="h-4 w-4 text-white/80" />
-    <span className="hidden sm:inline">Export</span>
-  </button>
 
   <button
     onClick={onToggleSuspend}
@@ -17541,31 +18434,40 @@ const SellerProfileView = ({
       )}
 
       {/* KPI row */}
-      <section className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <section className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-5">
         <div className={`${kpiCardBase} p-6`}>
           <div className="text-xs tracking-[0.2em] text-white/60">TOTAL EARNINGS</div>
-          <div className="mt-4 text-3xl font-semibold">
+          <div className="mt-4 text-2xl font-semibold">
             ₹{Number(seller.totalEarnings || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </div>
           <div className="mt-3 text-sm text-emerald-400">Vs. last 30 days</div>
         </div>
 
         <div className={`${kpiCardBase} p-6`}>
-          <div className="text-xs tracking-[0.2em] text-white/60">CUSTOMER RATING</div>
-          <div className="mt-4 text-3xl font-semibold">
-            {seller.rating || 0}/5.0 ⭐
-          </div>
-          <div className="mt-3 text-sm text-emerald-400">
-            From {seller.reviewsCount || 0} reviews
-          </div>
+          <div className="text-xs tracking-[0.2em] text-white/60">PURCHASED</div>
+          <div className="mt-4 text-2xl font-semibold">{seller.buyProducts ?? 0}</div>
+          <div className="mt-3 text-sm text-white/50">prompts bought</div>
         </div>
 
         <div className={`${kpiCardBase} p-6`}>
-          <div className="text-xs tracking-[0.2em] text-white/60">REFUND RATE</div>
-          <div className="mt-4 text-3xl font-semibold">{seller.refundRate || 0}%</div>
-          <div className="mt-3 text-sm text-sky-300">
-            Threshold: {seller.refundThreshold || 5}% max
+          <div className="text-xs tracking-[0.2em] text-white/60">UPLOADED</div>
+          <div className="mt-4 text-2xl font-semibold">{seller.totalUploadedPrompts ?? 0}</div>
+          <div className="mt-3 text-sm text-white/50">prompts uploaded</div>
+        </div>
+
+        <div className={`${kpiCardBase} p-6`}>
+          <div className="text-xs tracking-[0.2em] text-white/60">PLAN</div>
+          <div className="mt-4">
+            <span
+              className={[
+                "inline-block px-3 py-1 rounded-full text-sm font-medium border",
+                planBadgeClass(planLabel(seller.userType, seller.plan)),
+              ].join(" ")}
+            >
+              {planLabel(seller.userType, seller.plan)}
+            </span>
           </div>
+          <div className="mt-3 text-sm text-white/50">current plan</div>
         </div>
       </section>
 
@@ -17582,17 +18484,16 @@ const SellerProfileView = ({
         {!loading && !error && (
           <div className="mt-5 overflow-hidden rounded-2xl border border-white/10">
             <div className="grid grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
-              <div className="col-span-4">PRODUCT</div>
+              <div className="col-span-5">PRODUCT</div>
               <div className="col-span-3">CATEGORY</div>
               <div className="col-span-2">PRICE</div>
               <div className="col-span-2">SALES</div>
-              <div className="col-span-1 text-right">ACTIONS</div>
             </div>
 
             <div className="divide-y divide-white/10">
               {products.slice(0, 4).map((p) => (
                 <div key={p.id} className="grid grid-cols-12 gap-3 px-5 py-4 items-center bg-white/[0.02]">
-                  <div className="col-span-4">
+                  <div className="col-span-5">
                     <div className="text-sm font-medium text-white/90">{p.title}</div>
                     <div className="text-xs text-white/50">{p.status}</div>
                   </div>
@@ -17600,11 +18501,7 @@ const SellerProfileView = ({
                   <div className="col-span-2 text-sm text-white/75">
                     {p.price > 0 ? `₹${p.price}` : "FREE"}
                   </div>
-                  <div className="col-span-2 text-sm text-white/75">—</div>
-                  <div className="col-span-1 flex justify-end gap-3 text-white/70">
-                    <button className="hover:text-white">✎</button>
-                    <button className="hover:text-red-300">🗑</button>
-                  </div>
+                  <div className="col-span-2 text-sm text-white/75">{p.salesCount ?? 0}</div>
                 </div>
               ))}
             </div>
@@ -17623,69 +18520,459 @@ const SellerProfileView = ({
         )}
       </div>
 
-      {/* Bottom: activity + verification (UI only) */}
-      <section className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <div className={`${kpiCardBase} p-6`}>
-          <h2 className="text-lg font-semibold">Seller Activity Log</h2>
-          <div className="mt-6 space-y-4">
-            {[
-              { t: "New product listing created", d: "React Dash Template was uploaded", time: "2 minutes ago" },
-              { t: "Payout requested", d: "Request for ₹1,200.00 processed", time: "1 hour ago" },
-              { t: "Updated “Abstract UI Kit”", d: "Modified price from ₹45 to ₹49", time: "3 hours ago" },
-              { t: "Policy update", d: "Updated Terms of Service sent to sellers", time: "Yesterday" },
-            ].map((a, idx) => (
-              <div key={idx} className="flex gap-4">
-                <div className="h-9 w-9 rounded-full border border-white/10 bg-white/[0.04]" />
-                <div>
-                  <div className="text-sm font-medium text-white/90">{a.t}</div>
-                  <div className="text-xs text-white/55 mt-1">{a.d}</div>
-                  <div className="text-[11px] text-white/40 mt-1">{a.time}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <button className="mt-6 w-full h-10 rounded-xl border border-white/15 bg-white/[0.03] hover:bg-white/[0.06] text-sm text-white/80">
-            View Full History
-          </button>
-        </div>
-
-        <div className={`${kpiCardBase} p-6`}>
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Identity Verification</h2>
-            <span className="text-xs text-emerald-300">VERIFIED</span>
-          </div>
-
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] h-[220px] flex items-center justify-center text-white/60">
-            View Document
-          </div>
-
-          <div className="mt-4 flex items-center justify-between">
-            <div className="text-sm text-white/80">Tax Compliance Doc</div>
-            <span className="text-xs text-emerald-300">VERIFIED</span>
-          </div>
-
-          <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 flex items-center justify-between">
-            <div className="text-sm text-white/70">Tax_Form_2023.pdf</div>
-            <button className="text-white/70 hover:text-white">⬇</button>
-          </div>
-
-          <div className="mt-4 flex gap-3">
-            <button className="flex-1 h-10 rounded-xl bg-red-500/15 text-red-200 border border-red-500/25 hover:bg-red-500/20 text-sm font-medium">
-              Reject Verification
-            </button>
-            <button className="flex-1 h-10 rounded-xl bg-[#1677FF] hover:opacity-90 text-sm font-medium">
-              Approve Docs
-            </button>
-          </div>
-        </div>
-      </section>
       <AdminSellerMessageModal
         open={messageOpen}
         seller={seller}
         onClose={() => setMessageOpen(false)}
       />
 
+    </>
+  );
+};
+
+
+// ─── UserProfileView ──────────────────────────────────────────
+// Presentational admin view of a single user. Parent (Dashboard) fetches and
+// passes everything in — mirrors SellerProfileView, but user-centric: shows
+// both what they've BOUGHT and what they've UPLOADED/SOLD, since buyers and
+// sellers are the same account.
+const UserProfileView = ({
+  user,
+  bought,
+  uploaded,
+  loading,
+  error,
+  onBack,
+  onToggleSuspend,
+  suspendLoading,
+  suspendError,
+}: {
+  user: UserProfile;
+  bought: UserBoughtItem[];
+  uploaded: PromptProduct[];
+  loading: boolean;
+  error: string | null;
+  onBack: () => void;
+  onToggleSuspend: () => void;
+  suspendLoading: boolean;
+  suspendError: string | null;
+}) => {
+  const [messageOpen, setMessageOpen] = useState(false);
+  const isSuspended = user.status === "SUSPENDED" || user.status === "DELETED";
+  const userTypeLabel =
+    user.userType === "ORG"
+      ? "Organization"
+      : user.userType === "TM"
+      ? "Team Member"
+      : "Individual";
+
+  return (
+    <>
+      {/* Title */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div className="text-center md:text-left">
+          <button onClick={onBack} className="text-sm text-white/60 hover:text-white/90">
+            ← Back to Users
+          </button>
+          <h1 className="mt-2 text-[24px] md:text-[34px] leading-[1.1] font-semibold">
+            User Profile
+          </h1>
+        </div>
+      </div>
+
+      {/* Top profile card */}
+      <div className={`${kpiCardBase} mt-6 p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5`}>
+        <div className="flex items-center gap-4">
+          <img
+            src={user.avatar || "https://i.pravatar.cc/100?img=12"}
+            className="h-14 w-14 rounded-full object-cover border border-white/10"
+            alt={user.name}
+          />
+          <div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="text-xl font-semibold">{user.name}</div>
+              <span
+                className={[
+                  "px-3 py-1 rounded-full text-xs font-medium border",
+                  user.status === "SUSPENDED" || user.status === "DELETED"
+                    ? "bg-red-500/15 text-red-200 border-red-500/25"
+                    : "bg-emerald-500/15 text-emerald-200 border-emerald-500/25",
+                ].join(" ")}
+              >
+                {user.status || "ACTIVE"}
+              </span>
+              <span className="px-3 py-1 rounded-full text-xs font-medium border bg-sky-500/15 text-sky-200 border-sky-500/25">
+                {userTypeLabel}
+              </span>
+              <span
+                className={[
+                  "px-3 py-1 rounded-full text-xs font-medium border",
+                  planBadgeClass(planLabel(user.userType, user.plan)),
+                ].join(" ")}
+              >
+                {planLabel(user.userType, user.plan)} plan
+              </span>
+              {user.verified && (
+                <span className="px-3 py-1 rounded-full text-xs font-medium border bg-indigo-500/15 text-indigo-200 border-indigo-500/25">
+                  Verified
+                </span>
+              )}
+            </div>
+            <div className="mt-1 text-xs text-white/50">
+              User ID: {user.id} • Joined: {formatMonthYear(user.joined)} • Email: {user.email || "—"}
+            </div>
+          </div>
+        </div>
+
+        {/* Actions: Chat + Suspend */}
+        <div className="w-full lg:w-auto grid grid-cols-2 gap-3">
+          <button
+            onClick={() => setMessageOpen(true)}
+            className="h-11 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] text-sm inline-flex items-center justify-center gap-2"
+          >
+            <MessageSquare className="h-4 w-4 text-sky-300" />
+            <span className="hidden sm:inline">Chat</span>
+          </button>
+          <button
+            onClick={onToggleSuspend}
+            disabled={suspendLoading}
+            className={[
+              "h-11 rounded-xl border text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60",
+              isSuspended
+                ? "border-sky-500/20 bg-sky-500/10 hover:bg-sky-500/15 text-sky-300"
+                : "border-red-500/20 bg-red-500/10 hover:bg-red-500/15 text-red-300",
+            ].join(" ")}
+          >
+            <Ban className="h-4 w-4" />
+            <span className="hidden sm:inline">
+              {suspendLoading ? "..." : isSuspended ? "Reactivate" : "Suspend"}
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {suspendError && <p className="mt-3 text-sm text-red-300">{suspendError}</p>}
+      {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
+
+      {/* KPI row */}
+      <section className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className={`${kpiCardBase} p-6`}>
+          <div className="text-xs tracking-[0.2em] text-white/60">PURCHASED</div>
+          <div className="mt-4 text-3xl font-semibold">{user.buyProducts}</div>
+          <div className="mt-3 text-sm text-white/50">prompts bought</div>
+        </div>
+        <div className={`${kpiCardBase} p-6`}>
+          <div className="text-xs tracking-[0.2em] text-white/60">TOTAL SPENT</div>
+          <div className="mt-4 text-3xl font-semibold">
+            ₹{Number(user.totalSpent || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          </div>
+          <div className="mt-3 text-sm text-white/50">as a buyer</div>
+        </div>
+        <div className={`${kpiCardBase} p-6`}>
+          <div className="text-xs tracking-[0.2em] text-white/60">UPLOADED</div>
+          <div className="mt-4 text-3xl font-semibold">{user.uploadedCount}</div>
+          <div className="mt-3 text-sm text-white/50">{user.soldProducts} sold</div>
+        </div>
+        <div className={`${kpiCardBase} p-6`}>
+          <div className="text-xs tracking-[0.2em] text-white/60">TOTAL EARNINGS</div>
+          <div className="mt-4 text-3xl font-semibold">
+            ₹{Number(user.totalEarnings || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          </div>
+          <div className="mt-3 text-sm text-emerald-400">as a seller</div>
+        </div>
+      </section>
+
+      {loading && <div className="mt-6 text-white/70 text-sm">Loading user data…</div>}
+
+      {/* Purchased prompts */}
+      <div className={`${kpiCardBase} mt-6 p-6`}>
+        <h2 className="text-lg font-semibold">Purchased Prompts ({bought.length})</h2>
+        {!loading && bought.length === 0 && (
+          <div className="mt-5 text-white/55 text-sm">This user hasn't bought any prompts.</div>
+        )}
+        {bought.length > 0 && (
+          <div className="mt-5 overflow-hidden rounded-2xl border border-white/10">
+            <div className="grid grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
+              <div className="col-span-6">PROMPT</div>
+              <div className="col-span-2">PRICE PAID</div>
+              <div className="col-span-2">STATUS</div>
+              <div className="col-span-2">DATE</div>
+            </div>
+            <div className="divide-y divide-white/10">
+              {bought.map((b) => (
+                <div key={b.id} className="grid grid-cols-12 gap-3 px-5 py-4 items-center bg-white/[0.02]">
+                  <div className="col-span-6">
+                    <div className="text-sm font-medium text-white/90">{b.title}</div>
+                    {b.deleted && <div className="text-xs text-white/40">(prompt deleted)</div>}
+                  </div>
+                  <div className="col-span-2 text-sm text-white/75">
+                    {b.pricePaid > 0 ? `₹${b.pricePaid}` : "FREE"}
+                  </div>
+                  <div className="col-span-2 text-sm">
+                    <span
+                      className={[
+                        "px-2 py-0.5 rounded-full text-xs border",
+                        b.refundStatus && b.refundStatus !== "NONE"
+                          ? "bg-amber-500/15 text-amber-200 border-amber-500/25"
+                          : "bg-emerald-500/15 text-emerald-200 border-emerald-500/25",
+                      ].join(" ")}
+                    >
+                      {b.refundStatus && b.refundStatus !== "NONE" ? b.refundStatus : b.paymentStatus}
+                    </span>
+                  </div>
+                  <div className="col-span-2 text-sm text-white/60">
+                    {b.purchasedAt ? new Date(b.purchasedAt).toLocaleDateString() : "—"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Uploaded prompts */}
+      <div className={`${kpiCardBase} mt-6 p-6`}>
+        <h2 className="text-lg font-semibold">Uploaded Prompts ({uploaded.length})</h2>
+        {!loading && uploaded.length === 0 && (
+          <div className="mt-5 text-white/55 text-sm">This user hasn't uploaded any prompts.</div>
+        )}
+        {uploaded.length > 0 && (
+          <div className="mt-5 overflow-hidden rounded-2xl border border-white/10">
+            <div className="grid grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
+              <div className="col-span-5">PRODUCT</div>
+              <div className="col-span-3">CATEGORY</div>
+              <div className="col-span-2">PRICE</div>
+              <div className="col-span-2">SALES</div>
+            </div>
+            <div className="divide-y divide-white/10">
+              {uploaded.map((p) => (
+                <div key={p.id} className="grid grid-cols-12 gap-3 px-5 py-4 items-center bg-white/[0.02]">
+                  <div className="col-span-5">
+                    <div className="text-sm font-medium text-white/90">{p.title}</div>
+                    <div className="text-xs text-white/50">{p.status}</div>
+                  </div>
+                  <div className="col-span-3 text-sm text-white/75">{p.category || "General"}</div>
+                  <div className="col-span-2 text-sm text-white/75">
+                    {p.price > 0 ? `₹${p.price}` : "FREE"}
+                  </div>
+                  <div className="col-span-2 text-sm text-white/75">{p.salesCount ?? 0}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <AdminSellerMessageModal
+        open={messageOpen}
+        seller={{ id: user.id, name: user.name, email: user.email, avatar: user.avatar, verified: user.verified }}
+        onClose={() => setMessageOpen(false)}
+      />
+    </>
+  );
+};
+
+
+// ─── OrgProfileView ───────────────────────────────────────────
+// Presentational admin view of a single organization. Parent (Dashboard)
+// fetches and passes the org in. Shows owner, plan/billing, token pool, seat
+// usage, and the member roster — the data a platform admin needs on an org.
+const OrgProfileView = ({
+  org,
+  loading,
+  error,
+  onBack,
+  onToggleSuspend,
+  suspendLoading,
+  suspendError,
+}: {
+  org: OrgDetail;
+  loading: boolean;
+  error: string | null;
+  onBack: () => void;
+  onToggleSuspend: () => void;
+  suspendLoading: boolean;
+  suspendError: string | null;
+}) => {
+  const [messageOpen, setMessageOpen] = useState(false);
+  const seatsUsed = Math.max(0, org.teamMembersLimit - org.teamMembersLimitRemaining);
+  const poolPct = org.orgPoolCap > 0 ? Math.round((org.orgPoolUsed / org.orgPoolCap) * 100) : 0;
+  const isHealthy = org.subscriptionStatus === "active";
+  const isBad =
+    org.subscriptionStatus === "suspended" ||
+    org.subscriptionStatus === "canceled" ||
+    org.subscriptionStatus === "past_due";
+
+  return (
+    <>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div className="text-center md:text-left">
+          <button onClick={onBack} className="text-sm text-white/60 hover:text-white/90">
+            ← Back to Organizations
+          </button>
+          <h1 className="mt-2 text-[24px] md:text-[34px] leading-[1.1] font-semibold">
+            Organization Profile
+          </h1>
+        </div>
+      </div>
+
+      {/* Top card */}
+      <div className={`${kpiCardBase} mt-6 p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5`}>
+        <div className="flex items-center gap-4">
+          <div className="h-14 w-14 rounded-2xl bg-white/[0.05] border border-white/10 flex items-center justify-center">
+            <Building2 className="h-7 w-7 text-white/75" />
+          </div>
+          <div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="text-xl font-semibold">{org.name}</div>
+              <span
+                className={[
+                  "px-3 py-1 rounded-full text-xs font-medium border",
+                  isHealthy
+                    ? "bg-emerald-500/15 text-emerald-200 border-emerald-500/25"
+                    : isBad
+                    ? "bg-red-500/15 text-red-200 border-red-500/25"
+                    : "bg-white/[0.05] text-white/60 border-white/10",
+                ].join(" ")}
+              >
+                {org.subscriptionStatus || "no plan"}
+              </span>
+              <span className="px-3 py-1 rounded-full text-xs font-medium border bg-sky-500/15 text-sky-200 border-sky-500/25">
+                {org.plan === "enterprise" ? "Enterprise" : "Free"}
+              </span>
+              {org.adminFrozen && (
+                <span className="px-3 py-1 rounded-full text-xs font-medium border bg-red-500/20 text-red-200 border-red-500/30">
+                  FROZEN BY ADMIN
+                </span>
+              )}
+            </div>
+            <div className="mt-1 text-xs text-white/50">
+              Org ID: {org.id} • Owner: {org.ownerName} ({org.ownerEmail}) • Created: {formatMonthYear(org.createdAt || undefined)}
+            </div>
+          </div>
+        </div>
+
+        {/* Actions: Chat (owner) + Suspend whole org */}
+        <div className="w-full lg:w-auto grid grid-cols-2 gap-3">
+          <button
+            onClick={() => setMessageOpen(true)}
+            className="h-11 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] text-sm inline-flex items-center justify-center gap-2"
+          >
+            <MessageSquare className="h-4 w-4 text-sky-300" />
+            <span className="hidden sm:inline">Chat owner</span>
+          </button>
+          <button
+            onClick={onToggleSuspend}
+            disabled={suspendLoading}
+            className={[
+              "h-11 rounded-xl border text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60",
+              org.adminFrozen
+                ? "border-sky-500/20 bg-sky-500/10 hover:bg-sky-500/15 text-sky-300"
+                : "border-red-500/20 bg-red-500/10 hover:bg-red-500/15 text-red-300",
+            ].join(" ")}
+          >
+            <Ban className="h-4 w-4" />
+            <span className="hidden sm:inline">
+              {suspendLoading ? "..." : org.adminFrozen ? "Reactivate" : "Suspend org"}
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {suspendError && <p className="mt-3 text-sm text-red-300">{suspendError}</p>}
+      {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
+
+      {/* KPI row */}
+      <section className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className={`${kpiCardBase} p-6`}>
+          <div className="text-xs tracking-[0.2em] text-white/60">MEMBERS</div>
+          <div className="mt-4 text-3xl font-semibold">{org.membersCount}</div>
+          <div className="mt-3 text-sm text-white/50">{seatsUsed}/{org.teamMembersLimit} seats used</div>
+        </div>
+        <div className={`${kpiCardBase} p-6`}>
+          <div className="text-xs tracking-[0.2em] text-white/60">TOKEN POOL</div>
+          <div className="mt-4 text-3xl font-semibold">{poolPct}%</div>
+          <div className="mt-3 text-sm text-white/50">
+            {(org.orgPoolUsed || 0).toLocaleString()} / {(org.orgPoolCap || 0).toLocaleString()}
+          </div>
+        </div>
+        <div className={`${kpiCardBase} p-6`}>
+          <div className="text-xs tracking-[0.2em] text-white/60">EXTRA TOKENS</div>
+          <div className="mt-4 text-3xl font-semibold">
+            {(org.orgExtraTokensRemaining || 0).toLocaleString()}
+          </div>
+          <div className="mt-3 text-sm text-white/50">remaining</div>
+        </div>
+        <div className={`${kpiCardBase} p-6`}>
+          <div className="text-xs tracking-[0.2em] text-white/60">BILLING CYCLE</div>
+          <div className="mt-4 text-2xl font-semibold capitalize">{org.billingCycle || "—"}</div>
+          <div className="mt-3 text-sm text-white/50">
+            Renews {org.currentPeriodEnd ? new Date(org.currentPeriodEnd).toLocaleDateString() : "—"}
+          </div>
+        </div>
+      </section>
+
+      {loading && <div className="mt-6 text-white/70 text-sm">Loading organization…</div>}
+
+      {/* Members */}
+      <div className={`${kpiCardBase} mt-6 p-6`}>
+        <h2 className="text-lg font-semibold">Team Members ({org.members.length})</h2>
+        {!loading && org.members.length === 0 && (
+          <div className="mt-5 text-white/55 text-sm">No members added yet.</div>
+        )}
+        {org.members.length > 0 && (
+          <div className="mt-5 overflow-hidden rounded-2xl border border-white/10">
+            <div className="grid grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
+              <div className="col-span-5">MEMBER</div>
+              <div className="col-span-2">ROLE</div>
+              <div className="col-span-3">ASSIGNED CAP</div>
+              <div className="col-span-2">USED</div>
+            </div>
+            <div className="divide-y divide-white/10">
+              {org.members.map((m) => (
+                <div key={m.userId} className="grid grid-cols-12 gap-3 px-5 py-4 items-center bg-white/[0.02]">
+                  <div className="col-span-5 flex items-center gap-3 min-w-0">
+                    <img
+                      src={m.avatar || "https://i.pravatar.cc/60?img=15"}
+                      alt={m.name}
+                      className="h-8 w-8 rounded-full object-cover border border-white/10 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-white/90 truncate">{m.name}</div>
+                      <div className="text-xs text-white/45 truncate">{m.email}</div>
+                    </div>
+                  </div>
+                  <div className="col-span-2 text-sm">
+                    <span
+                      className={[
+                        "px-2 py-0.5 rounded-full text-xs border",
+                        m.role === "ADMIN"
+                          ? "bg-indigo-500/15 text-indigo-200 border-indigo-500/25"
+                          : "bg-white/[0.05] text-white/60 border-white/10",
+                      ].join(" ")}
+                    >
+                      {m.role}
+                    </span>
+                  </div>
+                  <div className="col-span-3 text-sm text-white/75">
+                    {(m.assignedCap || 0).toLocaleString()}
+                  </div>
+                  <div className="col-span-2 text-sm text-white/75">
+                    {(m.usedThisPeriod || 0).toLocaleString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Chat targets the org owner (the modal messages a User account) */}
+      <AdminSellerMessageModal
+        open={messageOpen}
+        seller={{ id: org.ownerId, name: org.ownerName, email: org.ownerEmail, avatar: org.ownerAvatar || undefined }}
+        onClose={() => setMessageOpen(false)}
+      />
     </>
   );
 };
@@ -18713,304 +20000,7 @@ const WithdrawalsView = () => {
     </>
   );
 };
-const AccountView = ({
-  adminName,
-  adminEmail,
-  totalMembers,
-  activeToday,
-  pendingInvite,
-}: {
-  adminName: string;
-  adminEmail: string;
-  totalMembers: number;
-  activeToday: number;
-  pendingInvite: number;
-}) => {
-  const [emailInput, setEmailInput] = useState(adminEmail);
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmNewPassword, setConfirmNewPassword] = useState("");
-  const [profileSaveLoading, setProfileSaveLoading] = useState(false);
-  const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
-  const [profileSaveSuccess, setProfileSaveSuccess] = useState<string | null>(null);
 
-  const handleUpdateAdminProfile = async () => {
-    setProfileSaveError(null);
-    setProfileSaveSuccess(null);
-
-    const emailChanged = emailInput.trim().toLowerCase() !== adminEmail.trim().toLowerCase();
-    const wantsPasswordChange = !!(newPassword || confirmNewPassword);
-
-    if (!currentPassword) {
-      setProfileSaveError("Enter your current password to save changes.");
-      return;
-    }
-    if (!emailChanged && !wantsPasswordChange) {
-      setProfileSaveError("Change the email or enter a new password first.");
-      return;
-    }
-    if (wantsPasswordChange && newPassword !== confirmNewPassword) {
-      setProfileSaveError("New password and confirmation do not match.");
-      return;
-    }
-
-    try {
-      setProfileSaveLoading(true);
-      const token =
-        localStorage.getItem("token") ||
-        localStorage.getItem("tokun_token") ||
-        localStorage.getItem("accessToken") ||
-        localStorage.getItem("authToken") ||
-        localStorage.getItem("adminToken") ||
-        localStorage.getItem("tokun_admin_token") ||
-        "";
-      const res = await fetch(`${API_BASE}/api/admin/auth/profile`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          currentPassword,
-          ...(emailChanged ? { newEmail: emailInput.trim() } : {}),
-          ...(wantsPasswordChange ? { newPassword } : {}),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.success) {
-        const messages: Record<string, string> = {
-          invalid_current_password: "Current password is incorrect.",
-          email_already_in_use: "That email is already in use by another admin.",
-          invalid_email: "Enter a valid email address.",
-          password_too_short: "New password must be at least 8 characters.",
-        };
-        throw new Error(messages[data?.error] || data?.error || "Could not update profile.");
-      }
-
-      if (emailChanged) {
-        localStorage.setItem("tokun_admin_email", data.admin.email);
-      }
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmNewPassword("");
-      setProfileSaveSuccess("Profile updated successfully.");
-      if (emailChanged) {
-        window.location.reload();
-      }
-    } catch (e: any) {
-      setProfileSaveError(e?.message || "Could not update profile.");
-    } finally {
-      setProfileSaveLoading(false);
-    }
-  };
-
-  const teamRows = [
-    { name: "Abstract UI Kit", status: "Live Listing", role: "Super admin", lastActive: "Online Now" },
-    { name: "3D Icon Set v2", status: "Live Listing", role: "Moderator", lastActive: "15 min ago" },
-    { name: "React Dash Template", status: "Draft", role: "Support", lastActive: "Yesterday" },
-    { name: "Motion Backgrounds", status: "Live Listing", role: "Admin", lastActive: "3 days ago" },
-  ];
-
-  return (
-    <>
-      {/* Title */}
-      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-  <div className="text-center md:text-left">
-    <h1 className="text-[24px] md:text-[34px] leading-[1.1] font-semibold">
-      Admin Profile
-    </h1>
-    <p className="mt-2 text-white/60 text-sm">
-      Manage your account and security settings
-    </p>
-  </div>
-</div>
-
-      {/* Profile Card */}
-      <section className={`${kpiCardBase} mt-8 p-6`}>
-        <div className="flex flex-col lg:flex-row gap-6 lg:items-start">
-          <div className="flex items-center gap-4">
-            <img
-              src={"https://i.pravatar.cc/120?img=12"}
-              alt={adminName}
-              className="h-16 w-16 rounded-full object-cover border border-white/10"
-            />
-            <div>
-              <div className="text-xl font-semibold">{adminName}</div>
-              <div className="text-sm text-white/50">Super Admin</div>
-            </div>
-          </div>
-
-          <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs text-white/60">Full name</label>
-              <input
-                value={adminName}
-                readOnly
-                className="mt-2 w-full h-11 rounded-xl bg-black/30 border border-white/10 px-4 text-sm text-white/80"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs text-white/60">Email address</label>
-              <input
-                value={emailInput}
-                onChange={(e) => setEmailInput(e.target.value)}
-                className="mt-2 w-full h-11 rounded-xl bg-black/30 border border-white/10 px-4 text-sm text-white/80"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs text-white/60">Role</label>
-              <input
-                value={"Super Admin"}
-                readOnly
-                className="mt-2 w-full h-11 rounded-xl bg-black/30 border border-white/10 px-4 text-sm text-white/50"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs text-white/60">Timezone</label>
-              <input
-                value={"Asia/Kolkata"}
-                readOnly
-                className="mt-2 w-full h-11 rounded-xl bg-black/30 border border-white/10 px-4 text-sm text-white/80"
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Security Management */}
-      <section className={`${kpiCardBase} mt-6 p-6`}>
-        <h2 className="text-lg font-semibold">Security Management</h2>
-        <p className="mt-1 text-xs text-white/45">
-          Enter your current password to save an email change, a new password, or both.
-        </p>
-
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-5 items-end">
-          <div>
-            <label className="text-xs text-white/60">Current Password</label>
-            <input
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              className="mt-2 w-full h-11 rounded-xl bg-black/30 border border-white/10 px-4 text-sm text-white/80"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs text-white/60">New Password</label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="mt-2 w-full h-11 rounded-xl bg-black/30 border border-white/10 px-4 text-sm text-white/80"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs text-white/60">Confirm new password</label>
-            <input
-              type="password"
-              value={confirmNewPassword}
-              onChange={(e) => setConfirmNewPassword(e.target.value)}
-              className="mt-2 w-full h-11 rounded-xl bg-black/30 border border-white/10 px-4 text-sm text-white/80"
-            />
-          </div>
-
-          <div className="flex justify-start lg:justify-end">
-            <button
-              type="button"
-              disabled={profileSaveLoading}
-              onClick={handleUpdateAdminProfile}
-              className="h-11 px-6 rounded-xl bg-[#1677FF] hover:opacity-90 text-sm font-medium disabled:opacity-60"
-            >
-              {profileSaveLoading ? "Saving..." : "Save changes"}
-            </button>
-          </div>
-        </div>
-
-        {profileSaveError && (
-          <p className="mt-4 text-sm text-red-300">{profileSaveError}</p>
-        )}
-        {profileSaveSuccess && (
-          <p className="mt-4 text-sm text-emerald-300">{profileSaveSuccess}</p>
-        )}
-      </section>
-
-      {/* KPI Cards */}
-      <section className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <div className={`${kpiCardBase} p-6`}>
-          <div className="text-xs tracking-[0.2em] text-white/60">TOTAL MEMBER</div>
-          <div className="mt-4 text-3xl font-semibold">{totalMembers}</div>
-        </div>
-
-        <div className={`${kpiCardBase} p-6`}>
-          <div className="text-xs tracking-[0.2em] text-white/60">ACTIVE TODAY</div>
-          <div className="mt-4 text-3xl font-semibold">{activeToday}</div>
-        </div>
-
-        <div className={`${kpiCardBase} p-6`}>
-          <div className="text-xs tracking-[0.2em] text-white/60">PENDING INVITE</div>
-          <div className="mt-4 text-3xl font-semibold">{pendingInvite}</div>
-        </div>
-      </section>
-
-      {/* Team Members Management */}
-      <section className={`${kpiCardBase} mt-6 p-6`}>
-        <h2 className="text-lg font-semibold">Team Members Management</h2>
-
-        <div className="mt-5 overflow-hidden rounded-2xl border border-white/10">
-          <div className="grid grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
-            <div className="col-span-5">MEMBERS</div>
-            <div className="col-span-3">ROLE</div>
-            <div className="col-span-3">LAST ACTIVE</div>
-            <div className="col-span-1 text-right">ACTIONS</div>
-          </div>
-
-          <div className="divide-y divide-white/10">
-            {teamRows.map((m, idx) => (
-              <div key={idx} className="grid grid-cols-12 gap-3 px-5 py-4 items-center bg-white/[0.02]">
-                <div className="col-span-5 flex items-center gap-3 min-w-0">
-                  <div className="h-10 w-10 rounded-full bg-white/10 border border-white/10" />
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-white/90 truncate">{m.name}</div>
-                    <div className="text-xs text-white/45 truncate">{m.status}</div>
-                  </div>
-                </div>
-
-                <div className="col-span-3">
-                  <span className="px-3 py-1 rounded-full text-xs bg-emerald-500/15 text-emerald-200 border border-emerald-500/25">
-                    {m.role}
-                  </span>
-                </div>
-
-                <div className="col-span-3 text-sm text-white/70">
-                  {m.lastActive === "Online Now" ? (
-                    <span className="inline-flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                      Online Now
-                    </span>
-                  ) : (
-                    m.lastActive
-                  )}
-                </div>
-
-                <div className="col-span-1 flex justify-end gap-3 text-white/70">
-                  <button className="hover:text-white" title="Edit">✎</button>
-                  <button className="hover:text-red-300" title="Delete">🗑</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-5 text-xs text-white/45">Showing 1 to {teamRows.length} of {teamRows.length} members</div>
-      </section>
-    </>
-  );
-};
 
 
 
@@ -19050,8 +20040,8 @@ const AccountView = ({
                 />
                 <NavItem
                   id="analytics"
-                  label="Analytics"
-                  icon={<LineChart className="h-4 w-4" />}
+                  label="Prompt Validation"
+                  icon={<ShieldCheck className="h-4 w-4" />}
                 />
 
                 <NavItem id="reports" label="Reports" icon={<ShieldAlert className="h-4 w-4" />} />
@@ -19064,12 +20054,73 @@ const AccountView = ({
 
             {/* RIGHT: Actions */}
             <div className="flex items-center gap-3 ml-auto">
-              <button
-                className="h-10 w-10 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] flex items-center justify-center"
-                aria-label="Notifications"
-              >
-                <Bell className="h-5 w-5 text-white/80" />
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="relative h-10 w-10 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] flex items-center justify-center"
+                    aria-label="Notifications"
+                  >
+                    <Bell className="h-5 w-5 text-white/80" />
+                    {adminUnreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 grid place-items-center rounded-full">
+                        {adminUnreadCount > 9 ? "9+" : adminUnreadCount}
+                      </span>
+                    )}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-[360px] bg-[#0F1117] border border-white/10 text-white p-2">
+                  <div className="flex items-center justify-between px-2 py-2">
+                    <span className="font-semibold text-sm">Notifications</span>
+                    {adminUnreadCount > 0 && (
+                      <button
+                        type="button"
+                        className="text-xs text-white/70 hover:text-white"
+                        onClick={markAllAdminNotificationsRead}
+                      >
+                        Mark all as read
+                      </button>
+                    )}
+                  </div>
+                  <div className="divide-y divide-white/10 max-h-[360px] overflow-y-auto">
+                    {adminNotifications.length === 0 ? (
+                      <div className="text-center text-white/50 py-8 text-sm">No notifications yet</div>
+                    ) : (
+                      adminNotifications.slice(0, 15).map((n) => (
+                        <button
+                          key={n._id}
+                          onClick={() => !n.read && markAdminNotificationRead(n._id)}
+                          className="w-full flex items-start gap-3 px-2 py-3 rounded-md hover:bg-white/5 text-left"
+                        >
+                          <span className={`mt-1 h-2 w-2 rounded-full shrink-0 ${!n.read ? "bg-blue-500" : "bg-transparent"}`} />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium truncate">
+                              {n.promptId?.title || (n.type === "ADMIN_PROMPT_REPORTED" ? "New report" : n.type === "ADMIN_PROMPT_FLAGGED" ? "Auto-flagged upload" : "Notification")}
+                            </div>
+                            <div className="text-xs text-white/60 line-clamp-2">{n.message}</div>
+                          </div>
+                          <span className="ml-auto text-[11px] text-white/40 shrink-0">
+                            {new Date(n.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { window.location.href = "/admin/notifications"; }}
+                    className="w-full text-center text-xs font-medium text-white/70 hover:text-white py-2 mt-1 border-t border-white/10"
+                  >
+                    View all notifications
+                  </button>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+          <button
+            onClick={() => { window.location.href = "/admin/refunds"; }}
+            className="h-10 px-4 rounded-full border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] flex items-center gap-2 text-sm text-white/80"
+          >
+            Refunds
+          </button>
 
           <DropdownMenu>
   <DropdownMenuTrigger asChild>
@@ -19131,10 +20182,23 @@ const AccountView = ({
    <div className={active === "reports" ? "w-full" : "mx-auto max-w-[1200px]"}>
 
 
-              {active === "dashboard" && currentView === "seller" && (
+              {active === "dashboard" && currentView === "seller" && selectedSellerMain && (
+                <SellerProfileView
+                  seller={selectedSellerMain}
+                  products={sellerMainProducts}
+                  loading={sellerMainLoading}
+                  error={sellerMainError}
+                  onBack={closeSellerMainProfile}
+                  onToggleSuspend={handleSellerMainSuspendToggle}
+                  suspendLoading={sellerMainSuspendLoading}
+                  suspendError={sellerMainSuspendError}
+                />
+              )}
+
+              {active === "dashboard" && currentView === "seller" && !selectedSellerMain && (
   <>
     {/* Title Row */}
-  
+
    {/* Title Row */}
 {/* ✅ Dashboard Header (Desktop aligned like your screenshot) */}
  
@@ -19176,15 +20240,20 @@ const AccountView = ({
           <User className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           User
         </button>
-      </div>
-    </div>
 
-    {/* RIGHT: Add Member */}
-    <div className="flex justify-center md:justify-end w-full">
-      <button className="h-9 sm:h-10 px-5 sm:px-6 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium text-white inline-flex items-center justify-center gap-2 bg-gradient-to-r from-[#FF14EF] via-[#8A4BFF] to-[#1A73E8] hover:opacity-90">
-        <Plus className="h-4 w-4" />
-        Add Member
-      </button>
+        <button
+          onClick={() => setCurrentView("org")}
+          className={[
+            "h-9 sm:h-10 px-4 sm:px-6 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-1.5 sm:gap-2",
+            currentView === "org"
+              ? "bg-gradient-to-r from-[#FF14EF] via-[#8A4BFF] to-[#1A73E8] text-white"
+              : "bg-white/[0.06] text-white/70 border border-white/10 hover:bg-white/[0.08]",
+          ].join(" ")}
+        >
+          <Building2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          Org
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -19199,12 +20268,12 @@ const AccountView = ({
         <div className="text-xs tracking-[0.2em] text-white/60">
           TOTAL REVENUE <span className="normal-case tracking-normal text-white/35">(Tokun's commission)</span>
         </div>
-        <div className="mt-4 flex items-end justify-between">
+        <div className="mt-4 flex items-end justify-between gap-2 flex-wrap">
           {/* TOTAL REVENUE — Tokun's own commission cut (5% of prompt sales + hire deals), not seller payouts */}
-<div className="text-3xl font-semibold">
+<div className="text-2xl font-semibold whitespace-nowrap">
   {platformRevenueLoading ? "…" : `₹${platformRevenue.totalRevenue.toLocaleString()}`}
 </div>
-          <div className="text-sm text-white/50 font-medium">
+          <div className="text-sm text-white/50 font-medium whitespace-nowrap">
             ₹{platformRevenue.availableBalance.toLocaleString()} available
           </div>
         </div>
@@ -19230,7 +20299,7 @@ const AccountView = ({
           PENDING APPROVALS
         </div>
         <div className="mt-4 flex items-end justify-between">
-        <div className="text-3xl font-semibold">{pendingApprovals}</div>
+        <div className="text-3xl font-semibold">{pendingSellersCount}</div>
           <div className="text-sm text-fuchsia-300 font-medium">
             New submissions
           </div>
@@ -19261,7 +20330,7 @@ const AccountView = ({
             5% commission from prompt sales + hire deals. Not included in seller payouts.
           </p>
         </div>
-        <div className="flex items-center gap-6">
+        <div className="flex flex-wrap items-center gap-4 sm:gap-6 w-full lg:w-auto">
           <div>
             <div className="text-xs text-white/50">Available</div>
             <div className="text-2xl font-semibold">₹{platformRevenue.availableBalance.toLocaleString()}</div>
@@ -19273,7 +20342,7 @@ const AccountView = ({
           <button
             onClick={() => { setWithdrawAmount(""); setWithdrawNote(""); setWithdrawModalOpen(true); }}
             disabled={platformRevenue.availableBalance <= 0}
-            className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full sm:w-auto sm:ml-auto whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ background: "linear-gradient(270deg,#7c3aed,#2563eb)" }}
           >
             Mark as Withdrawn
@@ -19367,116 +20436,61 @@ const AccountView = ({
 
     {/* Chart + Activities */}
     <section className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
-      {/* Chart */}
-      <div className={`${kpiCardBase} p-6 lg:col-span-2`}>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold">
-              Sales Trends Over Time
-            </h2>
-            <p className="mt-1 text-sm text-white/55">
-              Subtitle: Monthly revenue growth and projection
-            </p>
+      {/* Seller Trends — real seller signal, two single-metric charts (not one dual-scale chart) */}
+      <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-5">
+        <div className={`${kpiCardBase} p-6`}>
+          <h2 className="text-base font-semibold">Seller Earnings</h2>
+          <p className="mt-1 text-xs text-white/55">Monthly payout to sellers (₹), last 6 months</p>
+          <div className="mt-4 h-[260px] w-full">
+            {sellerTrendsLoading ? (
+              <div className="h-full flex items-center justify-center text-sm text-white/50">Loading…</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={sellerTrendsData} margin={{ top: 10, right: 8, left: -12, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="sellerEarningsFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#3987e5" stopOpacity={0.35} />
+                      <stop offset="100%" stopColor="#3987e5" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 11 }} axisLine={{ stroke: "rgba(255,255,255,0.12)" }} tickLine={false} />
+                  <YAxis tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <Tooltip
+                    formatter={(v: any) => [`₹${Number(v).toLocaleString("en-IN")}`, "Seller Earnings"]}
+                    contentStyle={{ background: "rgba(10,12,16,0.95)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, color: "white" }}
+                    labelStyle={{ color: "rgba(255,255,255,0.75)" }}
+                  />
+                  <Area type="monotone" dataKey="sellerEarnings" name="Seller Earnings" stroke="#3987e5" strokeWidth={2} fill="url(#sellerEarningsFill)" dot={false} activeDot={{ r: 4 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
-          <div className="text-xs text-white/60 mt-1">Last 30 Days</div>
         </div>
 
-        <div className="mt-6 h-[310px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart
-              data={chartData}
-              margin={{ top: 10, right: 8, left: -12, bottom: 0 }}
-            >
-              <defs>
-                <linearGradient
-                  id="blueFill"
-                  x1="0"
-                  y1="0"
-                  x2="0"
-                  y2="1"
-                >
-                  <stop
-                    offset="0%"
-                    stopColor="#2AA8FF"
-                    stopOpacity={0.35}
+        <div className={`${kpiCardBase} p-6`}>
+          <h2 className="text-base font-semibold">Active Sellers</h2>
+          <p className="mt-1 text-xs text-white/55">Distinct sellers with a sale that month</p>
+          <div className="mt-4 h-[260px] w-full">
+            {sellerTrendsLoading ? (
+              <div className="h-full flex items-center justify-center text-sm text-white/50">Loading…</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={sellerTrendsData} margin={{ top: 10, right: 8, left: -12, bottom: 0 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 11 }} axisLine={{ stroke: "rgba(255,255,255,0.12)" }} tickLine={false} />
+                  <YAxis tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <Tooltip
+                    formatter={(v: any) => [v, "Active Sellers"]}
+                    cursor={{ fill: "rgba(255,255,255,0.04)" }}
+                    contentStyle={{ background: "rgba(10,12,16,0.95)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, color: "white" }}
+                    labelStyle={{ color: "rgba(255,255,255,0.75)" }}
                   />
-                  <stop
-                    offset="100%"
-                    stopColor="#2AA8FF"
-                    stopOpacity={0.02}
-                  />
-                </linearGradient>
-                <linearGradient
-                  id="greenFill"
-                  x1="0"
-                  y1="0"
-                  x2="0"
-                  y2="1"
-                >
-                  <stop
-                    offset="0%"
-                    stopColor="#84CC16"
-                    stopOpacity={0.28}
-                  />
-                  <stop
-                    offset="100%"
-                    stopColor="#84CC16"
-                    stopOpacity={0.02}
-                  />
-                </linearGradient>
-              </defs>
-
-              <CartesianGrid
-                stroke="rgba(255,255,255,0.08)"
-                vertical={false}
-              />
-              <XAxis
-                dataKey="name"
-                tick={{
-                  fill: "rgba(255,255,255,0.55)",
-                  fontSize: 12,
-                }}
-                axisLine={{ stroke: "rgba(255,255,255,0.12)" }}
-                tickLine={false}
-              />
-              <YAxis
-                tick={{
-                  fill: "rgba(255,255,255,0.45)",
-                  fontSize: 12,
-                }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: "rgba(10,12,16,0.95)",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  borderRadius: 12,
-                  color: "white",
-                }}
-                labelStyle={{ color: "rgba(255,255,255,0.75)" }}
-              />
-
-              <Area
-                type="monotone"
-                dataKey="green"
-                stroke="#84CC16"
-                strokeWidth={2}
-                fill="url(#greenFill)"
-                dot={false}
-                activeDot={{ r: 4 }}
-              />
-              <Area
-                type="monotone"
-                dataKey="blue"
-                stroke="#2AA8FF"
-                strokeWidth={2}
-                fill="url(#blueFill)"
-                dot={false}
-                activeDot={{ r: 4 }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+                  <Bar dataKey="activeSellers" name="Active Sellers" fill="#199e70" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
         </div>
       </div>
 
@@ -19527,9 +20541,78 @@ const AccountView = ({
 >
   View Activity Log
 </button>
-  
+
 </div>
     </section>
+
+    {/* Sales by Category — top 6 categories + "Other", stacked per month */}
+    <section className={`${kpiCardBase} mt-6 p-6`}>
+      <div>
+        <h2 className="text-lg font-semibold">Sales by Category</h2>
+        <p className="mt-1 text-sm text-white/55">
+          Which categories are selling the most, month by month (top 6 + Other)
+        </p>
+      </div>
+
+      <div className="mt-6 h-[340px] w-full">
+        {categorySalesLoading ? (
+          <div className="h-full flex items-center justify-center text-sm text-white/50">
+            Loading…
+          </div>
+        ) : categorySalesSeries.length === 0 ? (
+          <div className="h-full flex items-center justify-center text-sm text-white/50">
+            No sales yet.
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={categorySalesData} margin={{ top: 10, right: 8, left: -12, bottom: 0 }} barCategoryGap="20%">
+              <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
+              <XAxis
+                dataKey="month"
+                tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 12 }}
+                axisLine={{ stroke: "rgba(255,255,255,0.12)" }}
+                tickLine={false}
+              />
+              <YAxis
+                tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 12 }}
+                axisLine={false}
+                tickLine={false}
+                allowDecimals={false}
+              />
+              <Tooltip
+                cursor={{ fill: "rgba(255,255,255,0.04)" }}
+                contentStyle={{
+                  background: "rgba(10,12,16,0.95)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  borderRadius: 12,
+                  color: "white",
+                }}
+                labelStyle={{ color: "rgba(255,255,255,0.75)" }}
+              />
+              <Legend
+                wrapperStyle={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}
+                iconType="circle"
+                iconSize={8}
+              />
+              {categorySalesSeries.map((name, i) => {
+                const isTopSegment = i === categorySalesSeries.length - 1;
+                const color = name === "Other" ? CATEGORY_SALES_COLORS[6] : CATEGORY_SALES_COLORS[i % 6];
+                return (
+                  <Bar
+                    key={name}
+                    dataKey={name}
+                    stackId="sales"
+                    fill={color}
+                    radius={isTopSegment ? [3, 3, 0, 0] : undefined}
+                  />
+                );
+              })}
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+    </section>
+
     {/* ✅ Sellers List (Dashboard → Seller toggle) — same look as SellersView table */}
 <section className={`${kpiCardBase} mt-6 p-6`}>
   <div className="flex items-center justify-between">
@@ -19551,8 +20634,10 @@ const AccountView = ({
   <div className="mt-6 overflow-hidden rounded-2xl border border-white/10">
     {/* Desktop header only */}
     <div className="hidden md:grid md:grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
-  <div className="md:col-span-4">Seller</div>
-
+  <div className="md:col-span-3">Seller</div>
+  <div className="md:col-span-2">Plan</div>
+  <div className="md:col-span-1">Purchased</div>
+  <div className="md:col-span-1">Uploaded</div>
   <div className="md:col-span-2">Volume</div>
   <div className="md:col-span-2">Status</div>
   <div className="md:col-span-1 text-right">Actions</div>
@@ -19572,22 +20657,44 @@ const AccountView = ({
         {(sellerRows || []).slice(0, 10).map((r) => (
   <div key={r.id} className="grid grid-cols-1 md:grid-cols-12 gap-4 px-4 md:px-5 py-5 bg-white/[0.02]">
     {/* Seller */}
-    <div className="md:col-span-4 flex items-center gap-3 min-w-0">
+    <div className="md:col-span-3 flex items-center gap-3 min-w-0">
       <img
         src={r.avatar || "https://i.pravatar.cc/80?img=12"}
         alt={r.name}
         className="h-10 w-10 rounded-full object-cover border border-white/10 shrink-0"
       />
       <div className="min-w-0">
-        <div className="text-sm font-medium text-white/90 truncate">{r.name}</div>
+        <button
+          onClick={() => openSellerMainProfile(r.id)}
+          className="block max-w-full text-left text-sm font-medium text-white/90 truncate hover:text-sky-400 focus:outline-none"
+        >
+          {r.name}
+        </button>
         <div className="text-xs text-white/45 truncate">{r.email}</div>
       </div>
     </div>
 
-    {/* Category */}
-    {/* <div className="md:col-span-3 text-sm text-white/75 flex items-center">
-      {r.category || "Digital Art"}
-    </div> */}
+    {/* Plan */}
+    <div className="md:col-span-2 flex items-center">
+      <span
+        className={[
+          "px-3 py-1 rounded-full text-xs font-medium border",
+          planBadgeClass(planLabel(r.userType, r.plan)),
+        ].join(" ")}
+      >
+        {planLabel(r.userType, r.plan)}
+      </span>
+    </div>
+
+    {/* Purchased */}
+    <div className="md:col-span-1 text-sm text-white/75 flex items-center">
+      {r.buyProducts ?? 0}
+    </div>
+
+    {/* Uploaded */}
+    <div className="md:col-span-1 text-sm text-white/75 flex items-center">
+      {r.totalProducts ?? 0}
+    </div>
 
     {/* Volume */}
     <div className="md:col-span-2 text-sm text-white/80 font-medium flex items-center">
@@ -19652,9 +20759,23 @@ const AccountView = ({
 )}
 
 
- {active === "dashboard" && currentView === "user" && (
+ {active === "dashboard" && currentView === "user" && selectedUser && (
+  <UserProfileView
+    user={selectedUser}
+    bought={userBought}
+    uploaded={userUploaded}
+    loading={userProfileLoading}
+    error={userProfileError}
+    onBack={closeUserProfile}
+    onToggleSuspend={handleUserSuspendToggle}
+    suspendLoading={userSuspendLoading}
+    suspendError={userSuspendError}
+  />
+)}
+
+ {active === "dashboard" && currentView === "user" && !selectedUser && (
   <>
- 
+
 
 <div className="mt-2 md:mt-0">
   <div className="flex flex-col md:grid md:grid-cols-3 items-center gap-3 md:gap-6">
@@ -19694,24 +20815,25 @@ const AccountView = ({
           <User className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           User
         </button>
-      </div>
-    </div>
 
-    {/* RIGHT: Add Member */}
-    <div className="flex justify-center md:justify-end w-full">
-      <button className="h-9 sm:h-10 px-5 sm:px-6 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium text-white inline-flex items-center justify-center gap-2 bg-gradient-to-r from-[#FF14EF] via-[#8A4BFF] to-[#1A73E8] hover:opacity-90">
-        <Plus className="h-4 w-4" />
-        Add Member
-      </button>
+        <button
+          onClick={() => setCurrentView("org")}
+          className={[
+            "h-9 sm:h-10 px-4 sm:px-6 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-1.5 sm:gap-2",
+            currentView === "org"
+              ? "bg-gradient-to-r from-[#FF14EF] via-[#8A4BFF] to-[#1A73E8] text-white"
+              : "bg-white/[0.06] text-white/70 border border-white/10 hover:bg-white/[0.08]",
+          ].join(" ")}
+        >
+          <Building2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          Org
+        </button>
+      </div>
     </div>
   </div>
 </div>
 
 
-
-    {/* Add Member Button */}
-
-     
 
     {/* KPI Cards */}
     <section className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -19750,7 +20872,7 @@ const AccountView = ({
           PENDING APPROVALS
         </div>
         <div className="mt-4 flex items-end justify-between">
-     <div className="text-3xl font-semibold">{pendingApprovals}</div>
+     <div className="text-3xl font-semibold">{pendingUsersCount}</div>
           <div className="text-sm text-fuchsia-300 font-medium">
             New submissions
           </div>
@@ -19774,79 +20896,61 @@ const AccountView = ({
 
     {/* Chart + Activities */}
     <section className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
-      {/* Chart */}
-      <div className={`${kpiCardBase} p-6 lg:col-span-2`}>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold">
-              Sales Trends Over Time
-            </h2>
-            <p className="mt-1 text-sm text-white/55">
-              Subtitle: Monthly revenue growth and projection
-            </p>
+      {/* User Trends — real user signal, two single-metric charts (not the seller data relabeled) */}
+      <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-5">
+        <div className={`${kpiCardBase} p-6`}>
+          <h2 className="text-base font-semibold">New Signups</h2>
+          <p className="mt-1 text-xs text-white/55">New user registrations per month</p>
+          <div className="mt-4 h-[260px] w-full">
+            {userTrendsLoading ? (
+              <div className="h-full flex items-center justify-center text-sm text-white/50">Loading…</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={userTrendsData} margin={{ top: 10, right: 8, left: -12, bottom: 0 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 11 }} axisLine={{ stroke: "rgba(255,255,255,0.12)" }} tickLine={false} />
+                  <YAxis tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <Tooltip
+                    formatter={(v: any) => [v, "New Signups"]}
+                    cursor={{ fill: "rgba(255,255,255,0.04)" }}
+                    contentStyle={{ background: "rgba(10,12,16,0.95)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, color: "white" }}
+                    labelStyle={{ color: "rgba(255,255,255,0.75)" }}
+                  />
+                  <Bar dataKey="newSignups" name="New Signups" fill="#3987e5" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
-          <div className="text-xs text-white/60 mt-1">Last 30 Days</div>
         </div>
 
-        <div className="mt-6 h-[310px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart
-              data={chartData}
-              margin={{ top: 10, right: 8, left: -12, bottom: 0 }}
-            >
-              <defs>
-                <linearGradient id="blueFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#2AA8FF" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="#2AA8FF" stopOpacity={0.02} />
-                </linearGradient>
-                <linearGradient id="greenFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#84CC16" stopOpacity={0.28} />
-                  <stop offset="100%" stopColor="#84CC16" stopOpacity={0.02} />
-                </linearGradient>
-              </defs>
-
-              <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
-              <XAxis
-                dataKey="name"
-                tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 12 }}
-                axisLine={{ stroke: "rgba(255,255,255,0.12)" }}
-                tickLine={false}
-              />
-              <YAxis
-                tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 12 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: "rgba(10,12,16,0.95)",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  borderRadius: 12,
-                  color: "white",
-                }}
-                labelStyle={{ color: "rgba(255,255,255,0.75)" }}
-              />
-
-              <Area
-                type="monotone"
-                dataKey="green"
-                stroke="#84CC16"
-                strokeWidth={2}
-                fill="url(#greenFill)"
-                dot={false}
-                activeDot={{ r: 4 }}
-              />
-              <Area
-                type="monotone"
-                dataKey="blue"
-                stroke="#2AA8FF"
-                strokeWidth={2}
-                fill="url(#blueFill)"
-                dot={false}
-                activeDot={{ r: 4 }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+        <div className={`${kpiCardBase} p-6`}>
+          <h2 className="text-base font-semibold">Buyer Spend</h2>
+          <p className="mt-1 text-xs text-white/55">Total ₹ spent by users, per month</p>
+          <div className="mt-4 h-[260px] w-full">
+            {userTrendsLoading ? (
+              <div className="h-full flex items-center justify-center text-sm text-white/50">Loading…</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={userTrendsData} margin={{ top: 10, right: 8, left: -12, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="buyerSpendFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#d55181" stopOpacity={0.35} />
+                      <stop offset="100%" stopColor="#d55181" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 11 }} axisLine={{ stroke: "rgba(255,255,255,0.12)" }} tickLine={false} />
+                  <YAxis tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <Tooltip
+                    formatter={(v: any) => [`₹${Number(v).toLocaleString("en-IN")}`, "Buyer Spend"]}
+                    contentStyle={{ background: "rgba(10,12,16,0.95)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, color: "white" }}
+                    labelStyle={{ color: "rgba(255,255,255,0.75)" }}
+                  />
+                  <Area type="monotone" dataKey="totalSpend" name="Buyer Spend" stroke="#d55181" strokeWidth={2} fill="url(#buyerSpendFill)" dot={false} activeDot={{ r: 4 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </div>
         </div>
       </div>
 
@@ -19921,7 +21025,7 @@ const AccountView = ({
     {/* Desktop Header */}
    <div className="hidden md:grid md:grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
   <div className="md:col-span-3">User Name</div>
-  <div className="md:col-span-2">Status</div>
+  <div className="md:col-span-2">Plan</div>
   <div className="md:col-span-2">Purchased Prompt</div>
   <div className="md:col-span-2">Uploaded Prompt</div>
   <div className="md:col-span-2">Joined Date</div>
@@ -19938,8 +21042,15 @@ const AccountView = ({
       )}
 
   {!userLoading && !userError && userRows.map((u) => (
-  <div key={u.id} className="grid grid-cols-1 md:grid-cols-12 gap-4 px-4 md:px-5 py-5 bg-white/[0.02]">
-    
+  <div
+    key={u.id}
+    onClick={() => openUserProfile(u.id, u)}
+    role="button"
+    tabIndex={0}
+    onKeyDown={(e) => { if (e.key === "Enter") openUserProfile(u.id, u); }}
+    className="grid grid-cols-1 md:grid-cols-12 gap-4 px-4 md:px-5 py-5 bg-white/[0.02] cursor-pointer hover:bg-white/[0.05] transition-colors"
+  >
+
     {/* User Name */}
     <div className="md:col-span-3 flex items-center gap-3 min-w-0">
       <img
@@ -19953,10 +21064,15 @@ const AccountView = ({
       </div>
     </div>
 
-    {/* Status */}
+    {/* Plan */}
     <div className="md:col-span-2 flex items-center">
-      <span className="px-3 py-1 rounded-full text-xs font-medium border bg-emerald-500/15 text-emerald-200 border-emerald-500/25">
-        Active
+      <span
+        className={[
+          "px-3 py-1 rounded-full text-xs font-medium border",
+          planBadgeClass(planLabel(u.userType, u.plan)),
+        ].join(" ")}
+      >
+        {planLabel(u.userType, u.plan)}
       </span>
     </div>
 
@@ -19977,10 +21093,16 @@ const AccountView = ({
 
     {/* Actions */}
     <div className="md:col-span-1 flex items-center justify-end gap-3">
-      <button className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
+      <button
+        onClick={(e) => e.stopPropagation()}
+        className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1"
+      >
         🚫 Block
       </button>
-      <button className="text-white/50 hover:text-white/80 text-sm">
+      <button
+        onClick={(e) => e.stopPropagation()}
+        className="text-white/50 hover:text-white/80 text-sm"
+      >
         🗑
       </button>
     </div>
@@ -20025,16 +21147,313 @@ const AccountView = ({
   </>
 )}
 
+{/* ── ORG VIEW: profile drill-down ── */}
+{active === "dashboard" && currentView === "org" && selectedOrg && (
+  <OrgProfileView
+    org={selectedOrg}
+    loading={orgProfileLoading}
+    error={orgProfileError}
+    onBack={closeOrgProfile}
+    onToggleSuspend={handleOrgSuspendToggle}
+    suspendLoading={orgSuspendLoading}
+    suspendError={orgSuspendError}
+  />
+)}
+
+{/* ── ORG VIEW: dashboard (KPIs + charts + list) ── */}
+{active === "dashboard" && currentView === "org" && !selectedOrg && (
+  <>
+    <div className="mt-2 md:mt-0">
+      <div className="flex flex-col md:grid md:grid-cols-3 items-center gap-3 md:gap-6">
+        <div className="text-center md:text-left w-full">
+          <h1 className="text-[24px] md:text-[34px] leading-[1.05] font-semibold">Dashboard</h1>
+          <p className="mt-1 text-white/60 text-sm">Admin Overview</p>
+        </div>
+
+        {/* CENTER: Seller/User/Org pills */}
+        <div className="flex justify-center w-full">
+          <div className="flex flex-row items-center justify-center gap-2">
+            <button
+              onClick={() => setCurrentView("seller")}
+              className="h-9 sm:h-10 px-4 sm:px-6 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-1.5 sm:gap-2 bg-white/[0.06] text-white/70 border border-white/10 hover:bg-white/[0.08]"
+            >
+              <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              Seller
+            </button>
+            <button
+              onClick={() => setCurrentView("user")}
+              className="h-9 sm:h-10 px-4 sm:px-6 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-1.5 sm:gap-2 bg-white/[0.06] text-white/70 border border-white/10 hover:bg-white/[0.08]"
+            >
+              <User className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              User
+            </button>
+            <button
+              onClick={() => setCurrentView("org")}
+              className="h-9 sm:h-10 px-4 sm:px-6 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-1.5 sm:gap-2 bg-gradient-to-r from-[#FF14EF] via-[#8A4BFF] to-[#1A73E8] text-white"
+            >
+              <Building2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              Org
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* KPI Cards */}
+    <section className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className={`${kpiCardBase} p-6`}>
+        <div className="text-xs tracking-[0.2em] text-white/60">TOTAL ORGS</div>
+        <div className="mt-4 flex items-end justify-between">
+          <div className="text-3xl font-semibold">
+            {orgSummaryLoading ? "…" : orgSummary?.kpis.totalOrgs ?? orgTotal}
+          </div>
+          <div className="text-sm text-white/50 font-medium">registered</div>
+        </div>
+      </div>
+
+      <div className={`${kpiCardBase} p-6`}>
+        <div className="text-xs tracking-[0.2em] text-white/60">ENTERPRISE ACTIVE</div>
+        <div className="mt-4 flex items-end justify-between">
+          <div className="text-3xl font-semibold">
+            {orgSummaryLoading ? "…" : orgSummary?.kpis.enterpriseActive ?? 0}
+          </div>
+          <div className="text-sm text-emerald-400 font-medium">paying</div>
+        </div>
+      </div>
+
+      <div className={`${kpiCardBase} p-6`}>
+        <div className="text-xs tracking-[0.2em] text-white/60">TEAM SEATS USED</div>
+        <div className="mt-4 flex items-end justify-between">
+          <div className="text-3xl font-semibold">
+            {orgSummaryLoading
+              ? "…"
+              : `${orgSummary?.kpis.seatsUsed ?? 0}/${orgSummary?.kpis.seatsTotal ?? 0}`}
+          </div>
+          <div className="text-sm text-fuchsia-300 font-medium">across orgs</div>
+        </div>
+      </div>
+
+      <div className={`${kpiCardBase} p-6`}>
+        <div className="text-xs tracking-[0.2em] text-white/60">TOKEN POOL USED</div>
+        <div className="mt-4 flex items-end justify-between">
+          <div className="text-3xl font-semibold">
+            {orgSummaryLoading
+              ? "…"
+              : `${
+                  orgSummary && orgSummary.kpis.poolCap > 0
+                    ? Math.round((orgSummary.kpis.poolUsed / orgSummary.kpis.poolCap) * 100)
+                    : 0
+                }%`}
+          </div>
+          <div className="text-sm text-white/50 font-medium">
+            {orgSummary
+              ? `${(orgSummary.kpis.poolUsed || 0).toLocaleString()} / ${(orgSummary.kpis.poolCap || 0).toLocaleString()}`
+              : "—"}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {/* Charts */}
+    <section className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className={`${kpiCardBase} p-6`}>
+        <h2 className="text-base font-semibold">New Organizations</h2>
+        <p className="mt-1 text-xs text-white/55">Orgs created per month</p>
+        <div className="mt-4 h-[260px] w-full">
+          {orgSummaryLoading ? (
+            <div className="h-full flex items-center justify-center text-sm text-white/50">Loading…</div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={orgSummary?.trends || []} margin={{ top: 10, right: 8, left: -12, bottom: 0 }}>
+                <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
+                <XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 11 }} axisLine={{ stroke: "rgba(255,255,255,0.12)" }} tickLine={false} />
+                <YAxis tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <Tooltip
+                  formatter={(v: any) => [v, "New Orgs"]}
+                  cursor={{ fill: "rgba(255,255,255,0.04)" }}
+                  contentStyle={{ background: "rgba(10,12,16,0.95)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, color: "white" }}
+                  labelStyle={{ color: "rgba(255,255,255,0.75)" }}
+                />
+                <Bar dataKey="newOrgs" name="New Orgs" fill="#8A4BFF" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      <div className={`${kpiCardBase} p-6`}>
+        <h2 className="text-base font-semibold">Subscription Status</h2>
+        <p className="mt-1 text-xs text-white/55">Orgs by billing state</p>
+        <div className="mt-4 h-[260px] w-full">
+          {orgSummaryLoading ? (
+            <div className="h-full flex items-center justify-center text-sm text-white/50">Loading…</div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={orgSummary?.statusBreakdown || []} margin={{ top: 10, right: 8, left: -12, bottom: 0 }}>
+                <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
+                <XAxis dataKey="name" tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 10 }} axisLine={{ stroke: "rgba(255,255,255,0.12)" }} tickLine={false} interval={0} />
+                <YAxis tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <Tooltip
+                  formatter={(v: any) => [v, "Orgs"]}
+                  cursor={{ fill: "rgba(255,255,255,0.04)" }}
+                  contentStyle={{ background: "rgba(10,12,16,0.95)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, color: "white" }}
+                  labelStyle={{ color: "rgba(255,255,255,0.75)" }}
+                />
+                <Bar dataKey="count" name="Orgs" fill="#3987e5" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+    </section>
+
+    {/* Org list */}
+    <section className={`${kpiCardBase} mt-6 p-6`}>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold">Organizations</h2>
+        <span className="text-sm text-white/50">{orgTotal} total</span>
+      </div>
+
+      <div className="mt-6 overflow-hidden rounded-2xl border border-white/10">
+        <div className="hidden md:grid md:grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
+          <div className="md:col-span-3">Organization</div>
+          <div className="md:col-span-3">Owner</div>
+          <div className="md:col-span-2">Plan / Status</div>
+          <div className="md:col-span-1">Seats</div>
+          <div className="md:col-span-2">Pool Used</div>
+          <div className="md:col-span-1 text-right">Joined</div>
+        </div>
+
+        <div className="divide-y divide-white/10">
+          {orgLoading && <div className="p-6 text-white/70 text-sm">Loading organizations…</div>}
+          {!!orgError && !orgLoading && <div className="p-6 text-red-400 text-sm">{orgError}</div>}
+
+          {!orgLoading && !orgError && orgRows.map((o) => {
+            const seatsUsed = Math.max(0, o.teamMembersLimit - o.teamMembersLimitRemaining);
+            const poolPct = o.orgPoolCap > 0 ? Math.round((o.orgPoolUsed / o.orgPoolCap) * 100) : 0;
+            return (
+              <div
+                key={o.id}
+                onClick={() => openOrgProfile(o.id, o)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter") openOrgProfile(o.id, o); }}
+                className="grid grid-cols-1 md:grid-cols-12 gap-4 px-4 md:px-5 py-5 bg-white/[0.02] cursor-pointer hover:bg-white/[0.05] transition-colors"
+              >
+                <div className="md:col-span-3 flex items-center gap-3 min-w-0">
+                  <div className="h-10 w-10 rounded-xl bg-white/[0.05] border border-white/10 flex items-center justify-center shrink-0">
+                    <Building2 className="h-5 w-5 text-white/70" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-white/90 truncate">{o.name}</div>
+                    <div className="text-xs text-white/45 truncate">{o.membersCount} members</div>
+                  </div>
+                </div>
+
+                <div className="md:col-span-3 min-w-0 flex flex-col justify-center">
+                  <div className="text-sm text-white/85 truncate">{o.ownerName}</div>
+                  <div className="text-xs text-white/45 truncate">{o.ownerEmail}</div>
+                </div>
+
+                <div className="md:col-span-2 flex items-center gap-2 flex-wrap">
+                  <span className="px-2 py-0.5 rounded-full text-xs border bg-white/[0.05] text-white/70 border-white/10">
+                    {o.plan === "enterprise" ? "Enterprise" : "No Plan"}
+                  </span>
+                  <span
+                    className={[
+                      "px-2 py-0.5 rounded-full text-xs border",
+                      o.subscriptionStatus === "active"
+                        ? "bg-emerald-500/15 text-emerald-200 border-emerald-500/25"
+                        : o.subscriptionStatus === "suspended" || o.subscriptionStatus === "canceled" || o.subscriptionStatus === "past_due"
+                        ? "bg-red-500/15 text-red-200 border-red-500/25"
+                        : "bg-white/[0.05] text-white/55 border-white/10",
+                    ].join(" ")}
+                  >
+                    {o.subscriptionStatus || "none"}
+                  </span>
+                </div>
+
+                <div className="md:col-span-1 text-sm text-white/75 flex items-center">
+                  {seatsUsed}/{o.teamMembersLimit}
+                </div>
+
+                <div className="md:col-span-2 flex items-center gap-2">
+                  <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-[#FF14EF] to-[#1A73E8]"
+                      style={{ width: `${Math.min(100, poolPct)}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-white/60 w-9 text-right">{poolPct}%</span>
+                </div>
+
+                <div className="md:col-span-1 text-sm text-white/60 flex items-center md:justify-end">
+                  {formatDate(o.createdAt)}
+                </div>
+              </div>
+            );
+          })}
+
+          {!orgLoading && !orgError && orgRows.length === 0 && (
+            <div className="p-6 text-white/60 text-sm">No organizations found.</div>
+          )}
+        </div>
+      </div>
+
+      {/* Search + Page Size */}
+      <div className={`${kpiCardBase} mt-6 p-4`}>
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+          <div className="flex-1 relative min-w-0">
+            <Search className="h-4 w-4 text-white/40 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              value={orgSearch}
+              onChange={(e) => { setOrgPage(1); setOrgSearch(e.target.value); }}
+              className="w-full h-11 pl-10 pr-3 rounded-xl bg-black/30 border border-white/10 text-sm text-white placeholder:text-white/35 focus:outline-none focus:border-white/20"
+              placeholder="Search orgs by name or owner..."
+            />
+          </div>
+          <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
+            <div className="text-sm text-white/60 shrink-0">Show</div>
+            <select
+              value={orgPageSize}
+              onChange={(e) => { setOrgPage(1); setOrgPageSize(Number(e.target.value)); }}
+              className="h-11 min-w-[90px] px-3 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none"
+            >
+              {[10, 20, 50, 100].map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {orgTotalPages > 1 && (
+          <div className="mt-4 flex items-center justify-center gap-3 text-sm">
+            <button
+              disabled={orgPage <= 1}
+              onClick={() => setOrgPage((p) => Math.max(1, p - 1))}
+              className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-40"
+            >
+              Prev
+            </button>
+            <span className="text-white/60">Page {orgPage} of {orgTotalPages}</span>
+            <button
+              disabled={orgPage >= orgTotalPages}
+              onClick={() => setOrgPage((p) => Math.min(orgTotalPages, p + 1))}
+              className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        )}
+      </div>
+    </section>
+  </>
+)}
+
 
         {active === "products" && <ProductsView />}
         {active === "sellers" && <SellersView />}
         {active === "reports" && <ReportsView />}
-        {active === "analytics" && (
-          <div className={`${kpiCardBase} p-8`}>
-            <h1 className="text-2xl font-semibold">Analytics</h1>
-            <p className="text-white/60 mt-2">Coming soon…</p>
-          </div>
-        )}
+        {active === "analytics" && <PromptValidationAdminDashboard />}
 
 {active === "withdrawals" && <WithdrawalsView />}
 {active === "feedback" && <FeedbackView />}
@@ -20044,9 +21463,6 @@ const AccountView = ({
           <AccountView
             adminName={adminName}
             adminEmail={adminEmail}
-            totalMembers={24}
-            activeToday={18}
-            pendingInvite={3}
           />
         )}
 

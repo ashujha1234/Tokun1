@@ -1334,9 +1334,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { usePrompt } from "@/contexts/PromptContext";
 import { llmService } from "@/services/llmService";
 import LLMSelector from "./LLMSelector";
-import { Sparkles, Check, X, Loader2, Lightbulb, Copy, History } from "lucide-react";
+import { Sparkles, Check, X, Loader2, Lightbulb, Copy, History, UserPlus } from "lucide-react";
 import ModalComponent from "@/components/ModalComponent";
 import { saveItem } from "@/lib/savedCollections";
+import { isOutOfTokens, TOKEN_LIMIT_TOAST } from "@/lib/tokenGate";
 import type { OptimizeUsage } from "@/services/llmService";
   import { socket } from "@/lib/socket";
 interface OptimizationOption {
@@ -1651,8 +1652,10 @@ useEffect(() => {
     return;
   }
 
-  // ✅ IN collaboration
-  setIsCollabActive(true);
+  // We joined the session room, but DON'T mark it "active" yet — stay in a
+  // "waiting for collaborator" state until a second participant actually joins
+  // (driven by the session-peers / user-joined events below).
+  setIsCollabActive(false);
 
   socket.emit("join-session", {
     sessionId: collabSessionId,
@@ -1695,9 +1698,22 @@ useEffect(() => {
     window.history.replaceState({}, "", url.pathname);
   };
 
+  // Live participant count → session is only "active" once a peer joins (>= 2).
+  const handlePeers = (payload: { sessionId: string; count: number }) => {
+    if (payload.sessionId !== collabSessionId) return;
+    setIsCollabActive((payload.count || 0) >= 2);
+  };
+
+  // A collaborator joined our room → collaboration is now live.
+  const handleUserJoined = () => {
+    setIsCollabActive(true);
+  };
+
   socket.on("prompt-initial", handleInitial);
   socket.on("prompt-change", handleRemoteChange);
   socket.on("session-ended", handleSessionEnded);
+  socket.on("session-peers", handlePeers);
+  socket.on("user-joined", handleUserJoined);
 
   return () => {
     socket.emit("leave-session", {
@@ -1708,6 +1724,8 @@ useEffect(() => {
     socket.off("prompt-initial", handleInitial);
     socket.off("prompt-change", handleRemoteChange);
     socket.off("session-ended", handleSessionEnded);
+    socket.off("session-peers", handlePeers);
+    socket.off("user-joined", handleUserJoined);
   };
 }, [collabSessionId, user?.id]);
 
@@ -1790,6 +1808,12 @@ const handleConfirmEndSession = () => {
   const handleOptimize = async () => {
     if (!text.trim()) {
       toast({ title: "Empty prompt", description: "Please enter text to optimize", variant: "destructive" });
+      return;
+    }
+
+    // Token limit reached → block optimising and prompt to subscribe.
+    if (isOutOfTokens(user)) {
+      toast(TOKEN_LIMIT_TOAST);
       return;
     }
 
@@ -2062,14 +2086,17 @@ const handleConfirmEndSession = () => {
 
     const data = await res.json();
 
-    if (res.ok && data.success) {
+    // Backend returns 201 with { message, notification, receiver } and no
+    // `success` flag — so rely on res.ok, not data.success (that check made
+    // every successful invite show a false "Failed" toast).
+    if (res.ok) {
       sonnerToast.success("Invitation Sent", {
         description: `Invitation sent to ${payload.email}`,
       });
       return true;
     } else {
       sonnerToast.error("Failed", {
-        description: data.message || "Could not send invite",
+        description: data.message || data.error || "Could not send invite",
       });
       return false;
     }
@@ -2203,6 +2230,50 @@ const startCollaboration = async (): Promise<string | null> => {
     </Button>
   )}
 
+  {/* Middle: Invite Collaborator (no session) / Waiting (invited, not joined) / End Session (peer joined) */}
+  {!collabSessionId ? (
+    <Button
+      onClick={async () => {
+        const sessionId = await startCollaboration();
+        if (!sessionId) return;
+        setInviteModal(true);
+      }}
+      className="rounded-2xl w-[180px] h-[40px] text-white border-0 transition-all duration-300 inline-flex items-center justify-center gap-2"
+      style={{ backgroundImage: GRADIENT_BG }}
+      title="Invite someone to collaborate on this prompt in real time"
+    >
+      <UserPlus className="h-4 w-4" />
+      <span className={BTN_TEXT_CLS}>Invite Collaborator</span>
+    </Button>
+  ) : !isCollabActive ? (
+    <>
+      <Button
+        onClick={() => setInviteModal(true)}
+        className="rounded-2xl w-[180px] h-[40px] text-white border border-white/15 bg-[#252525] inline-flex items-center justify-center gap-2"
+        title="Waiting for your collaborator to join — click to resend the invite"
+      >
+        <Loader2 className="h-4 w-4 animate-spin" />
+        <span className={BTN_TEXT_CLS}>Waiting to join…</span>
+      </Button>
+      <Button
+        onClick={() => setShowEndConfirm(true)}
+        className="rounded-2xl w-[120px] h-[40px] px-4 text-sm text-white border-0 bg-red-600 hover:bg-red-700 inline-flex items-center justify-center gap-2"
+      >
+        <X className="h-4 w-4" />
+        Cancel
+      </Button>
+    </>
+  ) : (
+    <Button
+      onClick={() => setShowEndConfirm(true)}
+      className="rounded-2xl w-[180px] h-[40px] px-4 text-sm text-white border-0 bg-red-600 hover:bg-red-700 inline-flex items-center justify-center gap-2"
+    >
+      <X className="h-4 w-4" />
+      End Session
+    </Button>
+  )}
+
+  {/* Right: Optimize */}
   <Button
     onClick={handleOptimize}
     disabled={isProcessing || !text}
@@ -2228,30 +2299,6 @@ const startCollaboration = async (): Promise<string | null> => {
       </>
     )}
   </Button>
-
-  {!isCollabActive ? (
-    <Button
-      onClick={async () => {
-        let sessionId = collabSessionId;
-        if (!sessionId) {
-          sessionId = await startCollaboration();
-          if (!sessionId) return;
-        }
-        setInviteModal(true);
-      }}
-      className="rounded-2xl w-[140px] h-[40px] text-white border-0 transition-all duration-300"
-      style={{ backgroundImage: GRADIENT_BG }}
-    >
-      Invite Collaborator
-    </Button>
-  ) : (
-    <Button
-      onClick={() => setShowEndConfirm(true)}
-      className="rounded-2xl w-[140px] h-[40px] px-4 text-sm text-white border-0 bg-red-600 hover:bg-red-700"
-    >
-      End Session
-    </Button>
-  )}
 </div>
         </div>
 

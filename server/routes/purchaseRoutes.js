@@ -378,12 +378,16 @@
 // routes/purchaseRoutes.js
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
 const Razorpay = require("../utils/razorpay");
 const Prompt = require("../models/Prompt");
 const Purchase = require("../models/Purchase");
+const Category = require("../models/Category");
+const User = require("../models/User");
 const Wallet = require("../models/Wallet");
 const PlatformWallet = require("../models/PlatformWallet");
-const { requireAuth } = require("../utils/auth");
+const BankAccount = require("../models/BankAccount");
+const { requireAuth, blockIfSuspended, blockOrgTeamMemberPurchase } = require("../utils/auth");
 const { requireKycVerified } = require("../utils/requireKycVerified");
 const { logActivity } = require("../utils/activityLogger");
 const crypto = require("crypto");
@@ -392,9 +396,79 @@ const fs = require("fs");
 const { embedWatermark, extractWatermark } = require("../utils/nvisibleWatermark");
 const { generateInvoicePDF } = require("../services/invoice.service");
 const { sendInvoiceEmail } = require("../services/email.service");
+const RefundRequest = require("../models/RefundRequest");
+const Notification = require("../models/Notification");
+const { notifyAdmins } = require("../utils/notifyAdmins");
+
+// How long a buyer has to request a refund after purchase, and — same
+// number — how long the seller's Route transfer is held before it actually
+// moves into their linked-account balance. Keeping both on one env var means
+// the whole refund window is guaranteed reversal-free: as long as it's open,
+// the money hasn't left Tokun's main balance yet.
+const REFUND_WINDOW_HOURS = Number(process.env.REFUND_WINDOW_HOURS || 24);
+
+const fetch = (...args) =>
+  import("node-fetch").then(({ default: fetch }) => fetch(...args));
+
+function getRazorpayAuthHeader() {
+  return `Basic ${Buffer.from(
+    `${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`
+  ).toString("base64")}`;
+}
+
+// Seller's Route Linked Account, if they've onboarded and it's registered —
+// used to attach a transfers[] entry so the split happens at order time.
+async function getSellerLinkedAccountId(sellerId) {
+  const bankAccount = await BankAccount.findOne({
+    userId: sellerId,
+    routeStatus: "CREATED",
+    routeLinkedAccountId: { $ne: null },
+  }).sort({ default: -1, createdAt: -1 });
+
+  return bankAccount?.routeLinkedAccountId || null;
+}
+
+async function fetchTransfersForPayment(paymentId) {
+  const res = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}/transfers`, {
+    headers: { Authorization: getRazorpayAuthHeader() },
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const err = new Error(data?.error?.description || `Fetch transfers failed: ${res.status}`);
+    err.razorpay = data;
+    throw err;
+  }
+  return data;
+}
+
+// GET /api/purchase/seller-payout-status/:promptId
+// Buyer-facing check — lets the frontend disable "Buy Now" before the buyer
+// even attempts checkout, instead of failing later.
+router.get("/seller-payout-status/:promptId", async (req, res) => {
+  try {
+    const { promptId } = req.params;
+
+    const prompt = await Prompt.findById(promptId).select("userId");
+    if (!prompt) {
+      return res.status(404).json({ success: false, error: "prompt_not_found" });
+    }
+
+    const linkedAccountId = await getSellerLinkedAccountId(prompt.userId);
+
+    return res.json({
+      success: true,
+      hasPayoutSetup: Boolean(linkedAccountId),
+    });
+  } catch (err) {
+    console.error("seller-payout-status error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
 
 // POST /api/purchase/create-order/:promptId
-router.post("/create-order/:promptId", requireAuth, requireKycVerified, async (req, res) => {
+// KYC is only needed by SELLERS (for payouts), not buyers — so purchasing no
+// longer requires requireKycVerified.
+router.post("/create-order/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemberPurchase, async (req, res) => {
   try {
     const { promptId } = req.params;
 
@@ -413,13 +487,38 @@ router.post("/create-order/:promptId", requireAuth, requireKycVerified, async (r
       });
     }
 
+    const seller = await User.findById(prompt.userId).select("sellerStatus isDeleted");
+    if (!seller || seller.isDeleted || seller.sellerStatus === "SUSPENDED") {
+      return res.status(403).json({
+        success: false,
+        error: "seller_suspended",
+      });
+    }
+
     const amount = Math.round(prompt.tokun_price * 100);
 
     const shortReceipt = `tokun_p${prompt._id
       .toString()
       .slice(-6)}u${req.user._id.toString().slice(-6)}`;
 
-    const order = await Razorpay.orders.create({
+    // If the seller has a registered Route Linked Account, attach a transfer
+    // for their share (price, net of Tokun's commission). Sellers without
+    // one yet fall back to the existing Wallet-ledger path.
+    const linkedAccountId = await getSellerLinkedAccountId(prompt.userId);
+
+    // Prompts uploaded after the Route-onboarding-first flow shipped require
+    // an activated linked account to be purchasable at all — mirrors the
+    // same gate GET /others uses to hide them from the marketplace feed, so
+    // a direct/cart link can't bypass it. Older prompts (flag defaults
+    // false) still fall back to the Wallet ledger, same as always.
+    if (prompt.requiresSellerVerification && !linkedAccountId) {
+      return res.status(403).json({
+        success: false,
+        error: "seller_not_verified",
+      });
+    }
+
+    const orderPayload = {
       amount,
       currency: "INR",
       receipt: shortReceipt,
@@ -429,7 +528,25 @@ router.post("/create-order/:promptId", requireAuth, requireKycVerified, async (r
         promptId: String(prompt._id),
         userId: String(req.user._id),
       },
-    });
+    };
+
+    if (linkedAccountId) {
+      orderPayload.transfers = [
+        {
+          account: linkedAccountId,
+          amount: Math.round(prompt.price * 100),
+          currency: "INR",
+          // Held for the same duration as the buyer's refund window — the
+          // money only actually lands in the seller's linked-account balance
+          // once it's no longer refundable, so an approved refund inside the
+          // window never needs a transfer reversal.
+          on_hold: 1,
+          on_hold_until: Math.floor(Date.now() / 1000) + REFUND_WINDOW_HOURS * 3600,
+        },
+      ];
+    }
+
+    const order = await Razorpay.orders.create(orderPayload);
 
     return res.json({
       success: true,
@@ -452,7 +569,7 @@ router.post("/create-order/:promptId", requireAuth, requireKycVerified, async (r
 
 
 // POST /api/purchase/verify/:promptId
-router.post("/verify/:promptId", requireAuth, async (req, res) => {
+router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemberPurchase, async (req, res) => {
   try {
     const { promptId } = req.params;
 
@@ -469,6 +586,14 @@ router.post("/verify/:promptId", requireAuth, async (req, res) => {
       return res.status(404).json({
         success: false,
         error: "prompt_not_found",
+      });
+    }
+
+    const seller = await User.findById(prompt.userId).select("sellerStatus isDeleted");
+    if (!seller || seller.isDeleted || seller.sellerStatus === "SUSPENDED") {
+      return res.status(403).json({
+        success: false,
+        error: "seller_suspended",
       });
     }
 
@@ -556,21 +681,40 @@ router.post("/verify/:promptId", requireAuth, async (req, res) => {
       });
     }
 
-    // Credit seller wallet
+    // If Route already moved the money (order had a transfer attached
+    // because the seller was registered at create-order time), don't ALSO
+    // credit the Wallet ledger — that would double-pay the seller.
+    let routeTransferId = null;
     try {
-      await Wallet.creditSale(sellerId, prompt.price, {
-        purchaseId: purchase._id,
-        promptId: prompt._id,
-        promptTitle: prompt.title,
-      });
-    } catch (walletErr) {
-      console.error("Wallet credit failed:", walletErr);
+      const transfersResp = await fetchTransfersForPayment(razorpayPaymentId);
+      routeTransferId = transfersResp?.items?.[0]?.id || null;
+    } catch (routeErr) {
+      // Not fatal — either the seller wasn't on Route yet (no transfer to
+      // find) or the lookup failed; the Wallet fallback below still pays
+      // the seller correctly either way.
+      console.error("Route transfer lookup failed (falling back to Wallet):", routeErr?.message);
+    }
 
-      return res.status(500).json({
-        success: false,
-        error: "wallet_credit_failed",
-        message: walletErr.message,
-      });
+    if (routeTransferId) {
+      purchase.routeTransferId = routeTransferId;
+      await purchase.save();
+    } else {
+      // Fallback: seller hasn't onboarded to Route yet.
+      try {
+        await Wallet.creditSale(sellerId, prompt.price, {
+          purchaseId: purchase._id,
+          promptId: prompt._id,
+          promptTitle: prompt.title,
+        });
+      } catch (walletErr) {
+        console.error("Wallet credit failed:", walletErr);
+
+        return res.status(500).json({
+          success: false,
+          error: "wallet_credit_failed",
+          message: walletErr.message,
+        });
+      }
     }
 
     // Record Tokun's commission cut for this sale (non-fatal — purchase already succeeded)
@@ -694,6 +838,139 @@ router.get("/history", requireAuth, async (req, res) => {
 });
 
 
+// Admin-only. Local guard mirroring sellerRoutes.js — requireAuth sets
+// req.isAdmin from the admin JWT; this just rejects non-admins.
+function requireAdmin(req, res, next) {
+  if (!req.isAdmin) {
+    return res.status(403).json({ success: false, error: "forbidden" });
+  }
+  next();
+}
+
+// GET /api/purchase/admin/user/:userId
+// Itemized "bought" list for ANY user, for the admin user-profile view.
+// Keyed by the :userId param (unlike /history which is the logged-in buyer),
+// so it's admin-gated. Powers the "Purchased Prompts" section of a user's
+// admin profile — the counts/totals already come from GET /api/seller/:id.
+router.get("/admin/user/:userId", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ success: false, error: "invalid_user_id" });
+    }
+
+    const purchases = await Purchase.find({
+      buyer: userId,
+      paymentStatus: { $ne: "FAILED" },
+    })
+      .sort({ purchasedAt: -1 })
+      .populate("prompt", "title price free deleted")
+      .lean();
+
+    // Fall back to the snapshot title so prompts deleted after purchase still
+    // show up (that's exactly the kind of thing an admin wants to see).
+    const items = purchases.map((p) => ({
+      id: String(p._id),
+      promptId: String(p.prompt?._id || p.prompt || ""),
+      title: p.prompt?.title || p.promptSnapshot?.title || "Untitled Prompt",
+      pricePaid: Number(p.pricePaid || 0),
+      paymentStatus: p.paymentStatus,
+      refundStatus: p.refundStatus,
+      purchasedAt: p.purchasedAt || p.createdAt,
+      deleted: !!p.prompt?.deleted,
+    }));
+
+    const totalSpent = items
+      .filter((i) => i.paymentStatus === "SUCCESS")
+      .reduce((sum, i) => sum + i.pricePaid, 0);
+
+    return res.json({
+      success: true,
+      count: items.length,
+      totalSpent,
+      purchases: items,
+    });
+  } catch (err) {
+    console.error("GET /api/purchase/admin/user/:userId error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+// POST /api/purchase/:purchaseId/refund-request
+// Buyer files a refund request with a reason, within REFUND_WINDOW_HOURS of
+// the purchase. Admin reviews it separately (server/routes/adminRefunds.js).
+router.post("/:purchaseId/refund-request", requireAuth, async (req, res) => {
+  try {
+    const { purchaseId } = req.params;
+    const reason = String(req.body?.reason || "").trim();
+
+    if (!reason) {
+      return res.status(400).json({ success: false, error: "reason_required" });
+    }
+
+    const purchase = await Purchase.findOne({ _id: purchaseId, buyer: req.user._id }).populate(
+      "prompt",
+      "title userId"
+    );
+
+    if (!purchase) {
+      return res.status(404).json({ success: false, error: "purchase_not_found" });
+    }
+
+    if (purchase.refundStatus !== "NONE") {
+      return res.status(400).json({ success: false, error: "refund_already_" + purchase.refundStatus.toLowerCase() });
+    }
+
+    const purchasedAt = new Date(purchase.purchasedAt || purchase.createdAt).getTime();
+    const windowMs = REFUND_WINDOW_HOURS * 3600 * 1000;
+    if (Date.now() - purchasedAt > windowMs) {
+      return res.status(400).json({ success: false, error: "refund_window_expired" });
+    }
+
+    if (!purchase.prompt || !purchase.prompt.userId) {
+      return res.status(400).json({ success: false, error: "seller_missing" });
+    }
+
+    const refundRequest = await RefundRequest.create({
+      purchase: purchase._id,
+      buyer: req.user._id,
+      seller: purchase.prompt.userId,
+      prompt: purchase.prompt._id,
+      reason,
+      refundAmount: purchase.pricePaid,
+    });
+
+    purchase.refundStatus = "REQUESTED";
+    await purchase.save();
+
+    await notifyAdmins({
+      type: "ADMIN_REFUND_REQUESTED",
+      promptId: purchase.prompt._id,
+      message: `Refund requested for "${purchase.prompt.title}" by ${req.user.name || req.user.email}: ${reason}`,
+      meta: { refundRequestId: refundRequest._id, purchaseId: purchase._id },
+    });
+
+    return res.json({ success: true, refundRequest });
+  } catch (err) {
+    console.error("refund-request error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+// GET /api/purchase/refund-requests/mine — buyer's own refund request history
+router.get("/refund-requests/mine", requireAuth, async (req, res) => {
+  try {
+    const refundRequests = await RefundRequest.find({ buyer: req.user._id })
+      .populate("prompt", "title")
+      .sort({ createdAt: -1 });
+    return res.json({ success: true, refundRequests });
+  } catch (err) {
+    console.error("refund-requests/mine error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
 // GET /api/purchase/analytics/sales
 router.get("/analytics/sales", async (req, res) => {
   try {
@@ -727,6 +1004,210 @@ router.get("/analytics/sales", async (req, res) => {
       success: false,
       error: "server_error",
     });
+  }
+});
+
+// GET /api/purchase/analytics/sales-by-category?months=6
+// Monthly sales count broken down by prompt category — capped to the top N
+// categories (by total sales in-range) plus an "Other" bucket, since this
+// platform has 20+ categories and a chart can't show that many series at once.
+router.get("/analytics/sales-by-category", async (req, res) => {
+  try {
+    const TOP_N = 6;
+    const monthsBack = Math.max(1, Math.min(24, parseInt(req.query.months, 10) || 6));
+
+    const since = new Date();
+    since.setMonth(since.getMonth() - (monthsBack - 1));
+    since.setDate(1);
+    since.setHours(0, 0, 0, 0);
+
+    const raw = await Purchase.aggregate([
+      { $match: { paymentStatus: "SUCCESS", createdAt: { $gte: since } } },
+      {
+        $lookup: {
+          from: "prompts",
+          localField: "prompt",
+          foreignField: "_id",
+          as: "promptDoc",
+        },
+      },
+      { $unwind: "$promptDoc" },
+      { $addFields: { categoryId: { $arrayElemAt: ["$promptDoc.categories", 0] } } },
+      {
+        $group: {
+          _id: {
+            year: { $year: "$createdAt" },
+            month: { $month: "$createdAt" },
+            categoryId: "$categoryId",
+          },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const categoryIds = [...new Set(raw.map((r) => r._id.categoryId).filter(Boolean).map(String))];
+    const categoryDocs = await Category.find({ _id: { $in: categoryIds } }).select("name");
+    const categoryNameById = new Map(categoryDocs.map((c) => [String(c._id), c.name]));
+    const nameFor = (id) => categoryNameById.get(String(id)) || "Uncategorized";
+
+    // Totals across the whole range decide which categories are "top" —
+    // not per-month totals, so the top-N set stays stable month to month.
+    const totalsByCategory = new Map();
+    for (const r of raw) {
+      const name = nameFor(r._id.categoryId);
+      totalsByCategory.set(name, (totalsByCategory.get(name) || 0) + r.count);
+    }
+
+    const topCategories = [...totalsByCategory.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, TOP_N)
+      .map(([name]) => name);
+    const topSet = new Set(topCategories);
+    const hasOther = totalsByCategory.size > topCategories.length;
+
+    // Month buckets across the full range, including months with zero sales.
+    const monthKeys = [];
+    const monthLabels = new Map();
+    const cursor = new Date(since);
+    for (let i = 0; i < monthsBack; i++) {
+      const key = `${cursor.getFullYear()}-${cursor.getMonth() + 1}`;
+      monthKeys.push(key);
+      monthLabels.set(key, cursor.toLocaleDateString("en-US", { month: "short", year: "numeric" }));
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    const rows = new Map(monthKeys.map((k) => [k, { month: monthLabels.get(k) }]));
+    for (const r of raw) {
+      const key = `${r._id.year}-${r._id.month}`;
+      const row = rows.get(key);
+      if (!row) continue;
+      const name = nameFor(r._id.categoryId);
+      const bucket = topSet.has(name) ? name : "Other";
+      row[bucket] = (row[bucket] || 0) + r.count;
+    }
+
+    return res.json({
+      success: true,
+      categories: hasOther ? [...topCategories, "Other"] : topCategories,
+      data: monthKeys.map((k) => rows.get(k)),
+    });
+  } catch (err) {
+    console.error("Sales-by-category analytics error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+// Shared by the two trend endpoints below — builds { key -> label } month
+// buckets so months with zero activity still show up as a 0 in the chart.
+function buildMonthBuckets(monthsBack) {
+  const since = new Date();
+  since.setMonth(since.getMonth() - (monthsBack - 1));
+  since.setDate(1);
+  since.setHours(0, 0, 0, 0);
+
+  const keys = [];
+  const labels = new Map();
+  const cursor = new Date(since);
+  for (let i = 0; i < monthsBack; i++) {
+    const key = `${cursor.getFullYear()}-${cursor.getMonth() + 1}`;
+    keys.push(key);
+    labels.set(key, cursor.toLocaleDateString("en-US", { month: "short", year: "numeric" }));
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return { since, keys, labels };
+}
+
+// GET /api/purchase/analytics/seller-trends?months=6
+// Real seller-side signal: money actually paid out to sellers (revenue minus
+// platform commission) and how many distinct sellers made at least one sale
+// that month — NOT the same platform-wide revenue/count pair shown before.
+router.get("/analytics/seller-trends", async (req, res) => {
+  try {
+    const monthsBack = Math.max(1, Math.min(24, parseInt(req.query.months, 10) || 6));
+    const { since, keys, labels } = buildMonthBuckets(monthsBack);
+
+    const raw = await Purchase.aggregate([
+      { $match: { paymentStatus: "SUCCESS", createdAt: { $gte: since } } },
+      {
+        $lookup: {
+          from: "prompts",
+          localField: "prompt",
+          foreignField: "_id",
+          as: "promptDoc",
+        },
+      },
+      { $unwind: "$promptDoc" },
+      {
+        $group: {
+          _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
+          earnings: { $sum: { $subtract: ["$pricePaid", { $ifNull: ["$platformCommission", 0] }] } },
+          sellerIds: { $addToSet: "$promptDoc.userId" },
+        },
+      },
+    ]);
+
+    const byKey = new Map(raw.map((r) => [`${r._id.year}-${r._id.month}`, r]));
+
+    return res.json({
+      success: true,
+      data: keys.map((k) => {
+        const r = byKey.get(k);
+        return {
+          month: labels.get(k),
+          sellerEarnings: r ? Math.round(r.earnings) : 0,
+          activeSellers: r ? r.sellerIds.length : 0,
+        };
+      }),
+    });
+  } catch (err) {
+    console.error("Seller trends analytics error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+// GET /api/purchase/analytics/user-trends?months=6
+// Real user-side signal: new signups and total buyer spend per month —
+// distinct from the seller-trends numbers above, not a relabeled duplicate.
+router.get("/analytics/user-trends", async (req, res) => {
+  try {
+    const monthsBack = Math.max(1, Math.min(24, parseInt(req.query.months, 10) || 6));
+    const { since, keys, labels } = buildMonthBuckets(monthsBack);
+
+    const [signupsRaw, spendRaw] = await Promise.all([
+      User.aggregate([
+        { $match: { createdAt: { $gte: since } } },
+        {
+          $group: {
+            _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+      Purchase.aggregate([
+        { $match: { paymentStatus: "SUCCESS", createdAt: { $gte: since } } },
+        {
+          $group: {
+            _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
+            totalSpend: { $sum: "$pricePaid" },
+          },
+        },
+      ]),
+    ]);
+
+    const signupsByKey = new Map(signupsRaw.map((r) => [`${r._id.year}-${r._id.month}`, r.count]));
+    const spendByKey = new Map(spendRaw.map((r) => [`${r._id.year}-${r._id.month}`, r.totalSpend]));
+
+    return res.json({
+      success: true,
+      data: keys.map((k) => ({
+        month: labels.get(k),
+        newSignups: signupsByKey.get(k) || 0,
+        totalSpend: Math.round(spendByKey.get(k) || 0),
+      })),
+    });
+  } catch (err) {
+    console.error("User trends analytics error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
   }
 });
 

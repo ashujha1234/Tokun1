@@ -3,10 +3,11 @@ const express = require("express");
 const router = express.Router();
 const fs = require("fs");
 const path = require("path");
-const { requireAuth } = require("../utils/auth"); // your JWT middleware
+const { requireAuth, blockIfSuspended, blockOrgTeamMemberPurchase } = require("../utils/auth"); // your JWT middleware
 const Cart=require('../models/Cart');
 const user=require('../models/User');
 const Prompt=require('../models/Prompt');
+const BankAccount = require("../models/BankAccount");
 const  razorpay  = require("../utils/razorpay");
 const { route } = require("./authRoutes");
 const { generateInvoicePDF } = require("../services/invoice.service");
@@ -137,7 +138,7 @@ router.delete("/remove/:promptId", requireAuth, async (req, res) => {
 
 
 // POST /api/cart/checkout
-router.post("/checkout", requireAuth, async (req, res) => {
+router.post("/checkout", requireAuth, blockIfSuspended, blockOrgTeamMemberPurchase, async (req, res) => {
   try {
     let cart = await Cart.findOne({ user: req.user._id }).populate("items.prompt");
     if (!cart || cart.items.length === 0) {
@@ -160,6 +161,23 @@ router.post("/checkout", requireAuth, async (req, res) => {
       // block if exclusive already sold
       if (p.exclusive && p.sold) {
         return res.status(400).json({ success: false, error: `prompt_already_sold: ${p.title}` });
+      }
+
+      // Same gate as the marketplace feed and single-prompt checkout — a
+      // prompt requiring seller verification can't be bought via cart either,
+      // even if it was added before the seller's account status changed.
+      if (p.requiresSellerVerification) {
+        const activeAccount = await BankAccount.findOne({
+          userId: p.userId,
+          routeStatus: "CREATED",
+          routeLinkedAccountId: { $ne: null },
+        });
+        if (!activeAccount) {
+          return res.status(403).json({
+            success: false,
+            error: `seller_not_verified: ${p.title}`,
+          });
+        }
       }
 
       totalAmount += p.tokun_price * 100; // Razorpay in paise
@@ -194,7 +212,7 @@ router.post("/checkout", requireAuth, async (req, res) => {
 });
 
 // POST /api/cart/verify
-router.post("/verify", requireAuth, async (req, res) => {
+router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
   try {
     const { razorpayPaymentId, razorpayOrderId, razorpaySignature, pricePaid } = req.body;
 

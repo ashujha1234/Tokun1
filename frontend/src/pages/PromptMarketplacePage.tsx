@@ -5807,6 +5807,7 @@ import { ShoppingCart } from "lucide-react";
 import KycGateModal from "@/components/KycGateModal";
 import { useCart } from "@/contexts/CartContext";
 import SellPromptModal from "@/components/SellPromptModal";
+import SellerLinkedAccountForm from "@/components/SellerLinkedAccountForm";
 import "./PromptMarketplace.css";
 
 type Prompt = {
@@ -5859,6 +5860,7 @@ function VideoReelCard({
   isPurchased,
   isOwn,
   isPlaying,
+  hasPayoutSetup,
   onVideoPlay,
   onAddToCart,
   onBuyNow,
@@ -5869,6 +5871,7 @@ function VideoReelCard({
   isPurchased: boolean;
   isOwn: boolean;
   isPlaying: boolean;
+  hasPayoutSetup?: boolean;
   onVideoPlay: (id: string | number) => void;
   onAddToCart: (id: string | number) => void;
   onBuyNow: (p: any) => void;
@@ -5990,12 +5993,23 @@ function VideoReelCard({
             {/* Action buttons */}
             {!isPurchased && !isOwn && !prompt.isFree && (
               <div className="reel-card__actions">
-                <button
-                  className="reel-card__btn reel-card__btn--buy"
-                  onClick={() => { setShowPanel(false); onBuyNow(prompt); }}
-                >
-                  Buy Now
-                </button>
+                {hasPayoutSetup === false ? (
+                  <button
+                    type="button"
+                    disabled
+                    title="This seller hasn't set up their payout account yet."
+                    className="reel-card__btn reel-card__btn--buy opacity-50 cursor-not-allowed"
+                  >
+                    Seller setup pending
+                  </button>
+                ) : (
+                  <button
+                    className="reel-card__btn reel-card__btn--buy"
+                    onClick={() => { setShowPanel(false); onBuyNow(prompt); }}
+                  >
+                    Buy Now
+                  </button>
+                )}
                 <button
                   className="reel-card__btn reel-card__btn--cart"
                   onClick={() => onAddToCart(prompt.id)}
@@ -6454,7 +6468,7 @@ const LibHeroBanner = ({
 
     <button
       onClick={() => navigate("/self-dash?tab=prompts&p=purchased")}
-      className="absolute top-5 right-5 flex items-center gap-2 text-[12px] font-medium text-white px-4 py-2 rounded-full hover:bg-white/10 transition-colors"
+      className="absolute top-5 right-5 z-20 flex items-center gap-2 text-[12px] font-medium text-white px-4 py-2 rounded-full hover:bg-white/10 transition-colors cursor-pointer"
       style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.25)", backdropFilter: "blur(6px)" }}
     >
       <History className="h-3.5 w-3.5" />
@@ -6582,6 +6596,7 @@ const LibOldStyleCard = ({
   isPurchased,
   isOwn,
   isPlaying,
+  hasPayoutSetup,
   onVideoPlay,
   onAddToCart,
   onBuyNow,
@@ -6593,6 +6608,7 @@ const LibOldStyleCard = ({
   isPurchased: boolean;
   isOwn: boolean;
   isPlaying: boolean;
+  hasPayoutSetup?: boolean;
   onVideoPlay: (id: string | number) => void;
   onAddToCart: (id: string | number) => void;
   onBuyNow: (p: Prompt) => void;
@@ -6691,12 +6707,23 @@ const LibOldStyleCard = ({
               )}
 
               {!isOwn && !isPurchased && !(prompt.exclusive && prompt.sold) && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); onBuyNow(prompt); }}
-                  className="mp-card__pill mp-card__pill--buy"
-                >
-                  Buy Now
-                </button>
+                hasPayoutSetup === false ? (
+                  <button
+                    type="button"
+                    disabled
+                    title="This seller hasn't set up their payout account yet."
+                    className="mp-card__pill mp-card__pill--buy opacity-50 cursor-not-allowed"
+                  >
+                    Seller setup pending
+                  </button>
+                ) : (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onBuyNow(prompt); }}
+                    className="mp-card__pill mp-card__pill--buy"
+                  >
+                    Buy Now
+                  </button>
+                )
               )}
             </>
           )}
@@ -7085,6 +7112,10 @@ const [apiCategories, setApiCategories] = useState<{ name: string; previewImage?
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // promptId -> does its seller have a Route payout account set up? Missing
+  // key = not checked yet (Buy Now stays enabled while the check is in flight).
+  const [sellerPayoutMap, setSellerPayoutMap] = useState<Record<string, boolean>>({});
+
   // IDs of prompts user already owns
   const [purchasedPrompts, setPurchasedPrompts] = useState<string[]>([]);
 
@@ -7096,6 +7127,7 @@ const [apiCategories, setApiCategories] = useState<{ name: string; previewImage?
   const [detailsPrompt, setDetailsPrompt] = useState<any>(null);
   const browseRef = useRef<HTMLDivElement>(null);
   const [sellOpen, setSellOpen] = useState(false);
+  const [sellerFormOpen, setSellerFormOpen] = useState(false);
   // top-level state (near other state)
 const [saveForPromptId, setSaveForPromptId] = useState<string | null>(null);
 const [saveForPrompt, setSaveForPrompt] = useState<Prompt | null>(null);
@@ -7269,6 +7301,45 @@ const [buyerName, setBuyerName] = useState<string>("");
 
   loadCategories();
 }, []);
+
+// Check which of the currently-listed prompts' sellers have a Route payout
+// account set up — drives the Buy Now disable + "Seller setup pending" state.
+useEffect(() => {
+  const idsToCheck = prompts
+    .map((p) => p.id)
+    .filter((id) => id && !(id in sellerPayoutMap));
+
+  if (idsToCheck.length === 0) return;
+
+  let cancelled = false;
+
+  (async () => {
+    const results = await Promise.all(
+      idsToCheck.map(async (id) => {
+        try {
+          const res = await fetch(`${PURCHASE_BASE}/seller-payout-status/${id}`);
+          const data = await res.json().catch(() => ({}));
+          return [id, Boolean(data?.hasPayoutSetup)] as const;
+        } catch {
+          // Network/server error — default to enabled rather than
+          // incorrectly blocking a purchase over a transient failure.
+          return [id, true] as const;
+        }
+      })
+    );
+
+    if (cancelled) return;
+    setSellerPayoutMap((prev) => {
+      const next = { ...prev };
+      for (const [id, hasPayoutSetup] of results) next[id] = hasPayoutSetup;
+      return next;
+    });
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [prompts, sellerPayoutMap]);
 
 useEffect(() => {
   let ticking = false;
@@ -7614,7 +7685,7 @@ const ensureKycVerified = async (promptToBuy?: Prompt) => {
 
   try {
     // const res = await fetch(`${API_BASE}/api/kyc/status`, {
-      const res = await  fetch(`http://localhost:5000/api/kyc/status` ,{
+      const res = await  fetch(`http://localhost:5002/api/kyc/status` ,{
       headers: { Authorization: `Bearer ${token}` },
       credentials: "include",
     });
@@ -7735,6 +7806,7 @@ const savePromptToCollections = async ({
       isPurchased={purchasedPrompts.includes(String(p.id))}
       isOwn={isOwnPrompt(p)}
       isPlaying={playingVideo === p.id}
+      hasPayoutSetup={sellerPayoutMap[p.id]}
       onVideoPlay={handleVideoPlay}
       onAddToCart={(id) => {
         addToCart(String(id));
@@ -8018,15 +8090,26 @@ const savePromptToCollections = async ({
                               isPurchased ? (
                                 <div className="mp-card__pill mp-card__pill--owned">Purchased</div>
                               ) : !(prompt.exclusive && prompt.sold) ? (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handlePurchase(prompt);
-                                  }}
-                                  className="mp-card__pill mp-card__pill--buy"
-                                >
-                                  Buy Now
-                                </button>
+                                sellerPayoutMap[prompt.id] === false ? (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    title="This seller hasn't set up their payout account yet."
+                                    className="mp-card__pill mp-card__pill--buy opacity-50 cursor-not-allowed"
+                                  >
+                                    Seller setup pending
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handlePurchase(prompt);
+                                    }}
+                                    className="mp-card__pill mp-card__pill--buy"
+                                  >
+                                    Buy Now
+                                  </button>
+                                )
                               ) : null
                             )}
                           </>
@@ -8156,7 +8239,7 @@ const savePromptToCollections = async ({
           <LibBrandIdentitySpotlight onExplore={() => navigate("/brand-prompts")} />
 
           <LibSellHireSection
-            onSell={() => setSellOpen(true)}
+            onSell={() => setSellerFormOpen(true)}
             onHire={() => navigate("/find-creators")}
           />
         </div>
@@ -8410,6 +8493,19 @@ const savePromptToCollections = async ({
         onOpenChange={setSellOpen}
         onPromptSubmitted={() => {}}
       />
+
+      {token && (
+        <SellerLinkedAccountForm
+          open={sellerFormOpen}
+          onClose={() => setSellerFormOpen(false)}
+          token={token}
+          apiBase={API_BASE}
+          onSubmitted={() => {
+            setSellerFormOpen(false);
+            setSellOpen(true);
+          }}
+        />
+      )}
 
     </div>
   );

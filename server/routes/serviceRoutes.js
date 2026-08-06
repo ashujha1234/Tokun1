@@ -112,7 +112,7 @@ const Notification = require("../models/Notification");
 const Message = require("../models/Message");
 const razorpay = require("../utils/razorpay");
 const upload = require("../utils/serviceUpload");
-const { requireAuth } = require("../utils/auth");
+const { requireAuth, blockIfSuspended } = require("../utils/auth");
 const uploadToAzure = require("../utils/uploadToAzure");
 const { generateInvoicePDF } = require("../services/invoice.service");
 const { sendInvoiceEmail } = require("../services/email.service");
@@ -157,6 +157,7 @@ const uploadNdaFile = multer({ storage: ndaStorage, limits: { fileSize: 20 * 102
 router.post(
   "/create",
   requireAuth,
+  blockIfSuspended,
   upload.array("media", 8),
   async (req, res) => {
     try {
@@ -256,7 +257,7 @@ router.get("/user/:userId", async (req, res) => {
 // Mirrors /api/hire/create-proposal: this only records the booking, it does
 // NOT create a Razorpay order yet — that happens later when the buyer clicks
 // "Pay Now" on the card inside chat (create-payment-order below).
-router.post("/:serviceId/book", requireAuth, async (req, res) => {
+router.post("/:serviceId/book", requireAuth, blockIfSuspended, async (req, res) => {
   try {
     const { serviceId } = req.params;
     const { note, preferredDate, conversationId } = req.body || {};
@@ -417,7 +418,7 @@ router.post("/orders/:orderId/upload-nda", requireAuth, uploadNdaFile.single("nd
 });
 
 /* ================= BOOK SERVICE — CREATE RAZORPAY ORDER (pay-now, in chat) ================= */
-router.post("/orders/:orderId/create-payment-order", requireAuth, async (req, res) => {
+router.post("/orders/:orderId/create-payment-order", requireAuth, blockIfSuspended, async (req, res) => {
   try {
     const order = await ServiceOrder.findById(req.params.orderId);
 
@@ -471,7 +472,7 @@ router.post("/orders/:orderId/create-payment-order", requireAuth, async (req, re
 });
 
 /* ================= BOOK SERVICE — VERIFY PAYMENT ================= */
-router.post("/orders/:orderId/verify-payment", requireAuth, async (req, res) => {
+router.post("/orders/:orderId/verify-payment", requireAuth, blockIfSuspended, async (req, res) => {
   try {
     const { orderId } = req.params;
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body || {};

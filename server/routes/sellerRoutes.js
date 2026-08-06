@@ -849,27 +849,93 @@ const router = express.Router();
 const User = require("../models/User");
 const Prompt = require("../models/Prompt");
 const Purchase = require("../models/Purchase");
+const HireDeal = require("../models/HireDeal");
+const BankAccount = require("../models/BankAccount");
+const Notification = require("../models/Notification");
+const { notifyAdmins } = require("../utils/notifyAdmins");
+const { requireAuth } = require("../utils/auth");
 
-// ✅ Replace with actual middleware if you have it
-const requireAuth = (req, res, next) => next();
-const requireAdmin = (req, res, next) => next();
+// When a seller gets suspended: auto-cancel their not-yet-paid hire deals
+// (no money involved, safe to automate) and flag any funded/in-progress
+// deals for an admin to manually review — a real Razorpay refund is a
+// financial action best left to a human decision, not an automatic one.
+async function cancelUnpaidDealsForSuspendedSeller(sellerId) {
+  const unpaidDeals = await HireDeal.find({
+    freelancerId: sellerId,
+    status: { $in: ["PENDING_ACCEPTANCE", "ACCEPTED_WAITING_PAYMENT"] },
+  });
+
+  for (const deal of unpaidDeals) {
+    deal.status = "CANCELLED";
+    deal.cancelledAt = new Date();
+    deal.cancelReason = "Seller account suspended by admin";
+    await deal.save();
+    await Notification.create({
+      receiverUserId: deal.clientId,
+      type: "HIRE_DEAL_CANCELLED_SUSPENSION",
+      hireDealId: deal._id,
+      message: "A hire deal was cancelled because the seller's account was suspended.",
+      meta: { dealId: deal._id, reason: "seller_suspended" },
+    });
+  }
+
+  const fundedDeals = await HireDeal.find({
+    freelancerId: sellerId,
+    fundsStatus: "HELD_BY_TOKUN",
+  }).select("_id clientId");
+
+  if (fundedDeals.length) {
+    await notifyAdmins({
+      type: "ADMIN_REVIEW_NEEDED",
+      message: `${fundedDeals.length} funded hire deal(s) need manual refund review — seller was just suspended.`,
+      meta: { sellerId, dealIds: fundedDeals.map((d) => String(d._id)) },
+    });
+  }
+
+  return { cancelledCount: unpaidDeals.length, fundedNeedingReviewCount: fundedDeals.length };
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.isAdmin) {
+    return res.status(403).json({ success: false, error: "forbidden" });
+  }
+  next();
+}
 
 /**
- * ✅ GET /api/seller?limit=4&page=1&search=
+ * GET /api/seller?limit=4&page=1&search=
  * Seller list + uploaded count + sold count + earning + buy count
+ *
+ * Deliberately public (no requireAuth/requireAdmin) — this is also the
+ * directory the public "Find Creators" page (frontend/src/pages/
+ * FindCreatorsPage.tsx) fetches for logged-out visitors. The `?deleted=true`
+ * admin-only view is gated separately below via requireAdmin on that param.
  */
-router.get("/", requireAuth, requireAdmin, async (req, res) => {
+router.get("/", async (req, res) => {
   try {
     const rawLimit = req.query.limit;
     const page = Math.max(parseInt(req.query.page || "1", 10), 1);
     const search = (req.query.search || "").toString().trim();
     const showDeleted = req.query.deleted === "true";
 
+    if (showDeleted && !req.isAdmin) {
+      return res.status(403).json({ success: false, error: "forbidden" });
+    }
+
     const limit =
       rawLimit === undefined ? 10 : Math.max(parseInt(rawLimit, 10), 0);
 
+    // A "seller" is a user who has actually uploaded at least one (non-deleted)
+    // prompt — without this, every registered user (buyers included) showed up
+    // here labeled as a seller.
+    const sellerIds = await Prompt.find({ deleted: { $ne: true } }).distinct("userId");
+
     const query = {
+      _id: { $in: sellerIds },
       isDeleted: showDeleted ? true : { $ne: true },
+      // Suspended sellers shouldn't be publicly discoverable/hireable either —
+      // same intent as hiding their listings from the marketplace feed.
+      ...(showDeleted ? {} : { sellerStatus: { $ne: "SUSPENDED" } }),
       ...(search
         ? {
             $or: [
@@ -882,7 +948,7 @@ router.get("/", requireAuth, requireAdmin, async (req, res) => {
 
     let q = User.find(query)
       .select(
-        "name email avatarUrl isVerified createdAt sellerStatus status location sellerRating sellerReviewsCount isDeleted deletedAt"
+        "name email avatarUrl isVerified createdAt sellerStatus status location sellerRating sellerReviewsCount isDeleted deletedAt plan userType orgId"
       )
       .sort({ createdAt: -1 })
       .lean();
@@ -1017,6 +1083,16 @@ router.get("/", requireAuth, requireAdmin, async (req, res) => {
       ])
     );
 
+    // Whether each seller has an ACTIVATED Razorpay linked account — used by
+    // the admin dashboard's "Pending Approval" seller count (a seller who's
+    // uploaded prompts but hasn't finished payout verification yet).
+    const bankAccounts = await BankAccount.find({ userId: { $in: userIds } })
+      .select("userId activationStatus")
+      .lean();
+    const activatedSellerIds = new Set(
+      bankAccounts.filter((b) => b.activationStatus === "ACTIVATED").map((b) => String(b.userId))
+    );
+
     const mapped = sellers.map((s) => {
       const id = String(s._id);
       const sales = salesMap.get(id) || {
@@ -1041,6 +1117,15 @@ router.get("/", requireAuth, requireAdmin, async (req, res) => {
         location: s.location || null,
         isDeleted: !!s.isDeleted,
         deletedAt: s.deletedAt || null,
+
+        // For the "Plan" column — userType lets the UI show Enterprise for
+        // org owners/team members (whose `plan` field is null).
+        plan: s.plan ?? null,
+        userType: s.userType || "IND",
+
+        // Pending approval = seller has uploaded prompts but hasn't finished
+        // Razorpay payout verification yet.
+        linkedAccountActivated: activatedSellerIds.has(id),
 
         // ✅ Seller/upload stats
         totalProducts: uploadedMap.get(id) || 0,
@@ -1204,6 +1289,10 @@ router.get("/:sellerId", requireAuth, requireAdmin, async (req, res) => {
         refundThreshold: seller.sellerRefundThreshold || 5,
         isDeleted: !!seller.isDeleted,
 
+        // For the "Plan" indicator on the profile.
+        plan: seller.plan ?? null,
+        userType: seller.userType || "IND",
+
         // ✅ Uploaded/sell stats
         totalProducts: uploadedCount,
         totalUploadedPrompts: uploadedCount,
@@ -1264,12 +1353,28 @@ router.patch("/:sellerId/status", requireAuth, requireAdmin, async (req, res) =>
       });
     }
 
+    await Notification.create({
+      receiverUserId: updated._id,
+      type: status === "SUSPENDED" ? "SELLER_SUSPENDED" : "SELLER_UNSUSPENDED",
+      message:
+        status === "SUSPENDED"
+          ? "Your account has been suspended by an admin. You've been logged out and can no longer sell on the platform."
+          : "Your account has been reactivated. You can sell on the platform again.",
+      meta: { adminAction: status === "SUSPENDED" ? "suspended" : "unsuspended" },
+    });
+
+    let cascade = null;
+    if (status === "SUSPENDED") {
+      cascade = await cancelUnpaidDealsForSuspendedSeller(sellerId);
+    }
+
     return res.json({
       success: true,
       seller: {
         _id: String(updated._id),
         status: updated.sellerStatus,
       },
+      cascade,
     });
   } catch (err) {
     console.error("PATCH /api/seller/:sellerId/status error:", err);
@@ -1318,12 +1423,28 @@ router.patch("/:sellerId/block", requireAuth, requireAdmin, async (req, res) => 
       });
     }
 
+    await Notification.create({
+      receiverUserId: updated._id,
+      type: newStatus === "SUSPENDED" ? "SELLER_SUSPENDED" : "SELLER_UNSUSPENDED",
+      message:
+        newStatus === "SUSPENDED"
+          ? "Your account has been suspended by an admin. You've been logged out and can no longer sell on the platform."
+          : "Your account has been reactivated. You can sell on the platform again.",
+      meta: { adminAction: action },
+    });
+
+    let cascade = null;
+    if (newStatus === "SUSPENDED") {
+      cascade = await cancelUnpaidDealsForSuspendedSeller(sellerId);
+    }
+
     return res.json({
       success: true,
       seller: {
         _id: String(updated._id),
         status: newStatus,
       },
+      cascade,
     });
   } catch (err) {
     console.error("PATCH /api/seller/:sellerId/block error:", err);
@@ -1365,8 +1486,11 @@ router.patch("/:sellerId/soft-delete", requireAuth, requireAdmin, async (req, re
             sellerStatus: "SUSPENDED",
           }
         : {
+            // Restoring must also lift the suspension that "delete" applied,
+            // otherwise the seller comes back marked SUSPENDED forever.
             isDeleted: false,
             deletedAt: null,
+            sellerStatus: "ACTIVE",
           };
 
     const updated = await User.findByIdAndUpdate(sellerId, updateFields, {
@@ -1380,6 +1504,21 @@ router.patch("/:sellerId/soft-delete", requireAuth, requireAdmin, async (req, re
       });
     }
 
+    await Notification.create({
+      receiverUserId: updated._id,
+      type: action === "delete" ? "SELLER_ACCOUNT_DELETED" : "SELLER_ACCOUNT_RESTORED",
+      message:
+        action === "delete"
+          ? "Your account has been removed by an admin. You've been logged out and your listings are no longer visible."
+          : "Your account has been restored by an admin. You can log in and sell again.",
+      meta: { adminAction: action },
+    });
+
+    let cascade = null;
+    if (action === "delete") {
+      cascade = await cancelUnpaidDealsForSuspendedSeller(sellerId);
+    }
+
     return res.json({
       success: true,
       seller: {
@@ -1387,6 +1526,7 @@ router.patch("/:sellerId/soft-delete", requireAuth, requireAdmin, async (req, re
         isDeleted: !!updated.isDeleted,
         status: updated.sellerStatus || "ACTIVE",
       },
+      cascade,
     });
   } catch (err) {
     console.error("PATCH /api/seller/:sellerId/soft-delete error:", err);

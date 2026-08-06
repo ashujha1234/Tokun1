@@ -44,6 +44,8 @@ import Wallet from "@/pages/Wallet";
 import WithdrawFunds from "@/pages/WithdrawFunds";
 import AddFunds from "@/pages/AddFunds";
 import EscrowAdminDashboard from "@/pages/EscrowAdminDashboard";
+import AdminNotificationsPage from "@/pages/AdminNotificationsPage";
+import AdminRefundsPage from "@/pages/AdminRefundsPage";
 
 import SelfDash from "@/pages/self-dash";
 import AdminForgotPassword from "./pages/AdminForgotPassword";
@@ -72,6 +74,14 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
+  return <>{children}</>;
+}
+
+function RequireAdminAuth({ children }: { children: React.ReactNode }) {
+  const token = localStorage.getItem("tokun_admin_token");
+  if (!token) {
+    return <Navigate to="/admin-login" replace />;
+  }
   return <>{children}</>;
 }
 // ...imports unchanged...
@@ -201,9 +211,11 @@ export default function App() {
 />
 <Route path="/admin-login" element={< AdminLogin/>} />
 <Route path="/admin-forgot-password" element={<AdminForgotPassword />} />
-<Route path="/admin/dashboard" element={<Dashboard />} />
+<Route path="/admin/dashboard" element={<RequireAdminAuth><Dashboard /></RequireAdminAuth>} />
 <Route path="/my-feedback" element={<MyFeedbackPage />} />
-<Route path="/admin/escrow" element={<EscrowAdminDashboard />} />
+<Route path="/admin/escrow" element={<RequireAdminAuth><EscrowAdminDashboard /></RequireAdminAuth>} />
+<Route path="/admin/notifications" element={<RequireAdminAuth><AdminNotificationsPage /></RequireAdminAuth>} />
+<Route path="/admin/refunds" element={<RequireAdminAuth><AdminRefundsPage /></RequireAdminAuth>} />
 
 <Route
   path="/purchases"

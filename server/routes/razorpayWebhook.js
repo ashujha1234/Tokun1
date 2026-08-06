@@ -12,6 +12,7 @@
 
 const crypto = require("crypto");
 const HireDeal = require("../models/HireDeal");
+const BankAccount = require("../models/BankAccount");
 
 function verifySignature(rawBody, signature, secret) {
   if (!signature || !secret) return false;
@@ -20,6 +21,29 @@ function verifySignature(rawBody, signature, secret) {
   const signatureBuf = Buffer.from(String(signature), "utf8");
   if (expectedBuf.length !== signatureBuf.length) return false;
   return crypto.timingSafeEqual(expectedBuf, signatureBuf);
+}
+
+const ACCOUNT_EVENT_TO_STATUS = {
+  "account.created": "CREATED",
+  "account.activated": "ACTIVATED",
+  "account.under_review": "UNDER_REVIEW",
+  "account.needs_clarification": "NEEDS_CLARIFICATION",
+  "account.suspended": "SUSPENDED",
+  "account.rejected": "REJECTED",
+};
+
+// Seller's Route Linked Account moved to a new verification state — this is
+// what actually gates prompt-marketplace listing (see Prompt.requiresSellerVerification).
+async function handleAccountStatusEvent(payload) {
+  const mappedStatus = ACCOUNT_EVENT_TO_STATUS[payload.event];
+  const accountId = payload?.payload?.account?.entity?.id;
+
+  if (!mappedStatus || !accountId) return;
+
+  await BankAccount.updateMany(
+    { routeLinkedAccountId: accountId },
+    { $set: { activationStatus: mappedStatus } }
+  );
 }
 
 async function handleRazorpayWebhook(req, res) {
@@ -33,6 +57,11 @@ async function handleRazorpayWebhook(req, res) {
     }
 
     const payload = JSON.parse(rawBody.toString("utf8"));
+
+    if (payload.event in ACCOUNT_EVENT_TO_STATUS) {
+      await handleAccountStatusEvent(payload);
+      return res.status(200).json({ received: true });
+    }
 
     if (payload.event !== "payment.captured") {
       // Not an event we act on (yet) — acknowledge so Razorpay stops retrying.

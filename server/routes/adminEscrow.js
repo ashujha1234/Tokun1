@@ -7,13 +7,23 @@ const HireDeal = require("../models/HireDeal");
 const Notification = require("../models/Notification");
 const Message = require("../models/Message");
 const { releaseEscrowToFreelancer, EscrowAlreadyReleasedError } = require("../services/escrowRelease.service");
+const { requireAuth } = require("../utils/auth");
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
+function requireAdmin(req, res, next) {
+  if (!req.isAdmin) {
+    return res.status(403).json({ success: false, error: "forbidden" });
+  }
+  next();
+}
 
+// Every route below handles escrow funds (release/refund) or exposes bank
+// details — must be admin-only.
+router.use(requireAuth, requireAdmin);
 
 // ════════════════════════════════════════════════════════════════════════════
 // GET /api/admin/escrow/deals

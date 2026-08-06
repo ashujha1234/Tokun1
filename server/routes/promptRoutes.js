@@ -652,9 +652,10 @@ const Purchase = require("../models/Purchase");
 const User = require("../models/User");
 const uploadToAzure = require("../utils/uploadToAzure");
 const Category = require("../models/Category");
-const { requireKycVerified } = require("../middleware/requireKycVerified");
-const { requireAuth } = require("../utils/auth");
+const BankAccount = require("../models/BankAccount");
+const { requireAuth, blockIfSuspended } = require("../utils/auth");
 const { logActivity } = require("../utils/activityLogger");
+const { runPromptMediaValidation } = require("../utils/promptMediaValidation");
 const crypto = require("crypto");
 const sharp = require("sharp");
 
@@ -693,7 +694,7 @@ const upload = multer({
 router.post(
   "/",
   requireAuth,
-  requireKycVerified,
+  blockIfSuspended,
   upload.fields([
     { name: "attachment", maxCount: 1 },
     { name: "uploadCode", maxCount: 10 },
@@ -745,6 +746,30 @@ router.post(
         return res.status(400).json({
           success: false,
           error: "only_image_or_video_allowed",
+        });
+      }
+
+      // Duplicate check — same prompt text OR same attachment file (by
+      // content hash) already listed by ANY seller. Checked before
+      // watermarking/uploading to Azure so a rejected upload doesn't waste
+      // that work. Hash the raw original buffer (not the watermarked
+      // output), since two uploads of the same source file should always
+      // match regardless of watermark processing.
+      const promptHash = makePromptHash(promptText);
+      const attachmentHash = crypto.createHash("sha256").update(file.buffer).digest("hex");
+
+      const duplicate = await Prompt.findOne({
+        $or: [{ promptHash }, { attachmentHash }],
+      });
+
+      if (duplicate) {
+        return res.status(409).json({
+          success: false,
+          error: "duplicate_content",
+          message:
+            duplicate.promptHash === promptHash
+              ? "This exact prompt text has already been listed on the marketplace."
+              : "This exact image/video has already been listed on the marketplace.",
         });
       }
 
@@ -841,8 +866,24 @@ router.post(
         categories: categoryIds,
         attachment,
         uploadCode,
-        promptHash: makePromptHash(promptText),
+        promptHash,
+        attachmentHash,
+        // New uploads only stay hidden from the marketplace until the
+        // seller's Route Linked Account is verified — older prompts (this
+        // flag defaults false) are grandfathered in and unaffected.
+        requiresSellerVerification: true,
+        // mediaValidation.status starts "pending" (schema default) — also
+        // gates marketplace visibility until the async check below resolves
+        // it to approved/pending_review/flagged.
       });
+
+      // Fire-and-forget — GPT-4o Vision + embeddings calls (and, for video,
+      // an ffmpeg frame-extraction pass) take too long to hold the seller's
+      // upload response open for. The prompt is already saved with
+      // mediaValidation.status "pending"; this updates it in place once done.
+      runPromptMediaValidation(prompt._id).catch((err) =>
+        console.error("Prompt media validation kickoff failed:", prompt._id.toString(), err.message)
+      );
 
       await logActivity({
         type: "PRODUCT_APPROVED",
@@ -867,6 +908,132 @@ router.post(
         success: false,
         error: "server_error",
       });
+    }
+  }
+);
+
+/* =====================================================================
+   PUT /:id/resubmit — seller fixes a prompt after admin requested an edit.
+   Only usable while mediaValidation.status === "edit_requested" — this is
+   NOT a general-purpose "edit any prompt anytime" endpoint. Accepts a new
+   title/description/promptText and/or a replacement attachment; re-runs
+   the media-match validation pipeline from scratch on whatever changed.
+   ===================================================================== */
+router.put(
+  "/:id/resubmit",
+  requireAuth,
+  blockIfSuspended,
+  upload.fields([{ name: "attachment", maxCount: 1 }]),
+  async (req, res) => {
+    try {
+      const prompt = await Prompt.findOne({ _id: req.params.id, userId: req.user._id });
+
+      if (!prompt) {
+        return res.status(404).json({ success: false, error: "prompt_not_found_or_access_denied" });
+      }
+
+      if (prompt.mediaValidation?.status !== "edit_requested") {
+        return res.status(403).json({
+          success: false,
+          error: "not_editable",
+          message: "This prompt isn't open for editing — it's only editable after an admin specifically requests changes.",
+        });
+      }
+
+      const { title, description, promptText } = req.body;
+
+      if (title !== undefined) prompt.title = title;
+      if (description !== undefined) prompt.description = description;
+
+      let newPromptHash = prompt.promptHash;
+      if (promptText !== undefined && promptText !== prompt.promptText) {
+        prompt.promptText = promptText;
+        newPromptHash = makePromptHash(promptText);
+      }
+
+      let newAttachmentHash = prompt.attachmentHash;
+      const file = req.files?.attachment?.[0];
+
+      if (file) {
+        const fileType = file.mimetype.startsWith("image/")
+          ? "image"
+          : file.mimetype.startsWith("video/")
+          ? "video"
+          : null;
+
+        if (!fileType) {
+          return res.status(400).json({ success: false, error: "only_image_or_video_allowed" });
+        }
+
+        newAttachmentHash = crypto.createHash("sha256").update(file.buffer).digest("hex");
+      }
+
+      // Duplicate check against every OTHER prompt (not this one) — same
+      // rule as creation: no two prompts share text or media, marketplace-wide.
+      const duplicate = await Prompt.findOne({
+        _id: { $ne: prompt._id },
+        $or: [{ promptHash: newPromptHash }, { attachmentHash: newAttachmentHash }],
+      });
+
+      if (duplicate) {
+        return res.status(409).json({
+          success: false,
+          error: "duplicate_content",
+          message:
+            duplicate.promptHash === newPromptHash
+              ? "This exact prompt text has already been listed on the marketplace."
+              : "This exact image/video has already been listed on the marketplace.",
+        });
+      }
+
+      prompt.promptHash = newPromptHash;
+
+      if (file) {
+        const fileType = file.mimetype.startsWith("video/") ? "video" : "image";
+        let bufferToUpload = file.buffer;
+
+        if (fileType === "image") {
+          try {
+            bufferToUpload = await watermarkImage(file.buffer);
+          } catch (e) {
+            console.error("watermark failed, original upload:", e.message);
+            bufferToUpload = file.buffer;
+          }
+        }
+
+        const uploadName =
+          fileType === "video" ? file.originalname.replace(/\.[^.]+$/, "") + ".mp4" : file.originalname;
+
+        const attachmentUrl = await uploadToAzure(bufferToUpload, uploadName, "prompt-attachments");
+
+        prompt.attachment = {
+          filename: uploadName,
+          path: attachmentUrl,
+          mimetype: fileType === "video" ? "video/mp4" : file.mimetype,
+          size: bufferToUpload.length,
+          type: fileType,
+        };
+        prompt.attachmentHash = newAttachmentHash;
+      }
+
+      // Back to square one — a full fresh validation pass on whatever changed.
+      // adminAction is left as-is (historical record of what was asked for).
+      prompt.mediaValidation.status = "pending";
+      prompt.mediaValidation.score = null;
+      prompt.mediaValidation.aiDescription = "";
+      prompt.mediaValidation.checkedAt = null;
+      prompt.mediaValidation.error = null;
+
+      await prompt.save();
+
+      runPromptMediaValidation(prompt._id).catch((err) =>
+        console.error("Resubmit media validation kickoff failed:", prompt._id.toString(), err.message)
+      );
+
+      return res.json({ success: true, prompt });
+    } catch (err) {
+      console.error("RESUBMIT PROMPT ERROR:", err);
+      return res.status(500).json({ success: false, error: "server_error" });
     }
   }
 );
@@ -928,6 +1095,7 @@ router.get("/user/:userId", async (req, res) => {
       Prompt.find({
         userId,
         deleted: { $ne: true },
+        flagged: { $ne: true },
       })
         .populate("categories", "name")
         .populate("userId", "name") // REQUIRED for uploader info
@@ -956,7 +1124,11 @@ router.get("/others", async (req, res) => {
     const { type, category } = req.query;
 
     // ✅ Base filter — show only active public prompts
-    let filter = { deleted: { $ne: true } };
+    // flagged:true = confirmed policy violation via a user report (see
+    // POST /api/prompt-reports/:id/flag) — hidden immediately, distinct from
+    // deleted (suspend/seller-delete) so admins can still see it was flagged
+    // vs fully removed.
+    let filter = { deleted: { $ne: true }, flagged: { $ne: true } };
 
     // If logged in (token optional), exclude user's own prompts
     if (req.user && req.user._id) {
@@ -980,6 +1152,46 @@ router.get("/others", async (req, res) => {
       }
       filter.categories = cat._id;
     }
+
+    // Prompts uploaded after the Route-onboarding-first flow shipped
+    // (requiresSellerVerification: true) only show once their seller's
+    // Linked Account is actually verified by Razorpay. Older prompts
+    // (flag defaults false) are unaffected.
+    const verifiedSellerIds = await BankAccount.find({
+      activationStatus: "ACTIVATED",
+    }).distinct("userId");
+
+    // Sellers an admin has suspended or soft-deleted must disappear from the
+    // marketplace immediately — their listings stay in the DB (buyers who
+    // already purchased keep access) but should no longer be discoverable.
+    const suspendedSellerIds = await User.find({
+      $or: [{ sellerStatus: "SUSPENDED" }, { isDeleted: true }],
+    }).distinct("_id");
+    if (suspendedSellerIds.length) {
+      filter.userId = filter.userId
+        ? { ...filter.userId, $nin: suspendedSellerIds }
+        : { $nin: suspendedSellerIds };
+    }
+
+    // Two independent gates, both must pass — seller payout verification
+    // (above) and, separately, the Prompt-Media Match Validation result.
+    // Old prompts (no mediaValidation.status persisted at all, pre-dating
+    // this feature) are grandfathered in, same pattern as
+    // requiresSellerVerification above.
+    filter.$and = [
+      {
+        $or: [
+          { requiresSellerVerification: { $ne: true } },
+          { userId: { $in: verifiedSellerIds } },
+        ],
+      },
+      {
+        $or: [
+          { "mediaValidation.status": { $exists: false } },
+          { "mediaValidation.status": { $in: ["approved", "admin_approved"] } },
+        ],
+      },
+    ];
 
     const prompts = await Prompt.find(filter)
       .populate("categories", "name")
@@ -1042,6 +1254,11 @@ router.get("/by-seller/:sellerId", async (req, res) => {
       return res
         .status(400)
         .json({ success: false, error: "Invalid sellerId" });
+    }
+
+    const seller = await User.findById(sellerId).select("sellerStatus isDeleted");
+    if (!seller || seller.isDeleted || seller.sellerStatus === "SUSPENDED") {
+      return res.json({ success: true, prompts: [], sellerSuspended: true });
     }
 
     const prompts = await Prompt.find({ userId: sellerId })

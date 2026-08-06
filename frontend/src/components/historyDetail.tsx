@@ -28,6 +28,8 @@ export interface MarketplacePrompt {
   imageUrl?: string;
   fullPrompt?: string;
   ownerEmail?: string; // used for TM to show owner email in modal
+  isUploadedByMe?: boolean; // true when the viewer is the prompt's own uploader
+  mediaValidation?: { status?: string };
 }
 
 interface DetailsPromptProps {
@@ -47,6 +49,25 @@ const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").repla
 /* =========================================================================
    MAIN: History Detail — final polished version per your spec
    ========================================================================= */
+function getModerationBadge(status?: string): { label: string; bg: string; color: string } | null {
+  switch (status) {
+    case "pending":
+    case "pending_review":
+      return { label: "Pending Review", bg: "rgba(234,179,8,0.2)", color: "#facc15" };
+    case "approved":
+    case "admin_approved":
+      return { label: "Approved", bg: "rgba(34,197,94,0.2)", color: "#4ade80" };
+    case "admin_rejected":
+      return { label: "Rejected", bg: "rgba(239,68,68,0.2)", color: "#f87171" };
+    case "flagged":
+      return { label: "Flagged", bg: "rgba(239,68,68,0.2)", color: "#f87171" };
+    case "edit_requested":
+      return { label: "Changes Requested", bg: "rgba(167,139,250,0.2)", color: "#c4b5fd" };
+    default:
+      return null;
+  }
+}
+
 export default function DetailsPrompt({
   open,
   onOpenChange,
@@ -63,6 +84,14 @@ export default function DetailsPrompt({
   const isIND = user?.userType === "IND" || (!user?.userType && !isTM);
   // const canDownloadInvoice = isIND || isOrgOwnerAdmin; // disabled only for TM
     const canDownloadInvoice = true;
+
+  // Your OWN uploaded prompt: no invoice (you didn't buy it) and no "report
+  // your own resource" — hide both for it. isUploadedByMe is the reliable
+  // signal; ownerEmail === your email is a fallback.
+  const isOwnPrompt =
+    !!prompt?.isUploadedByMe ||
+    (!!user?.email && !!prompt?.ownerEmail &&
+      user.email.trim().toLowerCase() === prompt.ownerEmail.trim().toLowerCase());
   // Share modal state
   const [showRequestModal, setShowRequestModal] = useState(false);
 
@@ -275,18 +304,23 @@ pb-8 sm:pb-10
             "
           >
             {/* Title row */}
-            <div className="grid grid-cols-[1fr_auto] items-start gap-4 mt-2">
+            <div className="mt-2">
               <h2 className="font-semibold ext-[18px] sm:text-[22px] md:text-[26px] leading-snug tracking-tight">
                 {prompt.title}
               </h2>
-              <span
-                className="flex items-center justify-center rounded-full justify-self-end"
-                style={{ backgroundColor: "#333335", width: 42, height: 42 }}
-                aria-hidden
-              >
-                <img src="/icons/cop1.png" alt="" className="w-5 h-5 object-contain" />
-              </span>
             </div>
+
+            {getModerationBadge(prompt.mediaValidation?.status) && (
+              <span
+                className="inline-block mt-2 px-2.5 py-1 text-[11px] font-semibold rounded-full"
+                style={{
+                  background: getModerationBadge(prompt.mediaValidation?.status)!.bg,
+                  color: getModerationBadge(prompt.mediaValidation?.status)!.color,
+                }}
+              >
+                {getModerationBadge(prompt.mediaValidation?.status)!.label}
+              </span>
+            )}
 
 {/* Full Prompt Text */}
 {owned && prompt.fullPrompt && (
@@ -366,12 +400,18 @@ pb-8 sm:pb-10
 
             {/* Bottom action bar: left = Report Resource, right = Share / Download Invoice / Submit */}
               <div className="mt-8 flex items-center justify-between gap-3 flex-nowrap">
-              {/* Left: Report */}
-              <ReportResourceTrigger promptId={String(prompt.id)} promptTitle={prompt.title} />
+              {/* Left: Report — not for your own uploaded prompt */}
+              {isOwnPrompt ? (
+                <span />
+              ) : (
+                <ReportResourceTrigger promptId={String(prompt.id)} promptTitle={prompt.title} />
+              )}
 
               {/* Right: Actions */}
                <div className="flex items-center gap-2 sm:gap-4 flex-nowrap overflow-x-auto">
-                {/* Share */}
+                {/* Share — only for ORG accounts (org shares purchased prompts
+                    with its team); hidden for TM and individual users. */}
+                {user?.userType === "ORG" && (
                 <button
                   className="flex items-center justify-center gap-2 text-white text-[14px] hover:text-[#FF14EF] transition-all"
                   onClick={() => setShowRequestModal(true)}
@@ -379,8 +419,10 @@ pb-8 sm:pb-10
                   <RiShareForwardLine className="w-5 h-5" />
                   Share
                 </button>
+                )}
 
-                {/* Download Invoice */}
+                {/* Download Invoice — not for your own uploaded prompt (no purchase) */}
+               {!isOwnPrompt && (
                <button
   onClick={handleDownloadInvoice}
   disabled={!canDownloadInvoice}
@@ -394,6 +436,7 @@ pb-8 sm:pb-10
 >
   Download Invoice
 </button>
+               )}
 
                 {/* Submit */}
                 {/* <button

@@ -2240,6 +2240,7 @@ export default function SellPromptModal({
         if (code === "attachment_required") msg = "Please attach an image or video.";
         if (code === "only_image_or_video_allowed") msg = "Attachment must be image or video.";
         if (code === "invalid_categories") msg = `Invalid categories: ${data?.invalid?.join(", ")}`;
+        if (code === "duplicate_content") msg = data?.message || "Sorry, this has already been uploaded. You can't upload it again.";
         setUploading(false);
         toast({ title: "Upload failed", description: msg, variant: "destructive" });
         return;

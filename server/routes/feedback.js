@@ -2,9 +2,30 @@ const express = require("express");
 const multer = require("multer");
 const path = require("path");
 const Feedback = require("../models/Feedback");
+const User = require("../models/User");
+const Notification = require("../models/Notification");
 const Sentiment = require("sentiment");
 const { sendEmail } = require("../utils/SendEmail");
 const { buildOtpEmailHtml } = require("../utils/otpemailtemplate");
+
+// Best-effort: notify the submitter (if they have a Tokun account under the
+// same email) that their feedback was acted on. Never throws — a notification
+// failure shouldn't block the admin action that triggered it.
+async function notifyFeedbackSubmitter(feedback, { type, message }) {
+  try {
+    if (!feedback?.email) return;
+    const user = await User.findOne({ email: feedback.email.toLowerCase() });
+    if (!user) return;
+    await Notification.create({
+      receiverUserId: user._id,
+      senderName: "Tokun",
+      type,
+      message,
+    });
+  } catch (err) {
+    console.error("notifyFeedbackSubmitter failed:", err?.message || err);
+  }
+}
 
 const router = express.Router();
 const sentiment = new Sentiment();
@@ -131,6 +152,17 @@ router.patch("/:id/status", async (req, res) => {
   try {
     const { status } = req.body;
     const fb = await Feedback.findByIdAndUpdate(req.params.id, { status }, { new: true });
+
+    if (fb && (status === "reviewed" || status === "resolved")) {
+      notifyFeedbackSubmitter(fb, {
+        type: "FEEDBACK_STATUS_UPDATED",
+        message:
+          status === "resolved"
+            ? "Your feedback has been resolved. Thanks for helping us improve Tokun!"
+            : "Your feedback has been reviewed by our team.",
+      });
+    }
+
     res.json({ success: true, feedback: fb });
   } catch (err) {
     res.status(500).json({ success: false, error: "server_error" });
@@ -142,6 +174,14 @@ router.patch("/:id/testimonial", async (req, res) => {
   try {
     const { showOnLanding } = req.body;
     const fb = await Feedback.findByIdAndUpdate(req.params.id, { showOnLanding: !!showOnLanding }, { new: true });
+
+    if (fb && showOnLanding) {
+      notifyFeedbackSubmitter(fb, {
+        type: "FEEDBACK_FEATURED",
+        message: "Your feedback is now featured as a testimonial on our landing page!",
+      });
+    }
+
     res.json({ success: true, feedback: fb });
   } catch (err) {
     res.status(500).json({ success: false, error: "server_error" });

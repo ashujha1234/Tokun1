@@ -2600,6 +2600,7 @@ import { Crown } from "lucide-react";
 import { MessageCircle } from "lucide-react";
 import { LuBadgeCheck } from "react-icons/lu";
 import KycGateModal from "@/components/KycGateModal";
+import SellerLinkedAccountForm from "@/components/SellerLinkedAccountForm";
 // import { useAuth } from "@/contexts/AuthContext";
 // import { toast } from "@/components/ui/use-toast";
 
@@ -2664,8 +2665,8 @@ const userPlanColor =
 } | null>(null);
 
   const [kycOpen, setKycOpen] = useState(false);
-const [pendingUpload, setPendingUpload] = useState(false);
 const [pendingCheckout, setPendingCheckout] = useState(false);
+const [sellerFormOpen, setSellerFormOpen] = useState(false);
 const [hideHeader, setHideHeader] = useState(false);
 // useEffect(() => {
 //   // Chat page par header hide mat karo
@@ -2872,14 +2873,10 @@ const handlePostPrompt = async () => {
     return;
   }
 
-  const ok = await ensureKycVerified();
-  if (!ok) {
-    setPendingUpload(true);
-    return;
-  }
-
-  // KYC passed → seedha Sell modal kholo (screen perm hata diya)
-  setSellOpen(true);
+  // Old identity-KYC gate removed — sellers now go through Route payout
+  // setup first (SellerLinkedAccountForm below skips straight through to
+  // Sell modal if they've already set it up).
+  setSellerFormOpen(true);
 };
 
 
@@ -4166,7 +4163,6 @@ useEffect(() => {
       { label: "My Wallet",      icon: Wallet,          onClick: goToWallet },
       { label: "Dashboard",      icon: LayoutDashboard, onClick: () => navigate("/self-dash") },
       { label: "My Feedback",    icon: MessageCircle,   onClick: () => navigate("/my-feedback") },
-      { label: "Settings",       icon: Settings,        onClick: openAccountSettingsPopup },
     ].map(({ label, icon: Icon, onClick }) => (
       <button
         key={label}
@@ -5155,23 +5151,16 @@ style={{
     open={kycOpen}
     onClose={() => {
       setKycOpen(false);
-      setPendingUpload(false);
       setPendingCheckout(false);
-
     }}
     token={token}
     apiBase={API_BASE}
     defaultCountry="IN"
-    requiredForLabel="buying and uploading prompts"
+    requiredForLabel="buying prompts"
   onVerified={async () => {
   setKycOpen(false);
   setCartOpen(false);
- 
-if (pendingUpload) {
-    setPendingUpload(false);
-    setSellOpen(true);   // pehle yahan setScreenPermOpen(true) tha
-  }
- 
+
   if (pendingCheckout) {
     setPendingCheckout(false);
     await new Promise((res) => setTimeout(res, 100));
@@ -5179,6 +5168,19 @@ if (pendingUpload) {
   }
 }}
 
+  />
+)}
+
+{token && (
+  <SellerLinkedAccountForm
+    open={sellerFormOpen}
+    onClose={() => setSellerFormOpen(false)}
+    token={token}
+    apiBase={API_BASE}
+    onSubmitted={() => {
+      setSellerFormOpen(false);
+      setSellOpen(true);
+    }}
   />
 )}
 

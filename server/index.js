@@ -4380,9 +4380,13 @@ const sellerRoutes = require("./routes/sellerRoutes");
 const kycRoutes = require("./routes/kycRoutes");
 const hireRoutes = require("./routes/hire.routes");
 const adminEscrowRouter = require("./routes/adminEscrow");
+const adminPromptValidationRouter = require("./routes/adminPromptValidation");
+const adminNotificationsRouter = require("./routes/adminNotifications");
+const adminRefundsRouter = require("./routes/adminRefunds");
 const adminPlatformRevenueRouter = require("./routes/adminPlatformRevenue");
 const activityRoutes = require("./routes/activityRoutes");
 const userAdminRoutes = require("./routes/userAdminRoutes");
+const adminOrgsRouter = require("./routes/adminOrgs");
 const walletRoutes = require("./routes/walletRoutes");
 const reportRoutes = require("./routes/report");
 const screenRecordingRoutes = require("./routes/screenRecording");
@@ -5145,7 +5149,11 @@ app.use("/api/activity", activityRoutes);
 app.use("/api/wallet", walletRoutes);
 app.use("/api/hire", hireRoutes);
 app.use("/api/admin/escrow", adminEscrowRouter);
+app.use("/api/admin/prompt-validation", adminPromptValidationRouter);
+app.use("/api/admin/notifications", adminNotificationsRouter);
+app.use("/api/admin/refunds", adminRefundsRouter);
 app.use("/api/admin/platform-revenue", adminPlatformRevenueRouter);
+app.use("/api/admin/orgs", adminOrgsRouter);
 app.use("/api/report", reportRoutes);
 app.use("/api/screen-recording", screenRecordingRoutes);
 
@@ -5417,6 +5425,13 @@ io.on("connection", (socket) => {
       });
 
       socket.to(String(sessionId)).emit("user-joined", { userId });
+
+      // Broadcast the live participant count so clients only mark the session
+      // "active" once a second person actually joins (count >= 2) — not the
+      // moment the inviter opens the session.
+      const room = io.sockets.adapter.rooms.get(String(sessionId));
+      const count = room ? room.size : 1;
+      io.to(String(sessionId)).emit("session-peers", { sessionId, count });
     } catch (err) {
       console.error("join-session error:", err);
     }
@@ -5447,6 +5462,11 @@ io.on("connection", (socket) => {
 
     socket.leave(String(sessionId));
     socket.to(String(sessionId)).emit("user-left", { userId });
+
+    // Recompute count for those still in the room (leaving socket already left).
+    const room = io.sockets.adapter.rooms.get(String(sessionId));
+    const count = room ? room.size : 0;
+    socket.to(String(sessionId)).emit("session-peers", { sessionId, count });
   });
 
   socket.on("end-session", async ({ sessionId, userId }) => {

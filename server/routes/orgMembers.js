@@ -1901,6 +1901,8 @@ const router = express.Router();
 const { requireAuth } = require("../utils/auth");
 const User = require("../models/User");
 const Organization = require("../models/organization");
+const Purchase = require("../models/Purchase");
+const SharedPrompt = require("../models/SharedPrompt");
 const { PLANS } = require("../config/plans");
 const fs =require("fs");
 const path= require("path");
@@ -2136,6 +2138,100 @@ router.get("/", requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error("org/members", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+// ✅ GET /api/org/members/dashboard — org-wide overview for the Owner (or a
+// TM with the "Admin" role): org/quota state, the team roster, and rolled-up
+// activity (what the team has bought, what's been shared) computed live from
+// Purchase/SharedPrompt rather than the never-populated usedThisPeriod
+// counters on Organization.members[].
+router.get("/dashboard", requireAuth, async (req, res) => {
+  try {
+    if (!req.user.orgId) {
+      return res.status(400).json({ success: false, error: "no_org" });
+    }
+
+    const isOwner = req.user.userType === "ORG" && req.user.role === "Owner";
+    const isAdminMember = req.user.userType === "TM" && req.user.role === "Admin";
+    if (!isOwner && !isAdminMember) {
+      return res.status(403).json({ success: false, error: "not_authorized" });
+    }
+
+    const org = await Organization.findById(req.user.orgId).lean();
+    if (!org) {
+      return res.status(404).json({ success: false, error: "org_not_found" });
+    }
+
+    const members = await User.find({ orgId: req.user.orgId })
+      .select("_id name email role isVerified isDeletedFromOrg orgAssignedCap orgTokensRemaining createdAt")
+      .lean();
+
+    // Purchases attributable to the org = the owner's own purchases plus
+    // every team member's — a TM buys under their own userId, same as any
+    // individual buyer.
+    const teamUserIds = [org.ownerId, ...members.map((m) => m._id)];
+
+    const [purchaseAgg, recentPurchases, sharedCount, recentShares] = await Promise.all([
+      Purchase.aggregate([
+        { $match: { buyer: { $in: teamUserIds }, paymentStatus: "SUCCESS" } },
+        { $group: { _id: null, count: { $sum: 1 }, totalSpent: { $sum: "$pricePaid" } } },
+      ]),
+      Purchase.find({ buyer: { $in: teamUserIds }, paymentStatus: "SUCCESS" })
+        .populate("buyer", "name email")
+        .populate("prompt", "title")
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+      SharedPrompt.countDocuments({ orgId: req.user.orgId }),
+      SharedPrompt.find({ orgId: req.user.orgId })
+        .populate("promptId", "title")
+        .populate("sharedBy", "name email")
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+    ]);
+
+    return res.json({
+      success: true,
+      org: {
+        name: org.name,
+        plan: org.plan,
+        billingCycle: org.billingCycle,
+        currentPeriodEnd: org.currentPeriodEnd,
+        subscriptionStatus: org.subscriptionStatus,
+        orgPoolCap: org.orgPoolCap || 0,
+        orgPoolUsed: org.orgPoolUsed || 0,
+        orgExtraTokensRemaining: org.orgExtraTokensRemaining || 0,
+        teamMembersLimit: org.teamMembersLimit || 0,
+        teamMembersLimitRemaining: org.teamMembersLimitRemaining || 0,
+      },
+      members,
+      teamPurchases: {
+        count: purchaseAgg[0]?.count || 0,
+        totalSpent: purchaseAgg[0]?.totalSpent || 0,
+        recent: recentPurchases.map((p) => ({
+          id: p._id,
+          promptTitle: p.prompt?.title || p.promptSnapshot?.title || "Untitled",
+          buyerName: p.buyer?.name || p.buyer?.email || "Unknown",
+          pricePaid: p.pricePaid,
+          purchasedAt: p.purchasedAt || p.createdAt,
+        })),
+      },
+      sharedPrompts: {
+        count: sharedCount,
+        recent: recentShares.map((sp) => ({
+          id: sp._id,
+          promptTitle: sp.promptId?.title || "Untitled",
+          sharedByName: sp.sharedBy?.name || sp.sharedBy?.email || "Owner",
+          sharedToCount: (sp.sharedTo || []).length,
+          sharedAt: sp.createdAt,
+        })),
+      },
+    });
+  } catch (err) {
+    console.error("org/members/dashboard error:", err);
     return res.status(500).json({ success: false, error: "server_error" });
   }
 });

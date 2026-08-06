@@ -12,9 +12,13 @@ const REPORT_API = `${(import.meta.env.VITE_API_URL || "http://localhost:5002").
 )}/api/report`;
 
 // ─── HEADERS ───────────────────────────────────────────────────────────────
-const jsonHeaders = {
-  "Content-Type": "application/json",
-};
+function getAuthHeaders() {
+  const token = localStorage.getItem("tokun_admin_token");
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
 
 // ─── HELPERS ───────────────────────────────────────────────────────────────
 const fmt = (n: any) =>
@@ -655,7 +659,7 @@ function ReportsPanel({ showToast }: { showToast: (msg: string, type?: string) =
     try {
       const res = await fetch(`${REPORT_API}/${reportId}/status`, {
         method: "PATCH",
-        headers: jsonHeaders,
+        headers: getAuthHeaders(),
         body: JSON.stringify({ status, adminNote }),
       });
       const data = await res.json().catch(() => null);
@@ -939,6 +943,7 @@ export default function EscrowAdminDashboard() {
       const res = await fetch(`${API_BASE}/deals?${params}`, {
         method: "GET",
         credentials: "include",
+        headers: getAuthHeaders(),
       });
 
       let data: any = null;
@@ -968,6 +973,7 @@ export default function EscrowAdminDashboard() {
       const res = await fetch(`${API_BASE}/${dealId}/release`, {
         method: "POST",
         credentials: "include",
+        headers: getAuthHeaders(),
       });
       let data: any = null;
       try { data = await res.json(); } catch { data = null; }
@@ -990,7 +996,7 @@ export default function EscrowAdminDashboard() {
       const res = await fetch(`${API_BASE}/${dealId}/refund`, {
         method: "POST",
         credentials: "include",
-        headers: jsonHeaders,
+        headers: getAuthHeaders(),
         body: JSON.stringify({ reason }),
       });
       let data: any = null;

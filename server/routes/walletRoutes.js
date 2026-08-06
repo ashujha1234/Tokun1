@@ -2037,7 +2037,7 @@ const mongoose = require("mongoose");
 const Wallet = require("../models/Wallet");
 const WalletTopup = require("../models/WalletTopup");
 const Razorpay = require("../utils/razorpay");
-const { requireAuth } = require("../utils/auth");
+const { requireAuth, blockIfSuspended } = require("../utils/auth");
 const BankAccount = require("../models/BankAccount");
 const WalletWithdrawal = require("../models/WalletWithdrawal");
 
@@ -2586,7 +2586,7 @@ router.post("/add-fund/bank-transfer", requireAuth, async (req, res) => {
 // ══════════════════════════════════════════════════════════════
 // POST /api/wallet/withdraw/request
 // ══════════════════════════════════════════════════════════════
-router.post("/withdraw/request", requireAuth, async (req, res) => {
+router.post("/withdraw/request", requireAuth, blockIfSuspended, async (req, res) => {
   try {
     const userId = req.user._id;
     const amount = Number(req.body.amount);

@@ -19,7 +19,7 @@ const TransactionSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ["commission", "withdrawal"],
+      enum: ["commission", "withdrawal", "refund"],
       required: true,
     },
     amount: {
@@ -118,6 +118,29 @@ PlatformWalletSchema.statics.markWithdrawn = async function (amount, note = "") 
     source: "manual_withdrawal",
     description: note || "Marked as withdrawn by admin",
   });
+  wallet.transactions = wallet.transactions.slice(0, 500);
+  await wallet.save();
+  return wallet;
+};
+
+/**
+ * Reverse commission earned on a sale that's since been refunded.
+ * Best-effort: allowed to take availableBalance to 0 (not below, via a
+ * clamped decrement) since Tokun's own commission pool can't go negative
+ * the way a seller's individual wallet reasonably could pre-payout.
+ * @param {number} amount
+ * @param {object} meta - { source, refId, description }
+ */
+PlatformWalletSchema.statics.reverseCommission = async function (amount, meta = {}) {
+  if (!amount || amount <= 0) return null;
+  const { source, refId = null, description = "" } = meta;
+
+  const wallet = await this.findOne({ key: "platform" });
+  if (!wallet) return null;
+
+  const decrement = Math.min(amount, wallet.availableBalance);
+  wallet.availableBalance -= decrement;
+  wallet.transactions.unshift({ type: "refund", amount, source, refId, description });
   wallet.transactions = wallet.transactions.slice(0, 500);
   await wallet.save();
   return wallet;

@@ -410,6 +410,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { llmService, type LLMProvider } from "@/services/llmService";
 import { Label } from "@/components/ui/label";
+import type { IconType } from "react-icons";
+import { SiOpenai, SiClaude, SiGooglegemini, SiPerplexity } from "react-icons/si";
 
 interface ApiProvider {
   _id: string;
@@ -432,11 +434,12 @@ const apiNameToKey = (name: string): LLMProvider | null => {
   return null;
 };
 
-const OPTIONS: Array<{ key: LLMProvider; icon: string; alt: string }> = [
-  { key: "openai", icon: "/icons/chatgpt.png", alt: "ChatGPT" },
-  { key: "perplexity", icon: "/icons/perplexity.png", alt: "Perplexity" },
-  { key: "anthropic", icon: "/icons/claude.png", alt: "Claude" },
-  { key: "google", icon: "/icons/Gemini.png", alt: "Gemini" },
+// react-icons brand logos — same set/colors SmartGen uses, for a consistent look.
+const OPTIONS: Array<{ key: LLMProvider; Icon: IconType; color: string; label: string }> = [
+  { key: "openai", Icon: SiOpenai, color: "#ffffff", label: "ChatGPT" },
+  { key: "perplexity", Icon: SiPerplexity, color: "#1FB8CD", label: "Perplexity" },
+  { key: "anthropic", Icon: SiClaude, color: "#D97757", label: "Claude" },
+  { key: "google", Icon: SiGooglegemini, color: "#4285F4", label: "Gemini" },
 ];
 
 const LLMSelector = ({ onProviderChange }: LLMSelectorProps) => {
@@ -516,7 +519,7 @@ const LLMSelector = ({ onProviderChange }: LLMSelectorProps) => {
         aria-label="LLM Provider"
         className="flex flex-wrap justify-center sm:justify-start gap-3"
       >
-        {visibleOptions.map(({ key, icon, alt }) => {
+        {visibleOptions.map(({ key, Icon, color, label }) => {
           const isSelected = provider === key;
 
           return (
@@ -525,12 +528,12 @@ const LLMSelector = ({ onProviderChange }: LLMSelectorProps) => {
               type="button"
               role="radio"
               aria-checked={isSelected}
-              aria-label={alt}
+              aria-label={label}
               disabled={loading}
               onClick={() => handleClick(key)}
               className={[
-                "flex items-center gap-2",
-                "w-[130px] h-[42px] rounded-[10px]",
+                "flex items-center gap-2.5",
+                "w-[140px] h-[42px] rounded-[10px]",
                 "transition-all select-none px-3",
                 loading ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
                 isSelected
@@ -552,14 +555,8 @@ const LLMSelector = ({ onProviderChange }: LLMSelectorProps) => {
                 />
               </span>
 
-              <span className="flex items-center justify-center bg-white rounded-[6px] px-[6px] py-[3px]">
-                <img
-                  src={icon}
-                  alt={alt}
-                  className="h-[18px] w-auto object-contain"
-                  draggable={false}
-                />
-              </span>
+              <Icon size={18} color={color} className="flex-shrink-0" />
+              <span className="text-sm text-white/90 truncate">{label}</span>
             </button>
           );
         })}

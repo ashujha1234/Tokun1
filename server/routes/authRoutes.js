@@ -83,6 +83,12 @@ function withTimeout(promise, ms) {
   ]);
 }
 
+// TEMPORARY test bypass — remove this block once testing with these
+// addresses is done. They'd otherwise be rejected by COMMON_TYPO_DOMAINS.
+const TEMP_ALLOWED_TEST_EMAILS = new Set([
+  "rasu@gmai.com",
+]);
+
 /**
  * Full pre-send check: format -> known-typo-domain -> real MX records.
  * Returns { ok: true } or { ok: false, error, suggestion? }.
@@ -92,7 +98,12 @@ async function checkEmailDeliverable(email) {
     return { ok: false, error: "invalid_email_format" };
   }
 
-  const domain = email.trim().toLowerCase().split("@")[1];
+  const normalized = email.trim().toLowerCase();
+  if (TEMP_ALLOWED_TEST_EMAILS.has(normalized)) {
+    return { ok: true };
+  }
+
+  const domain = normalized.split("@")[1];
 
   if (COMMON_TYPO_DOMAINS[domain]) {
     return { ok: false, error: "likely_typo_domain", suggestion: COMMON_TYPO_DOMAINS[domain] };
@@ -191,7 +202,7 @@ await sendEmail({
 
     
 
-    return res.json({ success: true, message: "otp_sent_if_email_is_valid", otp });
+    return res.json({ success: true, message: "otp_sent_if_email_is_valid" });
   } catch (err) {
     console.error("signup/initiate", err);
     return res.status(500).json({ success: false, error: "server_error" });
@@ -376,8 +387,7 @@ if (userType === "ORG" && orgName && !user.orgId) {
 
 
 
-    // IMPORTANT: do not return the OTP in production
-    return res.json({ success: true, message: "otp_sent_if_email_is_valid" ,otp: otp});
+    return res.json({ success: true, message: "otp_sent_if_email_is_valid" });
   } catch (err) {
     console.error("signup/initiate", err);
     return res.status(500).json({ success: false, error: "server_error" });
@@ -531,7 +541,7 @@ await logActivity({
     const token = jwt.sign(
       { sub: String(user._id), email: user.email, name: user.name, userType: user.userType, role: user.role, orgId: user.orgId, plan: user.plan },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "1d" }
     );
 
     // Optional org info for UI
@@ -646,7 +656,7 @@ await sendEmail({
 
     
 
-    return res.json({ success: true, message: "otp_sent_if_email_is_valid" , otp:otp });
+    return res.json({ success: true, message: "otp_sent_if_email_is_valid" });
   } catch (err) {
     console.error("login/initiate", err);
     return res.status(500).json({ success: false, error: "server_error" });
@@ -681,6 +691,10 @@ router.post("/login/verify", async (req, res) => {
       return res.status(400).json({ success: false, error: "invalid_otp" });
     }
 
+    if (user.isDeleted || user.sellerStatus === "SUSPENDED") {
+      return res.status(403).json({ success: false, error: "account_suspended" });
+    }
+
     // mongoose.connect()-=>{
 
       // app.listen('port',=>{
@@ -710,7 +724,7 @@ router.post("/login/verify", async (req, res) => {
     const token = jwt.sign(
       { sub: String(user._id), email: user.email, name: user.name },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "1d" }
     );
 
    // inside success response after issuing 'token'

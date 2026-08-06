@@ -12,6 +12,7 @@ import { llmService } from "@/services/llmService";
 import type { DetectionResult, DeepQuestion } from "@/services/llmService";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/use-toast";
+import { isOutOfTokens, TOKEN_LIMIT_TOAST } from "@/lib/tokenGate";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 interface SmarterPromptProps {
@@ -589,6 +590,8 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
   const doGenerate = useCallback(async (answersOverride?: Record<string,string>) => {
     if (!user) { navigate("/login"); return; }
     if (!prompt.trim()) { toast({title:"Enter a prompt first",variant:"destructive"}); return; }
+    // Token limit reached → block generation and prompt to subscribe.
+    if (isOutOfTokens(user)) { toast(TOKEN_LIMIT_TOAST); return; }
     if (isGenerating) { abortRef.current?.abort(); return; }
 
     setShowDeepModal(false);

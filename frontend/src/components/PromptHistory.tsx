@@ -11,6 +11,8 @@ import { Check, X } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ShoppingCart, Upload, Star, Trash ,BadgeDollarSign} from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import DetailsPrompt, { MarketplacePrompt } from "./historyDetail";
 import { useAuth } from "@/contexts/AuthContext";
 import Header from "@/components/Header";
@@ -57,11 +59,33 @@ type Prompt = {
   isUploadedByMe?: boolean;
   promptText?: string;
   fullPrompt?: string;
+  purchaseId?: string;
+  refundStatus?: "NONE" | "REQUESTED" | "APPROVED" | "REJECTED" | "REFUNDED";
+  mediaValidation?: { status?: string };
 };
 
 const GRAD = "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)";
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 const PURCHASE_BASE = `${API_BASE}/api/purchase`; // [API #3] base
+
+function getModerationBadge(status?: string): { label: string; bg: string; color: string } | null {
+  switch (status) {
+    case "pending":
+    case "pending_review":
+      return { label: "Pending Review", bg: "rgba(234,179,8,0.2)", color: "#facc15" };
+    case "approved":
+    case "admin_approved":
+      return { label: "Approved", bg: "rgba(34,197,94,0.2)", color: "#4ade80" };
+    case "admin_rejected":
+      return { label: "Rejected", bg: "rgba(239,68,68,0.2)", color: "#f87171" };
+    case "flagged":
+      return { label: "Flagged", bg: "rgba(239,68,68,0.2)", color: "#f87171" };
+    case "edit_requested":
+      return { label: "Changes Requested", bg: "rgba(167,139,250,0.2)", color: "#c4b5fd" };
+    default:
+      return null;
+  }
+}
 
 /* ---------- Helpers ---------- */
 function formatDate(dateString?: string) {
@@ -615,6 +639,7 @@ function HistoryGridCard({
   onPreview,
   isUploaded = false,
   onDelete,
+  onRequestRefund,
 }: {
   prompt: Prompt;
   showImages?: boolean;
@@ -623,6 +648,7 @@ function HistoryGridCard({
   onPreview: (p: Prompt) => void;
   isUploaded?: boolean;
   onDelete?: (p: Prompt) => void;
+  onRequestRefund?: (p: Prompt) => void;
 }) {
   const isPlaying = playingVideo === prompt.id;
 
@@ -710,6 +736,19 @@ function HistoryGridCard({
             </div>
           ) : null}
 
+          {/* Moderation status pill (uploaded prompts only) */}
+          {isUploaded && getModerationBadge(prompt.mediaValidation?.status) && (
+            <div
+              className="absolute top-11 right-3 mt-2 px-2.5 py-1 text-[10px] font-semibold rounded-full"
+              style={{
+                background: getModerationBadge(prompt.mediaValidation?.status)!.bg,
+                color: getModerationBadge(prompt.mediaValidation?.status)!.color,
+              }}
+            >
+              {getModerationBadge(prompt.mediaValidation?.status)!.label}
+            </div>
+          )}
+
           {/* Rating pill */}
           <div className="absolute top-3 right-3">
             <div className="flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium text-white bg-black/40 border border-white/40 backdrop-blur-sm">
@@ -755,21 +794,52 @@ function HistoryGridCard({
             </button>
           </div>
         ) : (
-          // Purchased (unchanged): keep icon pill + price pill on the left side
-          <div className="mt-auto pt-4 flex items-center gap-3 justify-start">
-            <div
-              className="flex items-center justify-center"
-              style={{ minWidth: 65, height: 40, borderRadius: 50, background: "#333335", padding: "0 10px" }}
-            >
-              <img src="/icons/cop1.png" alt="cop1" />
+          // Purchased: icon pill + price pill on the left, refund control on the right
+          <div className="mt-auto pt-4 flex items-center gap-3 justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className="flex items-center justify-center"
+                style={{ minWidth: 65, height: 40, borderRadius: 50, background: "#333335", padding: "0 10px" }}
+              >
+                <img src="/icons/cop1.png" alt="cop1" />
+              </div>
+
+              <div
+                className="flex items-center justify-center"
+                style={{ minWidth: 65, height: 40, borderRadius: 50, padding: "0 14px", background: "#333335" }}
+              >
+                <span className="text-[13px] text-white/90">{priceLabel}</span>
+              </div>
             </div>
 
-            <div
-              className="flex items-center justify-center"
-              style={{ minWidth: 65, height: 40, borderRadius: 50, padding: "0 14px", background: "#333335" }}
-            >
-              <span className="text-[13px] text-white/90">{priceLabel}</span>
-            </div>
+            {!prompt.isFree && prompt.purchaseId && (
+              prompt.refundStatus === "NONE" || !prompt.refundStatus ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRequestRefund?.(prompt);
+                  }}
+                  className="text-[12px] font-medium text-white/70 hover:text-white underline underline-offset-2"
+                >
+                  Request Refund
+                </button>
+              ) : (
+                <span
+                  className="text-[11px] font-medium px-2.5 py-1 rounded-full"
+                  style={{
+                    background:
+                      prompt.refundStatus === "REJECTED" ? "rgba(239,68,68,0.15)" : "rgba(34,197,94,0.15)",
+                    color: prompt.refundStatus === "REJECTED" ? "#f87171" : "#4ade80",
+                  }}
+                >
+                  {prompt.refundStatus === "REQUESTED" && "Refund Requested"}
+                  {prompt.refundStatus === "APPROVED" && "Refund Approved"}
+                  {prompt.refundStatus === "REJECTED" && "Refund Rejected"}
+                  {prompt.refundStatus === "REFUNDED" && "Refunded"}
+                </span>
+              )
+            )}
           </div>
         )}
       </CardContent>
@@ -1040,6 +1110,8 @@ const mapped: Prompt[] = (body.purchases || []).map((p: any) => {
   isUploadedByMe: false,
   promptText,
   fullPrompt,
+  purchaseId: String(p?._id || ""),
+  refundStatus: p?.refundStatus || "NONE",
 } as Prompt;
 });
 
@@ -1248,6 +1320,7 @@ const mapped: Prompt[] = (body.purchases || []).map((p: any) => {
   isUploadedByMe: true,
   promptText,
   fullPrompt,
+  mediaValidation: doc.mediaValidation,
 } as Prompt;
 });
 
@@ -1330,6 +1403,61 @@ const totalEarningsINR = uploadHistory.reduce((sum, p) => {
         description: err?.message || "Could not delete the prompt.",
         variant: "destructive",
       });
+    }
+  };
+
+  // ---- REQUEST REFUND (buyer) ----
+  const [refundTarget, setRefundTarget] = useState<Prompt | null>(null);
+  const [refundReason, setRefundReason] = useState("");
+  const [refundSubmitting, setRefundSubmitting] = useState(false);
+
+  const openRefundModal = (p: Prompt) => {
+    setRefundReason("");
+    setRefundTarget(p);
+  };
+
+  const submitRefundRequest = async () => {
+    if (!refundTarget?.purchaseId || !refundReason.trim()) return;
+    try {
+      setRefundSubmitting(true);
+      const res = await fetch(
+        `${PURCHASE_BASE}/${encodeURIComponent(refundTarget.purchaseId)}/refund-request`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          credentials: "include",
+          body: JSON.stringify({ reason: refundReason.trim() }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        const errorMessages: Record<string, string> = {
+          refund_window_expired: "The refund window for this purchase has closed.",
+          refund_already_requested: "You've already requested a refund for this purchase.",
+          refund_already_approved: "This purchase has already been refunded.",
+          refund_already_rejected: "A refund request for this purchase was already rejected.",
+        };
+        throw new Error(errorMessages[data?.error] || data?.error || "Could not submit refund request.");
+      }
+
+      setPurchaseHistory((prev) =>
+        prev.map((p) =>
+          p.purchaseId === refundTarget.purchaseId ? { ...p, refundStatus: "REQUESTED" } : p
+        )
+      );
+      toast({ title: "Refund requested", description: "We'll email you once an admin reviews it." });
+      setRefundTarget(null);
+    } catch (err: any) {
+      toast({
+        title: "Refund request failed",
+        description: err?.message || "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setRefundSubmitting(false);
     }
   };
 
@@ -1474,6 +1602,7 @@ useEffect(() => {
     playingVideo={playingVideo}
     onToggleVideo={onToggleVideo}
     onPreview={openDetails}
+    onRequestRefund={openRefundModal}
   />
 ))}
 
@@ -1560,6 +1689,33 @@ useEffect(() => {
   }
   onPurchase={() => {}}
 />
+
+<Dialog open={!!refundTarget} onOpenChange={(open) => !open && setRefundTarget(null)}>
+  <DialogContent className="bg-[#1C1C1C] text-white border-white/10">
+    <DialogHeader>
+      <DialogTitle>Request Refund</DialogTitle>
+    </DialogHeader>
+    <p className="text-sm text-white/60 -mt-2">
+      Tell us why "{refundTarget?.title}" isn't what you expected. An admin will review this
+      before any refund is processed.
+    </p>
+    <Textarea
+      value={refundReason}
+      onChange={(e) => setRefundReason(e.target.value)}
+      placeholder="What went wrong with this prompt?"
+      className="bg-black/30 border-white/10 text-white min-h-[100px]"
+      maxLength={1000}
+    />
+    <DialogFooter>
+      <Button variant="ghost" onClick={() => setRefundTarget(null)} disabled={refundSubmitting}>
+        Cancel
+      </Button>
+      <Button onClick={submitRefundRequest} disabled={!refundReason.trim() || refundSubmitting}>
+        {refundSubmitting ? "Submitting…" : "Submit Request"}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
         </div>
       </main>
       <Footer />

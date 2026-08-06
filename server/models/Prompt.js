@@ -15,6 +15,29 @@ const ratingSchema = new mongoose.Schema({
   rating: { type: Number, required: true, min: 1, max: 5 },
 }, { _id: false }); // embedded subdocument
 
+// Prompt-Media Match Validation — AI-computed match between the uploaded
+// image/video and the seller's prompt text, gating marketplace visibility.
+// "pending" until the async pipeline runs; "approved"/"admin_approved" are
+// the only statuses that show up in the public marketplace (see the
+// requiresSellerVerification-style $or gate in GET /others).
+const MediaValidationSchema = new mongoose.Schema({
+  status: {
+    type: String,
+    enum: ["pending", "approved", "pending_review", "flagged", "admin_approved", "admin_rejected", "edit_requested"],
+    default: "pending",
+  },
+  score: { type: Number, default: null }, // 0-100, cosine similarity scaled
+  aiDescription: { type: String, default: "" },
+  checkedAt: { type: Date, default: null },
+  error: { type: String, default: null }, // set if the AI pipeline itself failed
+  adminAction: {
+    action: { type: String, enum: ["approved", "rejected", "edit_requested", null], default: null },
+    note: { type: String, default: "" },
+    byAdminId: { type: mongoose.Schema.Types.ObjectId, ref: "AdminUser", default: null },
+    at: { type: Date, default: null },
+  },
+}, { _id: false });
+
 const PromptSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
@@ -30,9 +53,16 @@ const PromptSchema = new mongoose.Schema(
 
        draft: { type: Boolean, default: false },
     flagged: { type: Boolean, default: false },
+
+    // Only set true on prompts created after the Route-onboarding-first
+    // upload flow shipped — older prompts are grandfathered in and stay
+    // listed regardless of their seller's Route verification status.
+    requiresSellerVerification: { type: Boolean, default: false },
      exclusive: { type: Boolean, default: false },   // ✅ new
      sold: { type: Boolean, default: false },  
-     promptHash: { type: String, default: "", index: true },  
+     promptHash: { type: String, default: "", index: true },
+     attachmentHash: { type: String, default: "", index: true },
+     mediaValidation: { type: MediaValidationSchema, default: () => ({}) },
 
 
     tokun_price: { type: Number, default: 0 }, // <-- new field

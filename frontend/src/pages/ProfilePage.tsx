@@ -2776,7 +2776,8 @@ import { useParams } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Card, CardContent } from "@/components/ui/card";
-import { User, Star, Camera } from "lucide-react";
+import { User, Camera } from "lucide-react";
+import "./PromptMarketplace.css"; // reuse the marketplace .mp-card design
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/use-toast";
 import { LuBadgeCheck } from "react-icons/lu"; 
@@ -3503,12 +3504,6 @@ const sendMessage = () => {
   {/* TRIPLE DOT MENU (RIGHT OF HIRE) */}
  
 
-  {/* RATING (STAYS ON RIGHT SIDE) */}
-  <div className="flex items-center gap-1 px-3 h-9 rounded-full bg-[#1C1C1C] border border-white/10 text-sm">
-    <Star className="w-4 h-4 text-yellow-400" />
-    4.9
-  </div>
-    
 
 
     {/* //ooking */}
@@ -3521,6 +3516,8 @@ const sendMessage = () => {
 </button> */}
 
 
+   {/* Report menu — hidden on your own profile (you can't report yourself) */}
+   {!isOwnProfile && (
    <div ref={menuRef} className="relative">
     <button
       onClick={() => setOpenMenu((v) => !v)}
@@ -3549,8 +3546,6 @@ const sendMessage = () => {
           z-50
         "
       >
-       
-
         <button
           onClick={() => {
             setOpenMenu(false);
@@ -3567,6 +3562,7 @@ const sendMessage = () => {
       </div>
     )}
   </div>
+   )}
 </div>
 
               </div>
@@ -3748,60 +3744,58 @@ const sendMessage = () => {
     ) : prompts.length === 0 ? (
       <p className="text-white/60">No prompts uploaded yet.</p>
     ) : (
-   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 justify-items-center">
+   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {prompts.map((prompt) => (
-          <Card
-  key={prompt.id}
-  className="overflow-hidden w-full max-w-[306px]"
-  style={{
-    height: 520,
-    background: "#1C1C1C",
-    borderRadius: 30,
-  }}
->
-            <CardContent className="p-4 h-full flex flex-col">
-             <div className="relative w-full h-[240px] rounded-[20px] overflow-hidden bg-black">
-  {prompt.videoUrl ? (
-    <video
-      src={prompt.videoUrl}
-      className="w-full h-full object-cover"
-      controls
-      muted
-      playsInline
-      preload="metadata"
-    />
-  ) : prompt.imageUrl ? (
-    <img
-      src={prompt.imageUrl}
-      alt={prompt.title}
-      className="w-full h-full object-cover"
-    />
-  ) : null}
-
-  <div
-    className="absolute top-3 left-3 px-3 py-1 text-[11px] font-semibold text-white rounded-full"
-    style={{ background: GRADIENT }}
-  >
-    {prompt.category.toUpperCase()}
-  </div>
-</div>
-
-              <div className="mt-4">
-                <h3 className="text-[18px] font-semibold text-white line-clamp-2">
-                  {prompt.title}
-                </h3>
-                <p className="text-[13px] text-white/70 mt-2 line-clamp-2">
-                  {prompt.description}
-                </p>
+          // Same visual design as the marketplace prompt cards (.mp-card)
+          <div key={prompt.id} className="mp-card" style={{ cursor: "default" }}>
+            <div className="mp-card__media">
+              <div className="mp-card__preview">
+                {prompt.videoUrl ? (
+                  <video
+                    src={prompt.videoUrl}
+                    className="mp-card__video"
+                    muted
+                    playsInline
+                    preload="metadata"
+                  />
+                ) : prompt.imageUrl ? (
+                  <img src={prompt.imageUrl} alt={prompt.title} className="mp-card__img" />
+                ) : null}
               </div>
 
-              <div className="mt-auto pt-4">
-                <div className="px-4 h-10 rounded-full bg-[#333335] inline-flex items-center justify-center text-sm text-white">
-                  {prompt.isFree ? "FREE" : `₹${prompt.price?.toFixed(2)}`}
+              <div className="mp-card__badges">
+                <span className="mp-card__cat">{prompt.category?.toUpperCase()}</span>
+              </div>
+
+              {!prompt.isFree && prompt.price && prompt.price > 0 ? (
+                <div className="mp-card__crown">
+                  <img src="/icons/premium.png" alt="Premium" />
                 </div>
+              ) : null}
+            </div>
+
+            <div className="mp-card__body">
+              <div className="mp-card__meta">
+                <span className="mp-card__avatar">
+                  {(userName || "U").slice(0, 2).toUpperCase()}
+                </span>
+                <span className="mp-card__author-name">{userName || "Unknown"}</span>
               </div>
-            </CardContent>
-          </Card>
+
+              <h3 className="mp-card__title">{prompt.title}</h3>
+              <p className="mp-card__desc">{prompt.description}</p>
+
+              <div className="mp-card__footer">
+                {prompt.isFree ? (
+                  <div className="mp-card__pill mp-card__pill--free">FREE</div>
+                ) : (
+                  <div className="mp-card__pill mp-card__pill--muted">
+                    ₹{(prompt.price ?? 0).toFixed(2)}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         ))}
       </div>
     )}

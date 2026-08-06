@@ -252,4 +252,41 @@ WalletSchema.statics.debitWithdrawal = async function (userId, amount, descripti
   return wallet;
 };
 
+/**
+ * Reverse a sale credit when a buyer's refund is approved and the seller
+ * had no Route linked account at purchase time (Wallet-ledger fallback
+ * path) — there's no Razorpay transfer to reverse, only this internal
+ * ledger entry that gave the seller credit for the sale.
+ *
+ * Throws "insufficient_balance" if the seller already withdrew past this
+ * amount — the buyer's Razorpay refund still goes through independently,
+ * this only fails to claw back the seller's wallet credit and needs manual
+ * admin follow-up (e.g. deduct from a future payout).
+ *
+ * @param {ObjectId|string} sellerId
+ * @param {number}          amount
+ * @param {object}          meta - { purchaseId, promptId, promptTitle }
+ */
+WalletSchema.statics.debitRefund = async function (sellerId, amount, meta = {}) {
+  const { purchaseId = null, promptId = null, promptTitle = "Prompt refunded" } = meta;
+
+  const wallet = await this.findOne({ userId: sellerId });
+  if (!wallet) throw new Error("wallet_not_found");
+  if (wallet.availableBalance < amount) throw new Error("insufficient_balance");
+
+  wallet.availableBalance -= amount;
+  wallet.transactions.unshift({
+    type: "debit",
+    amount,
+    description: `Refund: "${promptTitle}"`,
+    purchaseId,
+    promptId,
+    status: "Completed",
+  });
+  if (wallet.transactions.length > 100) wallet.transactions = wallet.transactions.slice(0, 100);
+
+  await wallet.save();
+  return wallet;
+};
+
 module.exports = mongoose.model("Wallet", WalletSchema);

@@ -156,7 +156,8 @@ const NotificationSchema = new mongoose.Schema(
     senderId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      // Optional — some notifications (e.g. admin/system actions like feedback
+      // status updates) have no other "User" to attribute as the sender.
     },
 
     senderName: { type: String },
@@ -171,6 +172,14 @@ const NotificationSchema = new mongoose.Schema(
     receiverUserId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
+    },
+
+    // Admin-facing notifications (new reports, AI-flagged uploads, etc.) —
+    // AdminUser is a separate collection from User, hence its own field
+    // rather than overloading receiverUserId.
+    receiverAdminId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "AdminUser",
     },
 
    type: {
@@ -193,6 +202,8 @@ const NotificationSchema = new mongoose.Schema(
     "HIRE_PAYMENT_RELEASED",
     "HIRE_COUNTER_OFFER",
     "HIRE_NDA_SIGNED",
+    "HIRE_REFUNDED",
+    "HIRE_DEAL_CANCELLED_SUSPENSION",
     // Service booking flow
     "SERVICE_BOOKING_REQUESTED",
     "SERVICE_NDA_SIGNED",
@@ -201,6 +212,29 @@ const NotificationSchema = new mongoose.Schema(
     "SERVICE_WORK_SUBMITTED",
     "SERVICE_REVISION_REQUESTED",
     "SERVICE_PAYMENT_RELEASED",
+
+    // Feedback flow
+    "FEEDBACK_STATUS_UPDATED",
+    "FEEDBACK_FEATURED",
+
+    // Prompt-media match validation flow
+    "PROMPT_MEDIA_REVIEW",
+
+    // Admin-facing notifications
+    "ADMIN_PROMPT_REPORTED",
+    "ADMIN_PROMPT_FLAGGED",
+    "ADMIN_REVIEW_NEEDED",
+
+    // Seller account moderation
+    "SELLER_SUSPENDED",
+    "SELLER_UNSUSPENDED",
+    "SELLER_ACCOUNT_DELETED",
+    "SELLER_ACCOUNT_RESTORED",
+
+    // Buyer refund flow
+    "ADMIN_REFUND_REQUESTED",
+    "REFUND_APPROVED",
+    "REFUND_REJECTED",
   ],
   required: true,
 },

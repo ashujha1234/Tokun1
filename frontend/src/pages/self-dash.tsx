@@ -1096,6 +1096,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import Header from "@/components/Header";
 import { useAuth } from "@/contexts/AuthContext";
+import ShareWithTeamModal from "@/components/ShareWithTeamModal";
 import {
   X,
   Clock3,
@@ -1106,6 +1107,8 @@ import {
   BadgeDollarSign,
   FileText,
   Link2,
+  Pencil,
+  Users,
 } from "lucide-react";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1113,9 +1116,29 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/use-toast";
 import DetailsPrompt, { MarketplacePrompt } from "../components/historyDetail";
 import NdaButton from "@/components/NdaCard";
+import SellerLinkedAccountForm from "@/components/SellerLinkedAccountForm";
 
 const GRADIENT = "linear-gradient(270deg,#FF14EF 0%, #1A73E8 100%)";
 const GRAD = "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)";
+
+function getModerationBadge(status?: string): { label: string; bg: string; color: string } | null {
+  switch (status) {
+    case "pending":
+    case "pending_review":
+      return { label: "Pending Review", bg: "rgba(234,179,8,0.2)", color: "#facc15" };
+    case "approved":
+    case "admin_approved":
+      return { label: "Approved", bg: "rgba(34,197,94,0.2)", color: "#4ade80" };
+    case "admin_rejected":
+      return { label: "Rejected", bg: "rgba(239,68,68,0.2)", color: "#f87171" };
+    case "flagged":
+      return { label: "Flagged", bg: "rgba(239,68,68,0.2)", color: "#f87171" };
+    case "edit_requested":
+      return { label: "Changes Requested", bg: "rgba(167,139,250,0.2)", color: "#c4b5fd" };
+    default:
+      return null;
+  }
+}
 const SELECTED_CARD_BG =
   "linear-gradient(180deg, rgba(255, 20, 239, 0.5) 0%, rgba(26, 115, 232, 0.5) 100%)";
 
@@ -1198,6 +1221,11 @@ type Prompt = {
   isUploadedByMe?: boolean;
   promptText?: string;
   fullPrompt?: string;
+  mediaValidation?: {
+    status?: string;
+    score?: number | null;
+    adminAction?: { action?: string | null; note?: string };
+  };
 };
 
 /* ─── Category helper ───────────────────────────────────── */
@@ -1643,6 +1671,8 @@ function HistoryGridCard({
   onPreview,
   isUploaded = false,
   onDelete,
+  onEdit,
+  onShare,
 }: {
   prompt: Prompt;
   showImages?: boolean;
@@ -1651,10 +1681,19 @@ function HistoryGridCard({
   onPreview: (p: Prompt) => void;
   isUploaded?: boolean;
   onDelete?: (p: Prompt) => void;
+  onEdit?: (p: Prompt) => void;
+  onShare?: (p: Prompt) => void;
 }) {
   const isPlaying = playingVideo === prompt.id;
   const priceLabel = prompt.isFree ? "FREE" : `₹${(prompt.price ?? 0).toFixed(2)}`;
   const isVideo = !showImages && !!prompt.videoUrl;
+  const needsEdit = isUploaded && prompt.mediaValidation?.status === "edit_requested";
+  const { user } = useAuth() as any;
+  const canShareWithTeam =
+    !isUploaded &&
+    !!onShare &&
+    user?.userType === "ORG" &&
+    user?.role === "Owner";
 
   // Video prompts: media fills the whole card edge-to-edge, with an
   // explicit Details button (title/description are hidden under the video
@@ -1701,6 +1740,19 @@ function HistoryGridCard({
           {prompt.category?.toUpperCase()}
         </div>
 
+        {/* Moderation status pill */}
+        {isUploaded && getModerationBadge(prompt.mediaValidation?.status) && (
+          <div
+            className="absolute top-3 right-3 px-2 py-1 text-[10px] font-semibold rounded-full"
+            style={{
+              background: getModerationBadge(prompt.mediaValidation?.status)!.bg,
+              color: getModerationBadge(prompt.mediaValidation?.status)!.color,
+            }}
+          >
+            {getModerationBadge(prompt.mediaValidation?.status)!.label}
+          </div>
+        )}
+
         {/* Bottom scrim: title + price + details + delete/buy-again */}
         <div
           className="absolute bottom-0 left-0 right-0 px-4 pt-12 pb-3"
@@ -1724,21 +1776,47 @@ function HistoryGridCard({
                 Details ›
               </button>
               {isUploaded ? (
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onDelete?.(prompt); }}
-                  className="flex items-center justify-center"
-                  style={{ width: 32, height: 32, borderRadius: 50, background: "rgba(255,255,255,0.12)" }}
-                >
-                  <Trash className="h-3.5 w-3.5 text-white/90" />
-                </button>
+                <>
+                  {needsEdit && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onEdit?.(prompt); }}
+                      className="flex items-center justify-center"
+                      style={{ width: 32, height: 32, borderRadius: 50, background: "rgba(167,139,250,0.25)" }}
+                      title="Admin requested changes — edit & resubmit"
+                    >
+                      <Pencil className="h-3.5 w-3.5 text-white/90" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onDelete?.(prompt); }}
+                    className="flex items-center justify-center"
+                    style={{ width: 32, height: 32, borderRadius: 50, background: "rgba(255,255,255,0.12)" }}
+                  >
+                    <Trash className="h-3.5 w-3.5 text-white/90" />
+                  </button>
+                </>
               ) : (
-                <div
-                  className="flex items-center justify-center"
-                  style={{ width: 32, height: 32, borderRadius: 50, background: "rgba(255,255,255,0.12)" }}
-                >
-                  <img src="/icons/cop1.png" alt="cop1" className="h-3.5" />
-                </div>
+                <>
+                  {canShareWithTeam && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onShare?.(prompt); }}
+                      className="flex items-center justify-center"
+                      style={{ width: 32, height: 32, borderRadius: 50, background: "rgba(255,20,239,0.2)" }}
+                      title="Share with team"
+                    >
+                      <Users className="h-3.5 w-3.5 text-white/90" />
+                    </button>
+                  )}
+                  <div
+                    className="flex items-center justify-center"
+                    style={{ width: 32, height: 32, borderRadius: 50, background: "rgba(255,255,255,0.12)" }}
+                  >
+                    <img src="/icons/cop1.png" alt="cop1" className="h-3.5" />
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -1767,6 +1845,19 @@ function HistoryGridCard({
           >
             {prompt.category?.toUpperCase()}
           </div>
+
+          {/* Moderation status pill */}
+          {isUploaded && getModerationBadge(prompt.mediaValidation?.status) && (
+            <div
+              className="absolute top-2 right-2 px-2 py-1 text-[10px] font-semibold rounded-full"
+              style={{
+                background: getModerationBadge(prompt.mediaValidation?.status)!.bg,
+                color: getModerationBadge(prompt.mediaValidation?.status)!.color,
+              }}
+            >
+              {getModerationBadge(prompt.mediaValidation?.status)!.label}
+            </div>
+          )}
         </div>
 
         {/* TEXT */}
@@ -1788,6 +1879,17 @@ function HistoryGridCard({
             >
               <span className="text-[12px] text-white/90">{priceLabel}</span>
             </div>
+            {needsEdit && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onEdit?.(prompt); }}
+                className="flex items-center justify-center"
+                style={{ minWidth: 42, height: 36, borderRadius: 50, padding: "0 12px", background: "rgba(167,139,250,0.25)" }}
+                title="Admin requested changes — edit & resubmit"
+              >
+                <Pencil className="h-3.5 w-3.5 text-white/90" />
+              </button>
+            )}
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onDelete?.(prompt); }}
@@ -1811,10 +1913,146 @@ function HistoryGridCard({
             >
               <span className="text-[12px] text-white/90">{priceLabel}</span>
             </div>
+            {canShareWithTeam && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onShare?.(prompt); }}
+                className="flex items-center justify-center"
+                style={{ minWidth: 42, height: 36, borderRadius: 50, padding: "0 12px", background: "rgba(255,20,239,0.2)" }}
+                title="Share with team"
+              >
+                <Users className="h-3.5 w-3.5 text-white/90" />
+              </button>
+            )}
           </div>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/* ─── Resubmit Prompt Modal (edit_requested only) ───────── */
+function ResubmitPromptModal({
+  prompt,
+  token,
+  onClose,
+  onResubmitted,
+}: {
+  prompt: Prompt;
+  token: string;
+  onClose: () => void;
+  onResubmitted: (updated: any) => void;
+}) {
+  const [title, setTitle] = useState(prompt.title || "");
+  const [description, setDescription] = useState(prompt.description || "");
+  const [promptText, setPromptText] = useState(prompt.promptText || prompt.fullPrompt || "");
+  const [newAttachment, setNewAttachment] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const note = prompt.mediaValidation?.adminAction?.note;
+
+  const handleSubmit = async () => {
+    if (!title.trim() || !promptText.trim()) {
+      setError("Title and prompt text are required.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const fd = new FormData();
+      fd.append("title", title.trim());
+      fd.append("description", description.trim());
+      fd.append("promptText", promptText.trim());
+      if (newAttachment) fd.append("attachment", newAttachment);
+
+      const res = await fetch(`${API_BASE}/api/prompt/${encodeURIComponent(String(prompt.id))}/resubmit`, {
+        method: "PUT",
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: fd,
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || data?.error || "Could not resubmit this prompt.");
+      }
+
+      onResubmitted(data.prompt);
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || "Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const inputClass =
+    "w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#A78BFA]";
+  const labelClass = "text-xs text-white/60 mb-1 block";
+
+  return (
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="max-h-[90vh] w-[520px] max-w-full overflow-y-auto rounded-2xl border border-purple-500/20 bg-[#14101F] p-6 text-white"
+      >
+        <div className="mb-4 flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Edit & Resubmit</h3>
+            <p className="text-xs text-white/50">Only fixing what the admin flagged is required.</p>
+          </div>
+          <button onClick={onClose} className="text-white/60 hover:text-white">✕</button>
+        </div>
+
+        {note && (
+          <div className="mb-4 rounded-lg border border-purple-400/30 bg-purple-500/10 px-3 py-2 text-sm text-purple-100">
+            <strong>Admin requested:</strong> {note}
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <div>
+            <label className={labelClass}>Title</label>
+            <input className={inputClass} value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+          <div>
+            <label className={labelClass}>Description</label>
+            <textarea className={inputClass} rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+          </div>
+          <div>
+            <label className={labelClass}>Prompt text</label>
+            <textarea className={inputClass} rows={4} value={promptText} onChange={(e) => setPromptText(e.target.value)} />
+          </div>
+          <div>
+            <label className={labelClass}>
+              Replace image/video <span className="text-white/30">(optional — leave empty to keep the current one)</span>
+            </label>
+            <input
+              type="file"
+              accept="image/*,video/*"
+              onChange={(e) => setNewAttachment(e.target.files?.[0] || null)}
+              className="w-full text-xs text-white/60"
+            />
+          </div>
+        </div>
+
+        {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+
+        <button
+          onClick={handleSubmit}
+          disabled={submitting}
+          className="mt-5 w-full rounded-lg bg-[#A78BFA] px-5 py-2.5 text-sm font-medium text-black hover:opacity-90 disabled:opacity-50"
+        >
+          {submitting ? "Resubmitting…" : "Resubmit for review"}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -2195,6 +2433,130 @@ useEffect(() => {
   fetchHireEarnings();
 }, [token]);
 
+// Route payout setup — drives the "set up your payout account" banner below.
+const [hasPayoutSetup, setHasPayoutSetup] = useState<boolean | null>(null);
+// CREATED | UNDER_REVIEW | NEEDS_CLARIFICATION | SUSPENDED | REJECTED | ACTIVATED | null
+const [activationStatus, setActivationStatus] = useState<string | null>(null);
+const [payoutAccountId, setPayoutAccountId] = useState<string | null>(null);
+const [payoutMessage, setPayoutMessage] = useState<string | null>(null);
+const [payoutRequirements, setPayoutRequirements] = useState<any[]>([]);
+const [payoutSubmittedDetails, setPayoutSubmittedDetails] = useState<any[]>([]);
+const [requiresResubmission, setRequiresResubmission] = useState(false);
+const [sellerFormOpen, setSellerFormOpen] = useState(false);
+const [clarificationModalOpen, setClarificationModalOpen] = useState(false);
+const [clarificationReviewModalOpen, setClarificationReviewModalOpen] = useState(false);
+const [clarificationInputs, setClarificationInputs] = useState<Record<string, string>>({});
+const [clarificationSubmitting, setClarificationSubmitting] = useState(false);
+
+const fetchPayoutStatus = async () => {
+  if (!token) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/bankaccount/payout-status`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (res.ok && data?.success) {
+      setHasPayoutSetup(Boolean(data.hasPayoutSetup));
+      setActivationStatus(data.activationStatus || null);
+      setPayoutAccountId(data.accountId || null);
+      setPayoutMessage(data.message || null);
+      const requirements = Array.isArray(data.requirements) ? data.requirements : [];
+      const submittedDetails = Array.isArray(data.submittedDetails) ? data.submittedDetails : [];
+      setPayoutRequirements(requirements);
+      setPayoutSubmittedDetails(submittedDetails);
+      setRequiresResubmission(Boolean(data.requiresResubmission));
+
+      // Only fields Razorpay actually flagged as wrong are editable — it
+      // rejects the whole submission if any other field is included, so
+      // there's no point letting the seller edit anything else. Prefill
+      // those with what was actually submitted, so they edit the existing
+      // value instead of retyping from a blank box. Doesn't clobber
+      // anything they're already mid-typing.
+      const flaggedRefs = new Set(requirements.map((r: any) => r.field_reference));
+      setClarificationInputs((prev) => {
+        const next = { ...prev };
+        submittedDetails.forEach((d: any) => {
+          if (d.fieldReference && flaggedRefs.has(d.fieldReference) && next[d.fieldReference] === undefined) {
+            next[d.fieldReference] = d.value || "";
+          }
+        });
+        return next;
+      });
+    }
+  } catch (err) {
+    console.error("Payout status fetch failed:", err);
+  }
+};
+
+useEffect(() => {
+  fetchPayoutStatus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [token]);
+
+// Only flagged fields are editable and prefilled with the current value, so
+// only actually-changed fields get submitted (unchanged ones would otherwise
+// trigger a pointless re-PATCH to Razorpay every time). The backend groups
+// whatever's sent by scope (e.g. all "settlements.*" fields become a single
+// Razorpay PATCH instead of one call per field).
+const submitAllClarifications = async () => {
+  const updates = payoutSubmittedDetails
+    .filter((d) => d.fieldReference)
+    .map((d) => ({
+      fieldReference: d.fieldReference as string,
+      value: (clarificationInputs[d.fieldReference] ?? "").trim(),
+      original: (d.value || "").trim(),
+    }))
+    .filter((u) => u.value && u.value !== u.original)
+    .map(({ fieldReference, value }) => ({ fieldReference, value }));
+
+  if (!updates.length || !payoutAccountId) return;
+
+  setClarificationSubmitting(true);
+  try {
+    const res = await fetch(`${API_BASE}/api/bankaccount/${payoutAccountId}/resolve-clarification`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ updates }),
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data?.success) {
+      toast({
+        title: "Couldn't update these fields",
+        description: data?.message || "Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const skippedFields: string[] = Array.isArray(data.skippedFields) ? data.skippedFields : [];
+    if (skippedFields.length) {
+      const skippedLabels = skippedFields
+        .map((ref) => payoutSubmittedDetails.find((d) => d.fieldReference === ref)?.label || ref)
+        .join(", ");
+      toast({
+        title: "Some edits weren't sent",
+        description: `${skippedLabels} — Razorpay hasn't flagged ${skippedFields.length > 1 ? "these" : "this"} field${skippedFields.length > 1 ? "s" : ""} for clarification, so ${skippedFields.length > 1 ? "they weren't" : "it wasn't"} submitted.`,
+      });
+    }
+    setClarificationInputs({});
+    // Close the edit popup and show a "please wait" confirmation instead —
+    // Razorpay's re-check isn't instant, so this stops the seller from
+    // immediately resubmitting the same fields again.
+    setClarificationModalOpen(false);
+    setClarificationReviewModalOpen(true);
+    await fetchPayoutStatus();
+  } catch (err) {
+    console.error("Resolve clarification failed:", err);
+    toast({ title: "Something went wrong", description: "Please try again.", variant: "destructive" });
+  } finally {
+    setClarificationSubmitting(false);
+  }
+};
+
 
 useEffect(() => {
   const handleStorage = (e: StorageEvent) => {
@@ -2366,6 +2728,7 @@ const handleAcceptRequest = async (item: any) => {
           imageUrl, videoUrl,
           preview: description || (promptText?.slice(0, 140) || ""),
           isFree, uploadedAt, isUploadedByMe: true, promptText, fullPrompt,
+          mediaValidation: doc.mediaValidation,
         } as Prompt;
       });
       setUploadHistory(mapped);
@@ -2437,6 +2800,10 @@ const handleAcceptRequest = async (item: any) => {
       toast({ title: "Delete failed", description: err?.message || "Could not delete.", variant: "destructive" });
     }
   };
+
+  /* ── Resubmit (edit-requested prompts only) ── */
+  const [resubmitTarget, setResubmitTarget] = useState<Prompt | null>(null);
+  const [shareTarget, setShareTarget] = useState<Prompt | null>(null);
 
   /* ── Totals ── */
   const totalPurchasedBill = purchaseHistory.reduce((sum, p) => sum + (p.price || 0), 0);
@@ -3266,6 +3633,8 @@ const RequestCard = ({ item }: { item: any }) => {
     const statVal2 = isPurchased
       ? `₹${totalPurchasedBill.toFixed(2)}`
       : `₹${totalEarningsINR.toFixed(2)}`;
+    const soldPromptsCount = uploadHistory.filter((p) => (p.sales || 0) > 0).length;
+    const totalUnitsSold = uploadHistory.reduce((sum, p) => sum + (p.sales || 0), 0);
 
     return (
       <div className="relative z-10">
@@ -3311,7 +3680,7 @@ const RequestCard = ({ item }: { item: any }) => {
 
         {/* Stat cards */}
        {/* Glass Stat cards */}
-<div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+<div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-6">
   <div
     className="relative overflow-hidden rounded-2xl border border-white/10 p-4"
     style={{
@@ -3453,6 +3822,60 @@ const RequestCard = ({ item }: { item: any }) => {
       </div>
     </div>
   </div>
+
+  {promptsTab === "uploaded" && (
+    <div
+      className="relative overflow-hidden rounded-2xl border border-white/10 p-4"
+      style={{
+        background:
+          "linear-gradient(135deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.035) 100%)",
+        boxShadow:
+          "inset 0 1px 0 rgba(255,255,255,0.10), 0 18px 45px rgba(0,0,0,0.28)",
+        backdropFilter: "blur(18px)",
+        WebkitBackdropFilter: "blur(18px)",
+      }}
+    >
+      <div
+        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full blur-2xl"
+        style={{ background: "rgba(34,197,94,0.25)" }}
+      />
+      <div
+        className="pointer-events-none absolute -bottom-12 -left-8 h-24 w-24 rounded-full blur-2xl"
+        style={{ background: "rgba(255,20,239,0.15)" }}
+      />
+
+      <div className="relative z-10 flex items-start justify-between gap-3">
+        <div>
+          <p
+            className="text-[11px] uppercase tracking-[0.18em] text-white/45"
+            style={{ fontFamily: "Inter, sans-serif" }}
+          >
+            Prompts Sold
+          </p>
+
+          <div
+            className="mt-2 text-[26px] font-extrabold leading-none text-white"
+            style={{ fontFamily: "Inter, sans-serif" }}
+          >
+            {soldPromptsCount} <span className="text-white/40 text-base font-semibold">/ {uploadHistory.length}</span>
+          </div>
+
+          <p className="mt-2 text-xs text-white/40">
+            {totalUnitsSold} total sale{totalUnitsSold === 1 ? "" : "s"} across your prompts
+          </p>
+        </div>
+
+        <div
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-white/10"
+          style={{
+            background: "linear-gradient(135deg, rgba(34,197,94,0.22), rgba(26,115,232,0.18))",
+          }}
+        >
+          <ShoppingCart className="h-5 w-5 text-white/85" />
+        </div>
+      </div>
+    </div>
+  )}
 </div>
 
         {/* Grid */}
@@ -3474,6 +3897,8 @@ const RequestCard = ({ item }: { item: any }) => {
                 onPreview={openDetails}
                 isUploaded={!isPurchased}
                 onDelete={!isPurchased ? handleDeletePrompt : undefined}
+                onEdit={!isPurchased ? setResubmitTarget : undefined}
+                onShare={isPurchased ? setShareTarget : undefined}
               />
             ))}
           </div>
@@ -3635,6 +4060,193 @@ const RequestCard = ({ item }: { item: any }) => {
                   )}
                 </div>
               </div>
+            )}
+
+            {hasPayoutSetup === false && !requiresResubmission && (
+              <div className="relative z-10 mx-4 mt-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-200">
+                <strong>Action required:</strong> Please set up your bank/linked account so people can buy your prompts.
+                <button
+                  type="button"
+                  onClick={() => setSellerFormOpen(true)}
+                  className="ml-3 rounded-md bg-yellow-500/20 px-3 py-1 text-xs font-medium text-yellow-100 hover:bg-yellow-500/30"
+                >
+                  Set up now
+                </button>
+              </div>
+            )}
+
+            {hasPayoutSetup === false && requiresResubmission && (
+              <div className="relative z-10 mx-4 mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                <strong>{activationStatus === "REJECTED" ? "Verification failed:" : "Account disabled:"}</strong>{" "}
+                {payoutMessage || "Please resubmit your payout details."}
+                <button
+                  type="button"
+                  onClick={() => setSellerFormOpen(true)}
+                  className="ml-3 rounded-md bg-red-500/20 px-3 py-1 text-xs font-medium text-red-100 hover:bg-red-500/30"
+                >
+                  Resubmit details
+                </button>
+              </div>
+            )}
+
+            {hasPayoutSetup === true && activationStatus === "NEEDS_CLARIFICATION" && (
+              <div className="relative z-10 mx-4 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                <span>Razorpay needs more information to verify your payout account. Your prompts stay hidden from buyers until this is resolved.</span>
+                <button
+                  type="button"
+                  onClick={() => setClarificationModalOpen(true)}
+                  style={{ background: "linear-gradient(270deg,#FFB020 0%, #FF5B1E 100%)" }}
+                  className="rounded-md px-3 py-1.5 text-xs font-semibold text-black shadow-sm transition hover:opacity-90"
+                >
+                  Clarification Needed
+                </button>
+              </div>
+            )}
+
+            {hasPayoutSetup === true && (activationStatus === "UNDER_REVIEW" || activationStatus === "CREATED") && (
+              <div className="relative z-10 mx-4 mt-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-200">
+                <strong>Under review:</strong> {payoutMessage || "Your payout account is being verified. Your prompts will go live as soon as verification completes."}
+              </div>
+            )}
+
+            {hasPayoutSetup === true && activationStatus === "ACTIVATED" && (
+              <div className="relative z-10 mx-4 mt-4 rounded-lg border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-200">
+                <strong>Payout account activated:</strong> Buyers can now see and purchase your prompts.
+              </div>
+            )}
+
+            {token && (
+              <SellerLinkedAccountForm
+                open={sellerFormOpen}
+                onClose={() => setSellerFormOpen(false)}
+                token={token}
+                apiBase={API_BASE}
+                onSubmitted={() => {
+                  setSellerFormOpen(false);
+                  fetchPayoutStatus();
+                }}
+              />
+            )}
+
+            {clarificationModalOpen && (
+              <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+                <div className="max-h-[85vh] w-[520px] max-w-full overflow-y-auto rounded-2xl border border-amber-500/20 bg-[#171008] text-white">
+                  <div className="flex items-center justify-between border-b border-amber-500/20 p-4">
+                    <div>
+                      <p className="font-semibold text-amber-100">Clarification needed</p>
+                      <p className="text-xs text-amber-100/50">{payoutMessage}</p>
+                    </div>
+                    <button onClick={() => setClarificationModalOpen(false)} className="text-white/60 hover:text-white">✕</button>
+                  </div>
+
+                  <div className="space-y-4 p-4">
+                    {payoutSubmittedDetails.length > 0 && (
+                      <>
+                        <p className="text-xs text-amber-100/60">
+                          Here's what you submitted. Only fields tagged "Needs fix" — the ones Razorpay actually
+                          flagged — can be edited and resubmitted.
+                        </p>
+                        <div className="space-y-2">
+                          {payoutSubmittedDetails.map((detail) => {
+                            const req = payoutRequirements.find((r) => r.field_reference === detail.fieldReference);
+
+                            if (!req) {
+                              return (
+                                <div key={detail.key} className="flex flex-wrap items-center gap-2 rounded-md bg-white/5 px-3 py-2">
+                                  <span className="min-w-[160px] flex-1 text-xs font-medium text-white/70">{detail.label}</span>
+                                  <span className="text-xs text-white/50">{detail.value || "—"}</span>
+                                </div>
+                              );
+                            }
+
+                            const fieldRef = detail.fieldReference as string;
+                            return (
+                              <div key={detail.key} className="flex flex-wrap items-center gap-2 rounded-md border border-amber-400/30 bg-amber-500/5 px-3 py-2">
+                                <div className="min-w-[160px] flex-1 text-xs text-amber-100/80">
+                                  <span className="font-medium text-amber-100">{detail.label}</span>
+                                  <span className="ml-2 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-200">
+                                    Needs fix
+                                  </span>
+                                  {req.description ? <div className="mt-0.5 text-amber-100/60">{req.description}</div> : null}
+                                </div>
+                                <input
+                                  className="w-40 rounded-md border border-amber-400/40 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-amber-400"
+                                  value={clarificationInputs[fieldRef] ?? detail.value ?? ""}
+                                  onChange={(e) =>
+                                    setClarificationInputs((prev) => ({ ...prev, [fieldRef]: e.target.value }))
+                                  }
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={
+                            clarificationSubmitting ||
+                            !payoutSubmittedDetails.some(
+                              (d) =>
+                                d.fieldReference &&
+                                (clarificationInputs[d.fieldReference] ?? "").trim() &&
+                                (clarificationInputs[d.fieldReference] ?? "").trim() !== (d.value || "").trim()
+                            )
+                          }
+                          onClick={submitAllClarifications}
+                          className="w-full rounded-md bg-amber-500 px-4 py-2 text-sm font-medium text-black hover:bg-amber-400 disabled:opacity-40"
+                        >
+                          {clarificationSubmitting ? "Submitting…" : "Submit updates"}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {clarificationReviewModalOpen && (
+              <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+                <div className="w-[420px] max-w-full rounded-2xl border border-amber-500/20 bg-[#171008] p-6 text-center text-white">
+                  <h3 className="mb-2 text-lg font-semibold text-amber-100">Submitted for review</h3>
+                  <p className="mb-6 text-sm text-white/60">
+                    Please wait — we re-checking your updated details. This can take a few minutes, so
+                    there's no need to submit again in the meantime.
+                  </p>
+                  <button
+                    onClick={() => setClarificationReviewModalOpen(false)}
+                    className="w-full rounded-lg bg-amber-500 px-5 py-2 text-sm font-medium text-black hover:bg-amber-400"
+                  >
+                    Got it
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {shareTarget && (
+              <ShareWithTeamModal
+                open={!!shareTarget}
+                onOpenChange={(open) => !open && setShareTarget(null)}
+                promptId={String(shareTarget.id)}
+                promptTitle={shareTarget.title}
+                thumbnail={shareTarget.imageUrl}
+              />
+            )}
+
+            {resubmitTarget && (
+              <ResubmitPromptModal
+                prompt={resubmitTarget}
+                token={token}
+                onClose={() => setResubmitTarget(null)}
+                onResubmitted={(updated) => {
+                  setUploadHistory((prev) =>
+                    prev.map((p) =>
+                      String(p.id) === String(updated._id)
+                        ? { ...p, title: updated.title, description: updated.description, promptText: updated.promptText, fullPrompt: updated.promptText, mediaValidation: updated.mediaValidation }
+                        : p
+                    )
+                  );
+                  toast({ title: "Resubmitted", description: "Sent back for a fresh review." });
+                }}
+              />
             )}
 
             <div className={activeTab === "requests" ? "relative z-10 h-[calc(100%-0px)]" : "relative z-10 mt-6"}>

@@ -352,7 +352,7 @@ const User = require("../models/User");
 const router = express.Router();
 const Wallet = require("../models/Wallet");
 const PlatformWallet = require("../models/PlatformWallet");
-const { requireAuth } = require("../utils/auth");
+const { requireAuth, blockIfSuspended } = require("../utils/auth");
 const HireDeal = require("../models/HireDeal");
 const Notification = require("../models/Notification");
 const Message = require("../models/Message");
@@ -415,7 +415,7 @@ const uploadWorkFile = multer({
 
 
 // ─── CREATE PROPOSAL ───────────────────────────────────────────────────────────
-router.post("/create-proposal", requireAuth, async (req, res) => {
+router.post("/create-proposal", requireAuth, blockIfSuspended, async (req, res) => {
   try {
     const {
       freelancerId,
@@ -757,7 +757,7 @@ router.post("/:dealId/cancel", requireAuth, async (req, res) => {
 });
 
 // ─── CREATE RAZORPAY ORDER ──────────────────────────────────────────────────────
-router.post("/:dealId/create-payment-order", requireAuth, async (req, res) => {
+router.post("/:dealId/create-payment-order", requireAuth, blockIfSuspended, async (req, res) => {
   try {
     const deal = await HireDeal.findById(req.params.dealId);
 
@@ -817,7 +817,7 @@ router.post("/:dealId/create-payment-order", requireAuth, async (req, res) => {
 });
 
 // ─── VERIFY PAYMENT ─────────────────────────────────────────────────────────────
-router.post("/:dealId/verify-payment", requireAuth, async (req, res) => {
+router.post("/:dealId/verify-payment", requireAuth, blockIfSuspended, async (req, res) => {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 

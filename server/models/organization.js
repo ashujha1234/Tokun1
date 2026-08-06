@@ -40,6 +40,11 @@ subscriptionStatus: { type: String, enum: ["active","past_due","grace","suspende
 billingAnchor: { type: Date, default: null },     // first start                   <- NEW
 graceDays: { type: Number, default: 7 },          // configurable                  <- NEW
 lastInvoiceDueAt: { type: Date, default: null },  // optional reporting             <- NEW
+
+// Manual platform-admin freeze — SEPARATE from billing subscriptionStatus so the
+// billing cron never overwrites it. When true, the whole org (owner + members)
+// is suspended by an admin; toggled via PATCH /api/admin/orgs/:orgId/suspend.
+adminFrozen: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

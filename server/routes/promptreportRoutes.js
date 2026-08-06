@@ -237,10 +237,20 @@ const express = require("express");
 const router = express.Router();
 const PromptReport = require("../models/PromptReport");
 const Category = require("../models/Category");
+const Prompt = require("../models/Prompt");
+const Notification = require("../models/Notification");
 const { requireAuth } = require("../utils/auth");
+const { notifyAdmins } = require("../utils/notifyAdmins");
 const mongoose = require("mongoose");
 const multer = require("multer");
 const uploadToAzure = require("../utils/uploadToAzure");
+
+function requireAdmin(req, res, next) {
+  if (!req.isAdmin) {
+    return res.status(403).json({ success: false, error: "forbidden" });
+  }
+  next();
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -313,6 +323,14 @@ router.post("/", requireAuth, upload.array("screenshots", 5), async (req, res) =
       status: "Pending",
     });
 
+    const reportedPrompt = await Prompt.findById(prompt).select("title");
+    await notifyAdmins({
+      type: "ADMIN_PROMPT_REPORTED",
+      promptId: prompt,
+      message: `"${reportedPrompt?.title || "A prompt"}" was reported (${reason}) by ${req.user.name || req.user.email}.`,
+      meta: { reportId: report._id, reason },
+    }).catch((err) => console.error("Admin report-notification failed:", err.message));
+
     res.json({ success: true, report });
   } catch (err) {
     console.error("POST /prompt-reports error:", err);
@@ -324,11 +342,11 @@ router.post("/", requireAuth, upload.array("screenshots", 5), async (req, res) =
  * GET /api/prompt-reports
  * Admin: list all reports
  */
-router.get("/", async (req, res) => {
+router.get("/", requireAuth, requireAdmin, async (req, res) => {
   try {
     const reports = await PromptReport.find()
       .populate("reporter", "name email")
-      .populate("prompt", "title attachment userId")
+      .populate({ path: "prompt", select: "title attachment userId flagged deleted", populate: { path: "userId", select: "name email" } })
       .populate("category", "name")
       .sort({ createdAt: -1 });
 
@@ -336,6 +354,98 @@ router.get("/", async (req, res) => {
   } catch (err) {
     console.error("Error fetching reports:", err);
     res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Admin actions on a report — dismiss / flag / suspend. Score/report content is
+// a signal; these are the only calls that actually persist a decision.
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/prompt-reports/:id/dismiss
+ * Report wasn't a real violation — close it, no action on the prompt.
+ */
+router.post("/:id/dismiss", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const report = await PromptReport.findById(req.params.id);
+    if (!report) return res.status(404).json({ success: false, error: "report_not_found" });
+
+    report.status = "Rejected";
+    await report.save();
+
+    return res.json({ success: true, report });
+  } catch (err) {
+    console.error("Dismiss report error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+/**
+ * POST /api/prompt-reports/:id/flag
+ * Confirmed policy violation — flag the prompt (hides it from the public
+ * marketplace, see the flagged:true gate in GET /api/prompt/others) and
+ * notify the seller. Report stays open for record-keeping (status: Reviewed).
+ */
+router.post("/:id/flag", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { note } = req.body;
+    const report = await PromptReport.findById(req.params.id).populate("prompt", "title userId");
+    if (!report) return res.status(404).json({ success: false, error: "report_not_found" });
+    if (!report.prompt) return res.status(404).json({ success: false, error: "prompt_not_found" });
+
+    await Prompt.findByIdAndUpdate(report.prompt._id, { $set: { flagged: true } });
+
+    report.status = "Reviewed";
+    await report.save();
+
+    await Notification.create({
+      receiverUserId: report.prompt.userId,
+      type: "PROMPT_MEDIA_REVIEW",
+      promptId: report.prompt._id,
+      message: `Your prompt "${report.prompt.title}" was flagged after a user report${note ? `: ${note}` : "."} It's now hidden from the marketplace.`,
+      meta: { reportId: report._id, adminAction: "flagged", note: note || "" },
+    });
+
+    return res.json({ success: true, report });
+  } catch (err) {
+    console.error("Flag report error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+/**
+ * POST /api/prompt-reports/:id/suspend
+ * Serious violation — soft-delete the listing (same semantics as the
+ * seller's own DELETE /api/prompt/:id: hidden from marketplace, buyers who
+ * already purchased keep access) plus flag it, and notify the seller.
+ */
+router.post("/:id/suspend", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { note } = req.body;
+    const report = await PromptReport.findById(req.params.id).populate("prompt", "title userId");
+    if (!report) return res.status(404).json({ success: false, error: "report_not_found" });
+    if (!report.prompt) return res.status(404).json({ success: false, error: "prompt_not_found" });
+
+    await Prompt.findByIdAndUpdate(report.prompt._id, {
+      $set: { flagged: true, deleted: true, deletedAt: new Date() },
+    });
+
+    report.status = "Resolved";
+    await report.save();
+
+    await Notification.create({
+      receiverUserId: report.prompt.userId,
+      type: "PROMPT_MEDIA_REVIEW",
+      promptId: report.prompt._id,
+      message: `Your prompt "${report.prompt.title}" was suspended after a user report${note ? `: ${note}` : "."} It's no longer listed on the marketplace.`,
+      meta: { reportId: report._id, adminAction: "suspended", note: note || "" },
+    });
+
+    return res.json({ success: true, report });
+  } catch (err) {
+    console.error("Suspend report error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
   }
 });
 

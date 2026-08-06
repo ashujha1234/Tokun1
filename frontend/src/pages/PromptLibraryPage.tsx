@@ -918,7 +918,7 @@ const PromptMarketplacePage = () => {
       return;
     }
     if (!rzpReady) {
-      toast({ title: "Loading payment…", description: "Razorpay is still initializing." });
+      toast({ title: "Loading payment…", description: "still initializing." });
       return;
     }
 
