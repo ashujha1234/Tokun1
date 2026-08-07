@@ -21,7 +21,7 @@ import { useCart } from "@/contexts/CartContext";
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 const PROMPTS_BASE = `${API_BASE}/api/prompt`;
 const PURCHASE_BASE = `${API_BASE}/api/purchase`;
-const RAZORPAY_KEY_ID = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || "rzp_test_aNNdd7yTcNuzYQ";
+const RAZORPAY_KEY_ID = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || "rzp_test_TLG37MSt5U18rP";
 
 /* ---------------------------------------------------------------------- */
 /*  Shared constants                                                      */
@@ -935,7 +935,9 @@ const PromptMarketplacePage = () => {
 
       const order = data.order;
       const options: any = {
-        key: RAZORPAY_KEY_ID,
+        // Server's key, so checkout always matches the account the order was
+        // created under — see PromptMarketplacePage for the failure this fixes.
+        key: data.keyId || RAZORPAY_KEY_ID,
         amount: Number(order.amount),
         currency: order.currency || "INR",
         name: "Tokun",

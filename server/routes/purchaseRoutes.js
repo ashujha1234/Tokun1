@@ -518,6 +518,13 @@ router.post("/create-order/:promptId", requireAuth, blockIfSuspended, blockOrgTe
     return res.json({
       success: true,
       order,
+      // The key_id this order was actually created under. Checkout must be
+      // opened with the SAME key or Razorpay rejects the preferences call with
+      // 401 — which is exactly what happened when the backend moved to a new key
+      // pair and the frontend build was still baked with the old one. Sending it
+      // alongside the order makes the two impossible to drift apart.
+      // key_id is public by design; the secret never leaves the server.
+      keyId: process.env.RAZORPAY_KEY_ID,
       prompt: {
         id: prompt._id,
         title: prompt.title,
@@ -534,7 +541,33 @@ router.post("/create-order/:promptId", requireAuth, blockIfSuspended, blockOrgTe
       },
     });
   } catch (err) {
-    console.error("Razorpay create order error:", err);
+    // Razorpay's own rejection reason, logged in full. A bare "server_error"
+    // told us nothing: the same 500 covers a bad transfer amount, a linked
+    // account that belongs to a different Razorpay account than the configured
+    // keys, and a genuine crash — and on a hosted environment there's no way to
+    // tell them apart without this.
+    const rzp = err?.error || err?.response?.error || null;
+    console.error("Razorpay create order error:", {
+      message: err?.message,
+      razorpayCode: rzp?.code,
+      razorpayDescription: rzp?.description,
+      razorpayField: rzp?.field,
+      razorpayReason: rzp?.reason,
+      statusCode: err?.statusCode,
+    });
+
+    // A Razorpay rejection is a 502 (upstream said no), not a 500 (we broke) —
+    // and the description is safe to return: it names the offending field, not
+    // any credential.
+    if (rzp?.description) {
+      return res.status(502).json({
+        success: false,
+        error: "razorpay_order_failed",
+        message: rzp.description,
+        field: rzp.field || null,
+      });
+    }
+
     return res.status(500).json({
       success: false,
       error: "server_error",

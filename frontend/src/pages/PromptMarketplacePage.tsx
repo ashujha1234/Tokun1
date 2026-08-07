@@ -1635,7 +1635,7 @@
 // // const PURCHASE_BASE = `${API_BASE}/api/purchase`;
 
 // // // ⚠️ Keep your real Razorpay key id in env:
-// // const RAZORPAY_KEY_ID = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || "rzp_test_aNNdd7yTcNuzYQ";
+// // const RAZORPAY_KEY_ID = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || "rzp_test_TLG37MSt5U18rP";
 
 // // /* ---------- Categories rail data (UI only) ---------- */
 // // const categoriesData = [
@@ -2496,7 +2496,7 @@
 // // const PURCHASE_BASE = `${API_BASE}/api/purchase`;
 
 // // // ⚠️ Keep your real Razorpay key id in env:
-// // const RAZORPAY_KEY_ID = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || "rzp_test_aNNdd7yTcNuzYQ";
+// // const RAZORPAY_KEY_ID = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || "rzp_test_TLG37MSt5U18rP";
 
 // // /* ---------- Categories rail data (UI only) ---------- */
 
@@ -4143,7 +4143,7 @@
 // const PURCHASE_BASE = `${API_BASE}/api/purchase`;
 
 // // ⚠️ Keep your real Razorpay key id in env:
-// const RAZORPAY_KEY_ID = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || "rzp_test_aNNdd7yTcNuzYQ";
+// const RAZORPAY_KEY_ID = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || "rzp_test_TLG37MSt5U18rP";
 
 // /* ---------- Categories rail data (UI only) ---------- */
 
@@ -5858,7 +5858,7 @@ const PROMPTS_BASE = `${API_BASE}/api/prompt`;
 const PURCHASE_BASE = `${API_BASE}/api/purchase`;
 
 // ⚠️ Keep your real Razorpay key id in env:
-const RAZORPAY_KEY_ID = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || "rzp_test_aNNdd7yTcNuzYQ";
+const RAZORPAY_KEY_ID = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || "rzp_test_TLG37MSt5U18rP";
 
 /* ---------- author initials (UI only) ---------- */
 const authorInitials = (name?: string) =>
@@ -7683,7 +7683,10 @@ const filteredPrompts = prompts.filter((p) => {
 
       // Razorpay Checkout
       const options: any = {
-        key: RAZORPAY_KEY_ID,
+        // The server tells us which key it created this order under. Preferring
+        // it over the build-time constant means the two can never disagree —
+        // when they did, Razorpay answered checkout with a 401.
+        key: data.keyId || RAZORPAY_KEY_ID,
         amount: Number(order.amount),
         currency: order.currency || "INR",
         name: "Tokun",

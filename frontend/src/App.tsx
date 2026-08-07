@@ -41,6 +41,7 @@ import PrivacyPolicyPage from "@/pages/PrivacyPolicyPage";
 import TermsPage from "@/pages/TermsPage";
 import RefundPolicyPage from "@/pages/RefundPolicyPage";
 import ReportPolicyPage from "@/pages/ReportPolicyPage";
+import MyRefundsPage from "@/pages/MyRefundsPage";
 import ScrollToTop from "@/components/ScrollToTop";
 import Wallet from "@/pages/Wallet";
 import WithdrawFunds from "@/pages/WithdrawFunds";
@@ -175,6 +176,7 @@ export default function App() {
 <Route path="/terms" element={<TermsPage />} />
 <Route path="/refund-policy" element={<RefundPolicyPage />} />
 <Route path="/report-policy" element={<ReportPolicyPage />} />
+<Route path="/my-refunds" element={<MyRefundsPage />} />
 <Route path="/subscription" element={<Subscription />} />
   <Route path="/prompty-history" element={<PromptHistory />} />
 <Route

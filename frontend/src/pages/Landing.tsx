@@ -12160,6 +12160,10 @@ function HeroAccountMenu() {
 
   const secondaryItems = [
     { label: 'My Feedback', onClick: () => go('/my-feedback') },
+    // Kept in step with the Header's account menu — this is a second copy of the
+    // same menu, so anything added there has to be added here too or the landing
+    // page quietly falls behind (the footer had exactly this problem).
+    { label: 'My Refunds', onClick: () => go('/my-refunds') },
     { label: 'Pricing', onClick: () => go('/subscription') },
     { label: 'Support', onClick: () => go('/support') },
   ]

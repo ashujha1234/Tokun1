@@ -33,7 +33,12 @@ jobs:
         env:
           VITE_API_URL: https://backendtokun1-dqb8gycxhpc3c8b9.eastus-01.azurewebsites.net
           VITE_DEFAULT_MODEL: gpt-4o-mini
-          VITE_RAZORPAY_KEY_ID: rzp_test_aNNdd7yTcNuzYQ
+          # Must be the key_id whose SECRET the backend holds. An order created
+          # under one Razorpay account cannot be paid from checkout opened under
+          # another — Razorpay answers the preferences call with 401. This was
+          # still the old key after the backend moved to the new pair.
+          # key_id is public (it ships to the browser), so it is safe in here.
+          VITE_RAZORPAY_KEY_ID: rzp_test_TLG37MSt5U18rP
           VITE_OPENAI_API_KEY: backend-handled
 
   close_pull_request_job:

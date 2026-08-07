@@ -1262,6 +1262,49 @@ router.get("/:dealId", requireAuth, async (req, res) => {
 
 
 // ─── GET my earnings + requests + active projects (SelfDash ke liye) ───
+/**
+ * GET /api/hire/my/refunds — hire deals of mine that were refunded.
+ *
+ * Deliberately different in shape from a prompt refund: there is no request
+ * flow here. A client cannot file a hire refund — an admin issues it from the
+ * escrow dashboard (adminEscrow.js) — so these only ever exist in one state,
+ * already refunded. The UI must not imply a pending/declined step that doesn't
+ * exist.
+ *
+ * Scoped to clientId because the client is the side the money goes back to.
+ */
+router.get("/my/refunds", requireAuth, async (req, res) => {
+  try {
+    const deals = await HireDeal.find({
+      clientId: req.user._id,
+      status: "REFUNDED",
+    })
+      .select("title amount totalPayable refundedAt refundReason razorpayRefundId createdAt freelancerId")
+      .populate("freelancerId", "name email")
+      .sort({ refundedAt: -1, createdAt: -1 })
+      .lean();
+
+    return res.json({
+      success: true,
+      refunds: deals.map((d) => ({
+        id: String(d._id),
+        title: d.title || "Hire deal",
+        // totalPayable is what the client actually paid (amount + clientFee),
+        // and it's what adminEscrow refunds — not `amount`.
+        refundAmount: Number(d.totalPayable || d.amount || 0),
+        reason: d.refundReason || "",
+        razorpayRefundId: d.razorpayRefundId || null,
+        refundedAt: d.refundedAt || null,
+        createdAt: d.createdAt,
+        counterpartyName: d.freelancerId?.name || d.freelancerId?.email || null,
+      })),
+    });
+  } catch (err) {
+    console.error("hire my/refunds error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
 router.get("/my/earnings", requireAuth, async (req, res) => {
   try {
     const freelancerId = req.user._id;

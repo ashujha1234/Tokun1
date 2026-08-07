@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import Header from "@/components/Header";
+import { mediaUrl } from "@/lib/mediaUrl";
 
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
@@ -108,8 +109,20 @@ export default function MyFeedbackPage() {
 
                   {fb.screenshots?.length > 0 && (
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                      {/* mediaUrl(), not the raw path. These are stored as
+                          "/uploads/feedback/…", which the browser resolves
+                          against this app's own origin — where nothing is
+                          served — so every screenshot link 404'd. */}
                       {fb.screenshots.map((s: string, i: number) => (
-                        <a key={i} href={s} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#60a5fa", textDecoration: "underline" }}>Screenshot {i + 1}</a>
+                        <a
+                          key={i}
+                          href={mediaUrl(s)}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ fontSize: 12, color: "#60a5fa", textDecoration: "underline" }}
+                        >
+                          Screenshot {i + 1}
+                        </a>
                       ))}
                     </div>
                   )}

@@ -2598,7 +2598,7 @@ import { useCart } from "@/contexts/CartContext";
  import { Zap } from "lucide-react";
 import { Crown } from "lucide-react";
 import { MessageCircle } from "lucide-react";
-import { Users } from "lucide-react";
+import { Users, ReceiptText } from "lucide-react";
 import { LuBadgeCheck } from "react-icons/lu";
 import KycGateModal from "@/components/KycGateModal";
 import SellerLinkedAccountForm from "@/components/SellerLinkedAccountForm";
@@ -3575,7 +3575,10 @@ const doCheckout = async () => {
     }
 
     const options: any = {
-      key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+      // Cart checkout returns the key its order was created under, same as the
+      // single-prompt flow. Falls back to the build-time value only if an older
+      // server response doesn't carry it.
+      key: checkoutData.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID,
       amount: order.amount,
       currency: order.currency,
       name: "Tokun.world",
@@ -4197,6 +4200,9 @@ useEffect(() => {
       { label: "My Wallet",      icon: Wallet,          onClick: goToWallet },
       { label: "Dashboard",      icon: LayoutDashboard, onClick: () => navigate("/self-dash") },
       { label: "My Feedback",    icon: MessageCircle,   onClick: () => navigate("/my-feedback") },
+      // Sits next to My Feedback because it's the same kind of thing: a list of
+      // requests you've made and what came of them.
+      { label: "My Refunds",     icon: ReceiptText,     onClick: () => navigate("/my-refunds") },
     ].map(({ label, icon: Icon, onClick }) => (
       <button
         key={label}

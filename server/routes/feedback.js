@@ -1,6 +1,6 @@
 const express = require("express");
 const multer = require("multer");
-const path = require("path");
+const uploadToAzure = require("../utils/uploadToAzure");
 const Feedback = require("../models/Feedback");
 const User = require("../models/User");
 const Notification = require("../models/Notification");
@@ -33,13 +33,26 @@ const sentiment = new Sentiment();
 // In-memory OTP store: email -> { otp, expiresAt, verified }
 const otpStore = new Map();
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, "uploads/feedback"),
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + "-" + Math.random().toString(36).slice(2) + path.extname(file.originalname));
+// Screenshots go to Azure Blob, not the App Service filesystem.
+//
+// They used to land in ./uploads/feedback via multer diskStorage. That path is
+// inside the deployed app directory, which the deploy pipeline replaces on every
+// release — so screenshots silently disappeared whenever the backend shipped.
+// Every other upload in this codebase (avatars, KYC, report screenshots, chat
+// attachments) already goes to Blob; feedback was the odd one out.
+//
+// memoryStorage because uploadToAzure takes a Buffer. Limits mirror the report
+// upload route so the two behave the same.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file
+  fileFilter: (req, file, cb) => {
+    if (!/^image\/(png|jpeg|jpg|webp|gif)$/i.test(file.mimetype)) {
+      return cb(new Error("Only image files are allowed"));
+    }
+    cb(null, true);
   },
 });
-const upload = multer({ storage });
 
 // POST /api/feedback/send-otp
 router.post("/send-otp", async (req, res) => {
@@ -103,7 +116,21 @@ router.post("/", upload.array("screenshots", 5), async (req, res) => {
     if (result.score > 0) sentimentLabel = "positive";
     else if (result.score < 0) sentimentLabel = "negative";
 
-    const screenshots = (req.files || []).map(f => `/uploads/feedback/${f.filename}`);
+    // Absolute Blob URLs now, not "/uploads/feedback/…". The client's mediaUrl()
+    // passes absolute URLs through untouched, so old relative paths already in
+    // the database keep resolving against the API exactly as before.
+    let screenshots = [];
+    try {
+      screenshots = await Promise.all(
+        (req.files || []).map((f) =>
+          uploadToAzure(f.buffer, f.originalname, "feedback-screenshots")
+        )
+      );
+    } catch (uploadErr) {
+      // The written feedback is the part that matters — losing it because a
+      // screenshot upload failed would be worse than saving it without images.
+      console.error("Feedback screenshot upload failed:", uploadErr?.message);
+    }
 
     const feedback = new Feedback({
       experience,

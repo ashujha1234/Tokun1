@@ -252,6 +252,9 @@ router.post("/checkout", requireAuth, blockIfSuspended, blockOrgTeamMemberPurcha
     res.json({
       success: true,
       order,
+      // Same reason as single-prompt checkout: the key that created the order
+      // has to be the key checkout opens with, or Razorpay 401s.
+      keyId: process.env.RAZORPAY_KEY_ID,
       prompts: purchasablePrompts.map((p) => ({ id: p._id, title: p.title, toatalprice: p.tokun_price})),
     });
   } catch (err) {

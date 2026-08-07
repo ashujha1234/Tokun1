@@ -14010,6 +14010,8 @@ import EscrowAdminDashboard from "./EscrowAdminDashboard";
 import PromptValidationAdminDashboard from "./PromptValidationAdminDashboard";
 import ScreenRecordingsAdmin from "./Screenrecordingsadmin ";
 import AdminSellerMessageModal from "@/components/AdminSellerMessageModal";
+// Resolves API-relative upload paths against the API origin — see lib/mediaUrl.
+import { mediaUrl } from "@/lib/mediaUrl";
 
 // ✅ ADD reports here
 type NavKey = "dashboard" | "sellers" | "products" | "reports" | "analytics" | "account" | "withdrawals" | "escrow" | "recordings" | "feedback";
@@ -21668,7 +21670,9 @@ function FeedbackView() {
 
               {fb.screenshots?.length > 0 && (
                 <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:8 }}>
-                  {fb.screenshots.map((s: string, i: number) => <a key={i} href={s} target="_blank" rel="noreferrer" style={{ fontSize:12, color:"#60a5fa", textDecoration:"underline" }}>Screenshot {i+1}</a>)}
+                  {/* Same fix as the user-facing My Feedback page: these paths
+                      are relative to the API, not to this app. */}
+                  {fb.screenshots.map((s: string, i: number) => <a key={i} href={mediaUrl(s)} target="_blank" rel="noreferrer" style={{ fontSize:12, color:"#60a5fa", textDecoration:"underline" }}>Screenshot {i+1}</a>)}
                 </div>
               )}
 
