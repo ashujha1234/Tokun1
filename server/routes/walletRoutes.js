@@ -586,7 +586,7 @@
 // // const WalletWithdrawal = require("../models/WalletWithdrawal");
 
 // // const getRazorpayKeyId = () => process.env.RAZORPAY_KEY_ID || 'rzp_test_aNNdd7yTcNuzYQ';
-// // const getRazorpaySecret = () => process.env.RAZORPAY_KEY_SECRET || 'O9jzpGZzixxQp1iNXSheMDuN';
+// // const getRazorpaySecret = () => process.env.RAZORPAY_KEY_SECRET || '<REDACTED — was a hardcoded Razorpay key_secret>';
 
 // // /**
 // //  * Helper: Find or create wallet
@@ -1322,7 +1322,7 @@
 // const WalletWithdrawal = require("../models/WalletWithdrawal");
 
 // const getRazorpayKeyId = () => process.env.RAZORPAY_KEY_ID || 'rzp_test_aNNdd7yTcNuzYQ';
-// const getRazorpaySecret = () => process.env.RAZORPAY_KEY_SECRET || 'O9jzpGZzixxQp1iNXSheMDuN';
+// const getRazorpaySecret = () => process.env.RAZORPAY_KEY_SECRET || '<REDACTED — was a hardcoded Razorpay key_secret>';
 
 // /**
 //  * Helper: Find or create wallet

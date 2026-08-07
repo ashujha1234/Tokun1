@@ -55,7 +55,7 @@
 // // }
 // //     // Verify signature
 // //     const generatedSignature = crypto
-// //       .createHmac("sha256", "O9jzpGZzixxQp1iNXSheMDuN")
+// //       .createHmac("sha256", "<REDACTED — was a hardcoded Razorpay key_secret>")
 // //       .update(razorpayOrderId + "|" + razorpayPaymentId)
 // //       .digest("hex");
 
@@ -239,7 +239,7 @@
 
 //     // Verify signature
 //     const generatedSignature = crypto
-//       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET || "O9jzpGZzixxQp1iNXSheMDuN")
+//       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET || "<REDACTED — was a hardcoded Razorpay key_secret>")
 //       .update(razorpayOrderId + "|" + razorpayPaymentId)
 //       .digest("hex");
 
