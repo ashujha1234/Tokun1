@@ -872,7 +872,7 @@
 // // //       if (!res.ok) throw new Error(data?.error || `http_${res.status}`);
 // // //       setItems(Array.isArray(data?.promptsoptimizer) ? data.promptsoptimizer : []);
 // // //     } catch (e: any) {
-// // //       toast({ title: "Couldn’t load optimiser history", description: e?.message || "Try again", variant: "destructive" });
+// // //       toast({ title: "Couldn’t load optimiser history", description: e?.message || "Try again" });
 // // //     } finally {
 // // //       setLoading(false);
 // // //     }
@@ -895,7 +895,7 @@
 // // //       });
 // // //       toast({ title: "Deleted", description: "Optimization removed." });
 // // //     } catch (err: any) {
-// // //       toast({ title: "Delete failed", description: err?.message || "Try again", variant: "destructive" });
+// // //       toast({ title: "Delete failed", description: err?.message || "Try again" });
 // // //     }
 // // //   };
 
@@ -1218,8 +1218,7 @@
 // // //         toast({
 // // //           title: "Couldn’t load smartgen history",
 // // //           description: e?.message || "Try again",
-// // //           variant: "destructive",
-// // //         });
+// // //           // // //         });
 // // //       } finally {
 // // //         setLoading(false);
 // // //       }
@@ -1293,8 +1292,7 @@
 // // //         toast({
 // // //           title: "Delete failed",
 // // //           description: data?.error || `http_${res.status}`,
-// // //           variant: "destructive",
-// // //         });
+// // //           // // //         });
 // // //         return;
 // // //       }
 
@@ -1311,8 +1309,7 @@
 // // //       toast({
 // // //         title: "Delete failed",
 // // //         description: (err as any)?.message || "Try again",
-// // //         variant: "destructive",
-// // //       });
+// // //         // // //       });
 // // //     } finally {
 // // //       setDeletingId(null);
 // // //     }
@@ -1338,8 +1335,7 @@
 // // //         toast({
 // // //           title: "Delete all failed",
 // // //           description: data?.error || `http_${res.status}`,
-// // //           variant: "destructive",
-// // //         });
+// // //           // // //         });
 // // //         return;
 // // //       }
 
@@ -1354,8 +1350,7 @@
 // // //       toast({
 // // //         title: "Delete all failed",
 // // //         description: (err as any)?.message || "Try again",
-// // //         variant: "destructive",
-// // //       });
+// // //         // // //       });
 // // //     } finally {
 // // //       setBulkDeleting(false);
 // // //     }

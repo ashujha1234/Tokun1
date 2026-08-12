@@ -14,15 +14,25 @@ import Footer from "@/components/Footer";
 //                                  included
 //   admin approve/reject only      adminRefunds.js — no partial refunds exist
 //   Razorpay payments.refund()     money returns to the original payment method
+//
+// The escrow figures below come from:
+//   AUTO_RELEASE_HOURS (72)        cron/autoReleaseEscrow.js and
+//                                  cron/autoReleaseServiceEscrow.js
+//   RAZORPAY_MAX_HOLD_DAYS (90)    utils/escrowWindow.js — a hard limit set by
+//   MAX_DELIVERY_DAYS (60)         the payment provider, not by Tokun
+//   sellerPercent split maths      services/escrowSettlement.service.js
+//   revisionsAllowed               utils/revisionPolicy.js
 const REFUND_WINDOW = "24 hours";
+const AUTO_RELEASE = "72 hours";
 
 const SECTIONS = [
   {
     title: "1. What this policy covers",
     body: [
-      "This policy applies to prompts purchased on the Tokun Prompt Marketplace, whether bought individually or through the cart.",
+      "Tokun handles three kinds of paid transaction, and they are refunded differently because they work differently.",
+      "Prompts (Sections 2–9) are digital files delivered the moment you pay. Nothing is held back, so refunds are a short, fixed window.",
+      "Services and Projects (Sections 10–14) are work someone does for you after you pay. Your money is held by our payment provider and is not passed to the creator until the work is approved — so cancelling is possible, but what you get back depends on how much work has already been done.",
       "Subscription plans (Free, Pro, Enterprise) and token top-ups are billed in advance and are covered by the Terms & Conditions, not this policy.",
-      "Funded Hire deals are handled separately under Tokun's escrow process — see the Hire section of the Terms & Conditions.",
     ],
   },
   {
@@ -36,8 +46,8 @@ const SECTIONS = [
   {
     title: "3. How much you get back",
     body: [
-      "Approved refunds are always for the full amount you paid. Nothing is deducted.",
-      "That includes Tokun's platform fee. If you paid ₹105 for a prompt listed at ₹100, you receive ₹105 back — Tokun does not keep its fee on a refunded sale.",
+      "Approved refunds return the full listed price of the item. The seller's price comes back to you in full.",
+      "Tokun's platform fee is not refunded. It pays for processing the transaction — the payment rails, the holding of funds and the support behind it — and that work is done whether or not you keep the purchase. On a ₹100 prompt you pay ₹103.54 and an approved refund returns ₹100.",
       "Partial refunds are not offered. A refund request is either approved in full or declined.",
     ],
   },
@@ -89,9 +99,50 @@ const SECTIONS = [
     ],
   },
   {
-    title: "10. Changes to this policy",
+    title: "10. Services and Projects — how payment is held",
     body: [
-      "We may update this policy. The version in effect at the time of your purchase is the one that applies to it.",
+      "When you book a service or fund a project, your payment is collected immediately but is NOT given to the creator. It is held by our payment provider, Razorpay, on a Route transfer until the work is done and you approve it.",
+      `Once the creator submits the work you have ${AUTO_RELEASE} to approve it or ask for a revision. If you do neither, the payment is released to them automatically — silence is treated as acceptance, so that a creator who has delivered isn't left unpaid indefinitely.`,
+      "Because the money is held rather than spent, a cancellation before delivery does not need a conventional refund — the funds simply have not left, and are returned or split as set out below.",
+      "Funds cannot be held forever. Our payment provider releases them after 90 days, so every booking must reach a conclusion before then. That is also why a delivery date can be at most 60 days out, leaving room for review, revisions and any dispute.",
+    ],
+  },
+  {
+    title: "11. Cancelling before work has started",
+    body: [
+      "If the creator has not started work, either side can cancel and the full booking price comes back to you automatically. No admin review, no haggling — nothing has been invested yet.",
+      "Tokun's platform fee is the one exception, and it is not refunded on any cancellation. It covers processing the booking, which happened regardless. On a ₹10,000 booking you pay ₹10,354 and a cancellation returns ₹10,000. Tokun earns no commission on a cancelled booking — only that fee.",
+    ],
+  },
+  {
+    title: "12. If the creator cancels",
+    body: [
+      "If a creator abandons work you have already paid for, you receive 100% of what you paid back, immediately — regardless of how much work they claim to have done. The cost of walking away is theirs, not yours.",
+      "The cancellation is recorded against the creator's account. Repeated cancellations lead to suspension.",
+    ],
+  },
+  {
+    title: "13. If you cancel after work has started",
+    body: [
+      "This is the one case where a full refund is not automatic. The creator has spent real time on your job, so the payment is split rather than simply returned.",
+      "The work pauses immediately and the creator states what share they completed, with evidence. You then either accept their figure — which settles it straight away — or reject it, which sends it to Tokun's team to decide.",
+      "The split is driven by a single percentage. If the creator is assessed at 40% complete on a ₹1,000 booking, they are paid 40% of their payout, you are refunded 60% of what you paid, and Tokun keeps only 40% of its fee. At 0% you receive everything back; at 100% nothing is refunded. The three parts always add up to exactly what you paid.",
+      "Nothing moves while this is being decided. Your money stays held until the split is agreed or ruled on.",
+      "You can withdraw a cancellation at any point before it is settled, and the work continues as normal.",
+    ],
+  },
+  {
+    title: "14. Revisions, disputes and evidence",
+    body: [
+      "Every booking includes a set number of revisions, fixed at the time you book and shown before you pay. Once those are used you can no longer send the work back — at that point your options are to approve it, or to cancel and have the split decided. This exists so a delivery cannot be rejected indefinitely to avoid paying for it.",
+      "While work is in progress you can ask the creator for a progress update, and they can reply with a screenshot or recording. Those updates are timestamped and kept by Tokun. If a cancellation is later disputed, they are the strongest evidence of what actually existed and when — far more so than either side's account after the fact.",
+      "Where Tokun's team decides a split, both parties receive the reasoning by email along with the exact amounts.",
+    ],
+  },
+  {
+    title: "15. Changes to this policy",
+    body: [
+      "We may update this policy. The version in effect at the time of your purchase or booking is the one that applies to it.",
     ],
   },
 ];

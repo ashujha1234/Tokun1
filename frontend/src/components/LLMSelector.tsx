@@ -166,8 +166,7 @@
 // //         toast({
 // //           title: "Couldn’t load providers",
 // //           description: err?.message || "Please try again.",
-// //           variant: "destructive",
-// //         });
+// //           // //         });
 // //       } finally {
 // //         setLoading(false);
 // //       }
@@ -310,8 +309,7 @@
 //         // toast({
 //         //   title: "Couldn’t load providers",
 //         //   description: err?.message || "Please try again.",
-//         //   variant: "destructive",
-//         // });
+//         //   //         // });
 //       } finally {
 //         setLoading(false);
 //       }
@@ -434,13 +432,29 @@ const apiNameToKey = (name: string): LLMProvider | null => {
   return null;
 };
 
-// react-icons brand logos — same set/colors SmartGen uses, for a consistent look.
-const OPTIONS: Array<{ key: LLMProvider; Icon: IconType; color: string; label: string }> = [
+/**
+ * The models, their logos and their order — one list.
+ *
+ * Exported because the "open this in…" row that appears under a finished
+ * optimisation renders the same four models. That row had its own hardcoded
+ * copy using PNG logos on white pills, in a different order, so the same four
+ * models looked like two unrelated sets of buttons on one screen.
+ *
+ * react-icons brand logos — the same set and colours SmartGen uses.
+ */
+export const LLM_OPTIONS: Array<{
+  key: LLMProvider;
+  Icon: IconType;
+  color: string;
+  label: string;
+}> = [
   { key: "openai", Icon: SiOpenai, color: "#ffffff", label: "ChatGPT" },
   { key: "perplexity", Icon: SiPerplexity, color: "#1FB8CD", label: "Perplexity" },
   { key: "anthropic", Icon: SiClaude, color: "#D97757", label: "Claude" },
   { key: "google", Icon: SiGooglegemini, color: "#4285F4", label: "Gemini" },
 ];
+
+const OPTIONS = LLM_OPTIONS;
 
 const LLMSelector = ({ onProviderChange }: LLMSelectorProps) => {
   const [provider, setProvider] = useState<LLMProvider>(

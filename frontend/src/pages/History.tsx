@@ -98,7 +98,6 @@ const setTabAndUrl = (next: TabKey) => {
       toast({
         title: "Couldn’t load optimiser history",
         description: err?.message || "Try again",
-        variant: "destructive",
       });
     } finally {
       setLoading(false);
@@ -130,7 +129,6 @@ const setTabAndUrl = (next: TabKey) => {
       toast({
         title: "Delete failed",
         description: err?.message || "Try again",
-        variant: "destructive",
       });
     }
   };
@@ -381,7 +379,7 @@ function SmartgenHistoryList() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState<boolean>(false);
 
-  const SMARTGEN_URLS = [`${base}/api/smartgen`, `${base}/api/smartgen/history`];
+  const SMARTGEN_URLS = [`${base}/api/smartgen`];
   const SMARTGEN_API = `${base}/api/smartgen`;
   const SMARTGEN_DELETE_ALL = `${base}/api/smartgen/user/all`;
 
@@ -492,7 +490,6 @@ useEffect(() => {
         toast({
           title: "Couldn’t load smartgen history",
           description: e?.message || "Try again",
-          variant: "destructive",
         });
       } finally {
         setLoading(false);
@@ -550,7 +547,6 @@ useEffect(() => {
         toast({
           title: "Delete failed",
           description: data?.error || `http_${res.status}`,
-          variant: "destructive",
         });
         return;
       }
@@ -566,7 +562,6 @@ useEffect(() => {
       toast({
         title: "Delete failed",
         description: err?.message || "Try again",
-        variant: "destructive",
       });
     } finally {
       setDeletingId(null);
@@ -590,7 +585,6 @@ useEffect(() => {
         toast({
           title: "Delete all failed",
           description: data?.error || `http_${res.status}`,
-          variant: "destructive",
         });
         return;
       }
@@ -602,7 +596,6 @@ useEffect(() => {
       toast({
         title: "Delete all failed",
         description: err?.message || "Try again",
-        variant: "destructive",
       });
     } finally {
       setBulkDeleting(false);

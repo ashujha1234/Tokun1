@@ -18,10 +18,13 @@ import {
   Check,
   Star,
   AlertTriangle,
+  Briefcase,
 } from "lucide-react";
 import { LuBadgeCheck } from "react-icons/lu";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/use-toast";
+// Same entry as Header.tsx and Landing.tsx's HeroAccountMenu use.
+import { useFreelancerMenu } from "@/hooks/useFreelancerMenu";
 
 type ThemeMode = "light" | "dark" | "system";
 
@@ -61,6 +64,12 @@ const AccountMenu = () => {
   const [theme, setTheme] = useState<ThemeMode>("system");
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileTab, setProfileTab] = useState<"profile" | "bank" | "invoices" | "billing">("profile");
+
+  /* ── Become a Freelancer ──
+     Label, status fetch and the onboarding wizard all come from the shared hook,
+     because this dropdown is one of three copies of the same menu (Header.tsx
+     and Landing.tsx's HeroAccountMenu are the others). */
+  const freelancerMenu = useFreelancerMenu();
 
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [transactions, setTransactions] = useState<Txn[]>([]);
@@ -188,8 +197,10 @@ const onlyDigits = (value: string) => value.replace(/\D/g, "").slice(0, 18);
     navigate("/login");
   };
 
-  const goToPurchaseHistory = () => navigate("/prompty-history?p=purchased");
-  const goToUploadHistory = () => navigate("/prompty-history?p=uploaded");
+  // Both histories now live on the self-dash "My Prompts" tab — the standalone
+  // /prompty-history page is the older screen and no longer the one we keep current.
+  const goToPurchaseHistory = () => navigate("/self-dash?tab=prompts&p=purchased");
+  const goToUploadHistory = () => navigate("/self-dash?tab=prompts&p=uploaded");
 
   const themeBtn = (id: ThemeMode, src: string, alt: string) => (
     <button
@@ -374,7 +385,7 @@ const onlyDigits = (value: string) => value.replace(/\D/g, "").slice(0, 18);
 
       toast({ title: "Default bank updated", description: "This account is now default." });
     } catch (err: any) {
-      toast({ title: "Failed to set default", description: err?.message || "Try again.", variant: "destructive" });
+      toast({ title: "Failed to set default", description: err?.message || "Try again." });
     }
   };
 
@@ -507,6 +518,73 @@ const onlyDigits = (value: string) => value.replace(/\D/g, "").slice(0, 18);
               >
                 Set up profile
               </button>
+
+              {/* Become a Freelancer. onMouseDown rather than onClick, and with
+                  propagation stopped, for the same reason as "Set up profile"
+                  above: Radix closes the menu on pointer-down, which unmounts
+                  this button before a click handler would ever fire. */}
+              <button
+                type="button"
+                disabled={!freelancerMenu.eligible}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  freelancerMenu.open();
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                className="w-full mt-2 flex items-center gap-2.5 px-3 text-left transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  height: 48,
+                  borderRadius: 12,
+                  background:
+                    freelancerMenu.status === null && freelancerMenu.eligible
+                      ? "linear-gradient(270deg,#FF14EF 0%,#1A73E8 100%)"
+                      : "#313131",
+                }}
+              >
+                <span style={{ color: freelancerMenu.tint }} className="shrink-0">
+                  {freelancerMenu.icon}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-medium text-white truncate">
+                    {freelancerMenu.label}
+                  </span>
+                  <span className="block text-[11px] text-white/60 truncate">
+                    {freelancerMenu.hint}
+                  </span>
+                </span>
+              </button>
+
+              {/* Only for a live freelancer — the one thing left before they can
+                  be paid. The form skips itself if they already set up a linked
+                  account for selling prompts, since it's the same account. */}
+              {freelancerMenu.status === "ACTIVE" && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    freelancerMenu.openPayouts();
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  className="w-full mt-2 flex items-center gap-2 px-3 text-left text-[12px] text-white/80 hover:text-white transition-colors"
+                  style={{
+                    height: 36,
+                    borderRadius: 10,
+                    background: "rgba(26,115,232,0.12)",
+                    border: "1px solid rgba(26,115,232,0.30)",
+                  }}
+                >
+                  <Landmark className="w-3.5 h-3.5 shrink-0" />
+                  Payout details
+                </button>
+              )}
             </div>
 
             <div className="flex items-center justify-between pt-2">
@@ -1080,6 +1158,11 @@ const onlyDigits = (value: string) => value.replace(/\D/g, "").slice(0, 18);
           </div>
         </div>
       )}
+
+      {/* Onboarding wizard + payout dialog, both owned by the hook. Rendered
+          here at the root rather than inside the dropdown, which unmounts its
+          contents on close. */}
+      {freelancerMenu.modals}
     </>
   );
 };

@@ -26,7 +26,7 @@
 //     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 //     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 //     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-//     <title>Tokun.ai OTP</title>
+//     <title>Tokun.World OTP</title>
 //     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
 //     <style>
 //       body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
@@ -47,7 +47,7 @@
 
 //             <tr>
 //               <td align="center" style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:28px; font-weight:700; color:#FFFFFF; padding-bottom: 24px;">
-//                 TOKUN.AI
+//                 TOKUN.WORLD
 //               </td>
 //             </tr>
 
@@ -72,7 +72,7 @@
 //     background-position: center;
 //     box-shadow:0px 5px 14px 0px #080F340A;
 //   ">
-//   Tokun.ai
+//   Tokun.World
 // </a>
 
 //                       <div style="height:10px; line-height:10px;">&nbsp;</div>
@@ -85,7 +85,7 @@
 
 //             <tr><td style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:18px; color:#FFFFFF; padding: 4px;">Hi ${firstName},</td></tr>
 
-//             <tr><td style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:14px; color:#C9CDD6; line-height:22px; padding: 0 4px 18px;">Here is your One Time Password (OTP).<br/>Please enter this code to verify your email address for Tokun.AI</td></tr>
+//             <tr><td style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:14px; color:#C9CDD6; line-height:22px; padding: 0 4px 18px;">Here is your One Time Password (OTP).<br/>Please enter this code to verify your email address for Tokun.World</td></tr>
 
 //             <tr>
 //               <td align="center" style="padding: 10px 0 6px;">
@@ -99,7 +99,7 @@
 
 //             <tr><td align="center" style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:12px; color:#8E95A5; padding-bottom: 24px;">OTP will expire in <span style="color:#FFFFFF; font-weight:600;">5 minutes</span>.</td></tr>
 
-//             <tr><td style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:14px; color:#C9CDD6; line-height:22px; padding: 0 4px;">Best Regards,<br/><strong style="color:#FFFFFF;">Team Tokun.AI</strong></td></tr>
+//             <tr><td style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:14px; color:#C9CDD6; line-height:22px; padding: 0 4px;">Best Regards,<br/><strong style="color:#FFFFFF;">Team Tokun.World</strong></td></tr>
 
 //             <tr><td style="padding-top:28px;"><table role="presentation" width="100%"><tr><td style="border-top:1px solid #24262B; font-size:0; line-height:0;">&nbsp;</td></tr></table></td></tr>
 
@@ -114,7 +114,7 @@
 
 //             <tr><td style="padding-top:10px;"><table role="presentation" width="100%"><tr><td style="border-top:1px solid #24262B; font-size:0; line-height:0;">&nbsp;</td></tr></table></td></tr>
 
-//             <tr><td align="center" style="padding: 6px 16px 0;"><div style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:10px; color:#B4BAC5; text-align:center;">You are receiving this mail because you registered to join the TOKUN.AI platform as a user or a creator. This also shows that you agree to our Terms of use and Privacy Policies. If you no longer want to receive mails from us, click the unsubscribe link below to unsubscribe.</div></td></tr>
+//             <tr><td align="center" style="padding: 6px 16px 0;"><div style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:10px; color:#B4BAC5; text-align:center;">You are receiving this mail because you registered to join the TOKUN.WORLD platform as a user or a creator. This also shows that you agree to our Terms of use and Privacy Policies. If you no longer want to receive mails from us, click the unsubscribe link below to unsubscribe.</div></td></tr>
 
 //             <tr><td align="center" style="padding: 14px 8px 32px;"><a href="${siteUrl}/privacy" style="font-family: Inter, Arial, Helvetica, sans-serif; color:#9CA3AF; font-size:12px; text-decoration:underline; padding:0 6px;">Privacy policy</a> | <a href="${siteUrl}/terms" style="font-family: Inter, Arial, Helvetica, sans-serif; color:#9CA3AF; font-size:12px; text-decoration:underline; padding:0 6px;">Terms of use</a> | <a href="${siteUrl}/help" style="font-family: Inter, Arial, Helvetica, sans-serif; color:#9CA3AF; font-size:12px; text-decoration:underline; padding:0 6px;">Help center</a> | <a href="${siteUrl}/unsubscribe" style="font-family: Inter, Arial, Helvetica, sans-serif; color:#9CA3AF; font-size:12px; text-decoration:underline; padding:0 6px;">Unsubscribe</a></td></tr>
 
@@ -158,7 +158,7 @@ function buildOtpEmailHtml({ name = "there", otp }) {
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <title>Tokun.ai OTP</title>
+    <title>Tokun.World OTP</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
     <style>
       body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
@@ -182,7 +182,7 @@ function buildOtpEmailHtml({ name = "there", otp }) {
 
             <tr>
               <td align="center" style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:28px; font-weight:700; color:#FFFFFF; padding-bottom: 24px;">
-                TOKUN.AI
+                TOKUN.WORLD
               </td>
             </tr>
 
@@ -208,7 +208,7 @@ function buildOtpEmailHtml({ name = "there", otp }) {
                           background-position: center;
                           box-shadow:0px 5px 14px 0px #080F340A;
                         ">
-                        Tokun.ai
+                        Tokun.World
                       </a>
 
                       <div style="height:10px; line-height:10px;">&nbsp;</div>
@@ -221,7 +221,7 @@ function buildOtpEmailHtml({ name = "there", otp }) {
 
             <tr><td style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:18px; color:#FFFFFF; padding: 4px;">Hi ${firstName},</td></tr>
 
-            <tr><td style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:14px; color:#C9CDD6; line-height:22px; padding: 0 4px 18px;">Here is your One Time Password (OTP).<br/>Please enter this code to verify your email address for Tokun.AI</td></tr>
+            <tr><td style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:14px; color:#C9CDD6; line-height:22px; padding: 0 4px 18px;">Here is your One Time Password (OTP).<br/>Please enter this code to verify your email address for Tokun.World</td></tr>
 
             <tr>
               <td align="center" style="padding: 10px 0 6px;">
@@ -233,7 +233,7 @@ function buildOtpEmailHtml({ name = "there", otp }) {
 
             <tr><td align="center" style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:12px; color:#8E95A5; padding-bottom: 24px;">OTP will expire in <span style="color:#FFFFFF; font-weight:600;">5 minutes</span>.</td></tr>
 
-            <tr><td style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:14px; color:#C9CDD6; line-height:22px; padding: 0 4px;">Best Regards,<br/><strong style="color:#FFFFFF;">Team Tokun.AI</strong></td></tr>
+            <tr><td style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:14px; color:#C9CDD6; line-height:22px; padding: 0 4px;">Best Regards,<br/><strong style="color:#FFFFFF;">Team Tokun.World</strong></td></tr>
 
             <tr><td style="padding-top:28px;"><table role="presentation" width="100%"><tr><td style="border-top:1px solid #24262B; font-size:0; line-height:0;">&nbsp;</td></tr></table></td></tr>
 
@@ -252,7 +252,7 @@ function buildOtpEmailHtml({ name = "there", otp }) {
             <!-- ✅ Footer Text -->
             <tr><td align="center" style="padding: 6px 16px 0;">
               <div style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:10px; color:#B4BAC5; text-align:center;">
-                You are receiving this mail because you registered to join the TOKUN.AI platform as a user or a creator. This also shows that you agree to our Terms of use and Privacy Policies. If you no longer want to receive mails from us, click the unsubscribe link below to unsubscribe.
+                You are receiving this mail because you registered to join the TOKUN.WORLD platform as a user or a creator. This also shows that you agree to our Terms of use and Privacy Policies. If you no longer want to receive mails from us, click the unsubscribe link below to unsubscribe.
               </div>
             </td></tr>
 

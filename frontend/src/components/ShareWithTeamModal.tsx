@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import PromptThumb from "@/components/PromptThumb";
+import { toast } from "@/components/ui/use-toast";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -86,6 +87,10 @@ export default function ShareWithTeamModal({
       if (!data.success) {
         throw new Error(data.message || data.error || "Failed to share prompt.");
       }
+      toast({
+        title: "Shared with your team",
+        description: `${selected.length} member${selected.length === 1 ? "" : "s"} now have access.`,
+      });
       onOpenChange(false);
     } catch (err: any) {
       setError(err?.message || "Something went wrong. Please try again.");
@@ -134,7 +139,22 @@ export default function ShareWithTeamModal({
           ) : members.length === 0 ? (
             <div className="px-3 py-4 text-sm text-gray-400">No team members yet.</div>
           ) : (
-            members.map((m) => (
+            <>
+              {/* An explicit "everyone" row — with a long roster, the small
+                  link above the list is easy to miss. */}
+              <label className="flex items-center gap-3 px-3 py-2.5 border-b border-white/10 cursor-pointer hover:bg-white/5">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleAll}
+                  className="accent-[#FF14EF]"
+                />
+                <span className="text-sm font-medium text-gray-100">
+                  Everyone in the team ({members.length})
+                </span>
+              </label>
+
+              {members.map((m) => (
               <label
                 key={m.userId}
                 className="flex items-center gap-3 px-3 py-2.5 border-b border-white/5 last:border-b-0 cursor-pointer hover:bg-white/5"
@@ -147,7 +167,8 @@ export default function ShareWithTeamModal({
                 />
                 <span className="text-sm text-gray-200">{m.email}</span>
               </label>
-            ))
+              ))}
+            </>
           )}
         </div>
 

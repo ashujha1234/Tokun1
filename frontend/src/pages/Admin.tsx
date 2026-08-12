@@ -12,9 +12,13 @@ import { startConversation } from "@/lib/startConversation";
 import { toast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { canManageTeam } from "@/lib/orgRoles";
+import OrgPromptCard from "@/components/OrgPromptCard";
 
 type Role = "Admin" | "Member";
-type Status = "Active" | "Pending" | "Deleted";
+// "Invited" is a real membership state, not a stand-in for "hasn't verified
+// their email". Adding someone no longer makes them a member — it sends an
+// invitation they have to accept, and until they do nothing has been granted.
+type Status = "Active" | "Invited" | "Pending" | "Deleted";
 
 type Member = {
   id: string;
@@ -25,6 +29,9 @@ type Member = {
   tokens: number;
   available: number;
   isDeletedFromOrg?: boolean;
+  // True for a row that is an outstanding invitation rather than a member —
+  // it can be revoked, but not edited or given tokens.
+  isInvitation?: boolean;
 };
 
 type ApiMember = {
@@ -36,6 +43,8 @@ type ApiMember = {
   isDeletedFromOrg?: boolean;
   orgTokensRemaining?: number;
   orgAssignedCap?: number;
+  membershipStatus?: "ACTIVE" | "INVITED";
+  isInvitation?: boolean;
 };
 
 const API_BASE = import.meta.env?.VITE_API_URL || "http://localhost:5000";
@@ -564,9 +573,23 @@ export default function BlogPage() {
     totalSpent: number;
     recent: { id: string; promptTitle: string; buyerName: string; pricePaid: number; purchasedAt: string }[];
   }>({ count: 0, totalSpent: 0, recent: [] });
+  // Shape mirrors teamRequests below — both panels render the same prompt card,
+  // so they carry the same prompt fields.
   const [sharedPrompts, setSharedPrompts] = useState<{
     count: number;
-    recent: { id: string; promptTitle: string; sharedByName: string; sharedToCount: number; sharedAt: string }[];
+    recent: {
+      id: string;
+      promptId: string | null;
+      promptTitle: string;
+      thumbnail: string | null;
+      category: string | null;
+      isFree: boolean;
+      price: number;
+      promptDeleted: boolean;
+      sharedByName: string;
+      sharedToCount: number;
+      sharedAt: string;
+    }[];
   }>({ count: 0, recent: [] });
   // What team members have asked the owner to buy. Members can't purchase, so
   // this — not "Team Purchases" — is the activity an owner actually needs to act
@@ -578,7 +601,11 @@ export default function BlogPage() {
       id: string;
       promptId: string | null;
       promptTitle: string;
+      thumbnail: string | null;
+      category: string | null;
+      isFree: boolean;
       price: number;
+      promptDeleted: boolean;
       requestedByName: string;
       message: string;
       read: boolean;
@@ -601,7 +628,6 @@ export default function BlogPage() {
       toast({
         title: "Couldn't open the chat",
         description: "Please try again.",
-        variant: "destructive",
       });
       return;
     }
@@ -646,14 +672,21 @@ export default function BlogPage() {
         name: m.name || "(No name)",
         email: m.email,
         role: m.role === "Admin" ? "Admin" : "Member",
+        // Invitation state outranks email verification: someone who hasn't
+        // accepted isn't a member at all, regardless of whether their account
+        // is verified. That distinction is why an already-registered invitee
+        // used to appear as "Active" the instant they were added.
         status: m.isDeletedFromOrg
           ? "Deleted"
+          : m.isInvitation || m.membershipStatus === "INVITED"
+          ? "Invited"
           : m.isVerified
           ? "Active"
           : "Pending",
         tokens: m.orgAssignedCap || 0,
         available: m.orgTokensRemaining || 0,
         isDeletedFromOrg: m.isDeletedFromOrg || false,
+        isInvitation: m.isInvitation || false,
       }));
 
       setMembers(mapped);
@@ -923,7 +956,14 @@ const handleResendInvite = async (memberId: string) => {
                     ? "text-red-400 font-medium"
                     : m.status === "Active"
                     ? "text-emerald-400"
+                    : m.status === "Invited"
+                    ? "text-sky-400"
                     : "text-yellow-400"
+                }
+                title={
+                  m.status === "Invited"
+                    ? "Invitation sent — they haven't accepted yet, so no tokens have been granted."
+                    : undefined
                 }
               >
                 {m.isDeletedFromOrg ? "Deleted" : m.status}
@@ -1047,37 +1087,33 @@ const handleResendInvite = async (memberId: string) => {
             ) : (
               <div className="divide-y divide-white/10">
                 {teamRequests.recent.map((r) => (
-                  <div
+                  <OrgPromptCard
                     key={r.id}
-                    className="flex items-center justify-between gap-4 px-5 py-3 bg-white/[0.02]"
-                  >
-                    <div className="min-w-0">
-                      <div className="text-sm text-white/90 truncate">{r.promptTitle}</div>
-                      <div className="text-xs text-white/45">
-                        {r.requestedByName} ·{" "}
+                    title={r.promptTitle}
+                    thumbnail={r.thumbnail}
+                    category={r.category}
+                    price={r.price}
+                    isFree={r.isFree}
+                    deleted={r.promptDeleted}
+                    note={r.message}
+                    meta={
+                      <>
+                        Requested by {r.requestedByName} ·{" "}
                         {new Date(r.requestedAt).toLocaleDateString("en-IN")}
-                      </div>
-                      {r.message && (
-                        <div className="mt-1 text-xs text-white/55 italic truncate max-w-[420px]">
-                          "{r.message}"
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      {r.price > 0 && (
-                        <span className="text-sm font-medium text-white/80">₹{r.price}</span>
-                      )}
-                      {r.promptId && (
+                      </>
+                    }
+                    action={
+                      r.promptId && !r.promptDeleted ? (
                         <button
                           type="button"
                           onClick={() => navigate("/prompt-marketplace")}
                           className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white hover:bg-white/10"
                         >
-                          View & buy
+                          View &amp; buy
                         </button>
-                      )}
-                    </div>
-                  </div>
+                      ) : null
+                    }
+                  />
                 ))}
               </div>
             )}
@@ -1117,16 +1153,22 @@ const handleResendInvite = async (memberId: string) => {
             ) : (
               <div className="divide-y divide-white/10">
                 {sharedPrompts.recent.map((s) => (
-                  <div key={s.id} className="flex items-center justify-between px-5 py-3 bg-white/[0.02]">
-                    <div>
-                      <div className="text-sm text-white/90">{s.promptTitle}</div>
-                      <div className="text-xs text-white/45">by {s.sharedByName}</div>
-                    </div>
-                    <div className="text-xs text-white/50">
-                      {s.sharedToCount} member{s.sharedToCount === 1 ? "" : "s"} ·{" "}
-                      {new Date(s.sharedAt).toLocaleDateString("en-IN")}
-                    </div>
-                  </div>
+                  <OrgPromptCard
+                    key={s.id}
+                    title={s.promptTitle}
+                    thumbnail={s.thumbnail}
+                    category={s.category}
+                    price={s.price}
+                    isFree={s.isFree}
+                    deleted={s.promptDeleted}
+                    meta={
+                      <>
+                        Shared by {s.sharedByName} with {s.sharedToCount} member
+                        {s.sharedToCount === 1 ? "" : "s"} ·{" "}
+                        {new Date(s.sharedAt).toLocaleDateString("en-IN")}
+                      </>
+                    }
+                  />
                 ))}
               </div>
             )}

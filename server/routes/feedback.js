@@ -100,7 +100,7 @@ router.post("/verify-otp", (req, res) => {
 // POST /api/feedback
 router.post("/", upload.array("screenshots", 5), async (req, res) => {
   try {
-    const { experience, name, email, role, rating, issue } = req.body;
+    const { experience, name, email, role, rating, issue, noteType } = req.body;
 
     if (!experience || !name || !email || !rating) {
       return res.status(400).json({ success: false, error: "missing_required_fields" });
@@ -139,6 +139,9 @@ router.post("/", upload.array("screenshots", 5), async (req, res) => {
       role,
       rating,
       issue: issue || "",
+      // Anything other than the two known values falls back to "issue", so a
+      // malformed or absent field can't slip an unknown type into the enum.
+      noteType: noteType === "suggestion" ? "suggestion" : "issue",
       screenshots,
       sentiment: sentimentLabel,
     });

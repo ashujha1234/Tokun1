@@ -72,6 +72,15 @@ cron.schedule("0 * * * *", async () => {
   try {
     const cutoff = new Date(Date.now() - AUTO_RELEASE_HOURS * 60 * 60 * 1000);
 
+    // `status: "WORK_SUBMITTED"` is doing the load-bearing work here: a
+    // cancellation moves the deal to DISPUTED or CANCELLED, which takes it out
+    // of this query entirely. Without that, a dispute raised on day 2 would be
+    // decided by the clock on day 3 and the money would go to the freelancer
+    // while the two were still arguing about it.
+    //
+    // fundsStatus is checked as well so a deal mid-settlement (temporarily
+    // DISPUTED while Razorpay is being called) can't be picked up by a cron
+    // tick that lands in the same second.
     const eligibleDeals = await HireDeal.find({
       status: "WORK_SUBMITTED",
       fundsStatus: "HELD_BY_TOKUN",

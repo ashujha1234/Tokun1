@@ -262,21 +262,34 @@ async function runPromptMediaValidation(promptId) {
     prompt.mediaValidation.error = null;
     await prompt.save();
 
-    if (status === "flagged") {
+    /* Both of these need a human, and both must reach an admin.
+       This used to fire for "flagged" only. "pending_review" — the middling
+       score, and the fallback the catch block below uses — went into the queue
+       with nobody told it was there. Video uploads land in it far more often
+       than images do (a video has to be sampled into frames first, which is
+       another way for the check to come back inconclusive), which is why video
+       reviews in particular looked like they never arrived. */
+    if (status === "flagged" || status === "pending_review") {
+      const isFlagged = status === "flagged";
+
       await Notification.create({
         receiverUserId: prompt.userId,
         type: "PROMPT_MEDIA_REVIEW",
         promptId: prompt._id,
-        message: `Your prompt "${prompt.title}" is under review — the uploaded media doesn't closely match your prompt text. Our team will take a look shortly.`,
+        message: isFlagged
+          ? `Your prompt "${prompt.title}" is under review — the uploaded media doesn't closely match your prompt text. Our team will take a look shortly.`
+          : `Your prompt "${prompt.title}" is being checked by our team before it goes live. We'll let you know as soon as it's approved.`,
         meta: { score, mediaValidationStatus: status },
       });
 
       await notifyAdmins({
-        type: "ADMIN_PROMPT_FLAGGED",
+        type: isFlagged ? "ADMIN_PROMPT_FLAGGED" : "ADMIN_PROMPT_REVIEW",
         promptId: prompt._id,
-        message: `"${prompt.title}" was auto-flagged by media validation (score ${score}/100) — needs review.`,
-        meta: { score },
-      }).catch((err) => console.error("Admin flag-notification failed:", err.message));
+        message: isFlagged
+          ? `"${prompt.title}" was auto-flagged by media validation (score ${score}/100) — needs review.`
+          : `"${prompt.title}" needs a manual check (score ${score}/100 — inconclusive).`,
+        meta: { score, mediaValidationStatus: status, mediaType: attachmentType || "unknown" },
+      }).catch((err) => console.error("Admin review-notification failed:", err.message));
     }
   } catch (err) {
     console.error("Prompt media validation failed:", promptId?.toString?.(), err.message);
@@ -288,6 +301,19 @@ async function runPromptMediaValidation(promptId) {
     } catch (saveErr) {
       console.error("Failed to persist media validation failure state:", saveErr.message);
     }
+
+    /* The pipeline itself broke — an unreachable file, an ffmpeg failure, an
+       OpenAI outage. The upload is now parked waiting for a human and, before
+       this, nobody was told. That is the case most likely to strand a seller
+       indefinitely, so it is the one that most needs to reach an admin. */
+    await notifyAdmins({
+      type: "ADMIN_PROMPT_REVIEW",
+      promptId: prompt._id,
+      message: `"${prompt.title}" could not be auto-checked (${err.message}) — needs a manual review.`,
+      meta: { mediaValidationStatus: "pending_review", error: err.message },
+    }).catch((notifyErr) =>
+      console.error("Admin review-notification failed:", notifyErr.message)
+    );
   }
 }
 

@@ -19,7 +19,9 @@ const TransactionSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ["commission", "withdrawal", "refund"],
+      // "gst" is money collected on the government's behalf, not earned — it
+      // sits in the ledger for the return, never in the withdrawable balance.
+      enum: ["commission", "withdrawal", "refund", "gst"],
       required: true,
     },
     amount: {
@@ -66,6 +68,15 @@ const PlatformWalletSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    /* Lifetime GST charged on Tokun's fees and collected from buyers and
+       sellers. Deliberately NOT part of availableBalance or totalRevenue: this
+       is a liability to the government, not earnings, and an admin must never
+       see it inside the balance they can withdraw. */
+    gstCollected: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     transactions: {
       type: [TransactionSchema],
       default: [],
@@ -93,6 +104,35 @@ PlatformWalletSchema.statics.recordCommission = async function (amount, meta = {
       $push: {
         transactions: {
           $each: [{ type: "commission", amount, source, refId, description }],
+          $sort: { createdAt: -1 },
+          $slice: 500,
+        },
+      },
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true, ...(session ? { session } : {}) }
+  );
+};
+
+/**
+ * Record GST collected on Tokun's fees.
+ *
+ * Separate from recordCommission because this money is not Tokun's: it moves
+ * into gstCollected only, leaving availableBalance and totalRevenue untouched.
+ *
+ * @param {number} amount
+ * @param {object} meta - { source, refId, description, session }
+ */
+PlatformWalletSchema.statics.recordGst = async function (amount, meta = {}) {
+  if (!amount || amount <= 0) return null;
+  const { source, refId = null, description = "", session = null } = meta;
+
+  return this.findOneAndUpdate(
+    { key: "platform" },
+    {
+      $inc: { gstCollected: amount },
+      $push: {
+        transactions: {
+          $each: [{ type: "gst", amount, source, refId, description }],
           $sort: { createdAt: -1 },
           $slice: 500,
         },

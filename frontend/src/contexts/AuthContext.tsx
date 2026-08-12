@@ -1,6 +1,10 @@
 // src/contexts/AuthContext.tsx
 import React, { createContext, useContext, useMemo, useState, useEffect } from "react";
 import { socket } from "@/lib/socket";
+import {
+  claimUserScopedStorage,
+  clearUserScopedStorage,
+} from "@/lib/userScopedStorage";
 
 interface User {
   _id: string;           // 🔥 use _id consistently
@@ -113,8 +117,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (storedToken && isExpired(storedToken)) {
         localStorage.removeItem("token");
         localStorage.removeItem("tokun_user");
+        // An expired session is a logout in everything but name, so its
+        // leftovers go too.
+        clearUserScopedStorage();
       } else {
-        if (storedUser) setUser(JSON.parse(storedUser));
+        if (storedUser) {
+          const parsed = JSON.parse(storedUser);
+          // Also on restore: the stored session may belong to someone other
+          // than whoever the cached data was written for.
+          claimUserScopedStorage(parsed?._id || parsed?.id);
+          setUser(parsed);
+        }
         if (storedToken) setToken(storedToken);
       }
     } catch {}
@@ -122,6 +135,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const persistAuth: AuthContextType["persistAuth"] = (payload) => {
+    /* Before anything of this session is written. A different user signing in
+       on this browser must not inherit the previous one's cached SmartGen
+       output, favourites, unread count or saved bank accounts — closing the
+       tab without logging out used to leave all of it for whoever came next. */
+    const incomingId = (payload?.user as any)?._id || (payload?.user as any)?.id;
+    if (incomingId) claimUserScopedStorage(String(incomingId));
+
     if (payload?.user) {
       setUser((prev) => {
         const merged: User = { ...(prev || {} as User), ...(payload.user as Partial<User>) };
@@ -141,6 +161,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(null);
     localStorage.removeItem("tokun_user");
     localStorage.removeItem("token");
+    // Everything this user cached locally goes with them. Removing only the
+    // token left their content sitting in the browser for the next sign-in.
+    clearUserScopedStorage();
 
     // Notify all contexts (PromptContext, other tabs)
     try {

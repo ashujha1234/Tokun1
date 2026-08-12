@@ -11,6 +11,13 @@ const Toaster = ({ ...props }: ToasterProps) => {
       theme={theme as ToasterProps["theme"]}
       position="top-center"
       className="toaster group"
+      /* Above every fixed header (up to z-[999]) and every modal (up to
+         z-[9999999]), and offset clear of the header. Sonner's default z-index
+         left toasts rendering behind the header — the one message telling you
+         whether something worked was the one you couldn't read.
+         Matches the Radix toast viewport in ui/toast.tsx so the two systems
+         can't disagree about where a toast belongs. */
+      style={{ zIndex: 10000000, top: "4rem" }}
       toastOptions={{
         classNames: {
           toast:

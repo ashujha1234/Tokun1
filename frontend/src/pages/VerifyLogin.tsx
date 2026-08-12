@@ -25,8 +25,7 @@
 // //       toast({
 // //         title: "Missing email",
 // //         description: "Please go back and login again.",
-// //         variant: "destructive",
-// //       });
+// //         // //       });
 // //       navigate("/login", { replace: true });
 // //     }
 // //   }, [email, navigate]);
@@ -220,8 +219,7 @@
 // //     toast({
 // //       title: "Verification failed",
 // //       description: err?.message || "Unknown error",
-// //       variant: "destructive",
-// //     });
+// //       // //     });
 // //   } finally {
 // //     setIsLoading(false);
 // //     const T1 = performance.now();
@@ -251,8 +249,7 @@
 // //       toast({
 // //         title: "Could not resend",
 // //         description: err?.message,
-// //         variant: "destructive",
-// //       });
+// //         // //       });
 // //     }
 // //   };
 
@@ -365,8 +362,7 @@
 //       toast({
 //         title: "Missing email",
 //         description: "Please go back and login again.",
-//         variant: "destructive",
-//       });
+//         //       });
 //       navigate("/login", { replace: true });
 //     }
 //   }, [email, navigate]);
@@ -553,8 +549,7 @@
 //       toast({
 //         title: "Verification failed",
 //         description: err?.message || "Unknown error",
-//         variant: "destructive",
-//       });
+//         //       });
 //     } finally {
 //       setIsLoading(false);
 //       const T1 = performance.now();
@@ -583,8 +578,7 @@
 //       toast({
 //         title: "Could not resend",
 //         description: err?.message,
-//         variant: "destructive",
-//       });
+//         //       });
 //     }
 //   };
 
@@ -853,7 +847,6 @@ const [devOtp, setDevOtp] = useState<string | null>(null);
       toast({
         title: "Missing email",
         description: "Please go back and login again.",
-        variant: "destructive",
       });
       navigate("/login", { replace: true });
     }
@@ -1045,7 +1038,6 @@ const [devOtp, setDevOtp] = useState<string | null>(null);
       toast({
         title: "Verification failed",
         description: err?.message || "Unknown error",
-        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
@@ -1078,7 +1070,6 @@ setSecondsLeft(50);
       toast({
         title: "Could not resend",
         description: err?.message,
-        variant: "destructive",
       });
     }
   };

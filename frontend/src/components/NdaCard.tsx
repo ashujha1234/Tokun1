@@ -254,7 +254,14 @@ function NdaModal({ nda, onClose, dealId, token, apiBase, resource = "hire" }: {
   const pendingFileRef = useRef<File | null>(null);                   // signed doc, kept around so a failed auto-submit can retry
 
   // NDA upload status from deal
-  const [ndaStatus, setNdaStatus] = useState<{ clientUrl?: string; freelancerUrl?: string } | null>(null);
+  const [ndaStatus, setNdaStatus] = useState<{
+    clientUrl?: string;
+    freelancerUrl?: string;
+    // Read back from the order so the agreement renders signed on every future
+    // open, by both parties — not just in the session where it was signed.
+    clientSignature?: string;
+    freelancerSignature?: string;
+  } | null>(null);
   const [role, setRole] = useState<"client" | "freelancer" | null>(null);
 
   const fetchDealStatus = useCallback(() => {
@@ -266,8 +273,18 @@ function NdaModal({ nda, onClose, dealId, token, apiBase, resource = "hire" }: {
         if (record) {
           setNdaStatus(
             resource === "service"
-              ? { clientUrl: record.ndaBuyerUrl, freelancerUrl: record.ndaSellerUrl }
-              : { clientUrl: record.ndaClientUrl, freelancerUrl: record.ndaFreelancerUrl }
+              ? {
+                  clientUrl: record.ndaBuyerUrl,
+                  freelancerUrl: record.ndaSellerUrl,
+                  clientSignature: record.ndaBuyerSignature,
+                  freelancerSignature: record.ndaSellerSignature,
+                }
+              : {
+                  clientUrl: record.ndaClientUrl,
+                  freelancerUrl: record.ndaFreelancerUrl,
+                  clientSignature: record.ndaClientSignature,
+                  freelancerSignature: record.ndaFreelancerSignature,
+                }
           );
           // Determine role
           const partyAId = String(
@@ -282,19 +299,30 @@ function NdaModal({ nda, onClose, dealId, token, apiBase, resource = "hire" }: {
 
   useEffect(() => { fetchDealStatus(); }, [fetchDealStatus]);
 
+  /* Both parties' signatures, read from the order — so the agreement stays
+     signed forever and each side sees the other's signature too.
+     `mySig` still wins for whoever is signing right now, because it's on screen
+     before the save round-trips. Previously this was mySig ONLY, which is why
+     the signature vanished the moment the modal closed. */
   const sigs = useMemo(() => ({
-    client: role === "client" ? mySig || undefined : undefined,
-    freelancer: role === "freelancer" ? mySig || undefined : undefined,
-  }), [role, mySig]);
+    client:
+      (role === "client" ? mySig : "") || ndaStatus?.clientSignature || undefined,
+    freelancer:
+      (role === "freelancer" ? mySig : "") || ndaStatus?.freelancerSignature || undefined,
+  }), [role, mySig, ndaStatus]);
 
   const srcDoc = useMemo(() => buildNdaHtml(nda, sigs), [nda, sigs]);
 
-  const handleUpload = useCallback(async (file: File) => {
+  const handleUpload = useCallback(async (file: File, signature?: string) => {
     if (!dealId || !token || !apiBase) { setUploadError("Open this NDA from inside a deal chat to enable upload."); return; }
     pendingFileRef.current = file;
     setUploading(true); setUploadError(""); setUploadMsg("");
     const form = new FormData();
     form.append("nda", file);
+    // Sent alongside the document so the signature survives this modal being
+    // closed. It used to live only in component state, so reopening the NDA
+    // rendered a blank signature line even though it had been signed.
+    if (signature) form.append("signature", signature);
     try {
       const res = await fetch(`${apiBase}/api/${basePath}/${dealId}/upload-nda`, {
         method: "POST",
@@ -329,12 +357,12 @@ function NdaModal({ nda, onClose, dealId, token, apiBase, resource = "hire" }: {
     const html = buildNdaHtml(nda, mySigs);
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const file = new File([blob], `Tokun-NDA-${nda.dealId || "agreement"}.html`, { type: "text/html" });
-    handleUpload(file);
+    handleUpload(file, dataUrl);
   }, [role, nda, handleUpload]);
 
   const retrySubmit = useCallback(() => {
-    if (pendingFileRef.current) handleUpload(pendingFileRef.current);
-  }, [handleUpload]);
+    if (pendingFileRef.current) handleUpload(pendingFileRef.current, mySig || undefined);
+  }, [handleUpload, mySig]);
 
   const myUploaded = role === "client" ? !!ndaStatus?.clientUrl : !!ndaStatus?.freelancerUrl;
   const otherUploaded = role === "client" ? !!ndaStatus?.freelancerUrl : !!ndaStatus?.clientUrl;

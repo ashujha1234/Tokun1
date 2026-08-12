@@ -3094,11 +3094,13 @@ import Header from "@/components/Header";
 import { socket } from "@/lib/socket";
 import { useAuth } from "@/contexts/AuthContext";
 import { FiVideo, FiInfo, FiSend } from "react-icons/fi";
-import { Search, Trash2, X, Plus, ArrowLeft, ShieldAlert, Check, Pencil } from "lucide-react";
+import { Search, X, Plus, ArrowLeft, ShieldAlert, Check } from "lucide-react";
 import { useAgoraCall } from "@/hooks/useAgoraCall";
 import { ReportModal } from "@/components/ReportModal";
 import NdaButton from "@/components/NdaCard";
 import { toast } from "@/components/ui/use-toast";
+import { SERVICE_LINK_LABELS, resolveDeliverableUrl } from "@/lib/serviceDeliverables";
+import { openBriefAttachment } from "@/lib/escrowApi";
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 const GRADIENT = "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)";
 
@@ -3123,6 +3125,15 @@ function getFallbackAvatar(user?: any) {
 
 function getMessageSenderId(message: any) {
   return message?.senderId || message?.sender?._id || message?.sender || "";
+}
+
+/**
+ * Id for a message the client has rendered but the server hasn't confirmed.
+ * It rides along on the socket payload and comes back on the echo, which is how
+ * the optimistic row gets swapped for the stored one instead of duplicating.
+ */
+function makeClientId() {
+  return `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 function getLastMessageText(conversation: any) {
@@ -3226,16 +3237,65 @@ function parseServiceWorkSubmittedData(text?: string) {
   try { return JSON.parse(text.replace("SERVICE_WORK_SUBMITTED::", "")); } catch { return null; }
 }
 
+/**
+ * Posts a plain line into the thread so BOTH sides see that a card was declined.
+ *
+ * Every decline button on these cards used to be local React state — `setDeclined(true)`,
+ * `setStatus("DECLINED")` — which hid the card for the person who clicked and
+ * did nothing else. The other side's card stayed live, and a refresh brought it
+ * back for the decliner too. Nobody was told anything.
+ *
+ * Attributed to whoever clicked, so the thread shows who declined without the
+ * text having to name them.
+ */
+function announceInChat(conversationId?: string, senderId?: string, text?: string) {
+  if (!conversationId || !senderId || !text) return;
+  socket.emit("send-message", { conversationId, senderId, text });
+}
+
+/**
+ * Cancels a hire deal server-side. Only valid before payment, which is exactly
+ * when these decline buttons are on screen.
+ *
+ * Returns an error string on failure so the caller can show it rather than
+ * hiding the card and pretending it worked.
+ */
+async function declineHireDeal(dealId?: string | null, token?: string): Promise<string | null> {
+  if (!dealId) return "This proposal has no deal id — refresh and try again.";
+  if (!token) return "Login required.";
+  try {
+    const res = await fetch(`${API_BASE}/api/hire/${dealId}/cancel`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: "Declined from chat" }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) return data?.error || data?.message || "Couldn't decline this.";
+    return null;
+  } catch {
+    return "Couldn't reach the server. Check your connection and try again.";
+  }
+}
+
 function RevisionReasonPopup({
   open,
   loading,
   onClose,
   onSubmit,
+  // Only service bookings carry a revision budget; hire deals pass nothing and
+  // the counter simply doesn't render.
+  revisionState,
 }: {
   open: boolean;
   loading?: boolean;
   onClose: () => void;
   onSubmit: (reason: string) => void;
+  revisionState?: {
+    used: number;
+    allowed: number | null;
+    unlimited: boolean;
+    remaining: number | null;
+  } | null;
 }) {
   const [reason, setReason] = useState("");
 
@@ -3352,6 +3412,28 @@ function RevisionReasonPopup({
             }}
           />
         </div>
+
+        {revisionState && !revisionState.unlimited && (
+          <div
+            style={{
+              margin: "14px 0 0",
+              borderRadius: 12,
+              background: "rgba(250,188,78,0.08)",
+              border: "1px solid rgba(250,188,78,0.20)",
+              padding: "10px 14px",
+              fontSize: 12,
+              lineHeight: "18px",
+              color: "rgba(250,188,78,0.9)",
+            }}
+          >
+            This booking includes {revisionState.allowed} revision
+            {revisionState.allowed === 1 ? "" : "s"}. After sending this one you'll have{" "}
+            <strong>
+              {Math.max(0, (revisionState.remaining ?? 0) - 1)} left
+            </strong>{" "}
+            — so put everything you want changed in one message.
+          </div>
+        )}
 
         <p
           style={{
@@ -3513,41 +3595,46 @@ function WorkSubmittedCard({
   };
 
   // ── Download helper (fetch + blob so auth header can be sent if needed) ───
-  const handleDownload = async (
-    e: React.MouseEvent,
-    fileUrl: string,
-    fileName: string
-  ) => {
+  /* Deliverables are fetched BY INDEX through the gated route, not from a URL
+     in this message.
+     They used to be served straight off /uploads/hire-work, which express
+     serves publicly with guessable filenames — so a paid-for deliverable was
+     downloadable by anyone who could construct the URL. Going through the
+     server also lets it watermark an image preview while the client still
+     hasn't released the payment. */
+  const handleDownload = async (e: React.MouseEvent, index: number, fileName: string) => {
     e.preventDefault();
     e.stopPropagation();
     try {
-      const res = await fetch(fileUrl, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error("Download failed");
-      const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
+      const { url, name, isObjectUrl } = await resolveDeliverableUrl(
+        dealId,
+        index,
+        token,
+        "hire"
+      );
       const link = document.createElement("a");
-      link.href = blobUrl;
-      link.download = fileName || "work-file";
+      link.href = url;
+      link.download = name || fileName || "work-file";
+      link.rel = "noopener noreferrer";
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
-    } catch {
-      // Fallback: open in new tab
-      window.open(fileUrl, "_blank");
+      if (isObjectUrl) setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err: any) {
+      alert(err?.message || "Download failed");
     }
   };
 
-  // ── Preview helper ────────────────────────────────────────────────────────
-  // Static files served by Express don't need auth — just open in new tab.
-  // If your backend requires auth for /uploads, swap this for a fetch+blob
-  // approach similar to handleDownload above but without the download attribute.
-  const handlePreview = (e: React.MouseEvent, fileUrl: string) => {
+  const handlePreview = async (e: React.MouseEvent, index: number) => {
     e.preventDefault();
     e.stopPropagation();
-    window.open(fileUrl, "_blank", "noopener,noreferrer");
+    try {
+      const { url, isObjectUrl } = await resolveDeliverableUrl(dealId, index, token, "hire");
+      window.open(url, "_blank", "noopener,noreferrer");
+      if (isObjectUrl) setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err: any) {
+      alert(err?.message || "Preview failed");
+    }
   };
 
   const PURPLE = "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)";
@@ -3706,11 +3793,10 @@ function WorkSubmittedCard({
 
               <div style={{ display: "grid", gap: 8 }}>
                 {data.deliverables.map((d: any, i: number) => {
-                  // Build correct file URL
-                  const fileUrl = d.url?.startsWith("http")
-                    ? d.url
-                    : `${API_BASE}${d.url}`;
-
+                  // Index, not URL — the message no longer carries an openable
+                  // path for uploaded files. `d.index` is what the server sent;
+                  // the array position is the fallback for older messages.
+                  const fileIndex = typeof d.index === "number" ? d.index : i;
                   const fileName =
                     d.name || d.description || `file-${i + 1}`;
 
@@ -3778,7 +3864,7 @@ function WorkSubmittedCard({
 
                         {/* ── PREVIEW — always available for everyone ── */}
                         <button
-                          onClick={(e) => handlePreview(e, fileUrl)}
+                          onClick={(e) => handlePreview(e, fileIndex)}
                           title="Preview file"
                           style={{
                             display: "inline-flex",
@@ -3802,7 +3888,7 @@ function WorkSubmittedCard({
                         {isApproved || isMine ? (
                           <button
                             onClick={(e) =>
-                              handleDownload(e, fileUrl, fileName)
+                              handleDownload(e, fileIndex, fileName)
                             }
                             title="Download file"
                             style={{
@@ -4185,10 +4271,14 @@ function HireAcceptedCard({
   data,
   isMine,
   token,
+  conversationId,
+  senderId,
 }: {
   data: any;
   isMine?: boolean;
   token?: string;
+  conversationId?: string;
+  senderId?: string;
 }) {
  const GREEN_GRADIENT = "#156015";
 const CARD_BG = "#161A18";
@@ -4196,6 +4286,7 @@ const CARD_BG = "#161A18";
 
   const [payState, setPayState] = useState<"idle" | "loading" | "paid">("idle");
   const [declined, setDeclined] = useState(false);
+  const [declining, setDeclining] = useState(false);
 
   if (declined) return null;
 
@@ -4241,12 +4332,13 @@ const CARD_BG = "#161A18";
           toast({
             title: "Sign the NDA first",
             description: orderData.message || "Both parties must sign the NDA before payment can be made.",
-            variant: "destructive",
           });
           setPayState("idle");
           return;
         }
-        throw new Error(orderData.error || "Failed to create payment order");
+        // The freelancer's payout account can be suspended between accepting
+        // and payment, so this is a live check — its `message` explains why.
+        throw new Error(orderData.message || orderData.error || "Failed to create payment order");
       }
 
       const { key, order } = orderData;
@@ -4590,9 +4682,28 @@ border: "1px solid rgba(74,222,128,0.10)",
                 </button>
               {/* Escrow info div ke baad */}
 
-                {/* Decline */}
+                {/* Decline — cancels the deal for real and tells the thread.
+                    This used to be `setDeclined(true)` and nothing else: the
+                    card vanished for the clicker, came back on refresh, and the
+                    other side never found out. */}
                 <button
-                  onClick={() => setDeclined(true)}
+                  disabled={declining}
+                  onClick={async () => {
+                    if (declining) return;
+                    setDeclining(true);
+                    const err = await declineHireDeal(dealId, token);
+                    setDeclining(false);
+                    if (err) {
+                      alert(err);
+                      return;
+                    }
+                    announceInChat(
+                      conversationId,
+                      senderId,
+                      `❌ Declined the project — "${data?.title || "this proposal"}". No payment was taken.`
+                    );
+                    setDeclined(true);
+                  }}
                   style={{
                     flex: "1 1 120px",
                     height: 48,
@@ -4600,7 +4711,8 @@ border: "1px solid rgba(74,222,128,0.10)",
                     background: "#202020",
                     border: "1px solid rgba(25,230,108,0.22)",
                     color: "rgba(255,255,255,0.75)",
-                    cursor: "pointer",
+                    cursor: declining ? "not-allowed" : "pointer",
+                    opacity: declining ? 0.6 : 1,
                     fontWeight: 400,
                     fontSize: 14,
                     position: "relative",
@@ -4708,12 +4820,13 @@ function ServiceOrderCard({
           toast({
             title: "Sign the NDA first",
             description: orderData.message || "Both parties must sign the NDA before payment can be made.",
-            variant: "destructive",
           });
           setPayState("idle");
           return;
         }
-        throw new Error(orderData.error || "Failed to create payment order");
+        // The freelancer's payout account can be suspended between accepting
+        // and payment, so this is a live check — its `message` explains why.
+        throw new Error(orderData.message || orderData.error || "Failed to create payment order");
       }
 
       const { key, order } = orderData;
@@ -4991,6 +5104,37 @@ function ServiceOrderCard({
             {payState === "paid" ? "✓ Payment received" : "⏳ Waiting for client payment..."}
           </div>
         )}
+
+        {/* Once it's paid, the card stops being a payment prompt and becomes
+            the way into the booking — which is where progress updates, the
+            delivery and cancellation all live. There was no route from chat to
+            any of that, so a client mid-project had nowhere to ask "how's it
+            going?" from the thread they were already in. */}
+        {payState === "paid" && orderId && (
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button
+              onClick={() => {
+                // Plain navigation rather than useNavigate — this file never
+                // imported the router hooks, and a full load is fine when
+                // leaving chat for another page.
+                window.location.href = `/orders/service/${orderId}`;
+              }}
+              style={{
+                flex: 1,
+                height: 40,
+                borderRadius: 8,
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.10)",
+                color: "#FFFFFF",
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              {isMine ? "👀 Ask for a progress update" : "📦 Open booking"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -5000,6 +5144,7 @@ function ServiceOrderCard({
 // ServiceWorkSubmittedCard — forked from WorkSubmittedCard, points at
 // /api/services/orders/... instead of /api/hire/...
 // ─────────────────────────────────────────────
+
 function ServiceWorkSubmittedCard({
   data,
   isMine,
@@ -5012,6 +5157,14 @@ function ServiceWorkSubmittedCard({
   const [actionState, setActionState] = useState<"idle" | "approving" | "revising" | "done">("idle");
   const [result, setResult] = useState<"approved" | "revision" | null>(null);
   const [revisionOpen, setRevisionOpen] = useState(false);
+  // How many revisions this booking actually includes. The chat message is a
+  // snapshot from submit time, so the live order is the source of truth once
+  // the buyer has already sent one back.
+  const [revisionState, setRevisionState] = useState<any>(data?.revisionState || null);
+  // The order's own deliverables — newer than the message payload after a
+  // resubmission, and the only place indices are guaranteed to line up with
+  // what the download route will serve.
+  const [liveDeliverables, setLiveDeliverables] = useState<any[] | null>(null);
 
   const orderId = data?.serviceOrderId || data?.orderId;
 
@@ -5024,6 +5177,8 @@ function ServiceWorkSubmittedCard({
       .then((d) => {
         if (!d?.success || !d?.order) return;
         const order = d.order;
+        if (d.revisionState) setRevisionState(d.revisionState);
+        if (Array.isArray(order.deliverables)) setLiveDeliverables(order.deliverables);
         if (order.status === "COMPLETED" && ["RELEASED_TO_SELLER", "AUTO_RELEASED"].includes(order.fundsStatus)) {
           setResult("approved");
           setActionState("done");
@@ -5072,7 +5227,14 @@ function ServiceWorkSubmittedCard({
         body: JSON.stringify({ reason: reason || "Revision requested" }),
       });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok || !d?.success) throw new Error(d?.error || "Revision request failed");
+      if (!res.ok || !d?.success) {
+        // The server enforces the booking's revision cap; surface its own
+        // message so an exhausted buyer is told what's left to do rather than
+        // just "failed".
+        if (d?.revisionState) setRevisionState(d.revisionState);
+        throw new Error(d?.message || d?.error || "Revision request failed");
+      }
+      if (d?.revisionState) setRevisionState(d.revisionState);
       setRevisionOpen(false);
       setResult("revision");
       setActionState("done");
@@ -5082,31 +5244,40 @@ function ServiceWorkSubmittedCard({
     }
   };
 
-  const handleDownload = async (e: React.MouseEvent, fileUrl: string, fileName: string) => {
+  const handleDownload = async (e: React.MouseEvent, index: number, fileName: string) => {
     e.preventDefault();
     e.stopPropagation();
     try {
-      const res = await fetch(fileUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-      if (!res.ok) throw new Error("Download failed");
-      const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
+      const { url, name, isObjectUrl } = await resolveDeliverableUrl(orderId, index, token);
+      // Handed to the browser's downloader rather than buffered as a blob:
+      // deliverables can be hundreds of megabytes.
       const link = document.createElement("a");
-      link.href = blobUrl;
-      link.download = fileName || "work-file";
+      link.href = url;
+      link.download = name || fileName || "work-file";
+      link.rel = "noopener noreferrer";
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
-    } catch {
-      window.open(fileUrl, "_blank");
+      if (isObjectUrl) setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err: any) {
+      alert(err?.message || "Download failed");
     }
   };
 
-  const handlePreview = (e: React.MouseEvent, fileUrl: string) => {
+  const handlePreview = async (e: React.MouseEvent, index: number) => {
     e.preventDefault();
     e.stopPropagation();
-    window.open(fileUrl, "_blank", "noopener,noreferrer");
+    try {
+      const { url, isObjectUrl } = await resolveDeliverableUrl(orderId, index, token);
+      window.open(url, "_blank", "noopener,noreferrer");
+      if (isObjectUrl) setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err: any) {
+      alert(err?.message || "Preview failed");
+    }
   };
+
+  const deliverables: any[] = liveDeliverables ?? data?.deliverables ?? [];
+  const revisionsExhausted = !!revisionState && !revisionState.unlimited && revisionState.exhausted;
 
   const ACCENT = "#1A73E8";
 
@@ -5143,11 +5314,11 @@ function ServiceWorkSubmittedCard({
             {data?.message || "Work has been submitted for review."}
           </p>
 
-          {data?.deliverables?.length > 0 && (
+          {deliverables.length > 0 && (
             <div style={{ borderRadius: 14, background: "rgba(26,115,232,0.06)", border: "1px solid rgba(26,115,232,0.15)", padding: "14px", marginBottom: 20 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                 <span style={{ fontSize: 18 }}>📁</span>
-                <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: "1.6px", color: "rgba(26,115,232,0.85)" }}>DELIVERED FILES</p>
+                <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: "1.6px", color: "rgba(26,115,232,0.85)" }}>DELIVERED</p>
                 {!isApproved && !isMine && (
                   <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, letterSpacing: "0.8px", color: "rgba(250,188,78,0.9)", background: "rgba(250,188,78,0.12)", border: "1px solid rgba(250,188,78,0.25)", borderRadius: 999, padding: "3px 8px" }}>
                     🔒 APPROVE TO DOWNLOAD
@@ -5156,30 +5327,56 @@ function ServiceWorkSubmittedCard({
               </div>
 
               <div style={{ display: "grid", gap: 8 }}>
-                {data.deliverables.map((d: any, i: number) => {
-                  const fileUrl = d.url?.startsWith("http") ? d.url : `${API_BASE}${d.url}`;
+                {deliverables.map((d: any, i: number) => {
                   const fileName = d.name || d.description || `file-${i + 1}`;
+                  const isLink = d.kind === "link";
+                  const providerLabel = SERVICE_LINK_LABELS[d.provider] || "External link";
                   return (
                     <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, borderRadius: 10, background: "rgba(0,0,0,0.22)", border: "1px solid rgba(255,255,255,0.08)", padding: "10px 12px", color: "#FFFFFF" }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0, flex: 1 }}>
-                        <span style={{ fontSize: 15 }}>📎</span>
-                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, color: "#D6E7FB" }}>{fileName}</span>
+                        <span style={{ fontSize: 15 }}>{isLink ? "🔗" : "📎"}</span>
+                        <span style={{ minWidth: 0 }}>
+                          <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, color: "#D6E7FB" }}>{fileName}</span>
+                          {isLink && (
+                            <span style={{ display: "block", fontSize: 10, color: "rgba(255,255,255,0.35)" }}>{providerLabel}</span>
+                          )}
+                        </span>
                       </span>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                        <span style={{ fontSize: 10, color: "rgba(255,255,255,0.38)" }}>
-                          {d.size ? (d.size < 1024 * 1024 ? `${(d.size / 1024).toFixed(1)} KB` : `${(d.size / 1024 / 1024).toFixed(2)} MB`) : ""}
-                        </span>
-                        <button onClick={(e) => handlePreview(e, fileUrl)} title="Preview file" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 6, border: "1px solid rgba(26,115,232,0.22)", color: "#63A6F2", fontSize: 13, cursor: "pointer", background: "none" }}>
-                          👁
-                        </button>
-                        {isApproved || isMine ? (
-                          <button onClick={(e) => handleDownload(e, fileUrl, fileName)} title="Download file" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 6, background: "rgba(25,230,108,0.10)", border: "1px solid rgba(25,230,108,0.22)", color: "#19E66C", fontSize: 16, cursor: "pointer", fontWeight: 700 }}>
-                            ↓
-                          </button>
+                        {!isLink && (
+                          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.38)" }}>
+                            {d.size ? (d.size < 1024 * 1024 ? `${(d.size / 1024).toFixed(1)} KB` : `${(d.size / 1024 / 1024).toFixed(2)} MB`) : ""}
+                          </span>
+                        )}
+
+                        {/* A link is the seller's own public URL — there is
+                            nothing to gate, and gating it would just mean the
+                            buyer copies it out of the chat anyway. */}
+                        {isLink ? (
+                          <a
+                            href={d.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Open link"
+                            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", height: 28, padding: "0 12px", borderRadius: 6, border: "1px solid rgba(26,115,232,0.22)", color: "#63A6F2", fontSize: 12, textDecoration: "none" }}
+                          >
+                            Open ↗
+                          </a>
                         ) : (
-                          <div title="Download unlocks after you approve and release payment" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 6, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)", color: "rgba(255,255,255,0.22)", fontSize: 13, cursor: "not-allowed" }}>
-                            🔒
-                          </div>
+                          <>
+                            <button onClick={(e) => handlePreview(e, i)} title="Preview file" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 6, border: "1px solid rgba(26,115,232,0.22)", color: "#63A6F2", fontSize: 13, cursor: "pointer", background: "none" }}>
+                              👁
+                            </button>
+                            {isApproved || isMine ? (
+                              <button onClick={(e) => handleDownload(e, i, fileName)} title="Download file" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 6, background: "rgba(25,230,108,0.10)", border: "1px solid rgba(25,230,108,0.22)", color: "#19E66C", fontSize: 16, cursor: "pointer", fontWeight: 700 }}>
+                                ↓
+                              </button>
+                            ) : (
+                              <div title="Download unlocks after you approve and release payment" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 6, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)", color: "rgba(255,255,255,0.22)", fontSize: 13, cursor: "not-allowed" }}>
+                                🔒
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
@@ -5203,23 +5400,39 @@ function ServiceWorkSubmittedCard({
 
           {/* Buyer action buttons */}
           {!isMine && actionState !== "done" && (
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button
-                onClick={handleApprove}
-                disabled={actionState !== "idle"}
-                style={{ flex: "1 1 150px", height: 48, border: "none", borderRadius: 8, background: "linear-gradient(90deg, #19E66C 0%, #0BA84A 100%)", color: "#fff", cursor: actionState !== "idle" ? "not-allowed" : "pointer", fontWeight: 600, fontSize: 14, opacity: actionState !== "idle" ? 0.6 : 1 }}
-              >
-                {actionState === "approving" ? "Releasing Payment..." : "✓ Approve & Release Payment"}
-              </button>
+            <>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button
+                  onClick={handleApprove}
+                  disabled={actionState !== "idle"}
+                  style={{ flex: "1 1 150px", height: 48, border: "none", borderRadius: 8, background: "linear-gradient(90deg, #19E66C 0%, #0BA84A 100%)", color: "#fff", cursor: actionState !== "idle" ? "not-allowed" : "pointer", fontWeight: 600, fontSize: 14, opacity: actionState !== "idle" ? 0.6 : 1 }}
+                >
+                  {actionState === "approving" ? "Releasing Payment..." : "✓ Approve & Release Payment"}
+                </button>
 
-              <button
-                onClick={() => setRevisionOpen(true)}
-                disabled={actionState !== "idle"}
-                style={{ flex: "1 1 130px", height: 48, borderRadius: 8, background: "#202020", border: "1px solid rgba(26,115,232,0.22)", color: "rgba(255,255,255,0.75)", cursor: actionState !== "idle" ? "not-allowed" : "pointer", fontWeight: 400, fontSize: 14, opacity: actionState !== "idle" ? 0.6 : 1 }}
-              >
-                ↺ Request Revision
-              </button>
-            </div>
+                {/* Disabled once the booking's revisions are spent. The server
+                    rejects it either way; this stops the buyer discovering the
+                    limit only after typing out a reason. */}
+                <button
+                  onClick={() => setRevisionOpen(true)}
+                  disabled={actionState !== "idle" || revisionsExhausted}
+                  title={revisionsExhausted ? "No revisions left on this booking" : undefined}
+                  style={{ flex: "1 1 130px", height: 48, borderRadius: 8, background: "#202020", border: "1px solid rgba(26,115,232,0.22)", color: "rgba(255,255,255,0.75)", cursor: actionState !== "idle" || revisionsExhausted ? "not-allowed" : "pointer", fontWeight: 400, fontSize: 14, opacity: actionState !== "idle" || revisionsExhausted ? 0.45 : 1 }}
+                >
+                  ↺ Request Revision
+                </button>
+              </div>
+
+              {revisionState && (
+                <p style={{ margin: "10px 0 0", fontSize: 11, textAlign: "center", color: revisionsExhausted ? "rgba(250,188,78,0.85)" : "rgba(255,255,255,0.35)", lineHeight: "16px" }}>
+                  {revisionState.unlimited
+                    ? "This booking includes unlimited revisions."
+                    : revisionsExhausted
+                    ? `You've used all ${revisionState.allowed} revision${revisionState.allowed === 1 ? "" : "s"} included in this booking. Approve the work, or contact support if the delivery is genuinely wrong.`
+                    : `${revisionState.remaining} of ${revisionState.allowed} revision${revisionState.allowed === 1 ? "" : "s"} left on this booking.`}
+                </p>
+              )}
+            </>
           )}
 
           {actionState === "done" && result === "approved" && (
@@ -5245,6 +5458,7 @@ function ServiceWorkSubmittedCard({
       <RevisionReasonPopup
         open={revisionOpen}
         loading={actionState === "revising"}
+        revisionState={revisionState}
         onClose={() => {
           if (actionState !== "revising") setRevisionOpen(false);
         }}
@@ -5417,10 +5631,13 @@ function HireCard({
   data: any; conversationId?: string; senderId?: string; token?: string;
 }) {
   const TOP_GRADIENT = "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)";
-  const [status, setStatus] = useState<"PENDING" | "ACCEPTED" | "COUNTERED">(data?.status || "PENDING");
+  const [status, setStatus] = useState<"PENDING" | "ACCEPTED" | "COUNTERED" | "REJECTED">(
+    data?.status || "PENDING"
+  );
   const [showCounterPopup, setShowCounterPopup] = useState(false);
   const [showProposalPopup, setShowProposalPopup] = useState(false);
   const [acceptLoading, setAcceptLoading] = useState(false);
+  const [declining, setDeclining] = useState(false);
   const dealId = data?.hireDealId || data?.dealId || data?._id;
  
   // ── On mount, check real deal status from API ──
@@ -5457,7 +5674,12 @@ function HireCard({
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       });
       const result = await res.json().catch(() => ({}));
-      if (!res.ok || !result?.success) throw new Error(result?.error || "Failed to accept proposal");
+      // `message` first: the payout-account gate answers with a sentence the
+      // freelancer can act on, while `error` is a slug like
+      // "payout_account_not_active".
+      if (!res.ok || !result?.success) {
+        throw new Error(result?.message || result?.error || "Failed to accept proposal");
+      }
       setStatus("ACCEPTED");
       setShowProposalPopup(false);
     } catch (err: any) {
@@ -5467,7 +5689,28 @@ function HireCard({
     }
   };
  
+  /* One decline path for both entry points — the ✗ on the card and Reject
+     inside the popup — so the two can't drift into doing different things. */
+  const handleDecline = async () => {
+    if (declining || status === "REJECTED") return;
+    setDeclining(true);
+    const err = await declineHireDeal(dealId, token);
+    setDeclining(false);
+    if (err) {
+      alert(err);
+      return;
+    }
+    announceInChat(
+      conversationId,
+      senderId,
+      `❌ Declined the project proposal — "${data?.title || "this project"}". No payment was taken.`
+    );
+    setStatus("REJECTED");
+    setShowProposalPopup(false);
+  };
+
   const isAccepted = status === "ACCEPTED";
+  const isRejected = status === "REJECTED";
  
   return (
     <>
@@ -5482,9 +5725,9 @@ function HireCard({
           </div>
           <span style={{
             height: 24, padding: "0 14px", borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center",
-            background: isAccepted ? "rgba(25,230,108,0.18)" : "#FABC4E1A",
-            border: isAccepted ? "1px solid rgba(25,230,108,0.35)" : "1px solid #FABC4E33",
-            color: isAccepted ? "#19E66C" : "#FABC4E",
+            background: isAccepted ? "rgba(25,230,108,0.18)" : isRejected ? "rgba(255,80,80,0.15)" : "#FABC4E1A",
+            border: isAccepted ? "1px solid rgba(25,230,108,0.35)" : isRejected ? "1px solid rgba(255,80,80,0.3)" : "1px solid #FABC4E33",
+            color: isAccepted ? "#19E66C" : isRejected ? "#FF7878" : "#FABC4E",
             fontWeight: 700, fontSize: 10,
           }}>
             {isAccepted ? "ACCEPTED" : status}
@@ -5510,8 +5753,8 @@ function HireCard({
             </div>
           </div>
  
-          {/* ── Show buttons only if NOT accepted ── */}
-          {!isAccepted && (
+          {/* ── Buttons only while the proposal is still open ── */}
+          {!isAccepted && !isRejected && (
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
               <button
                 disabled={acceptLoading}
@@ -5527,15 +5770,29 @@ function HireCard({
                 <img src="/icons/counter.svg" alt="" style={{ width: 18, height: 18, objectFit: "contain", flexShrink: 0 }} />
                 Counter Offer
               </button>
+              {/* The ✗. Its handler was `e.stopPropagation()` and nothing else
+                  — a button that looked like it declined the proposal and did
+                  not even close the card. */}
               <button
-                onClick={(e) => { e.stopPropagation(); }}
-                style={{ width: 48, height: 48, flexShrink: 0, borderRadius: 8, border: "none", background: TOP_GRADIENT, color: "#FFFFFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                title="Decline this proposal"
+                aria-label="Decline this proposal"
+                disabled={declining}
+                onClick={(e) => { e.stopPropagation(); handleDecline(); }}
+                style={{ width: 48, height: 48, flexShrink: 0, borderRadius: 8, border: "none", background: TOP_GRADIENT, color: "#FFFFFF", cursor: declining ? "not-allowed" : "pointer", opacity: declining ? 0.6 : 1, display: "flex", alignItems: "center", justifyContent: "center" }}
               >
                 <img src="/icons/crass.svg" alt="" style={{ width: 14, height: 14, objectFit: "contain" }} />
               </button>
             </div>
           )}
  
+          {/* Terminal state, shown to both sides — the card stops offering
+              actions and says what happened instead. */}
+          {isRejected && (
+            <div style={{ marginTop: 16, height: 44, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,80,80,0.07)", border: "1px solid rgba(255,80,80,0.18)", color: "rgba(255,120,120,0.85)", fontWeight: 600, fontSize: 13 }}>
+              ✗ Proposal declined — no payment was taken
+            </div>
+          )}
+
           {/* ── Accepted state banner ── */}
           {isAccepted && (
             <div style={{ marginTop: 16, height: 44, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(25,230,108,0.07)", border: "1px solid rgba(25,230,108,0.18)", color: "rgba(25,230,108,0.8)", fontWeight: 600, fontSize: 13 }}>
@@ -5549,10 +5806,14 @@ function HireCard({
         <ProjectProposalDetailsPopup
           data={data}
           status={status}
+          token={token}
           acceptLoading={acceptLoading}
           onClose={() => setShowProposalPopup(false)}
           onAccept={handleAcceptProposal}
-          onReject={() => setShowProposalPopup(false)}
+          /* Reject used to just close the popup. The freelancer thought they'd
+             turned the project down; the client's side still showed a live
+             proposal waiting on them. */
+          onReject={handleDecline}
           onCounter={() => { setShowProposalPopup(false); setShowCounterPopup(true); }}
         />
       )}
@@ -5578,10 +5839,13 @@ function HireCard({
 
 
 function ProjectProposalDetailsPopup({
-  data, status, acceptLoading, onClose, onAccept, onReject, onCounter,
+  data, status, acceptLoading, onClose, onAccept, onReject, onCounter, token,
 }: {
   data: any; status: string; acceptLoading?: boolean; onClose: () => void;
   onAccept: () => void; onReject: () => void; onCounter: () => void;
+  // Needed to mint a download URL for the client's attached reference files;
+  // those live in a private container, not on a public path.
+  token?: string;
 }) {
   const proposalTitle = data?.title || data?.projectTitle || "Project Proposal";
   const proposalDescription = data?.description || data?.projectDetails ||
@@ -5614,6 +5878,38 @@ function ProjectProposalDetailsPopup({
             <p style={{ margin: 0, fontWeight: 400, fontSize: 16, color: "#C084FC", textTransform: "uppercase" }}>PROJECT OVERVIEW</p>
           </div>
           <p style={{ margin: 0, fontWeight: 400, fontSize: 15, lineHeight: "20px", color: "#C9C2CE", whiteSpace: "pre-line" }}>{proposalDescription}</p>
+
+          {/* Reference material the client attached. Shown HERE, on the accept
+              screen, because this is where the freelancer decides — files they
+              can't see before accepting may as well not have been attached.
+              Fetched by index through the gated brief route; the card carries
+              names only. */}
+          {data?.briefAttachments?.length > 0 && (
+            <div style={{ marginTop: 18 }}>
+              <p style={{ margin: "0 0 10px", fontWeight: 600, fontSize: 11, letterSpacing: "1.4px", color: "rgba(255,255,255,0.4)", textTransform: "uppercase" }}>
+                Attached by the client
+              </p>
+              <div style={{ display: "grid", gap: 8 }}>
+                {data.briefAttachments.map((f: any, i: number) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() =>
+                      openBriefAttachment("hire", data?.hireDealId || data?.dealId, f.index ?? i, token).catch(
+                        (err: any) => alert(err?.message || "Couldn't open that file.")
+                      )
+                    }
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, borderRadius: 10, background: "rgba(0,0,0,0.22)", border: "1px solid rgba(255,255,255,0.08)", padding: "10px 12px", color: "#FFFFFF", cursor: "pointer", textAlign: "left" }}
+                  >
+                    <span style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0, fontSize: 13, color: "#D6E7FB" }}>
+                      📎 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                    </span>
+                    <span style={{ fontSize: 11, color: "#63A6F2", flexShrink: 0 }}>Open</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,0.09)", background: "rgba(255,255,255,0.015)", padding: "18px 16px", boxSizing: "border-box", marginBottom: 22 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
@@ -5651,9 +5947,31 @@ function ProjectProposalDetailsPopup({
 // ─────────────────────────────────────────────
 // CounterProposalCard
 // ─────────────────────────────────────────────
-function CounterProposalCard({ data }: { data: any }) {
+function CounterProposalCard({
+  data,
+  conversationId,
+  senderId,
+}: {
+  data: any;
+  conversationId?: string;
+  senderId?: string;
+}) {
   const TOP_GRADIENT = "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)";
   const [status, setStatus] = useState<"PENDING" | "ACCEPTED" | "DECLINED">(data?.status || "PENDING");
+
+  /* A counter offer lives only as a chat card — there's no server record to
+     update, so the announcement IS the outcome. Without it the other side kept
+     looking at a pending offer that had already been answered. */
+  const announce = (accepted: boolean) => {
+    const budget = Number(data?.newBudget || 0).toLocaleString("en-IN");
+    announceInChat(
+      conversationId,
+      senderId,
+      accepted
+        ? `✅ Accepted the counter offer — ₹${budget}.`
+        : `❌ Declined the counter offer of ₹${budget}.`
+    );
+  };
 
   return (
     <div style={{ width: "100%", maxWidth: 505, borderRadius: 24, background: "#292929", overflow: "hidden", fontFamily: "Inter, sans-serif", boxShadow: "0 20px 60px rgba(0,0,0,0.35)" }}>
@@ -5684,12 +6002,12 @@ function CounterProposalCard({ data }: { data: any }) {
         )}
         {status === "PENDING" ? (
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <button onClick={() => setStatus("ACCEPTED")}
+            <button onClick={() => { setStatus("ACCEPTED"); announce(true); }}
               style={{ flex: "1 1 160px", height: 48, border: "none", borderRadius: 8, background: TOP_GRADIENT, color: "#FFFFFF", cursor: "pointer", fontWeight: 400, fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
               <span style={{ width: 22, height: 22, borderRadius: "50%", border: "1.5px solid #FFFFFF", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 12, fontWeight: 600 }}>✓</span>
               Accept Counter Offer
             </button>
-            <button onClick={() => setStatus("DECLINED")}
+            <button onClick={() => { setStatus("DECLINED"); announce(false); }}
               style={{ flex: "1 1 130px", height: 49, borderRadius: 8, border: "1px solid rgba(255,255,255,0.12)", background: "#242424", color: "#FFFFFF", cursor: "pointer", fontWeight: 400, fontSize: 15 }}>
               Decline
             </button>
@@ -5739,10 +6057,6 @@ export default function Chat() {
   const typingSentRef = useRef(false);
   const typingStopTimer = useRef<any>(null);
 
-  // Message being edited inline, and the draft text for it.
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState("");
-
   const { joinCall, leaveCall } = useAgoraCall();
   const sharedResources = messages.filter((m) => m.attachment);
 
@@ -5785,19 +6099,11 @@ export default function Chat() {
       .finally(() => setLoadingConversations(false));
   }, [token, location.state]);
 
-  useEffect(() => {
-    if (!token) return;
-    const markAllReadOnOpen = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/chat/conversations/read-all`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data?.success) throw new Error(data?.error || `read-all failed: ${res.status}`);
-        setConversations((prev) => prev.map((c) => ({ ...c, unreadCount: 0 })));
-        window.dispatchEvent(new CustomEvent("chat-read"));
-      } catch (err) { console.error("Mark all read failed", err); }
-    };
-    markAllReadOnOpen();
-  }, [token]);
+  // NOTE: landing on this page deliberately does NOT mark everything read.
+  // It used to POST /conversations/read-all here, which flipped every message
+  // in every thread to read — so the people who sent them saw blue double ticks
+  // for messages that had never been opened. Only the thread you actually open
+  // is marked read, below.
 
   useEffect(() => {
     if (!activeConvo || !token) return;
@@ -5817,15 +6123,34 @@ export default function Chat() {
         if (!res.ok || !data?.success) throw new Error(data?.error || `read failed: ${res.status}`);
         setConversations((prev) => prev.map((c) => (c._id === activeConvo._id ? { ...c, unreadCount: 0 } : c)));
         window.dispatchEvent(new CustomEvent("chat-read"));
+        // The HTTP call updates the database but tells nobody. Without this the
+        // sender's ticks stayed grey until they reloaded.
+        if (user?._id) {
+          socket.emit("message:read", { conversationId: activeConvo._id, userId: user._id });
+        }
       } catch (err) { console.error("Mark single conversation read failed", err); }
     };
     markRead();
-  }, [activeConvo, token]);
+  }, [activeConvo, token, user?._id]);
 
   useEffect(() => {
     const handleNewMessage = (msg: any) => {
       if (msg.conversationId === activeConvo?._id) {
-        setMessages((prev) => [...prev, msg]);
+        setMessages((prev) => {
+          // Our own optimistic row coming back with its real _id — swap in
+          // place so the message doesn't briefly appear twice.
+          const tempIdx = msg.clientId
+            ? prev.findIndex((m: any) => m.clientId === msg.clientId)
+            : -1;
+          if (tempIdx > -1) {
+            const next = [...prev];
+            next[tempIdx] = { ...msg, pending: false };
+            return next;
+          }
+          // Socket reconnects can replay; don't stack duplicates.
+          if (prev.some((m: any) => String(m._id) === String(msg._id))) return prev;
+          return [...prev, msg];
+        });
         // Someone else's message arriving while their thread is open is read
         // immediately — that's what turns their ticks blue without them having
         // to reopen anything.
@@ -5916,7 +6241,12 @@ export default function Chat() {
     };
   }, [user?._id]);
 
-  /* ── Read receipts / edits / deletes ─────────────────────────────────── */
+  /* ── Read receipts ────────────────────────────────────────────────────
+     The `message:edited` / `message:deleted` listeners that used to sit here
+     are gone with the actions themselves — the server emits neither, so they
+     could never fire. Messages already marked deleted in the database still
+     render as "This message was deleted"; only the ability to cause that is
+     removed. */
   useEffect(() => {
     const handleRead = ({ conversationId, userId: readerId }: any) => {
       if (conversationId !== activeConvo?._id) return;
@@ -5929,23 +6259,9 @@ export default function Chat() {
       );
     };
 
-    const handleEdited = ({ _id, text, editedAt }: any) => {
-      setMessages((prev) => prev.map((m: any) => (m._id === _id ? { ...m, text, editedAt } : m)));
-    };
-
-    const handleDeleted = ({ _id, deletedAt }: any) => {
-      setMessages((prev) =>
-        prev.map((m: any) => (m._id === _id ? { ...m, deleted: true, deletedAt, text: "", attachment: null } : m))
-      );
-    };
-
     socket.on("message:read", handleRead);
-    socket.on("message:edited", handleEdited);
-    socket.on("message:deleted", handleDeleted);
     return () => {
       socket.off("message:read", handleRead);
-      socket.off("message:edited", handleEdited);
-      socket.off("message:deleted", handleDeleted);
     };
   }, [activeConvo?._id]);
 
@@ -6006,36 +6322,89 @@ export default function Chat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConvo?._id]);
 
+  // Renders the message immediately and reconciles when the server echoes it
+  // back. Waiting for the round-trip meant your own message only appeared after
+  // the socket replied — on a slow link that read as "nothing happened".
   const sendMessage = () => {
-    if (!input.trim() || !activeConvo || !user?._id) return;
-    socket.emit("send-message", { conversationId: activeConvo._id, senderId: user._id, text: input });
+    const text = input.trim();
+    if (!text || !activeConvo || !user?._id) return;
+
+    const clientId = makeClientId();
+    setMessages((prev) => [
+      ...prev,
+      {
+        _id: clientId,
+        clientId,
+        conversationId: activeConvo._id,
+        sender: user._id,
+        text,
+        createdAt: new Date().toISOString(),
+        readBy: [String(user._id)],
+        deliveredTo: [],
+        pending: true,
+      },
+    ]);
+
+    socket.emit("send-message", {
+      conversationId: activeConvo._id,
+      senderId: user._id,
+      text,
+      clientId,
+    });
     stopTyping(); // sending ends the burst; don't wait for the idle timer
     setInput("");
   };
 
-  const submitEdit = () => {
-    const clean = editDraft.trim();
-    if (!editingId || !clean || !user?._id) return;
-    socket.emit("message:edit", { messageId: editingId, userId: user._id, text: clean });
-    setEditingId(null);
-    setEditDraft("");
-  };
-
-  const deleteMessage = (messageId: string) => {
-    if (!user?._id) return;
-    socket.emit("message:delete", { messageId, userId: user._id });
-  };
-
   const handleAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !activeConvo) return;
+    if (!file || !activeConvo || !user?._id) return;
+
+    // Show the file straight away against a local object URL — an upload to
+    // Azure can take seconds and the picker closing with nothing on screen
+    // looks like the send failed.
+    const clientId = makeClientId();
+    const isImage = file.type.startsWith("image");
+    const localUrl = URL.createObjectURL(file);
+    setMessages((prev) => [
+      ...prev,
+      {
+        _id: clientId,
+        clientId,
+        conversationId: activeConvo._id,
+        sender: user._id,
+        createdAt: new Date().toISOString(),
+        readBy: [String(user._id)],
+        deliveredTo: [],
+        pending: true,
+        attachment: { url: localUrl, name: file.name, type: isImage ? "image" : "file" },
+      },
+    ]);
+
     const formData = new FormData();
     formData.append("file", file);
     formData.append("conversationId", activeConvo._id);
-    const res = await fetch(`${API_BASE}/api/chat/attachment`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData });
-    const data = await res.json();
-    if (data?.message) { setMessages((prev) => [...prev, data.message]); socket.emit("new-message", data.message); }
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    formData.append("clientId", clientId);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/chat/attachment`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData });
+      const data = await res.json().catch(() => ({}));
+      if (!data?.message) throw new Error(data?.error || "upload_failed");
+      // The server broadcasts this over the socket now (it previously didn't,
+      // so the other side never saw an attachment until they reloaded). Our own
+      // copy is swapped in here; the echo is deduped by clientId.
+      setMessages((prev) =>
+        prev.map((m: any) =>
+          m.clientId === clientId ? { ...data.message, clientId, pending: false } : m
+        )
+      );
+    } catch (err) {
+      console.error("Attachment upload failed", err);
+      setMessages((prev) => prev.filter((m: any) => m.clientId !== clientId));
+      toast({ title: "Upload failed", description: "Couldn't send that file. Please try again." });
+    } finally {
+      URL.revokeObjectURL(localUrl);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const connectGoogle = () => {
@@ -6075,15 +6444,6 @@ const startMeetCall = () => {
         ? <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="break-all text-blue-400 underline hover:text-blue-300">{part}</a>
         : <span key={i}>{part}</span>
     );
-  };
-
-  const deleteActiveConversation = async () => {
-    if (!activeConvo) return;
-    if (!confirm("Delete this chat?")) return;
-    await fetch(`${API_BASE}/api/chat/conversation/${activeConvo._id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
-    setActiveConvo(null); setMessages([]);
-    setConversations((prev) => prev.filter((c) => c._id !== activeConvo._id));
-    setMobileView("list");
   };
 
   return (
@@ -6209,9 +6569,6 @@ const startMeetCall = () => {
                     <button onClick={() => setShowProfile((v) => !v)} disabled={!activeConvo} className="hidden sm:grid h-10 w-10 place-items-center rounded-full bg-white/[0.06] text-white hover:bg-white/10 disabled:opacity-40" title="Info">
                       <FiInfo className="text-[19px] text-white" />
                     </button>
-                    <button onClick={deleteActiveConversation} disabled={!activeConvo} className="grid h-8 w-8 sm:h-10 sm:w-10 place-items-center rounded-full bg-[#5A1518] text-white hover:bg-[#751B20] disabled:opacity-40" title="Delete">
-                      <Trash2 size={15} />
-                    </button>
                     <button onClick={() => setOpenChatPopup(false)} className="hidden sm:grid h-10 w-10 place-items-center rounded-full bg-white/[0.06] text-white hover:bg-white/10" title="Close">
                       <X size={20} />
                     </button>
@@ -6250,9 +6607,15 @@ const serviceWorkSubmittedData = parseServiceWorkSubmittedData(m.text);
                             {hireData ? (
                               <HireCard data={hireData} conversationId={activeConvo._id} senderId={user?._id} token={token} />
                            ) : counterData ? (
-  <CounterProposalCard data={counterData} />
+  <CounterProposalCard data={counterData} conversationId={activeConvo._id} senderId={user?._id} />
 ) : hireAcceptedData ? (
-  <HireAcceptedCard data={hireAcceptedData} isMine={isMine} token={token} />
+  <HireAcceptedCard
+    data={hireAcceptedData}
+    isMine={isMine}
+    token={token}
+    conversationId={activeConvo._id}
+    senderId={user?._id}
+  />
 ) : workSubmittedData ? (
   <WorkSubmittedCard data={workSubmittedData} isMine={isMine} token={token} />
 ) : escrowReleasedData ? (
@@ -6267,59 +6630,13 @@ const serviceWorkSubmittedData = parseServiceWorkSubmittedData(m.text);
   <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 sm:px-4 py-2 sm:py-3 text-[13px] italic text-zinc-500">
     This message was deleted
   </div>
-) : editingId === m._id ? (
-  <div className="rounded-2xl border border-white/15 bg-[#2b2b2b] p-2">
-    <textarea
-      value={editDraft}
-      onChange={(e) => setEditDraft(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitEdit(); }
-        if (e.key === "Escape") { setEditingId(null); setEditDraft(""); }
-      }}
-      rows={2}
-      autoFocus
-      className="w-full resize-none bg-transparent px-2 py-1 text-[14px] text-white outline-none"
-    />
-    <div className="mt-1 flex items-center justify-end gap-2">
-      <button onClick={() => { setEditingId(null); setEditDraft(""); }} className="rounded-md px-2.5 py-1 text-xs text-zinc-400 hover:bg-white/10">Cancel</button>
-      <button onClick={submitEdit} disabled={!editDraft.trim()} className="rounded-md bg-white px-2.5 py-1 text-xs font-medium text-black disabled:opacity-40">Save</button>
-    </div>
-  </div>
 ) : (
                               m.text && (
-                                <div className="group/msg relative">
-                                  <div
-                                    className={`rounded-2xl px-3 sm:px-4 py-2 sm:py-3 text-[14px] sm:text-[15px] font-normal leading-[22px] tracking-[0px] break-words whitespace-pre-line ${isMine ? "text-white" : "bg-[#2b2b2b] text-zinc-200"}`}
-                                    style={{ background: isMine ? GRADIENT : undefined, fontFamily: "Plus Jakarta Sans, sans-serif" }}
-                                  >
-                                    {renderMessageText(m.text)}
-                                  </div>
-
-                                  {/* Edit / delete — own plain-text messages only.
-                                      Deliberately not offered on the hire/service
-                                      cards above: their text is a structured
-                                      payload those flows parse. The server
-                                      re-checks ownership on both events. */}
-                                  {isMine && (
-                                    <div className="absolute -top-2 right-1 hidden items-center gap-1 rounded-full border border-white/10 bg-[#1c1c1e] px-1 py-0.5 shadow-lg group-hover/msg:flex">
-                                      <button
-                                        onClick={() => { setEditingId(m._id); setEditDraft(m.text || ""); }}
-                                        title="Edit message"
-                                        aria-label="Edit message"
-                                        className="grid h-6 w-6 place-items-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white"
-                                      >
-                                        <Pencil size={12} />
-                                      </button>
-                                      <button
-                                        onClick={() => deleteMessage(m._id)}
-                                        title="Delete message"
-                                        aria-label="Delete message"
-                                        className="grid h-6 w-6 place-items-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-red-400"
-                                      >
-                                        <Trash2 size={12} />
-                                      </button>
-                                    </div>
-                                  )}
+                                <div
+                                  className={`rounded-2xl px-3 sm:px-4 py-2 sm:py-3 text-[14px] sm:text-[15px] font-normal leading-[22px] tracking-[0px] break-words whitespace-pre-line ${isMine ? "text-white" : "bg-[#2b2b2b] text-zinc-200"}`}
+                                  style={{ background: isMine ? GRADIENT : undefined, fontFamily: "Plus Jakarta Sans, sans-serif" }}
+                                >
+                                  {renderMessageText(m.text)}
                                 </div>
                               )
                             )}
@@ -6335,9 +6652,6 @@ const serviceWorkSubmittedData = parseServiceWorkSubmittedData(m.text);
                             )}
                             <div className={`mt-1 sm:mt-2 flex items-center gap-1.5 text-xs text-zinc-600 ${isMine ? "justify-end" : "justify-start"}`}>
                               <span>{formatTime(m.createdAt)}</span>
-                              {/* Shown so an edit can't quietly change what was
-                                  agreed without the other side noticing. */}
-                              {m.editedAt && !m.deleted && <span className="italic text-zinc-500">edited</span>}
                               {isMine && !m.deleted && (
                                 <MessageTicks message={m} recipientIds={recipientIds} />
                               )}

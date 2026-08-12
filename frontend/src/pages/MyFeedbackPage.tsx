@@ -19,12 +19,16 @@ export default function MyFeedbackPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const fetchMyFeedback = async (e?: React.FormEvent) => {
+  /* Takes the address explicitly rather than reading state, so the auto-fetch
+     below can pass the logged-in user's email without waiting a render for
+     setEmail to land. */
+  const fetchMyFeedback = async (addressArg?: string, e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!email.trim()) { setError("Enter your email"); return; }
+    const address = (addressArg ?? email).trim();
+    if (!address) { setError("Enter your email"); return; }
     setError(""); setLoading(true); setSubmitted(false);
     try {
-      const res = await fetch(`${API_BASE}/api/feedback/my?email=${encodeURIComponent(email.trim())}`);
+      const res = await fetch(`${API_BASE}/api/feedback/my?email=${encodeURIComponent(address)}`);
       const data = await res.json();
       if (data.success) { setFeedbacks(data.feedbacks); setSubmitted(true); }
       else setError("Could not fetch feedback.");
@@ -32,10 +36,17 @@ export default function MyFeedbackPage() {
     setLoading(false);
   };
 
-  // Auto-fetch if user email is available
+  /* A signed-in user already told us who they are at login — asking them to
+     type the same address again, and then to press a button, was two steps to
+     reach a page that could only ever show them their own feedback. This
+     fetches it on arrival. The comment here used to say "auto-fetch" while the
+     code only filled the input. */
   useEffect(() => {
-    if (user?.email) { setEmail(user.email); }
-  }, [user]);
+    if (!user?.email) return;
+    setEmail(user.email);
+    fetchMyFeedback(user.email);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.email]);
 
   return (
     <div style={{ minHeight: "100vh", background: "#07080A", color: "#fff", fontFamily: "Inter, sans-serif" }}>
@@ -51,8 +62,30 @@ export default function MyFeedbackPage() {
         <h1 style={{ fontSize: 28, fontWeight: 800, margin: "0 0 6px", letterSpacing: "-0.02em" }}>My Feedback</h1>
         <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 14, margin: "0 0 32px" }}>View all feedback you've submitted to Tokun.</p>
 
-        {/* Email form */}
-        <form onSubmit={fetchMyFeedback} style={{ display: "flex", gap: 10, marginBottom: 32 }}>
+        {/* Signed in: nothing to fill in — just say whose feedback this is, and
+            offer a refresh. The email form below is for visitors who submitted
+            feedback without an account. */}
+        {user?.email ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 32, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 13, color: "rgba(255,255,255,0.45)" }}>
+              Showing feedback from <span style={{ color: "#fff" }}>{user.email}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => fetchMyFeedback(user.email)}
+              disabled={loading}
+              style={{
+                padding: "6px 14px", background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.12)", borderRadius: 999,
+                color: "rgba(255,255,255,0.7)", fontSize: 12, fontFamily: "inherit",
+                cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.6 : 1,
+              }}
+            >
+              {loading ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
+        ) : (
+        <form onSubmit={(e) => fetchMyFeedback(undefined, e)} style={{ display: "flex", gap: 10, marginBottom: 32 }}>
           <input
             type="email"
             value={email}
@@ -72,6 +105,7 @@ export default function MyFeedbackPage() {
             {loading ? "Loading…" : "View Feedback"}
           </button>
         </form>
+        )}
 
         {error && <p style={{ color: "#f87171", fontSize: 13, marginBottom: 16 }}>⚠ {error}</p>}
 
@@ -101,10 +135,20 @@ export default function MyFeedbackPage() {
 
                   <p style={{ margin: "0 0 10px", fontSize: 14, color: "rgba(255,255,255,0.8)", lineHeight: 1.65 }}>{fb.experience}</p>
 
+                  {/* A suggestion isn't a fault, so it doesn't get the red
+                      warning treatment an issue does. Older rows have no
+                      noteType and default to "issue", which is what they were
+                      written as. */}
                   {fb.issue && (
-                    <p style={{ margin: "0 0 10px", fontSize: 13, color: "#f87171", background: "rgba(239,68,68,0.08)", padding: "6px 12px", borderRadius: 8 }}>
-                      ⚠ Issue reported: {fb.issue}
-                    </p>
+                    fb.noteType === "suggestion" ? (
+                      <p style={{ margin: "0 0 10px", fontSize: 13, color: "#c4b5fd", background: "rgba(167,139,250,0.08)", padding: "6px 12px", borderRadius: 8 }}>
+                        💡 Suggestion: {fb.issue}
+                      </p>
+                    ) : (
+                      <p style={{ margin: "0 0 10px", fontSize: 13, color: "#f87171", background: "rgba(239,68,68,0.08)", padding: "6px 12px", borderRadius: 8 }}>
+                        ⚠ Issue reported: {fb.issue}
+                      </p>
+                    )
                   )}
 
                   {fb.screenshots?.length > 0 && (

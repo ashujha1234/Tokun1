@@ -72,12 +72,12 @@ export default function PurchaseDialog({ open, onOpenChange, prompt, onPurchaseC
 
   const handlePurchase = async () => {
     if (!formData.fullName || !formData.email || !formData.cardNumber || !formData.expiryDate || !formData.cvv) {
-      toast({ title: "Missing Information", description: "Please fill in all required payment details", variant: "destructive" });
+      toast({ title: "Missing Information", description: "Please fill in all required payment details" });
       return;
     }
     const user = JSON.parse(localStorage.getItem("tokun_user") || "{}");
     if (!user.id) {
-      toast({ title: "User not found", description: "Please login again", variant: "destructive" });
+      toast({ title: "User not found", description: "Please login again" });
       return;
     }
     toast({ title: "Processing Purchase", description: "Your payment is being processed..." });
@@ -102,11 +102,11 @@ export default function PurchaseDialog({ open, onOpenChange, prompt, onPurchaseC
         onOpenChange(false);
         setFormData({ fullName: "", email: "", cardNumber: "", expiryDate: "", cvv: "" });
       } else {
-        toast({ title: "Purchase Failed", description: data.error || "Please try again later.", variant: "destructive" });
+        toast({ title: "Purchase Failed", description: data.error || "Please try again later." });
       }
     } catch (e) {
       console.error(e);
-      toast({ title: "Error", description: "Something went wrong while processing your purchase.", variant: "destructive" });
+      toast({ title: "Error", description: "Something went wrong while processing your purchase." });
     }
   };
 

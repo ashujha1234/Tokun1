@@ -189,6 +189,16 @@ const DeliverableSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+
+    /* Mirrors ServiceOrder's DeliverableSchema.
+       "file"  — uploaded to Tokun's private storage, fetched through the gated
+                 download route.
+       "link"  — a URL the freelancer pasted: a repo, a Drive folder, or the
+                 deployed site itself. For built software that IS the delivery,
+                 and hire deals had no way to express it. */
+    kind: { type: String, enum: ["file", "link"], default: "file" },
+    provider: { type: String, default: "" },
+    blobName: { type: String, default: "" },
   },
   { _id: false }
 );
@@ -246,6 +256,29 @@ const HireDealSchema = new mongoose.Schema(
       default: "",
     },
 
+    // Reference material the CLIENT attached to the brief — a style deck, a
+    // spec, screenshots. Distinct from `deliverables`, which is what the
+    // freelancer sends back. The brief used to be text only, so every real one
+    // started with a Drive link pasted into chat that nobody could find again.
+    // Read through the gated /api/brief/.../download route, so `blobName` is
+    // the field that matters — the url alone points at a private blob.
+    briefAttachments: {
+      type: [
+        new mongoose.Schema(
+          {
+            url: { type: String, default: "" },
+            blobName: { type: String, default: "" },
+            name: { type: String, default: "Attachment" },
+            size: { type: Number, default: 0 },
+            mimeType: { type: String, default: "" },
+            uploadedAt: { type: Date, default: Date.now },
+          },
+          { _id: false }
+        ),
+      ],
+      default: [],
+    },
+
     amount: {
       type: Number,
       required: true,
@@ -262,13 +295,27 @@ const HireDealSchema = new mongoose.Schema(
       required: true,
     },
 
-    // Client-side commission (Tokun charges both sides — same % as platformFee)
+    // Buyer-side platform fee. Its own rate now (TOKUN_PLATFORM_FEE_PERCENT) —
+    // this used to be described as "same % as platformFee", which stopped being
+    // true once the two sides were separated.
     clientFee: {
       type: Number,
       default: 0,
     },
 
-    // amount + clientFee — the real Razorpay order amount and refund amount
+    /* GST on Tokun's two fees, never on the project price itself. Held apart
+       from the fees because this money is collected for the government, not
+       earned — see the same fields on ServiceOrder. */
+    platformFeeGst: {
+      type: Number,
+      default: 0,
+    },
+    clientFeeGst: {
+      type: Number,
+      default: 0,
+    },
+
+    // amount + clientFee + clientFeeGst — the real Razorpay order amount
     totalPayable: {
       type: Number,
     },
@@ -294,8 +341,15 @@ const HireDealSchema = new mongoose.Schema(
         "COMPLETED",
         "CANCELLED",
         "REJECTED",
+        // Cancelled after work had started, so the money can't just go back —
+        // the parties (or an admin) have to agree how to split it. The
+        // auto-release cron skips this status, otherwise a dispute raised on
+        // day 3 would be settled by the clock on day 4.
         "DISPUTED",
         "REFUNDED",
+        // The escrow was split between the two rather than going wholly to
+        // either side.
+        "SETTLED",
       ],
       default: "PENDING_ACCEPTANCE",
       index: true,
@@ -316,6 +370,8 @@ const HireDealSchema = new mongoose.Schema(
         "RELEASED_TO_FREELANCER",
         "AUTO_RELEASED",
         "REFUNDED_TO_CLIENT",
+        // Part reversed to the client, the rest released to the freelancer.
+        "PARTIALLY_SETTLED",
         "DISPUTED",
       ],
       default: "NOT_HELD",
@@ -342,6 +398,69 @@ const HireDealSchema = new mongoose.Schema(
       default: "",
     },
 
+    /* ── Route escrow ──────────────────────────────────────────────────────
+       The freelancer's money is held by Razorpay as a transfer with
+       on_hold: 1 (no on_hold_until) rather than sitting in a Tokun-internal
+       wallet number. These fields are how we find that transfer to release it.
+
+       Empty on deals funded before this shipped — those still settle through
+       the Wallet ledger, which is why the release path keeps that fallback. */
+    routeTransferId: {
+      type: String,
+      default: "",
+    },
+    // Snapshot of which linked account this deal's money was routed to; the
+    // freelancer can re-onboard or switch accounts later.
+    routeLinkedAccountId: {
+      type: String,
+      default: "",
+    },
+    /* How much is actually sitting on hold in the Route transfer.
+       New deals hold the FULL amount the client paid, not the freelancer's
+       post-commission share. Tokun's cut is reversed out of the hold at
+       release time instead of never entering it.
+
+       Why: a dispute can end with the freelancer owed the whole amount (Tokun
+       waives its commission when it has to arbitrate). A hold of only
+       ₹2,850 on a ₹3,000 deal cannot pay that, and the ₹150 shortfall can't be
+       sent separately — Razorpay's transfer-from-balance API is a different
+       feature and answers "This feature is not enabled for this merchant".
+
+       Empty/0 on deals funded before this changed: those hold the old
+       freelancer-share amount, and the settlement math falls back to it. */
+    routeHeldAmount: {
+      type: Number,
+      default: 0,
+    },
+    // Razorpay's own transfer state, kept current by the transfer.* webhooks.
+    // Not an enum on purpose — Razorpay owns this vocabulary.
+    routeTransferStatus: {
+      type: String,
+      default: "",
+    },
+    routeTransferError: {
+      type: String,
+      default: "",
+    },
+    transferReleasedAt: {
+      type: Date,
+      default: null,
+    },
+
+    // Razorpay holds a transfer for at most 90 days from the payment. After
+    // this instant the escrow is no longer something we can rely on, so the
+    // deal MUST have been released, refunded or split before it. Set at
+    // payment; watched by cron/escrowDeadlineWatch.js.
+    escrowExpiresAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+    escrowWarningSentAt: {
+      type: Date,
+      default: null,
+    },
+
     acceptedAt: Date,
     paidAt: Date,
     workStartedAt: Date,
@@ -354,21 +473,48 @@ const HireDealSchema = new mongoose.Schema(
     refundReason: { type: String, default: "" },
     razorpayRefundId: { type: String, default: "" },
 
+    /* ── Cancellation / settlement outcome ─────────────────────────────────
+       Written once, when a cancellation or dispute is finally resolved. The
+       negotiation itself lives on EscrowDispute; these are the numbers that
+       actually moved, kept on the deal so any screen showing it can explain
+       where the money went without a second lookup. */
+    /* WHICH SIDE ended it — not which user.
+       Declared once, here. There used to be a second `cancelledBy` further down
+       typed as an ObjectId ref, and in Mongoose the LAST declaration of a path
+       wins: the schema silently became ObjectId, so every settlement — which
+       writes "buyer"/"seller"/"admin" — died with
+         CastError: Cast to ObjectId failed for value "seller" at path "cancelledBy"
+       and it died AFTER Razorpay had already moved the money, leaving deals
+       stuck in DISPUTED with the refund already paid out. Same story for
+       `cancelledAt`, which was also declared twice. */
+    cancelledBy: { type: String, enum: ["buyer", "seller", "admin", ""], default: "" },
+    cancelledAt: { type: Date, default: null },
+    cancelReason: { type: String, default: "" },
+    // 0–100. What share of the agreed price the freelancer was judged to have
+    // earned. 0 = full refund, 100 = full release.
+    settlementSellerPercent: { type: Number, default: null },
+    settlementSellerPayout: { type: Number, default: 0 },
+    refundAmount: { type: Number, default: 0 },
+
     // Auto-release audit trail (same previously-silent-drop issue)
     autoReleased: { type: Boolean, default: false },
     autoReleasedAt: Date,
 
-    // Cancel/decline (pre-payment only)
-    cancelledAt: Date,
-    cancelReason: { type: String, default: "" },
-    cancelledBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
+    /* Cancel/decline (pre-payment only) shares cancelledAt / cancelledBy /
+       cancelReason with the settlement block above — a deal only ends once, so
+       one set of fields describes it whether it ended before or after payment.
+       (These three were re-declared here, which is what broke the path type.) */
 
     ndaClientUrl: { type: String, default: "" },
     ndaFreelancerUrl: { type: String, default: "" },
+
+    /* The drawn signature itself, as a small PNG data URL.
+       Without this the signature was component state in the NDA modal: it
+       showed while you were signing and vanished the moment the modal closed,
+       so reopening the agreement showed a blank signature line. Stored per
+       party so the agreement shows BOTH signatures, permanently. */
+    ndaClientSignature: { type: String, default: "" },
+    ndaFreelancerSignature: { type: String, default: "" },
     ndaClientSignedAt: Date,
     ndaFreelancerSignedAt: Date,
 
@@ -382,9 +528,50 @@ const HireDealSchema = new mongoose.Schema(
       default: "",
     },
 
+    // Every delivery attempt, appended. `deliverables` above is only ever the
+    // newest one, so without this a resubmission after a revision silently
+    // erased what was sent the first time — leaving an admin ruling on
+    // "this isn't what you delivered originally" with no record to check.
+    // Service bookings got this first; hire deals had the same hole.
+    submissions: {
+      type: [
+        new mongoose.Schema(
+          {
+            version: { type: Number, required: true },
+            note: { type: String, default: "" },
+            deliverables: { type: [DeliverableSchema], default: [] },
+            submittedAt: { type: Date, default: Date.now },
+          },
+          { _id: false }
+        ),
+      ],
+      default: [],
+    },
+
     revisions: {
       type: [RevisionSchema],
       default: [],
+    },
+
+    // Set when the "your revision has gone unanswered" nudge was sent, so it
+    // only ever goes once. Cleared implicitly by a resubmission, which moves
+    // the order out of REVISION_REQUESTED entirely.
+    revisionStallWarnedAt: { type: Date, default: null },
+
+    // How many revisions this deal includes, fixed when the proposal is made.
+    // null = unlimited.
+    //
+    // Service bookings got this cap first; hire deals were left uncapped, which
+    // meant a client could send the same project back indefinitely and the
+    // freelancer's payout would sit in escrow for as long as the client felt
+    // like — the exact exploit the service-side cap exists to close.
+    //
+    // Deals created before this field existed read as undefined, which
+    // getRevisionState() treats as unlimited: they were agreed under no cap and
+    // shouldn't retroactively gain one.
+    revisionsAllowed: {
+      type: Number,
+      default: null,
     },
   },
   { timestamps: true }

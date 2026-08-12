@@ -495,7 +495,10 @@ const FeaturedSection = ({ prompts, onOpenDetails }: { prompts: Prompt[]; onOpen
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {prompts.map((p) => {
-          const badge = p.exclusive ? "PREMIUM" : "STAFF PICK";
+          // Category rather than "STAFF PICK" — see PromptMarketplacePage: the
+          // old label sat on every non-exclusive card and meant nothing.
+          const isPremium = !!p.exclusive;
+          const badge = isPremium ? "PREMIUM" : p.category || "";
           return (
             <Card
               key={p.id}
@@ -505,12 +508,17 @@ const FeaturedSection = ({ prompts, onOpenDetails }: { prompts: Prompt[]; onOpen
             >
               <CardContent className="p-0">
                 <PromptMedia imageUrl={p.imageUrl || ""} videoUrl={p.videoUrl} className="w-full h-[220px]">
-                  <div
-                    className="absolute top-4 right-4 px-3 py-1 rounded-full text-[10px] font-semibold text-white"
-                    style={{ background: badge === "STAFF PICK" ? "rgba(255,255,255,0.15)" : GRADIENT, backdropFilter: "blur(4px)" }}
-                  >
-                    {badge}
-                  </div>
+                  {badge && (
+                    <div
+                      className="absolute top-4 right-4 px-3 py-1 rounded-full text-[10px] font-semibold text-white capitalize"
+                      style={{
+                        background: isPremium ? GRADIENT : "rgba(255,255,255,0.15)",
+                        backdropFilter: "blur(4px)",
+                      }}
+                    >
+                      {badge}
+                    </div>
+                  )}
                 </PromptMedia>
 
                 <div className="p-6">
@@ -846,7 +854,6 @@ const PromptMarketplacePage = () => {
         toast({
           title: "Couldn't load prompts",
           description: err?.message || "Please try again.",
-          variant: "destructive",
         });
       } finally {
         setLoading(false);
@@ -910,11 +917,11 @@ const PromptMarketplacePage = () => {
     const promptId = String(detailsP.id);
     const prompt = prompts.find((p) => p.id === promptId);
     if (prompt && isOwnPrompt(prompt)) {
-      toast({ title: "Not allowed", description: "You cannot buy your own prompt.", variant: "destructive" });
+      toast({ title: "Not allowed", description: "You cannot buy your own prompt." });
       return;
     }
     if (!token) {
-      toast({ title: "Please log in", description: "You must be logged in to purchase.", variant: "destructive" });
+      toast({ title: "Please log in", description: "You must be logged in to purchase." });
       return;
     }
     if (!rzpReady) {
@@ -964,23 +971,23 @@ const PromptMarketplacePage = () => {
               setDetailsOpen(false);
               toast({ title: "Payment Successful", description: "You now own this prompt." });
             } else {
-              toast({ title: "Verification Failed", description: vb?.error || "Unknown error", variant: "destructive" });
+              toast({ title: "Verification Failed", description: vb?.error || "Unknown error" });
             }
           } catch (err) {
             console.error("Verify error", err);
-            toast({ title: "Verification Error", description: "Could not verify payment.", variant: "destructive" });
+            toast({ title: "Verification Error", description: "Could not verify payment." });
           }
         },
       };
 
       const rzp = new (window as any).Razorpay(options);
       rzp.on("payment.failed", () => {
-        toast({ title: "Payment Failed", description: "Please try again.", variant: "destructive" });
+        toast({ title: "Payment Failed", description: "Please try again." });
       });
       rzp.open();
     } catch (err: any) {
       console.error("Purchase flow error", err);
-      toast({ title: "Purchase Error", description: err?.message || "Something went wrong.", variant: "destructive" });
+      toast({ title: "Purchase Error", description: err?.message || "Something went wrong." });
     }
   };
 
@@ -996,9 +1003,9 @@ const PromptMarketplacePage = () => {
 
   return (
     <div className="dark min-h-screen bg-background text-foreground">
-      <div className="sticky top-0 z-50">
-        <Header />
-      </div>
+      {/* Header is `sticky top-0` on its own -- nesting a second sticky at
+          the same offset makes the two fight and the bar jitters on scroll. */}
+      <Header />
 
       <div className="container mx-auto px-4 sm:px-6 pb-16">
         {/* Hero sits right at the top — title + search live on the banner itself */}

@@ -34,44 +34,57 @@ const SECTIONS = [
     ],
   },
   {
-    title: "5. Hire & Escrow",
+    title: "5. Services & Projects — How payment is handled",
     body: [
-      "When a client hires a freelancer through Tokun, payment is collected upfront and held until the client approves the delivered work.",
-      "If the client does not approve or request revisions within 72 hours of work submission, funds are automatically released to the freelancer.",
-      "Tokun charges a commission on both the client and freelancer side of a Hire transaction, as disclosed at the time the proposal is created.",
-      "Refunds for funded Hire deals are processed only through Tokun's admin support team.",
+      "Two kinds of paid work run through Tokun: Services, which a creator lists at a fixed scope and price, and Projects, where a client writes a brief and proposes a budget. Both are funded and settled the same way.",
+      "Payment is collected upfront and held by our payment provider, Razorpay, on a Route transfer. It is not passed to the creator until the client approves the delivered work.",
+      "If the client neither approves nor requests a revision within 72 hours of work being submitted, the funds are released to the creator automatically. Silence is treated as acceptance.",
+      "Every booking includes a fixed number of revisions, set when it is created and shown before payment. Once used, the work can no longer be sent back; the client may approve it, or cancel and have the split decided.",
+      "Funds cannot be held indefinitely. Our payment provider stops holding them 90 days after payment, so every booking must be concluded before then — which is why a delivery date can be at most 60 days from the date of booking.",
+      "Tokun charges a commission on both the client and creator side, disclosed before payment. On a cancelled booking Tokun's commission is reduced in proportion to the work completed.",
+      "A creator cannot accept paid work until their payout account has been verified by our payment provider. Until then, they can be messaged but not hired.",
     ],
   },
   {
-    title: "6. Wallet & Withdrawals",
+    title: "6. Cancellation & Disputes",
     body: [
-      "Earnings from prompt sales and completed Hire deals are credited to your in-app Wallet.",
-      "Withdrawals require a linked bank account or UPI ID and are subject to a minimum withdrawal amount and service fee, shown at the time of the request.",
+      "Before work has started, either side may cancel and the client is refunded in full, automatically.",
+      "If the creator abandons work that has already been paid for, the client is refunded in full regardless of work claimed. The cancellation is recorded against the creator's account and repeated occurrences lead to suspension.",
+      "If the client cancels after work has started, the payment is split according to how much was completed. The creator states their share with evidence; the client either accepts it, which settles immediately, or rejects it, which refers the matter to Tokun for a decision. Funds remain held until then.",
+      "Tokun's decision on a disputed split is final for the purposes of releasing the held funds. Both parties receive the reasoning and the exact amounts by email.",
+      "Full details, including how the split is calculated, are in the Refund & Cancellation Policy.",
+    ],
+  },
+  {
+    title: "7. Payouts & Withdrawals",
+    body: [
+      "Earnings from Services and Projects are paid to the creator's verified payout account by our payment provider once the funds are released, on that account's own settlement schedule.",
+      "Earnings from prompt sales are credited to your in-app Wallet. Withdrawals require a linked bank account or UPI ID and are subject to a minimum withdrawal amount and service fee, shown at the time of the request.",
       "Tokun reserves the right to review withdrawal requests for fraud prevention before processing.",
     ],
   },
   {
-    title: "7. Prohibited Use",
+    title: "8. Prohibited Use",
     body: [
       "You may not use Tokun to generate, sell, or distribute illegal content, malware, or content that violates the rights of others.",
       "You may not attempt to circumvent usage limits, security controls, or payment mechanisms.",
     ],
   },
   {
-    title: "8. Limitation of Liability",
+    title: "9. Limitation of Liability",
     body: [
       "Tokun is provided on an \"as is\" basis. To the maximum extent permitted by law, Tokun is not liable for indirect, incidental, or consequential damages arising from use of the platform.",
     ],
   },
   {
-    title: "9. Termination",
+    title: "10. Termination",
     body: [
       "Tokun may suspend or terminate accounts that violate these terms.",
       "You may close your account at any time; any remaining Wallet balance can be withdrawn before closure, subject to standard withdrawal terms.",
     ],
   },
   {
-    title: "10. Changes to These Terms",
+    title: "11. Changes to These Terms",
     body: [
       "We may update these Terms & Conditions from time to time. Continued use of Tokun after changes take effect constitutes acceptance of the revised terms.",
     ],

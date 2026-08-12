@@ -46,7 +46,6 @@ export default function HirePaymentPopup({
         toast({
           title: "Login required",
           description: "Please login again.",
-          variant: "destructive",
         });
         return;
       }
@@ -55,7 +54,6 @@ export default function HirePaymentPopup({
         toast({
           title: "Deal not found",
           description: "Could not start payment.",
-          variant: "destructive",
         });
         return;
       }
@@ -66,7 +64,6 @@ export default function HirePaymentPopup({
         toast({
           title: "Payment failed",
           description: "Razorpay SDK could not load.",
-          variant: "destructive",
         });
         return;
       }
@@ -86,11 +83,12 @@ export default function HirePaymentPopup({
           toast({
             title: "Sign the NDA first",
             description: data.message || "Both parties must sign the NDA before payment can be made.",
-            variant: "destructive",
           });
           return;
         }
-        throw new Error(data.error || "Failed to create payment order");
+        // The freelancer's payout account is re-checked here, so this can also
+        // be "payout_account_not_active" — whose `message` says what's wrong.
+        throw new Error(data.message || data.error || "Failed to create payment order");
       }
 
       const options = {
@@ -147,7 +145,6 @@ export default function HirePaymentPopup({
       toast({
         title: "Payment failed",
         description: err.message || "Something went wrong.",
-        variant: "destructive",
       });
     }
   };

@@ -24,8 +24,11 @@ const Purchase = require("../models/Purchase");
 const Wallet = require("../models/Wallet");
 const PlatformWallet = require("../models/PlatformWallet");
 const Notification = require("../models/Notification");
+const User = require("../models/User");
 const { requireAuth } = require("../utils/auth");
 const { reverseTransfer } = require("../utils/routePayouts");
+const ledger = require("../utils/ledger");
+const { sendFullRefundEmail, sendRefundRejectedEmail } = require("../services/refundEmail.service");
 
 function requireAdmin(req, res, next) {
   if (!req.isAdmin) {
@@ -80,7 +83,24 @@ router.post("/:id/approve", async (req, res) => {
       });
     }
 
-    const refundAmountPaise = Math.round(Number(refundRequest.refundAmount || purchase.pricePaid || 0) * 100);
+    /* Tokun's platform fee is not refundable — it paid for running the
+       transaction, which happened whether or not the buyer kept the prompt. So
+       the refund is capped at what the buyer paid MINUS that fee and its GST.
+
+       Both are 0 on purchases made before the fee existed, so those still
+       refund in full, exactly as they were sold. */
+    const nonRefundableFee = +(
+      Number(purchase.platformFee || 0) + Number(purchase.platformFeeGst || 0)
+    ).toFixed(2);
+    const maxRefundable = +Math.max(
+      0,
+      Number(purchase.pricePaid || 0) - nonRefundableFee
+    ).toFixed(2);
+
+    const requestedRefund = Number(refundRequest.refundAmount || purchase.pricePaid || 0);
+    const refundAmount = +Math.min(requestedRefund, maxRefundable).toFixed(2);
+
+    const refundAmountPaise = Math.round(refundAmount * 100);
     if (!refundAmountPaise || refundAmountPaise <= 0) {
       return res.status(400).json({ success: false, error: "invalid_refund_amount" });
     }
@@ -169,7 +189,17 @@ router.post("/:id/approve", async (req, res) => {
     // Wallet-only branch above, which left PlatformWallet overstated by the
     // commission on every refunded Route purchase.
     try {
-      await PlatformWallet.reverseCommission(purchase.platformCommission, {
+      /* Only the part Tokun is giving back. The platform fee was kept, so
+         reversing the whole commission would understate revenue by exactly the
+         fee on every refund — the mirror of the bug this reversal was added to
+         fix. GST on the retained fee stays collected too; it was charged on a
+         service that was still rendered. */
+      const reversible = +Math.max(
+        0,
+        Number(purchase.platformCommission || 0) - nonRefundableFee
+      ).toFixed(2);
+
+      await PlatformWallet.reverseCommission(reversible, {
         source: "prompt_purchase",
         refId: purchase._id,
         description: `Refund reversal: "${purchase.promptSnapshot?.title || "Prompt"}"`,
@@ -180,6 +210,10 @@ router.post("/:id/approve", async (req, res) => {
 
     refundRequest.status = "APPROVED";
     refundRequest.adminNote = String(req.body?.adminNote || "").trim();
+    // What was ACTUALLY refunded, which is capped at the list price. The
+    // buyer's notification and email both read this field, and telling them a
+    // figure Razorpay never sent is how a support ticket starts.
+    refundRequest.refundAmount = refundAmount;
     refundRequest.razorpayRefundId = refund.id;
     refundRequest.resolvedAt = new Date();
     refundRequest.resolvedBy = req.user._id;
@@ -190,6 +224,28 @@ router.post("/:id/approve", async (req, res) => {
     purchase.razorpayRefundId = refund.id;
     await purchase.save();
 
+    // Ledger row for a refund WE initiated. The webhook will record the same
+    // refund when Razorpay processes it, and the natural-key index makes that
+    // second write a no-op — but this one carries what the webhook can't know:
+    // which admin approved it, against which purchase, and that it came from
+    // our queue rather than the Razorpay dashboard. That distinction is the one
+    // we had no way to answer before.
+    await ledger.recordRefund(refund, {
+      source: "api",
+      purpose: "PROMPT_PURCHASE",
+      initiatedBy: "admin_queue",
+      user: refundRequest.buyer,
+      counterparty: refundRequest.seller,
+      purchase: purchase._id,
+      prompt: refundRequest.prompt,
+      meta: {
+        refundRequestId: String(refundRequest._id),
+        approvedBy: String(req.user._id),
+        platformCommission: Number(purchase.platformCommission || 0),
+        nonRefundableFee,
+      },
+    });
+
     await Notification.create({
       receiverUserId: refundRequest.buyer,
       type: "REFUND_APPROVED",
@@ -198,6 +254,23 @@ router.post("/:id/approve", async (req, res) => {
       message: `Your refund of ₹${refundRequest.refundAmount} has been approved and processed.`,
       meta: { refundRequestId: refundRequest._id },
     });
+
+    // Refunds had no email at all — a buyer only found out if they happened to
+    // open the app. Best-effort: the money has already left Razorpay, so a mail
+    // server problem must not turn a successful refund into an error response.
+    try {
+      const buyer = await User.findById(refundRequest.buyer).select("name email");
+      await sendFullRefundEmail({
+        to: buyer?.email,
+        buyerName: buyer?.name,
+        itemTitle: purchase.promptSnapshot?.title || "Prompt",
+        amount: refundRequest.refundAmount,
+        reason: refundRequest.adminNote || "",
+        referenceId: refund.id,
+      });
+    } catch (mailErr) {
+      console.error("Refund email failed (refund itself succeeded):", mailErr.message);
+    }
 
     return res.json({ success: true, refundRequest, refund });
   } catch (err) {
@@ -239,6 +312,20 @@ router.post("/:id/reject", async (req, res) => {
       message: `Your refund request was reviewed and rejected.${adminNote ? ` Reason: ${adminNote}` : ""}`,
       meta: { refundRequestId: refundRequest._id },
     });
+
+    // Best-effort, same as the approve path — a rejection is still a decision
+    // the buyer is owed in writing.
+    try {
+      const buyer = await User.findById(refundRequest.buyer).select("name email");
+      await sendRefundRejectedEmail({
+        to: buyer?.email,
+        buyerName: buyer?.name,
+        itemTitle: refundRequest.purchase?.promptSnapshot?.title || "Prompt",
+        adminNote: refundRequest.adminNote,
+      });
+    } catch (mailErr) {
+      console.error("Refund-rejected email failed:", mailErr.message);
+    }
 
     return res.json({ success: true, refundRequest });
   } catch (err) {

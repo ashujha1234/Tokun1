@@ -428,3 +428,397 @@ body {
   font-size: 22px;
   line-height: 100%;
 }
+/* ─────────────────────────────────────────────────────────────────────────
+   Animated backdrop for the marketplace "Sell your prompts" / "Hire an AI
+   Expert" cards.
+
+   These two cards used to pull a random photo from picsum.photos on every
+   render — an external service, so the card was blank until a stranger's
+   server answered, and the picture had nothing to do with either offer. This
+   replaces it with motion drawn in CSS: nothing to download, nothing to fail.
+
+   Only transform and opacity are animated, so the whole thing runs on the
+   compositor and never triggers layout or paint.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.lib-cta-anim {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Drifting colour clouds. Each blob gets its own duration and delay so they
+   never resync into a visible pulse. */
+.lib-cta-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(46px);
+  opacity: 0.55;
+  will-change: transform;
+}
+
+.lib-cta-blob--a {
+  width: 46%;
+  padding-bottom: 46%;
+  top: -14%;
+  left: -8%;
+  background: var(--lib-cta-c1);
+  animation: lib-cta-drift-a 17s ease-in-out infinite;
+}
+
+.lib-cta-blob--b {
+  width: 40%;
+  padding-bottom: 40%;
+  bottom: -16%;
+  right: -6%;
+  background: var(--lib-cta-c2);
+  animation: lib-cta-drift-b 21s ease-in-out infinite;
+  animation-delay: -6s;
+}
+
+.lib-cta-blob--c {
+  width: 30%;
+  padding-bottom: 30%;
+  top: 34%;
+  left: 42%;
+  background: var(--lib-cta-c3);
+  opacity: 0.4;
+  animation: lib-cta-drift-c 25s ease-in-out infinite;
+  animation-delay: -12s;
+}
+
+@keyframes lib-cta-drift-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33%      { transform: translate3d(18%, 12%, 0) scale(1.16); }
+  66%      { transform: translate3d(6%, 24%, 0) scale(0.92); }
+}
+
+@keyframes lib-cta-drift-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.05); }
+  40%      { transform: translate3d(-22%, -14%, 0) scale(0.88); }
+  70%      { transform: translate3d(-8%, -26%, 0) scale(1.18); }
+}
+
+@keyframes lib-cta-drift-c {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(0.95); }
+  50%      { transform: translate3d(-16%, 18%, 0) scale(1.25); }
+}
+
+/* Slow diagonal sheen — the thing that reads as "alive" rather than "a
+   gradient someone forgot to animate". */
+.lib-cta-sheen {
+  position: absolute;
+  top: -60%;
+  left: -60%;
+  width: 60%;
+  height: 220%;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.07) 45%,
+    rgba(255, 255, 255, 0.13) 50%,
+    rgba(255, 255, 255, 0.07) 55%,
+    transparent 100%
+  );
+  transform: rotate(18deg);
+  will-change: transform;
+  animation: lib-cta-sheen 9s ease-in-out infinite;
+}
+
+@keyframes lib-cta-sheen {
+  0%       { transform: translate3d(0, 0, 0) rotate(18deg); opacity: 0; }
+  12%      { opacity: 1; }
+  88%      { opacity: 1; }
+  100%     { transform: translate3d(320%, 0, 0) rotate(18deg); opacity: 0; }
+}
+
+/* Faint grid, panned slowly. Gives the motion something to move against —
+   without it the blobs read as a blurry mess with no depth. */
+.lib-cta-grid {
+  position: absolute;
+  inset: -40%;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(70% 60% at 50% 45%, #000 0%, transparent 100%);
+  -webkit-mask-image: radial-gradient(70% 60% at 50% 45%, #000 0%, transparent 100%);
+  will-change: transform;
+  animation: lib-cta-grid 30s linear infinite;
+}
+
+@keyframes lib-cta-grid {
+  0%   { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(44px, 44px, 0); }
+}
+
+/* Honour the OS setting. Motion this large behind text is exactly what people
+   who turn "reduce motion" on are turning it off for — the colours stay, the
+   movement stops. */
+@media (prefers-reduced-motion: reduce) {
+  .lib-cta-blob,
+  .lib-cta-sheen,
+  .lib-cta-grid {
+    animation: none;
+  }
+  .lib-cta-sheen {
+    opacity: 0;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Header scroll background
+
+   At the top of a page the header is transparent so the hero reads as
+   full-bleed. Past the threshold a decorative panel fades in behind it.
+
+   Two separate layers, on purpose:
+     .site-header__bg    frosts whatever is scrolling underneath, via
+                         backdrop-filter — this is what keeps the nav legible
+                         over arbitrary page content.
+     .site-header__glow  a colour wash blurred with `filter`, which softens
+                         the gradient itself rather than the page behind it.
+
+   Only opacity animates. Transitioning backdrop-filter instead made the
+   compositor rebuild the filter every scroll frame, which showed up as a
+   visible shake on the SmartGen and optimiser pages.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* The header column.
+   `--header-w` mirrors Tailwind's `container` breakpoint ladder exactly, and
+   the nav row carries the same `px-4 sm:px-6` the page wrappers do — that pair
+   is what puts the logo and the icons on the same vertical lines as the banner
+   and the cards underneath. It used to be a flat 1180px, narrower than every
+   content wrapper in the app, so nothing lined up on either side.
+   `--header-shrink` is the scroll effect layered on top: it pulls the column
+   in from that aligned width rather than replacing it. */
+.site-header {
+  --header-w: 100%;
+  --header-shrink: 0px;
+  /* How far the panel sits inside the row, top and bottom. Larger at wider
+     breakpoints because the logo — and therefore the row — is taller there,
+     while the icon buttons beside it are the same size everywhere. */
+  --header-inset: 12px;
+}
+@media (min-width: 640px)  { .site-header { --header-w: 640px; --header-inset: 16px; } }
+@media (min-width: 768px)  { .site-header { --header-w: 768px; } }
+@media (min-width: 1024px) { .site-header { --header-w: 1024px; --header-inset: 20px; } }
+@media (min-width: 1280px) { .site-header { --header-w: 1280px; } }
+@media (min-width: 1400px) { .site-header { --header-w: 1400px; } }
+
+.site-header--scrolled {
+  /* 300px off the column = 150px of travel each way. */
+  --header-shrink: 300px;
+}
+
+/* The nav row. Its max-width is here rather than a Tailwind class so it can
+   share the variable above — this is what actually pulls the logo right and
+   the icons left as you scroll. */
+/* Fixed width, and NOT animated.
+   This used to animate `max-width`, which is a layout property: every frame
+   the browser re-laid-out the flex row and re-solved the position of the logo,
+   every icon and every button inside it. Sub-pixel rounding differs frame to
+   frame, so the contents visibly shook. The two ends are moved with
+   `transform` below instead, which the compositor handles on its own without
+   touching layout at all. */
+.site-header__inner {
+  max-width: var(--header-w);
+}
+
+/* The two ends travel towards each other. Half the shrink each, so the row
+   closes in symmetrically and the midpoint never moves. */
+.site-header__brand,
+.site-header__actions {
+  transition: transform 760ms cubic-bezier(0.65, 0, 0.35, 1);
+  will-change: transform;
+}
+.site-header--scrolled .site-header__brand {
+  transform: translate3d(calc(var(--header-shrink) / 2), 0, 0);
+}
+.site-header--scrolled .site-header__actions {
+  transform: translate3d(calc(var(--header-shrink) / -2), 0, 0);
+}
+
+/* The brand mark. Sized per breakpoint, but FIXED within one — it must not
+   change on scroll.
+   The logo is the tallest thing in this row, so its height alone sets the
+   bar's height. When it condensed on scroll the whole header collapsed with
+   it, which is what read as the thing sliding upwards. Scaling it back up is
+   fine; animating it is not. */
+.site-header__logo {
+  height: 3.5rem;
+  /* Scaled, not resized. Animating `height` changes the row's height, which
+     changes the header's height, which reflows the page under a sticky
+     element — on every frame. `transform: scale` changes what you see and
+     nothing about the layout, so it costs a composite and no more.
+     Anchored left so the mark shrinks towards the edge it sits against
+     instead of drifting sideways as it goes. */
+  transform-origin: left center;
+  transition: transform 760ms cubic-bezier(0.65, 0, 0.35, 1);
+  will-change: transform;
+}
+@media (min-width: 640px)  { .site-header__logo { height: 4.5rem; } }
+@media (min-width: 1024px) { .site-header__logo { height: 5.5rem; } }
+
+/* Scrolled: condensed. The bar is a compact pill at this point, and the logo
+   is the one thing setting its height — so it comes down with everything else
+   rather than holding the bar open. */
+.site-header--scrolled .site-header__logo { transform: scale(0.79); }
+@media (min-width: 640px)  { .site-header--scrolled .site-header__logo { transform: scale(0.72); } }
+@media (min-width: 1024px) { .site-header--scrolled .site-header__logo { transform: scale(0.68); } }
+
+.site-header__bg {
+  position: absolute;
+  /* At rest: full-bleed and square. Only ever seen mid-fade, since the panel
+     is transparent until the scroll threshold. */
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 0;
+
+  z-index: 0;
+  opacity: 0;
+  pointer-events: none;
+  /* Clips the over-sized glow below, and follows border-radius so the glow
+     never pokes square corners out of the rounded panel. Safe here because the
+     nav content is a sibling, not a child — dropdowns are never clipped. */
+  overflow: hidden;
+  /* Only opacity — will-change on layout properties like left/right buys
+     nothing and just pins an extra layer. backdrop-filter already promotes
+     this element, which is what the size transition rasterises into. */
+  will-change: opacity;
+
+  /* White at 5% — a glass wash rather than a slab of colour. The blue comes
+     from the tint layer inside, so this stays neutral. */
+  background-color: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  /* Hairline on all four sides, not just the bottom — it becomes a floating
+     panel rather than a bar welded to the top of the page. */
+  border: 1px solid rgba(255, 255, 255, 0.08);
+
+  /* easeInOutCubic, not easeOutQuint. The old curve left at full speed and
+     stopped dead — fine over 200ms, but at this distance it reads as a snap.
+     This one eases in and out, so the longer travel never looks like a lurch.
+     Opacity is quicker than the movement on purpose: the panel should be
+     there before it finishes arriving, not fade in as it slides. */
+  transition:
+    opacity 420ms ease-out,
+    left 760ms cubic-bezier(0.65, 0, 0.35, 1),
+    right 760ms cubic-bezier(0.65, 0, 0.35, 1),
+    top 760ms cubic-bezier(0.65, 0, 0.35, 1),
+    bottom 760ms cubic-bezier(0.65, 0, 0.35, 1),
+    border-radius 760ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* Scrolled: the panel pulls in to the same column the nav row just narrowed
+   to, and rounds off — the header reads as an island floating over the page
+   instead of a bar stuck to its edge. `max()` keeps a 12px gutter once the
+   viewport is narrower than the column itself. */
+.site-header--scrolled .site-header__bg {
+  opacity: 1;
+  left: max(12px, calc((100% - var(--header-w) + var(--header-shrink)) / 2));
+  right: max(12px, calc((100% - var(--header-w) + var(--header-shrink)) / 2));
+  /* The row keeps its full height now (the logo scales rather than resizes, so
+     nothing about the layout changes and the page below never shifts). The
+     panel is absolutely positioned, so it can be shorter than the row on its
+     own — which is what makes the bar look condensed. The value tracks the
+     scaled logo per breakpoint; see --header-inset. */
+  top: var(--header-inset);
+  bottom: var(--header-inset);
+  /* Larger than the panel can ever be tall, so the ends stay perfectly
+     semicircular whatever the row height works out to. */
+  border-radius: 999px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+}
+
+/* Blue tint. This was a magenta/violet/blue gradient, which fought with
+   whatever was scrolling underneath; a single hue at low opacity just tints the
+   glass. Inset negatively because `filter: blur()` fades an element's own
+   edges — a box the exact size of the panel would show a lighter band along its
+   borders. */
+.site-header__glow {
+  position: absolute;
+  inset: -40px -12%;
+  filter: blur(14px);
+  background:
+    radial-gradient(60% 160% at 50% 0%, rgba(26, 115, 232, 0.30) 0%, transparent 72%),
+    radial-gradient(45% 140% at 15% 100%, rgba(26, 115, 232, 0.18) 0%, transparent 75%);
+}
+
+/* Backdrop blur is the expensive part of this on a phone GPU, and the bar is
+   shorter there so a large radius buys nothing visible. */
+@media (max-width: 640px) {
+  .site-header__bg {
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+  }
+  /* A phone has no width to give away: the row keeps its full width and only
+     the panel insets, with a smaller radius to match the narrower bar. */
+  .site-header--scrolled {
+    --header-shrink: 0px;
+  }
+  .site-header__glow {
+    inset: -30px -18%;
+    filter: blur(10px);
+  }
+  .site-header--scrolled .site-header__bg {
+    left: 10px;
+    right: 10px;
+    border-radius: 999px;
+  }
+}
+
+/* The panel changes size and position, which is motion — the kind this setting
+   exists to switch off. It still appears and disappears, just without the
+   travel. */
+@media (prefers-reduced-motion: reduce) {
+  .site-header__bg {
+    transition: opacity 320ms ease-out;
+  }
+  .site-header__logo,
+  .site-header__brand,
+  .site-header__actions {
+    transition: none;
+  }
+}
+
+/* Safari on iOS drops backdrop-filter under memory pressure and the bar would
+   go fully transparent with the nav still on it. A slightly more opaque flat
+   colour is the fallback. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .site-header__bg {
+    background-color: rgba(7, 8, 10, 0.92);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Brand gradient text
+
+   The house gradient — the same magenta→blue the marketplace hero, the Buy Now
+   buttons and the header accents use. Page titles were plain white, which read
+   as unbranded next to those.
+
+   Note the existing `.gradient-text` above is the old teal palette (#1EAEDB)
+   and is left alone; this is the current one.
+   ───────────────────────────────────────────────────────────────────────── */
+.brand-gradient-text {
+  background: linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Gradient text can't be read by anyone whose browser drops
+   background-clip — fall back to a solid brand colour rather than invisible
+   text. */
+@supports not ((-webkit-background-clip: text) or (background-clip: text)) {
+  .brand-gradient-text {
+    background: none;
+    -webkit-text-fill-color: #FF14EF;
+    color: #FF14EF;
+  }
+}

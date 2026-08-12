@@ -121,8 +121,7 @@
 //       toast({
 //         title: "Token Limit Warning",
 //         description: `You have only ${remainingTokens.toLocaleString()} tokens left in your allocation`,
-//         variant: "destructive",
-//       });
+//         //       });
 //     }
 //   }, [totalTokensUsed, tokenLimit]);
 

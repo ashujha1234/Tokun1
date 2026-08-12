@@ -13,7 +13,7 @@ function SubscriptionPopup({ navigate, onClose }: { navigate: NavigateFunction; 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
       <div className="bg-[#0D0D0E] border border-white/20 rounded-xl p-6 w-[350px] text-white text-center shadow-2xl">
-        <h2 className="text-2xl font-semibold mb-3">Welcome to Tokun.ai!</h2>
+        <h2 className="text-2xl font-semibold mb-3">Welcome to Tokun.World!</h2>
         <p className="text-sm mb-6">
           Your organization account is created.{" "}
           Please choose a subscription plan to continue.
@@ -76,9 +76,12 @@ export default function SmartGenPage() {
 
   return (
     <div className="dark min-h-screen text-foreground" style={{ backgroundColor: "#030406" }}>
-      <div className="container mx-auto px-4 py-6">
-        <Header />
+      {/* Outside the container on purpose. Inside it, the sticky header was
+          boxed in by `px-4` and the page's max width, so its background bar
+          stopped short of both edges instead of spanning the viewport. */}
+      <Header />
 
+      <div className="container mx-auto px-4 pb-6">
         <div className="pt-4 md:pt-5 lg:pt-6 flex justify-center">
           <TokenUsageSection />
         </div>
@@ -98,8 +101,14 @@ export default function SmartGenPage() {
 
         <div className="mt-5 text-center px-4">
           <h1 className="m-0 leading-tight text-[20px] sm:text-[24px] lg:text-[32px]">
+            {/* Same treatment as the optimiser's "Dashboard" and the
+                marketplace hero's "Marketplace": the product name carries the
+                brand gradient, the sentence around it stays white. */}
+            <span className="font-semibold brand-gradient-text" style={{ fontFamily: "Inter" }}>
+              Smartgen
+            </span>
             <span className="font-semibold text-white" style={{ fontFamily: "Inter" }}>
-              Smartgen –
+              {" "}–
             </span>
             <span className="text-white font-normal" style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}>
               {" "}Get detailed prompts{" "}

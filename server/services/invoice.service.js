@@ -1243,6 +1243,7 @@ const {
   popGraphicsState,
 } = require("pdf-lib");
 const { PLAN_CARD_CONTENT, PLAN_GRADIENTS } = require("../config/planCardContent");
+const { getInvoiceCopy } = require("../config/invoiceCopy");
 
 const hexToRgb = (hex) => {
   const n = parseInt(hex.replace("#", ""), 16);
@@ -1473,11 +1474,17 @@ exports.generateInvoicePDF = async (data) => {
 
   /* ================= INTRO DESCRIPTION (every invoice) ================= */
   y -= 24;
+  // A prompt download, a booked service and a funded project are three
+  // different transactions, and the only questions an invoice gets asked later
+  // — what did I get, can I get my money back — have three different answers.
+  // Copy lives in config/invoiceCopy.js so this and the emailed body can't
+  // drift apart.
+  const copy = getInvoiceCopy(data.kind);
   const introText = data.planCard
     ? `This is your invoice for your Tokun ${(PLAN_CARD_CONTENT[String(data.planCard.plan || "pro").toLowerCase()] || PLAN_CARD_CONTENT.pro).title} subscription — thank you for subscribing!`
-    : "This is your invoice for your recent purchase from Tokun.World.";
+    : copy.intro;
   {
-    const introLines = wrapText(introText, fontReg, 11, R - L, 2);
+    const introLines = wrapText(introText, fontReg, 11, R - L, 3);
     for (const l2 of introLines) {
       text(l2, L, y, { size: 11, color: COLORS.muted });
       y -= 15;
@@ -1631,18 +1638,40 @@ exports.generateInvoicePDF = async (data) => {
 
   /* ================= TOTALS (right-aligned, like the email) ================= */
   const subtotal = data.items.reduce((s, it) => s + Number(it.price || 0), 0);
-  const gst = +(subtotal * 0.18).toFixed(2);
-  const total = +(subtotal + gst).toFixed(2);
+
+  // GST is switched off for now. It was being ADDED on top of what the buyer
+  // actually paid — the amounts in `items` are the real charged amounts (list
+  // price + Tokun's platform fee), and Razorpay collected exactly that, so an
+  // extra 18% made the invoice total disagree with the payment. Re-enable only
+  // once GST registration and the correct inclusive/exclusive treatment are
+  // settled, and make sure the charge itself changes too, not just the invoice.
+  //
+  // const gst = +(subtotal * 0.18).toFixed(2);
+  // const total = +(subtotal + gst).toFixed(2);
+  const total = +subtotal.toFixed(2);
 
   y -= 26;
   textRight(`Subtotal: INR ${subtotal.toFixed(2)}`, R, y, { size: 12 });
-  y -= 18;
-  textRight(`GST (18%): INR ${gst.toFixed(2)}`, R, y, { size: 12 });
+  // y -= 18;
+  // textRight(`GST (18%): INR ${gst.toFixed(2)}`, R, y, { size: 12 });
   y -= 24;
   textRight(`Total: INR ${total.toFixed(2)}`, R, y, { font: fontBold, size: 16 });
 
   y -= 20;
   line(y, { color: COLORS.line, thickness: 1 });
+
+  /* ============ WHAT THIS PAYMENT MEANS (per purchase kind) ============
+     Escrow is the part buyers most often misunderstand — "I paid, so why
+     hasn't the freelancer been paid?" — and an invoice is the document they
+     still have months later. Stated here rather than only in the app. */
+  if (!data.planCard && copy.note) {
+    y -= 22;
+    const noteLines = wrapText(copy.note, fontReg, 9.5, R - L, 5);
+    for (const nl of noteLines) {
+      text(nl, L, y, { size: 9.5, color: COLORS.muted });
+      y -= 13;
+    }
+  }
 
   /* ================= FOOTER ================= */
   page.drawRectangle({ x: 0, y: 0, width, height: 50, color: COLORS.footer });

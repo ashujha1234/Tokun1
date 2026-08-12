@@ -87,12 +87,18 @@ const PromptSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Pre-save middleware to calculate tokun_price
+// Pre-save middleware to calculate tokun_price — the buyer-facing price shown
+// on a listing: list price + Tokun's platform fee + GST on that fee.
+//
+// This is a DISPLAY figure only. It's frozen at whatever the rates were when
+// the prompt was last saved, so the charge itself is computed live by
+// splitPromptSale() at checkout instead. Reading a rate change here would need
+// every prompt in the database re-saved to take effect.
 PromptSchema.pre("save", function (next) {
-  const commissionPercent = Number(process.env.TOKUN_COMMISSION_PERCENT || 0);
+  const { buyerCharge } = require("../utils/fees");
 
   if (!this.free && Number.isFinite(this.price)) {
-    this.tokun_price = +(this.price + (this.price * commissionPercent / 100)).toFixed(2);
+    this.tokun_price = buyerCharge(this.price).totalPayable;
   } else {
     this.tokun_price = 0;
   }

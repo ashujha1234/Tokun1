@@ -231,6 +231,10 @@ const NotificationSchema = new mongoose.Schema(
     // Admin-facing notifications
     "ADMIN_PROMPT_REPORTED",
     "ADMIN_PROMPT_FLAGGED",
+    /* An upload the automatic check couldn't decide on, or couldn't check at
+       all. Distinct from FLAGGED: that one failed the match, this one has no
+       verdict — the difference matters when an admin triages the queue. */
+    "ADMIN_PROMPT_REVIEW",
     "ADMIN_REVIEW_NEEDED",
 
     // Seller account moderation
@@ -243,6 +247,63 @@ const NotificationSchema = new mongoose.Schema(
     "ADMIN_REFUND_REQUESTED",
     "REFUND_APPROVED",
     "REFUND_REJECTED",
+
+    // Freelancer intro video review. The profile itself is never reviewed —
+    // it goes live as soon as the freelancer finishes onboarding — so the only
+    // freelancer notifications are about the one field an admin does approve.
+    "ADMIN_FREELANCER_VIDEO_REVIEW_NEEDED",
+    "FREELANCER_VIDEO_APPROVED",
+    "FREELANCER_VIDEO_REJECTED",
+
+    /* ── Everything below was being SENT but not listed here, so every one of
+       these failed schema validation and was swallowed by the try/catch its
+       caller wraps notification writes in. They looked like they worked.
+
+       The org invitation is the one that actually broke a feature: the whole
+       accept-an-invitation flow hangs off that notification, and it was never
+       being written. A dry run of the stalled-revision cron is what surfaced
+       it — the same validation error, but logged loudly enough to notice.
+
+       Anything added to this enum has to be added here at the same time. ── */
+
+    // Escrow auto-release (cron/autoReleaseEscrow.js) — predates this batch.
+    "HIRE_AUTO_RELEASED",
+
+    // Cancellation & dispute settlement
+    "ESCROW_CANCELLED_BY_BUYER",
+    "ESCROW_CANCELLED_BY_SELLER",
+    "ESCROW_DISPUTE_OPENED",
+    "ESCROW_DISPUTE_PROPOSED",
+    "ESCROW_DISPUTE_ESCALATED",
+    "ESCROW_DISPUTE_RESOLVED",
+    "ESCROW_DISPUTE_WITHDRAWN",
+    /* Admin-facing counterpart of ESCROW_DISPUTE_ESCALATED: the case is now
+       Tokun's to rule on. Sent via notifyAdmins() from the escalation route and
+       the stalled-revision cron — both of which were failing validation here,
+       so the two parties were told "our team will decide" while the team was
+       never told anything. */
+    "ESCROW_DISPUTE_ADMIN_REVIEW",
+    // Razorpay stops holding funds at 90 days; this is the week's warning.
+    "ESCROW_DEADLINE_APPROACHING",
+    // A revision the seller never answered.
+    "REVISION_STALLED",
+    // An unpaid booking/proposal the cron gave up on (cron/staleRequestWatch.js).
+    // Sent to both parties, and missing here for the same reason as the rest of
+    // this block.
+    "REQUEST_EXPIRED",
+
+    // Mid-project checkpoints
+    "PROGRESS_REVIEW_REQUESTED",
+    "PROGRESS_REVIEW_SHARED",
+    "PROGRESS_REVIEW_DECLINED",
+
+    "REVIEW_RECEIVED",
+
+    // Team invitations — an invite is no longer applied on the owner's click,
+    // so this notification is the only way the invitee learns of it.
+    "ORG_INVITATION",
+    "ORG_INVITATION_ACCEPTED",
+    "ORG_INVITATION_DECLINED",
   ],
   required: true,
 },

@@ -18,7 +18,7 @@
 
 //   useEffect(() => {
 //     if (!email) {
-//       toast({ title: "Missing email", description: "Please go back and signup again.", variant: "destructive" });
+//       toast({ title: "Missing email", description: "Please go back and signup again." });
 //       navigate("/signup", { replace: true });
 //     }
 //   }, [email, navigate]);
@@ -51,7 +51,7 @@
 //   //     toast({ title: "Success", description: "Signup complete. Redirecting..." });
 //   //     navigate("/smartgen", { replace: true });
 //   //   } catch (err: any) {
-//   //     toast({ title: "Verification failed", description: err?.message, variant: "destructive" });
+//   //     toast({ title: "Verification failed", description: err?.message });
 //   //   } finally {
 //   //     setIsLoading(false);
 //   //   }
@@ -69,7 +69,7 @@
 //   //     toast({ title: "Code resent", description: "Check your inbox." });
 //   //     setSecondsLeft(50);
 //   //   } catch (err: any) {
-//   //     toast({ title: "Could not resend", description: err?.message, variant: "destructive" });
+//   //     toast({ title: "Could not resend", description: err?.message });
 //   //   }
 //   // };
 
@@ -108,7 +108,7 @@
 //     navigate("/smartgen", { replace: true });
 //   } catch (err: any) {
 //     console.error("[VERIFY] Error:", err);
-//     toast({ title: "Verification failed", description: err?.message, variant: "destructive" });
+//     toast({ title: "Verification failed", description: err?.message });
 //   } finally {
 //     setIsLoading(false);
 //   }
@@ -134,7 +134,7 @@
 //     setSecondsLeft(50);
 //   } catch (err: any) {
 //     console.error("[RESEND] Error:", err);
-//     toast({ title: "Could not resend", description: err?.message, variant: "destructive" });
+//     toast({ title: "Could not resend", description: err?.message });
 //   }
 // };
 
@@ -246,8 +246,7 @@
 //       toast({
 //         title: "Missing email",
 //         description: "Please go back and signup again.",
-//         variant: "destructive",
-//       });
+//         //       });
 //       navigate("/signup", { replace: true });
 //     }
 //   }, [email, navigate]);
@@ -297,8 +296,7 @@
 //       toast({
 //         title: "Verification failed",
 //         description: err?.message,
-//         variant: "destructive",
-//       });
+//         //       });
 //     } finally {
 //       setIsLoading(false);
 //     }
@@ -330,8 +328,7 @@
 //       toast({
 //         title: "Could not resend",
 //         description: err?.message,
-//         variant: "destructive",
-//       });
+//         //       });
 //     }
 //   };
 
@@ -604,7 +601,6 @@ export default function VerifySignup() {
       toast({
         title: "Missing email",
         description: "Please go back and signup again.",
-        variant: "destructive",
       });
       navigate("/signup", { replace: true });
     }
@@ -664,7 +660,6 @@ export default function VerifySignup() {
       toast({
         title: "Verification failed",
         description: err?.message,
-        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
@@ -707,7 +702,6 @@ setSecondsLeft(50);
       toast({
         title: "Could not resend",
         description: err?.message,
-        variant: "destructive",
       });
     }
   };

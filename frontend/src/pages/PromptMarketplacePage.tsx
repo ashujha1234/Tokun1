@@ -1135,8 +1135,7 @@
 // //         toast({
 // //           title: "Couldn’t load prompts",
 // //           description: err?.message || "Please try again.",
-// //           variant: "destructive",
-// //         });
+// //           // //         });
 // //       } finally {
 // //         setLoading(false);
 // //       }
@@ -1873,8 +1872,7 @@
 // //         toast({
 // //           title: "Couldn’t load prompts",
 // //           description: err?.message || "Please try again.",
-// //           variant: "destructive",
-// //         });
+// //           // //         });
 // //       } finally {
 // //         setLoading(false);
 // //       }
@@ -1912,7 +1910,7 @@
 
 // //     if (!token) {
 // //       console.warn("⚠️ [BUY] Not authenticated");
-// //       toast({ title: "Please log in", description: "You must be logged in to purchase.", variant: "destructive" });
+// //       toast({ title: "Please log in", description: "You must be logged in to purchase." });
 // //       return;
 // //     }
 
@@ -2004,11 +2002,11 @@
 // //               // (Optional) Navigate to history immediately:
 // //               // setShowHistory(true);
 // //             } else {
-// //               toast({ title: "Verification Failed", description: vb?.error || "Unknown error", variant: "destructive" });
+// //               toast({ title: "Verification Failed", description: vb?.error || "Unknown error" });
 // //             }
 // //           } catch (err) {
 // //             console.error("❌ [API #2] Verify exception", err);
-// //             toast({ title: "Verification Error", description: "Could not verify payment.", variant: "destructive" });
+// //             toast({ title: "Verification Error", description: "Could not verify payment." });
 // //           }
 // //         },
 // //       };
@@ -2017,14 +2015,14 @@
 
 // //       rzp.on("payment.failed", function (resp: any) {
 // //         console.error("❌ [RZP] Payment failed", resp);
-// //         toast({ title: "Payment Failed", description: "Please try again.", variant: "destructive" });
+// //         toast({ title: "Payment Failed", description: "Please try again." });
 // //       });
 
 // //       console.log("🟣 [RZP] Opening checkout", { options: { ...options, handler: "[function]" } });
 // //       rzp.open();
 // //     } catch (err: any) {
 // //       console.error("❌ [BUY] Purchase flow error", err);
-// //       toast({ title: "Purchase Error", description: err?.message || "Something went wrong.", variant: "destructive" });
+// //       toast({ title: "Purchase Error", description: err?.message || "Something went wrong." });
 // //     }
 // //   };
 
@@ -2935,8 +2933,7 @@
 // //         toast({
 // //           title: "Couldn’t load prompts",
 // //           description: err?.message || "Please try again.",
-// //           variant: "destructive",
-// //         });
+// //           // //         });
 // //       } finally {
 // //         setLoading(false);
 // //       }
@@ -3012,8 +3009,7 @@
 // //     toast({
 // //       title: "Not allowed",
 // //       description: "You cannot buy your own prompt.",
-// //       variant: "destructive",
-// //     });
+// //       // //     });
 // //     return;
 // //   }
 
@@ -3021,8 +3017,7 @@
 // //     toast({
 // //       title: "Please log in",
 // //       description: "You must be logged in to purchase.",
-// //       variant: "destructive",
-// //     });
+// //       // //     });
 // //     return;
 // //   }
     
@@ -3114,23 +3109,23 @@
 // //     description: "You now own this prompt.",
 // //   });
 // // } else {
-// //               toast({ title: "Verification Failed", description: vb?.error || "Unknown error", variant: "destructive" });
+// //               toast({ title: "Verification Failed", description: vb?.error || "Unknown error" });
 // //             }
 // //           } catch (err) {
 // //             console.error("Verify error", err);
-// //             toast({ title: "Verification Error", description: "Could not verify payment.", variant: "destructive" });
+// //             toast({ title: "Verification Error", description: "Could not verify payment." });
 // //           }
 // //         },
 // //       };
 
 // //       const rzp = new (window as any).Razorpay(options);
 // //       rzp.on("payment.failed", function () {
-// //         toast({ title: "Payment Failed", description: "Please try again.", variant: "destructive" });
+// //         toast({ title: "Payment Failed", description: "Please try again." });
 // //       });
 // //       rzp.open();
 // //     } catch (err: any) {
 // //       console.error("Purchase flow error", err);
-// //       toast({ title: "Purchase Error", description: err?.message || "Something went wrong.", variant: "destructive" });
+// //       toast({ title: "Purchase Error", description: err?.message || "Something went wrong." });
 // //     }
 // //   };
 
@@ -3201,8 +3196,7 @@
 // //     toast({
 // //       title: "Please log in",
 // //       description: "You need to be logged in to save prompts.",
-// //       variant: "destructive",
-// //     });
+// //       // //     });
 // //     return { ok: false };
 // //   }
 
@@ -3233,8 +3227,7 @@
 // //     toast({
 // //       title: "Save failed",
 // //       description: err?.message || "Could not save this prompt.",
-// //       variant: "destructive",
-// //     });
+// //       // //     });
 // //     return { ok: false };
 // //   }
 // // };
@@ -4621,8 +4614,7 @@
 //         toast({
 //           title: "Couldn’t load prompts",
 //           description: err?.message || "Please try again.",
-//           variant: "destructive",
-//         });
+//           //         });
 //       } finally {
 //         setLoading(false);
 //       }
@@ -4698,8 +4690,7 @@
 //     toast({
 //       title: "Not allowed",
 //       description: "You cannot buy your own prompt.",
-//       variant: "destructive",
-//     });
+//       //     });
 //     return;
 //   }
 
@@ -4707,8 +4698,7 @@
 //     toast({
 //       title: "Please log in",
 //       description: "You must be logged in to purchase.",
-//       variant: "destructive",
-//     });
+//       //     });
 //     return;
 //   }
     
@@ -4800,23 +4790,23 @@
 //     description: "You now own this prompt.",
 //   });
 // } else {
-//               toast({ title: "Verification Failed", description: vb?.error || "Unknown error", variant: "destructive" });
+//               toast({ title: "Verification Failed", description: vb?.error || "Unknown error" });
 //             }
 //           } catch (err) {
 //             console.error("Verify error", err);
-//             toast({ title: "Verification Error", description: "Could not verify payment.", variant: "destructive" });
+//             toast({ title: "Verification Error", description: "Could not verify payment." });
 //           }
 //         },
 //       };
 
 //       const rzp = new (window as any).Razorpay(options);
 //       rzp.on("payment.failed", function () {
-//         toast({ title: "Payment Failed", description: "Please try again.", variant: "destructive" });
+//         toast({ title: "Payment Failed", description: "Please try again." });
 //       });
 //       rzp.open();
 //     } catch (err: any) {
 //       console.error("Purchase flow error", err);
-//       toast({ title: "Purchase Error", description: err?.message || "Something went wrong.", variant: "destructive" });
+//       toast({ title: "Purchase Error", description: err?.message || "Something went wrong." });
 //     }
 //   };
 
@@ -4887,8 +4877,7 @@
 //     toast({
 //       title: "Please log in",
 //       description: "You need to be logged in to save prompts.",
-//       variant: "destructive",
-//     });
+//       //     });
 //     return { ok: false };
 //   }
 
@@ -4919,8 +4908,7 @@
 //     toast({
 //       title: "Save failed",
 //       description: err?.message || "Could not save this prompt.",
-//       variant: "destructive",
-//     });
+//       //     });
 //     return { ok: false };
 //   }
 // };
@@ -5777,7 +5765,7 @@
 // src/pages/PromptMarketplacePage.tsx
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -5787,7 +5775,7 @@ import {
   LifeBuoy, Briefcase, Image as ImageIcon, ArrowLeft,
   SlidersHorizontal, Check, X,
   Database, Building2, HeartPulse, Zap, Tag, Share2, Layers,
-  TrendingUp, ShieldCheck, ArrowRight, ArrowUpRight, Wallet, Rocket, Shirt, Play,
+  TrendingUp, ShieldCheck, ArrowRight, ArrowUpRight, Wallet, Rocket, Play,
 } from "lucide-react";
 import { User } from "lucide-react";
 
@@ -5798,12 +5786,14 @@ import PromptHistory from "@/components/PromptHistory";
 import AppNavigation from "@/components/AppNavigation";
 import TokenUsageSection from "@/components/TokenUsageSection";
 import { useUserTokenUsage } from "@/hooks/useUserTokenUsage";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import Footer from "@/components/Footer";
 import DetailsPrompt from "@/components/DetailsPrompt";
+import VideoReelCard, { authorInitials, buyerPrice } from "@/components/VideoReelCard";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import ModalComponent from "@/components/ModalComponent";
-import { ShoppingCart } from "lucide-react";
+import { ShoppingCart, Clock, Info, Lock } from "lucide-react";
 import KycGateModal from "@/components/KycGateModal";
 import { useCart } from "@/contexts/CartContext";
 import SellPromptModal from "@/components/SellPromptModal";
@@ -5840,6 +5830,12 @@ type Prompt = {
   fullPrompt?: string;
   exclusive?: boolean;
   sold?: boolean;
+  /**
+   * Seller's payout account is still being verified, so this listing is
+   * visible but not buyable — the server rejects a purchase for it with
+   * `seller_not_verified`. Rendered as a "Coming soon" state.
+   */
+  sellerVerificationPending?: boolean;
 
   uploaderName?: string;
   uploaderId?: string | null;
@@ -5860,212 +5856,9 @@ const PURCHASE_BASE = `${API_BASE}/api/purchase`;
 // ⚠️ Keep your real Razorpay key id in env:
 const RAZORPAY_KEY_ID = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || "rzp_test_TLG37MSt5U18rP";
 
-/* ---------- author initials (UI only) ---------- */
-const authorInitials = (name?: string) =>
-  (name || "U").trim().slice(0, 2).toUpperCase();
-
-/* ============================================================
-   VideoReelCard — Instagram Reels-style card for video prompts
-   ============================================================ */
-const DESC_LIMIT = 110;
-
-function VideoReelCard({
-  prompt,
-  isPurchased,
-  isOwn,
-  isPlaying,
-  hasPayoutSetup,
-  onVideoPlay,
-  onAddToCart,
-  onBuyNow,
-  onOpenDetails,
-  onNavigateToProfile,
-}: {
-  prompt: any;
-  isPurchased: boolean;
-  isOwn: boolean;
-  isPlaying: boolean;
-  hasPayoutSetup?: boolean;
-  onVideoPlay: (id: string | number) => void;
-  onAddToCart: (id: string | number) => void;
-  onBuyNow: (p: any) => void;
-  onOpenDetails: (p: any) => void;
-  onNavigateToProfile: (id: string | null | undefined) => void;
-}) {
-  // Read from context rather than a prop: these cards are rendered from several
-  // call sites and the rule is the same everywhere, so threading a flag through
-  // each one only adds places to forget it.
-  const { user: viewer } = useAuth?.() || ({} as any);
-  const teamMember = isTeamMember(viewer);
-  const [showPanel, setShowPanel] = useState(false);
-  const [showMore, setShowMore] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    if (!videoRef.current) return;
-    if (isPlaying) videoRef.current.play().catch(() => {});
-    else videoRef.current.pause();
-  }, [isPlaying]);
-
-  const desc = prompt.description || "";
-  const isLong = desc.length > DESC_LIMIT;
-  const displayDesc = showMore ? desc : desc.slice(0, DESC_LIMIT);
-
-  return (
-    <div className="reel-card" onClick={() => !showPanel && onVideoPlay(prompt.id)}>
-      {/* Video */}
-      <video
-        ref={videoRef}
-        src={prompt.videoUrl}
-        className="reel-card__video"
-        loop
-        muted
-        playsInline
-      />
-
-      {/* Watermark */}
-      {!isPurchased && (
-        <span className="reel-card__wm-center" aria-hidden="true">Tokun.world</span>
-      )}
-
-      {/* Play / Pause hint */}
-      {!isPlaying && !showPanel && (
-        <div className="reel-card__play-hint">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
-        </div>
-      )}
-
-      {/* Top badges */}
-      <div className="reel-card__top">
-        <span className="reel-card__cat">{prompt.category?.toUpperCase()}</span>
-        {isPurchased
-          ? <span className="reel-card__badge reel-card__badge--owned">PURCHASED</span>
-          : <span className="reel-card__badge reel-card__badge--lock">
-              {prompt.exclusive ? "ONE-TIME" : "PURCHASE TO UNLOCK"}
-            </span>
-        }
-      </div>
-
-      {/* Bottom overlay */}
-      <div className="reel-card__bottom">
-        <div className="reel-card__author" onClick={(e) => { e.stopPropagation(); onNavigateToProfile(prompt.uploaderId); }}>
-          <span className="reel-card__avatar">{authorInitials(prompt.uploaderName)}</span>
-          <span className="reel-card__author-name">{prompt.uploaderName || "Unknown"}</span>
-        </div>
-        <h3 className="reel-card__title">{prompt.title}</h3>
-        <button
-          className="reel-card__details-btn"
-          onClick={(e) => { e.stopPropagation(); onOpenDetails(prompt); }}
-        >
-          Details ›
-        </button>
-      </div>
-
-      {/* Details slide-up panel */}
-      {showPanel && (
-        <div className="reel-card__panel" onClick={(e) => e.stopPropagation()}>
-          {/* Drag handle */}
-          <div className="reel-card__handle" onClick={() => setShowPanel(false)} />
-
-          <div className="reel-card__panel-scroll">
-            {/* Author row */}
-            <div className="reel-card__panel-author">
-              <span className="reel-card__avatar">{authorInitials(prompt.uploaderName)}</span>
-              <div>
-                <p className="reel-card__panel-name">{prompt.uploaderName || "Unknown"}</p>
-                {prompt.rating != null && (
-                  <p className="reel-card__panel-rating">★ {prompt.rating.toFixed(1)} rating</p>
-                )}
-              </div>
-              {isPurchased && (
-                <span className="reel-card__badge reel-card__badge--owned" style={{ marginLeft: "auto" }}>PURCHASED</span>
-              )}
-            </div>
-
-            {/* Title */}
-            <h2 className="reel-card__panel-title">{prompt.title}</h2>
-
-            {/* Description */}
-            <div className="reel-card__panel-desc">
-              <p>
-                {displayDesc}
-                {isLong && !showMore && "…"}
-              </p>
-              {isLong && (
-                <button
-                  className="reel-card__show-toggle"
-                  onClick={() => setShowMore(v => !v)}
-                >
-                  {showMore ? "Show less" : "Show more"}
-                </button>
-              )}
-            </div>
-
-            {/* Price row */}
-            <div className="reel-card__panel-price">
-              {prompt.isFree
-                ? <span className="reel-card__free-badge">FREE</span>
-                : <span className="reel-card__price-tag">₹{buyerPrice(prompt).toFixed(2)}</span>
-              }
-            </div>
-
-            {/* Action buttons */}
-            {!isPurchased && !isOwn && !prompt.isFree && (
-              <div className="reel-card__actions">
-                {teamMember ? (
-                  // A TM's only route to a paid prompt is asking their Owner —
-                  // onBuyNow opens the request modal for them. No cart button:
-                  // checkout is blocked server-side either way.
-                  <button
-                    className="reel-card__btn reel-card__btn--buy"
-                    onClick={() => { setShowPanel(false); onBuyNow(prompt); }}
-                  >
-                    Request to buy
-                  </button>
-                ) : (
-                  <>
-                    {hasPayoutSetup === false ? (
-                      <button
-                        type="button"
-                        disabled
-                        title="This seller hasn't set up their payout account yet."
-                        className="reel-card__btn reel-card__btn--buy opacity-50 cursor-not-allowed"
-                      >
-                        Seller setup pending
-                      </button>
-                    ) : (
-                      <button
-                        className="reel-card__btn reel-card__btn--buy"
-                        onClick={() => { setShowPanel(false); onBuyNow(prompt); }}
-                      >
-                        Buy Now
-                      </button>
-                    )}
-                    <button
-                      className="reel-card__btn reel-card__btn--cart"
-                      onClick={() => onAddToCart(prompt.id)}
-                    >
-                      <ShoppingCart size={14} style={{ display: "inline", marginRight: 5, verticalAlign: "middle" }} />
-                      Add to Cart
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-            {(isPurchased || prompt.isFree) && (
-              <button
-                className="reel-card__btn reel-card__btn--view"
-                onClick={() => { setShowPanel(false); onOpenDetails(prompt); }}
-              >
-                View Full Prompt
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+// authorInitials, buyerPrice and VideoReelCard now live in
+// components/VideoReelCard.tsx — the profile page renders the same video
+// cards, and one copy is the only way they stay the same.
 
 /* ---------- Landing-style background (self-contained, no deps) ---------- */
 const BG_BITS = [
@@ -6345,21 +6138,16 @@ const CategoriesScroller: React.FC<{
    filters/grid) is disabled further down via {false && (...)}, not deleted.
    ======================================================================== */
 const LIB_BANNERS = {
-  hero: "/icons/banner-nebula-core.png",
+  // Kept as the hero video's poster and as the still fallback — see
+  // LibHeroBanner. Not rendered on its own any more.
+  hero: "/icons/mark1.jpg",
+  heroVideo: "/icons/china.mp4",
   crystal: "/icons/banner-crystal-tower.png",
   brandIdentity: "/icons/banner-logo-identity.png",
 };
 
-const libStockImage = (seed: string, w = 900, h = 700) => `https://picsum.photos/seed/${seed}/${w}/${h}`;
-
-// What the buyer will be charged, for any prompt shape on this page (mapped
-// Prompt objects carry `tokunPrice`; raw API docs carry `tokun_price`). Every
-// price on a card goes through here so the number on screen matches the number
-// Razorpay asks for — they used to differ by Tokun's platform fee.
-const buyerPrice = (p: any): number => {
-  const marked = Number(p?.tokunPrice ?? p?.tokun_price ?? 0);
-  return marked > 0 ? marked : Number(p?.price ?? 0);
-};
+// (libStockImage removed — it built picsum.photos URLs for the two CTA cards,
+// which now animate in CSS. Nothing else on the page pulled stock photos.)
 
 const formatCardPrice = (p: Prompt) =>
   p.isFree || !buyerPrice(p) ? "Free" : `₹${buyerPrice(p).toFixed(2)}`;
@@ -6495,17 +6283,55 @@ const LibHeroBanner = ({
   onBrowse: () => void;
 }) => {
   const navigate = useNavigate();
+  const reduceMotion = usePrefersReducedMotion();
 
   return (
   <div className="relative w-full overflow-hidden rounded-[28px]" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
-    <img
-      src={LIB_BANNERS.hero}
-      alt="Prompt Marketplace"
-      className="absolute inset-0 w-full h-full object-cover"
+    {/* Video banner, with the old still as its poster.
+        The poster matters: this file is several MB, and without one the hero is
+        a black rectangle until enough of it has buffered to start.
+        Anyone with "reduce motion" on gets the still instead — an autoplaying
+        full-bleed video is exactly what that setting exists to stop, and CSS
+        can't pause a <video>, so the choice has to happen here. */}
+    {reduceMotion ? (
+      <img
+        src={LIB_BANNERS.hero}
+        alt="Prompt Marketplace"
+        className="absolute inset-0 w-full h-full object-cover"
+      />
+    ) : (
+      <video
+        src={LIB_BANNERS.heroVideo}
+        poster={LIB_BANNERS.hero}
+        autoPlay
+        muted
+        loop
+        playsInline
+        // Decorative: the headline next to it already says what this is, so it
+        // stays out of the accessibility tree rather than being announced.
+        aria-hidden
+        className="absolute inset-0 w-full h-full object-cover"
+      />
+    )}
+    {/* Two scrims instead of one flat sheet.
+        The old single overlay ran 55% → 94% black across the whole banner —
+        tuned for the near-black nebula art that used to sit here, and it
+        swallowed the new image completely. This keeps the picture bright and
+        darkens only where it has to: a light wash overall, and a soft pool
+        behind the centred copy. */}
+    <div
+      className="absolute inset-0"
+      style={{
+        background:
+          "linear-gradient(180deg, rgba(6,6,8,0.16) 0%, rgba(6,6,8,0.26) 45%, rgba(6,6,8,0.62) 100%)",
+      }}
     />
     <div
       className="absolute inset-0"
-      style={{ background: "linear-gradient(180deg, rgba(6,6,8,0.55) 0%, rgba(6,6,8,0.78) 55%, rgba(6,6,8,0.94) 100%)" }}
+      style={{
+        background:
+          "radial-gradient(58% 64% at 50% 54%, rgba(6,6,8,0.60) 0%, rgba(6,6,8,0.28) 58%, rgba(6,6,8,0) 100%)",
+      }}
     />
 
     <button
@@ -6517,21 +6343,17 @@ const LibHeroBanner = ({
       Purchase History
     </button>
 
-    <div
-      className="hidden lg:block absolute bottom-8 right-8 rounded-2xl px-4 py-3 text-white"
-      style={{ background: "rgba(15,15,17,0.55)", border: "1px solid rgba(255,255,255,0.15)", backdropFilter: "blur(10px)" }}
-    >
-      <p className="text-[11px] text-white/60">Asset ID: <span className="text-white/90">#9982</span></p>
-      <p className="text-[11px] text-white/60">Creator: <span className="text-white/90">NeonForge</span></p>
-      <p className="text-[11px] text-white/60">Current Bid: <span className="font-semibold" style={{ color: "#22D3EE" }}>1.5 ETH</span></p>
-    </div>
+    {/* The "GLOBAL LEADERBOARD" eyebrow and the floating asset card that used
+        to sit here are gone. Neither described anything on this page — the card
+        showed a hardcoded "Asset ID #9982 · NeonForge · 1.5 ETH", an NFT
+        auction that doesn't exist and that Tokun doesn't sell. */}
 
     <div className="relative z-10 px-6 sm:px-10 py-16 sm:py-24 flex flex-col items-center text-center">
-      <LibEyebrow icon={<TrendingUp className="h-4 w-4" />}>GLOBAL LEADERBOARD</LibEyebrow>
-
+      {/* Now that the image shows through, the copy can't rely on the scrim
+          alone — a shadow keeps it legible if it lands on a bright patch. */}
       <h1
         className="mt-4 text-white text-[32px] sm:text-[44px] md:text-[52px] font-semibold leading-[1.05]"
-        style={{ fontFamily: "Inter" }}
+        style={{ fontFamily: "Inter", textShadow: "0 2px 24px rgba(0,0,0,0.55)" }}
       >
         Prompt{" "}
         <span style={{ background: GRADIENT_90, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
@@ -6539,7 +6361,10 @@ const LibHeroBanner = ({
         </span>
       </h1>
 
-      <p className="mt-4 text-white/75 max-w-[560px] text-[14px] sm:text-[15px] leading-relaxed">
+      <p
+        className="mt-4 text-white/85 max-w-[560px] text-[14px] sm:text-[15px] leading-relaxed"
+        style={{ textShadow: "0 1px 12px rgba(0,0,0,0.6)" }}
+      >
         Access 310k+ high-quality AI prompts for art, logic, architecture, and business optimization.
       </p>
 
@@ -6590,7 +6415,12 @@ const LibHeroBanner = ({
               />
             ))}
           </div>
-          <span className="text-[12px] text-white/60">Used by 12k+ creators today</span>
+          <span
+            className="text-[12px] text-white/75"
+            style={{ textShadow: "0 1px 10px rgba(0,0,0,0.65)" }}
+          >
+            Used by 12k+ creators today
+          </span>
         </div>
       </div>
     </div>
@@ -6661,14 +6491,26 @@ const LibOldStyleCard = ({
   const { user: viewer } = useAuth?.() || ({} as any);
   const teamMember = isTeamMember(viewer);
 
+  // Listed but not yet buyable — the seller is still going through Route
+  // payout onboarding. `sellerVerificationPending` comes down with the feed;
+  // `hasPayoutSetup === false` is the older per-prompt lookup, kept so no
+  // listing that was previously blocked quietly becomes purchasable.
+  const comingSoon = !!prompt.sellerVerificationPending || hasPayoutSetup === false;
+
   if (mediaKind === "video") {
     return (
-      <div style={{ width: 260, flexShrink: 0 }}>
+      // Same width as the image card below, and the rail stretches both to the
+      // same height — a row of prompts shouldn't change shape by media type.
+      <div style={{ width: 300, flexShrink: 0 }}>
         <VideoReelCard
           prompt={prompt}
           isPurchased={isPurchased}
           isOwn={isOwn}
           isPlaying={isPlaying}
+          // Was never forwarded, so a video listing from an unverified seller
+          // showed a live Buy Now that failed at checkout — the image card next
+          // to it disabled the same button.
+          hasPayoutSetup={hasPayoutSetup}
           onVideoPlay={onVideoPlay}
           onAddToCart={onAddToCart}
           onBuyNow={(p) => onBuyNow(p as Prompt)}
@@ -6693,7 +6535,17 @@ const LibOldStyleCard = ({
 
         <div className="mp-card__badges">
           <span className="mp-card__cat">{prompt.category?.toUpperCase()}</span>
-          {!isPurchased ? (
+          {comingSoon && !isPurchased ? (
+            // Takes the unlock badge's place rather than sitting next to it —
+            // "PURCHASE TO UNLOCK" next to "COMING SOON" is a contradiction.
+            <span
+              className="mp-card__unlock"
+              style={{ background: "#3A2A08", color: "#FBBF24" }}
+            >
+              <Clock className="h-3 w-3 inline-block mr-1 -mt-[1px]" />
+              COMING SOON
+            </span>
+          ) : !isPurchased ? (
             <span
               className="mp-card__unlock"
               style={{
@@ -6732,6 +6584,22 @@ const LibOldStyleCard = ({
         <h3 className="mp-card__title">{prompt.title}</h3>
         <p className="mp-card__desc">{prompt.description}</p>
 
+        {/* Says WHY it can't be bought and that it will fix itself. Without
+            this the locked button reads as a bug. */}
+        {comingSoon && !isPurchased && (
+          <div
+            className="mt-2 flex items-start gap-2 rounded-lg px-2.5 py-2 text-[11px] leading-snug"
+            style={{
+              background: "rgba(251,191,36,0.08)",
+              border: "1px solid rgba(251,191,36,0.25)",
+              color: "#FCD34D",
+            }}
+          >
+            <Info className="h-3.5 w-3.5 shrink-0 mt-[1px]" />
+            <span>Seller verification pending. Goes on sale automatically once approved.</span>
+          </div>
+        )}
+
         <div className="mp-card__footer">
           {prompt.isFree ? (
             <div className="mp-card__pill mp-card__pill--free">FREE</div>
@@ -6741,8 +6609,10 @@ const LibOldStyleCard = ({
                 ₹{buyerPrice(prompt).toFixed(2)}
               </div>
 
-              {/* No cart for team members — checkout is blocked server-side. */}
-              {!isOwn && !teamMember && (
+              {/* No cart for team members — checkout is blocked server-side.
+                  Same for a listing awaiting verification: the cart route
+                  rejects it, so offering the button would only fail later. */}
+              {!isOwn && !teamMember && !comingSoon && (
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onAddToCart(prompt.id); }}
@@ -6754,22 +6624,23 @@ const LibOldStyleCard = ({
               )}
 
               {!isOwn && !isPurchased && !(prompt.exclusive && prompt.sold) && (
-                teamMember ? (
+                comingSoon ? (
+                  <button
+                    type="button"
+                    disabled
+                    title="This seller's payout account is still being verified."
+                    className="mp-card__pill mp-card__pill--buy opacity-50 cursor-not-allowed inline-flex items-center gap-1.5"
+                  >
+                    <Lock className="h-3.5 w-3.5" />
+                    Buy Now
+                  </button>
+                ) : teamMember ? (
                   // onBuyNow routes team members to the request modal.
                   <button
                     onClick={(e) => { e.stopPropagation(); onBuyNow(prompt); }}
                     className="mp-card__pill mp-card__pill--buy"
                   >
                     Request
-                  </button>
-                ) : hasPayoutSetup === false ? (
-                  <button
-                    type="button"
-                    disabled
-                    title="This seller hasn't set up their payout account yet."
-                    className="mp-card__pill mp-card__pill--buy opacity-50 cursor-not-allowed"
-                  >
-                    Seller setup pending
                   </button>
                 ) : (
                   <button
@@ -6860,7 +6731,11 @@ const LibFeaturedSection = ({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {prompts.map((p) => {
-          const badge = p.exclusive ? "PREMIUM" : "STAFF PICK";
+          /* "STAFF PICK" was on every non-exclusive prompt in this section, so
+             it marked nothing — nobody was picking them. The category is real
+             information and it's what a browser is scanning for anyway. */
+          const isPremium = !!p.exclusive;
+          const badge = isPremium ? "PREMIUM" : p.category || "";
           const own = isOwn(p);
           const purchased = isPurchased(p);
           return (
@@ -6884,12 +6759,17 @@ const LibFeaturedSection = ({
                   ) : (
                     <img src={p.imageUrl} alt={p.title} className="w-full h-full object-cover" />
                   )}
-                  <div
-                    className="absolute top-4 right-4 px-3 py-1 rounded-full text-[10px] font-semibold text-white"
-                    style={{ background: badge === "STAFF PICK" ? "rgba(255,255,255,0.15)" : GRADIENT, backdropFilter: "blur(4px)" }}
-                  >
-                    {badge}
-                  </div>
+                  {badge && (
+                    <div
+                      className="absolute top-4 right-4 px-3 py-1 rounded-full text-[10px] font-semibold text-white capitalize"
+                      style={{
+                        background: isPremium ? GRADIENT : "rgba(255,255,255,0.15)",
+                        backdropFilter: "blur(4px)",
+                      }}
+                    >
+                      {badge}
+                    </div>
+                  )}
                 </div>
 
                 <div className="p-6">
@@ -7022,41 +6902,65 @@ const LibBrandIdentitySpotlight = ({ onExplore }: { onExplore: () => void }) => 
   );
 };
 
+/**
+ * Animated backdrop for the two CTA cards.
+ *
+ * Replaces the random picsum.photos shot each card used to load: an external
+ * request the card sat blank behind, showing a photo unrelated to what the card
+ * was offering. Drawn entirely in CSS (see index.css) — three drifting colour
+ * clouds, a slow sheen and a panning grid, all on transform/opacity so it stays
+ * on the compositor. Colours come from the caller so the two cards read as
+ * siblings rather than clones.
+ */
+const LibAnimatedBackdrop = ({ colors }: { colors: [string, string, string] }) => (
+  <div
+    className="lib-cta-anim"
+    aria-hidden
+    style={
+      {
+        "--lib-cta-c1": colors[0],
+        "--lib-cta-c2": colors[1],
+        "--lib-cta-c3": colors[2],
+      } as React.CSSProperties
+    }
+  >
+    <span className="lib-cta-blob lib-cta-blob--a" />
+    <span className="lib-cta-blob lib-cta-blob--b" />
+    <span className="lib-cta-blob lib-cta-blob--c" />
+    <span className="lib-cta-grid" />
+    <span className="lib-cta-sheen" />
+  </div>
+);
+
 const LibGlassCTACard = ({
-  bgSeed,
   bgGradient,
+  animColors,
   title,
   description,
   ctaLabel,
   ctaBg,
   onClick,
 }: {
-  bgSeed: string;
   bgGradient: string;
+  animColors: [string, string, string];
   title: string;
   description: string;
   ctaLabel: string;
   ctaBg: string;
   onClick: () => void;
 }) => {
-  const [imgFailed, setImgFailed] = useState(false);
-
   return (
     <div
       className="relative overflow-hidden rounded-[24px]"
       style={{ border: "1px solid rgba(255,255,255,0.08)", background: bgGradient }}
     >
-      {!imgFailed && (
-        <img
-          src={libStockImage(bgSeed, 900, 700)}
-          alt=""
-          onError={() => setImgFailed(true)}
-          className="absolute inset-0 w-full h-full object-cover"
-        />
-      )}
+      <LibAnimatedBackdrop colors={animColors} />
+      {/* Kept, and lighter than before: the animation is dimmer than the photo
+          was, and the copy still has to stay readable over the brightest frame
+          of the sheen. */}
       <div
         className="absolute inset-0"
-        style={{ background: "linear-gradient(160deg, rgba(10,10,12,0.35) 0%, rgba(8,8,10,0.85) 100%)" }}
+        style={{ background: "linear-gradient(160deg, rgba(10,10,12,0.20) 0%, rgba(8,8,10,0.72) 100%)" }}
       />
 
       <div
@@ -7084,9 +6988,11 @@ const LibGlassCTACard = ({
 
 const LibSellHireSection = ({ onSell, onHire }: { onSell: () => void; onHire: () => void }) => (
   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    {/* Each card's animation is tinted to match its own CTA button — magenta
+        for selling, blue for hiring — so the two never look interchangeable. */}
     <LibGlassCTACard
-      bgSeed="sell-your-prompts-bg"
       bgGradient="linear-gradient(135deg, #1C1620 0%, #14141A 100%)"
+      animColors={["#FF14EF", "#7C3AED", "#1A73E8"]}
       title="Sell your prompts"
       description="Upload your prompts, connect your payout method, and join a global community of creators. Become a seller in just 2 minutes."
       ctaLabel="Start Selling"
@@ -7095,8 +7001,8 @@ const LibSellHireSection = ({ onSell, onHire }: { onSell: () => void; onHire: ()
     />
 
     <LibGlassCTACard
-      bgSeed="hire-an-ai-expert-bg"
       bgGradient="linear-gradient(135deg, #101A1E 0%, #14141A 100%)"
+      animColors={["#1A73E8", "#22D3EE", "#0EA5E9"]}
       title="Hire an AI Expert"
       description="Commission custom prompt solutions and fine-tuned AI workflows from world-class prompt engineers for your specific business needs."
       ctaLabel="Find a Creator"
@@ -7151,8 +7057,68 @@ const LibCategoriesRow = ({
   );
 };
 
+/**
+ * One API prompt document → the shape this page renders.
+ *
+ * Lifted out of the list fetch so a prompt opened from a shared link (fetched
+ * one at a time by id) renders identically to one that came from the list.
+ */
+const mapPromptDoc = (doc: any): Prompt => {
+  const att = doc?.attachment || null;
+  const mediaPath = att?.path
+    ? att.path.startsWith("http")
+      ? att.path
+      : `${API_BASE}${att.path}`
+    : undefined;
+
+  return {
+    id: String(doc._id),
+    title: doc.title || "Untitled",
+    description: doc.description || "",
+    category:
+      (doc.categories?.[0]?.name as string) ||
+      (Array.isArray(doc.categories) ? doc.categories.join(", ") : "") ||
+      "General",
+
+    price: typeof doc.price === "number" ? doc.price : 0,
+    // Falls back to the list price rather than 0 — a prompt saved before the
+    // tokun_price hook existed would otherwise render as free.
+    tokunPrice:
+      typeof doc.tokun_price === "number" && doc.tokun_price > 0
+        ? doc.tokun_price
+        : typeof doc.price === "number"
+          ? doc.price
+          : 0,
+    rating: typeof doc.averageRating === "number" ? doc.averageRating : undefined,
+    // Only present when the endpoint chose to send it — /public/:id strips it.
+    // The details panel shows it to the uploader and uses it for Copy on free
+    // prompts, which until now copied an empty string because nothing set it.
+    fullPrompt: doc.promptText || undefined,
+    imageUrl: att?.type === "image" ? mediaPath : undefined,
+    videoUrl: att?.type === "video" ? mediaPath : undefined,
+    preview:
+      (doc.description && String(doc.description).slice(0, 140)) ||
+      (doc.promptText && String(doc.promptText).slice(0, 140)) ||
+      "",
+
+    isFree: !!doc.free,
+    exclusive: !!doc.exclusive,
+    sold: !!doc.sold,
+    sellerVerificationPending: !!doc.sellerVerificationPending,
+
+    uploaderName: doc?.userId?.name || "Unknown",
+    uploaderId: doc?.userId?._id || null,
+
+    uploaderAvatar: "/icons/default-user.png",
+  } as Prompt;
+};
+
 const PromptMarketplacePage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  // Guards the shared-link effect against reopening the modal every time the
+  // prompt list re-renders — including after the user closes it.
+  const openedSharedPromptRef = useRef<string | null>(null);
   const { totalTokensUsed, tokenLimit } = useUserTokenUsage();
   const { token , user} = useAuth?.() || ({} as any);
   const { addToCart } = useCart();
@@ -7373,6 +7339,10 @@ const [buyerName, setBuyerName] = useState<string>("");
 // account set up — drives the Buy Now disable + "Seller setup pending" state.
 useEffect(() => {
   const idsToCheck = prompts
+    // The feed already answers this for anything flagged
+    // `sellerVerificationPending` — one request per prompt, to learn something
+    // we were just told, is pure waste on a page showing dozens of cards.
+    .filter((p) => !p.sellerVerificationPending)
     .map((p) => p.id)
     .filter((id) => id && !(id in sellerPayoutMap));
 
@@ -7475,53 +7445,7 @@ useEffect(() => {
           throw new Error(data?.error || "server_error");
         }
 
-const mapped: Prompt[] = (data.prompts || []).map((doc: any) => {
-  const att = doc?.attachment || null;
-  const mediaPath = att?.path
-  ? att.path.startsWith("http")
-    ? att.path
-    : `${API_BASE}${att.path}`
-  : undefined;
-  return {
-    id: String(doc._id),
-    title: doc.title || "Untitled",
-    description: doc.description || "",
-    category:
-      (doc.categories?.[0]?.name as string) ||
-      (Array.isArray(doc.categories) ? doc.categories.join(", ") : "") ||
-      "General",
-
-    price: typeof doc.price === "number" ? doc.price : 0,
-    // Falls back to the list price rather than 0 — a prompt saved before the
-    // tokun_price hook existed would otherwise render as free.
-    tokunPrice:
-      typeof doc.tokun_price === "number" && doc.tokun_price > 0
-        ? doc.tokun_price
-        : typeof doc.price === "number"
-          ? doc.price
-          : 0,
-    rating: typeof doc.averageRating === "number" ? doc.averageRating : undefined,
-    imageUrl: att?.type === "image" ? mediaPath : undefined,
-    videoUrl: att?.type === "video" ? mediaPath : undefined,
-    preview:
-      (doc.description && String(doc.description).slice(0, 140)) ||
-      (doc.promptText && String(doc.promptText).slice(0, 140)) ||
-      "",
-
-    isFree: !!doc.free,
-    exclusive: !!doc.exclusive,
-    sold: !!doc.sold,
-
-    // ⭐⭐ THIS IS WHAT YOU ASKED FOR
-    uploaderName: doc?.userId?.name || "Unknown",
-    uploaderId: doc?.userId?._id || null,
-
-    // avatar if needed
-    uploaderAvatar: "/icons/default-user.png"
-  };
-});
-
-
+const mapped: Prompt[] = (data.prompts || []).map((doc: any) => mapPromptDoc(doc));
 
         setPrompts(mapped);
       } catch (err: any) {
@@ -7530,7 +7454,6 @@ const mapped: Prompt[] = (data.prompts || []).map((doc: any) => {
         toast({
           title: "Couldn’t load prompts",
           description: err?.message || "Please try again.",
-          variant: "destructive",
         });
       } finally {
         setLoading(false);
@@ -7539,6 +7462,50 @@ const mapped: Prompt[] = (data.prompts || []).map((doc: any) => {
 
     fetchPrompts();
   }, [fileType, licenseType, selectedCategory, token]);
+
+  /* ---------- Shared link: ?prompt=<id> opens that prompt's details ----------
+     The prompt may not be in the list this page happened to load (category
+     filter, "others" excludes your own uploads, pagination on the server), so
+     the list is only a fast path — anything else is fetched by id. */
+  useEffect(() => {
+    const wantedId = new URLSearchParams(location.search).get("prompt");
+    if (!wantedId || openedSharedPromptRef.current === wantedId) return;
+
+    const fromList = prompts.find((p) => String(p.id) === String(wantedId));
+    if (fromList) {
+      openedSharedPromptRef.current = wantedId;
+      setDetailsPrompt(fromList);
+      setDetailsOpen(true);
+      return;
+    }
+
+    // Still loading the list — give it a chance before hitting the API.
+    if (loading) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/prompt/public/${encodeURIComponent(wantedId)}`);
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok || !data?.success || !data.prompt) {
+          toast({
+            title: "Prompt unavailable",
+            description: "That link points to a prompt that's no longer listed.",
+          });
+          openedSharedPromptRef.current = wantedId; // don't retry in a loop
+          return;
+        }
+        openedSharedPromptRef.current = wantedId;
+        setDetailsPrompt(mapPromptDoc(data.prompt));
+        setDetailsOpen(true);
+      } catch (err) {
+        if (!cancelled) console.error("Failed to open shared prompt", err);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [location.search, prompts, loading]);
 
   /* ---------- Derived: local search + filter ---------- */
 const filteredPrompts = prompts.filter((p) => {
@@ -7628,7 +7595,6 @@ const filteredPrompts = prompts.filter((p) => {
     toast({
       title: "Not allowed",
       description: "You cannot buy your own prompt.",
-      variant: "destructive",
     });
     return;
   }
@@ -7637,7 +7603,6 @@ const filteredPrompts = prompts.filter((p) => {
     toast({
       title: "Please log in",
       description: "You must be logged in to purchase.",
-      variant: "destructive",
     });
     return;
   }
@@ -7736,23 +7701,23 @@ const filteredPrompts = prompts.filter((p) => {
     description: "You now own this prompt.",
   });
 } else {
-              toast({ title: "Verification Failed", description: vb?.error || "Unknown error", variant: "destructive" });
+              toast({ title: "Verification Failed", description: vb?.error || "Unknown error" });
             }
           } catch (err) {
             console.error("Verify error", err);
-            toast({ title: "Verification Error", description: "Could not verify payment.", variant: "destructive" });
+            toast({ title: "Verification Error", description: "Could not verify payment." });
           }
         },
       };
 
       const rzp = new (window as any).Razorpay(options);
       rzp.on("payment.failed", function () {
-        toast({ title: "Payment Failed", description: "Please try again.", variant: "destructive" });
+        toast({ title: "Payment Failed", description: "Please try again." });
       });
       rzp.open();
     } catch (err: any) {
       console.error("Purchase flow error", err);
-      toast({ title: "Purchase Error", description: err?.message || "Something went wrong.", variant: "destructive" });
+      toast({ title: "Purchase Error", description: err?.message || "Something went wrong." });
     }
   };
 
@@ -7823,7 +7788,6 @@ const savePromptToCollections = async ({
     toast({
       title: "Please log in",
       description: "You need to be logged in to save prompts.",
-      variant: "destructive",
     });
     return { ok: false };
   }
@@ -7855,7 +7819,6 @@ const savePromptToCollections = async ({
     toast({
       title: "Save failed",
       description: err?.message || "Could not save this prompt.",
-      variant: "destructive",
     });
     return { ok: false };
   }
@@ -8040,6 +8003,7 @@ const savePromptToCollections = async ({
                       isPurchased={isPurchased}
                       isOwn={isOwnPrompt(prompt)}
                       isPlaying={playingVideo === prompt.id}
+                      hasPayoutSetup={sellerPayoutMap[prompt.id]}
                       onVideoPlay={handleVideoPlay}
                       onAddToCart={(id) => {
                         if (!guardedAddToCart(id)) return;
@@ -8328,11 +8292,18 @@ const savePromptToCollections = async ({
                 renderCard={renderOldStyleCard}
               />
 
+              {/* Was "T-Shirt Design Prompts" over the unfiltered list — the
+                  row promised apparel prompts and showed whatever the page had
+                  loaded. Cheapest-first is a real ordering of the same list, so
+                  the heading now describes what's actually under it. */}
               <LibPromptRow
-                eyebrowIcon={<Shirt className="h-4 w-4" />}
-                eyebrow="APPAREL"
-                title="T-Shirt Design Prompts"
-                items={filteredPrompts}
+                eyebrowIcon={<Tag className="h-4 w-4" />}
+                eyebrow="EASY ON THE WALLET"
+                title="Budget-Friendly Prompts"
+                items={[...filteredPrompts].sort(
+                  (a, b) =>
+                    (a.isFree ? 0 : buyerPrice(a)) - (b.isFree ? 0 : buyerPrice(b)),
+                )}
                 renderCard={renderOldStyleCard}
               />
 

@@ -50,8 +50,7 @@
 // //   //     toast({
 // //   //       title: "Login failed",
 // //   //       description: err?.message || "Unexpected error. Please try again.",
-// //   //       variant: "destructive",
-// //   //     });
+// //   //       // //   //     });
 // //   //   } finally {
 // //   //     setIsLoading(false);
 // //   //   }
@@ -98,8 +97,7 @@
 // //     toast({
 // //       title: "Login failed",
 // //       description: err?.message || "Unexpected error. Please try again.",
-// //       variant: "destructive",
-// //     });
+// //       // //     });
 // //   } finally {
 // //     const t1 = performance.now();
 // //     console.log(`[LOGIN] completed in ${(t1 - t0).toFixed(1)}ms`);
@@ -244,8 +242,7 @@
 //       toast({
 //         title: "Login failed",
 //         description: err?.message || "Unexpected error. Please try again.",
-//         variant: "destructive",
-//       });
+//         //       });
 //     } finally {
 //       const t1 = performance.now();
 //       console.log(`[LOGIN] completed in ${(t1 - t0).toFixed(1)}ms`);
@@ -543,7 +540,6 @@ const Login = () => {
       toast({
         title: "Login failed",
         description: err?.message || "Unexpected error. Please try again.",
-        variant: "destructive",
       });
     } finally {
       const t1 = performance.now();

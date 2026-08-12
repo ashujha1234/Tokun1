@@ -42,6 +42,22 @@ const PurchaseSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    /* The buyer-side platform fee that made up part of pricePaid, and the GST
+       charged on it. Stored separately from platformCommission because these
+       two are NON-REFUNDABLE: a refund returns the list price, not the fee for
+       running the transaction. Without them the refund path had no way to tell
+       the fee apart from the seller's commission inside platformCommission.
+
+       0 on purchases made before this existed, which is correct — those were
+       taken under the old rule where the whole payment came back. */
+    platformFee: {
+      type: Number,
+      default: 0,
+    },
+    platformFeeGst: {
+      type: Number,
+      default: 0,
+    },
     razorpayPaymentId: {
       type: String,
     },

@@ -85,6 +85,49 @@ async function reverseTransfer(transferId, amountRupees) {
   return data;
 }
 
+/**
+ * Send money straight from Tokun's own balance to a linked account.
+ *
+ * ⚠️ NOT USABLE ON THIS ACCOUNT, and nothing calls it. Kept only so the next
+ * person doesn't reach for the same idea and lose the same afternoon:
+ *
+ *     POST /v1/transfers { account: "acc_…", amount: 15000 }
+ *     → 400 "This feature is not enabled for this merchant."
+ *
+ * Transfers from account balance are gated separately from the payment-linked
+ * transfers the escrow uses (create-on-order, reverse, release), which all work
+ * fine. Enable "Transfers from Account Balance" on the Razorpay account before
+ * calling this.
+ *
+ * The escrow avoids needing it at all: the held transfer carries the FULL
+ * payment, so every settlement outcome is payable by releasing or reversing
+ * that one hold.
+ *
+ * @param {string} account   acc_xxx linked account id
+ * @param {number} amountRupees
+ * @param {object} [notes]
+ */
+async function createDirectTransfer(account, amountRupees, notes = {}) {
+  const paise = Math.round(Number(amountRupees) * 100);
+  if (!account || !(paise > 0)) return null;
+
+  const res = await fetch("https://api.razorpay.com/v1/transfers", {
+    method: "POST",
+    headers: {
+      Authorization: getRazorpayAuthHeader(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ account, amount: paise, currency: "INR", notes }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const err = new Error(data?.error?.description || `Direct transfer failed: ${res.status}`);
+    err.razorpay = data;
+    throw err;
+  }
+  return data;
+}
+
 module.exports = {
   REFUND_WINDOW_HOURS,
   getRazorpayAuthHeader,
@@ -93,4 +136,5 @@ module.exports = {
   fetchTransferIdsByAccount,
   transferOnHoldUntil,
   reverseTransfer,
+  createDirectTransfer,
 };

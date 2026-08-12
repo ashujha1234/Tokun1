@@ -643,8 +643,7 @@
 //     toast({
 //       title: "Copy failed",
 //       description: "Unable to copy prompt.",
-//       variant: "destructive",
-//     });
+//       //     });
 //   }
 // };
 
@@ -1016,7 +1015,7 @@
 // }
 
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   Image as ImageIcon,
@@ -1024,13 +1023,22 @@ import {
   Video,
   CheckCircle2,
   ShoppingCart,
+  Link as LinkIcon,
+  Info,
+  Lock,
+  Clock,
 } from "lucide-react";
 import { RiShareForwardLine } from "react-icons/ri";
 import { useAuth } from "@/contexts/AuthContext";
 import RequestToBuyModal from "@/components/RequestToBuyModel";
+import SharePromptMenu from "@/components/SharePromptMenu";
 import { toast } from "@/components/ui/use-toast";
 import { useCart } from "@/contexts/CartContext";
 import { isTeamMember as isTeamMemberUser, isOrgOwner } from "@/lib/orgRoles";
+
+const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+const PURCHASE_BASE = `${API_BASE}/api/purchase`;
+
 export interface MarketplacePrompt {
   id: number | string;
   title: string;
@@ -1050,6 +1058,12 @@ export interface MarketplacePrompt {
   ownerEmail?: string;
   exclusive?: boolean;
   sold?: boolean;
+  /**
+   * Listed, but the seller's payout account is still being verified — the
+   * server rejects a purchase for it with `seller_not_verified`. Shown as a
+   * "Coming soon" state instead of a Buy button that would fail at checkout.
+   */
+  sellerVerificationPending?: boolean;
 }
 interface DetailsPromptProps {
   open: boolean;
@@ -1107,6 +1121,44 @@ const isOwnPrompt =
   !!prompt?.uploaderId &&
   String(prompt.uploaderId) === String(currentUserId);
 
+// Listed but not yet purchasable — the seller is still going through Route
+// payout onboarding. The feed sends this down with each prompt; the purchase
+// route is the real guard and rejects these with `seller_not_verified`.
+//
+// `sellerVerificationPending` alone isn't the whole answer: older listings
+// aren't flagged by the feed, so the marketplace card also asks the purchase
+// route per prompt (`hasPayoutSetup`). This panel skipped that second check,
+// so a card showing COMING SOON opened a details panel with a live Buy Now —
+// and checkout then failed with `seller_not_verified`. Same lookup here.
+const [sellerHasPayout, setSellerHasPayout] = useState<boolean | null>(null);
+
+useEffect(() => {
+  if (!open || !prompt?.id || prompt?.sellerVerificationPending) {
+    setSellerHasPayout(null);
+    return;
+  }
+
+  let cancelled = false;
+
+  (async () => {
+    try {
+      const res = await fetch(`${PURCHASE_BASE}/seller-payout-status/${prompt.id}`);
+      const data = await res.json().catch(() => ({}));
+      if (!cancelled) setSellerHasPayout(Boolean(data?.hasPayoutSetup));
+    } catch {
+      // Match the marketplace: a transient network/server failure shouldn't
+      // block a purchase that would otherwise go through.
+      if (!cancelled) setSellerHasPayout(true);
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [open, prompt?.id, prompt?.sellerVerificationPending]);
+
+const comingSoon = !!prompt?.sellerVerificationPending || sellerHasPayout === false;
+
 
 
 
@@ -1149,10 +1201,16 @@ const isOwnPrompt =
     toast({
       title: "Copy failed",
       description: "Unable to copy prompt.",
-      variant: "destructive",
     });
   }
 };
+
+  // A link anyone can open — it lands on the marketplace with this prompt's
+  // details already open. Only the listing travels, never promptText: the link
+  // is an invitation to look at the prompt, not a way around paying for it.
+  const shareUrl = `${window.location.origin}/prompt-marketplace?prompt=${encodeURIComponent(
+    String(prompt?.id ?? "")
+  )}`;
 
   return (
     <>
@@ -1183,15 +1241,27 @@ const isOwnPrompt =
             </div>
 
          <div className="absolute top-4 right-4 z-10">
-  <span
-    className="px-3 py-1 text-[12px] font-semibold rounded-full"
-    style={{
-      background: owned ? "#14532D" : "#FFFFFF",
-      color: owned ? "#BBF7D0" : "#000000",
-    }}
-  >
-    {owned ? "PURCHASED" : "PURCHASE TO UNLOCK"}
-  </span>
+  {/* Replaces the unlock pill rather than joining it — "PURCHASE TO UNLOCK"
+      alongside "COMING SOON" tells the buyer to do something they can't. */}
+  {comingSoon && !owned ? (
+    <span
+      className="px-3 py-1 text-[12px] font-semibold rounded-full inline-flex items-center gap-1.5"
+      style={{ background: "#3A2A08", color: "#FBBF24" }}
+    >
+      <Clock className="w-3.5 h-3.5" />
+      COMING SOON
+    </span>
+  ) : (
+    <span
+      className="px-3 py-1 text-[12px] font-semibold rounded-full"
+      style={{
+        background: owned ? "#14532D" : "#FFFFFF",
+        color: owned ? "#BBF7D0" : "#000000",
+      }}
+    >
+      {owned ? "PURCHASED" : "PURCHASE TO UNLOCK"}
+    </span>
+  )}
 </div>
 
             <div className="absolute inset-0">
@@ -1321,6 +1391,32 @@ const isOwnPrompt =
               {prompt.description}
             </p>
 
+            {/* The prompt text itself — your own upload, so there's nothing to
+                unlock. Buyers still see only the description above; this block
+                renders solely for the uploader, and only when the endpoint
+                actually sent the text (the public one strips it). */}
+            {isOwnPrompt && prompt.fullPrompt && (
+              <div className="mt-6 rounded-[12px] border border-white/10 bg-[#1C1C1E] p-4">
+                <div className="flex items-center justify-between gap-3 mb-2.5">
+                  <span className="text-[12px] font-semibold tracking-wide text-white/50">
+                    YOUR PROMPT
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    className="h-8 px-3 rounded-[8px] border border-white/10 bg-[#242427] text-[12px] text-white/80 hover:bg-[#2E2E32] hover:text-white transition-colors"
+                  >
+                    Copy
+                  </button>
+                </div>
+                {/* Wraps and scrolls rather than stretching the panel — a long
+                    prompt would otherwise push the price and actions off. */}
+                <p className="max-h-[220px] overflow-y-auto whitespace-pre-wrap break-words text-[14px] leading-relaxed text-white/75">
+                  {prompt.fullPrompt}
+                </p>
+              </div>
+            )}
+
             {/* Green tick features */}
             <div className="mt-8 space-y-3">
               {[
@@ -1355,28 +1451,53 @@ const isOwnPrompt =
                     sheet. Only when there is actually a fee to explain. */}
                 {platformFee > 0 && (
                   <div className="text-[11px] text-white/40 mt-0.5">
-                    ₹{listPrice.toLocaleString()} + ₹{platformFee.toLocaleString()} platform fee
+                    ₹{listPrice.toLocaleString()} + ₹{platformFee.toLocaleString()} platform fee 
                   </div>
                 )}
               </div>
-              {/* Only an Owner/Admin can suggest a prompt to their team — the
-                  same modal serves the TM's own "request to buy" below, so this
-                  button is hidden for everyone it wouldn't work for. */}
-              {isOrgOwnerUser && (
-                <button
-                  className="h-9 px-4 rounded-[8px] border border-white/10 bg-[#1C1C1E] flex items-center justify-center gap-1.5 text-white text-[13px] hover:bg-[#2A2A2D] transition-all whitespace-nowrap shrink-0"
-                  onClick={() => setShowRequestModal(true)}
-                >
-                  <RiShareForwardLine className="w-4 h-4" />
-                  Share with team
-                </button>
-              )}
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Everyone gets this one — sharing a link to a listing needs no
+                    org, no purchase, and gives away nothing paid. */}
+                <SharePromptMenu url={shareUrl} title={prompt?.title} />
+
+                {/* Only an Owner/Admin can suggest a prompt to their team — the
+                    same modal serves the TM's own "request to buy" below, so this
+                    button is hidden for everyone it wouldn't work for. */}
+                {isOrgOwnerUser && (
+                  <button
+                    className="h-9 px-4 rounded-[8px] border border-white/10 bg-[#1C1C1E] flex items-center justify-center gap-1.5 text-white text-[13px] hover:bg-[#2A2A2D] transition-all whitespace-nowrap"
+                    onClick={() => setShowRequestModal(true)}
+                  >
+                    <RiShareForwardLine className="w-4 h-4" />
+                    Share with team
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Cart — big, full-width. Hidden entirely for team members: cart
                 checkout is blocked server-side, so an item they add can never
                 be paid for. */}
-            {!isOwnPrompt && !owned && !isTeamMember && Number(prompt.price || 0) > 0 && (
+            {/* Explains the locked state below. A disabled Buy button with no
+                reason next to it just reads as broken. */}
+            {comingSoon && !owned && !isOwnPrompt && (
+              <div
+                className="w-full flex items-start gap-2 rounded-[10px] px-3 py-2.5 text-[12px] leading-snug"
+                style={{
+                  background: "rgba(251,191,36,0.08)",
+                  border: "1px solid rgba(251,191,36,0.25)",
+                  color: "#FCD34D",
+                }}
+              >
+                <Info className="h-4 w-4 shrink-0 mt-[1px]" />
+                <span>
+                  Seller verification pending. This listing goes on sale automatically
+                  once their payout account is approved.
+                </span>
+              </div>
+            )}
+
+            {!isOwnPrompt && !owned && !isTeamMember && !comingSoon && Number(prompt.price || 0) > 0 && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1400,6 +1521,19 @@ const isOwnPrompt =
                 <div className="w-full h-12 rounded-[10px] bg-[#14532D] text-[#BBF7D0] text-[15px] font-semibold flex items-center justify-center">
                   Purchased
                 </div>
+              ) : comingSoon ? (
+                // Checked before the free-prompt branch: a free listing from an
+                // unverified seller still isn't claimable, and Copy would hand
+                // over the prompt text.
+                <button
+                  type="button"
+                  disabled
+                  title="This seller's payout account is still being verified."
+                  className="w-full h-12 flex items-center justify-center gap-2 rounded-[10px] font-semibold text-[15px] cursor-not-allowed bg-[#2A2A2A] text-white/50"
+                >
+                  <Lock className="w-4 h-4" />
+                  Coming soon
+                </button>
               ) : Number(prompt.price || 0) <= 0 ? (
                 <button
                   onClick={handleCopy}

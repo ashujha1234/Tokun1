@@ -1111,7 +1111,7 @@ const finalMessage = `${senderName} invited you to collaborate on a prompt in To
 
       await sendEmail({
         to: email,
-        subject: "Invitation to collaborate on a prompt on Tokun.ai",
+        subject: "Invitation to collaborate on a prompt on Tokun.World",
         html,
       });
     } catch (mailErr) {

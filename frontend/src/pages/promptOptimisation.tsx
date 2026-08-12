@@ -302,18 +302,24 @@ export default function PromptOptimizationPage() {
 
   return (
    <div className="dark min-h-screen" style={{ backgroundColor: "#030406" }}>
-      <div className="sticky top-0 z-50">
-        <Header />
-      </div>
+      {/* No sticky wrapper — Header is `sticky top-0` itself. Nesting two
+          stickies that both target top:0 makes the browser resolve the inner
+          one against a parent the sticky algorithm is already moving, and they
+          oscillate by a pixel as you scroll. That was the shake. */}
+      <Header />
       <div className="container mx-auto px-4 pt-6">
 
 <div className="pt-4 text-center">
 
+  {/* Brand gradient on the noun that names the page, white on the qualifier —
+      the same split the marketplace hero uses for "Prompt Marketplace". The
+      whole line was plain white, which read as unbranded next to it. */}
   <h2
     className="text-[22px] sm:text-[28px] lg:text-[32px] font-semibold text-white mb-2 sm:mb-3"
     style={{ fontFamily: "Inter" }}
   >
-    Prompt Optimization Dashboard
+    Prompt Optimization{" "}
+    <span className="brand-gradient-text">Dashboard</span>
   </h2>
 
   <div className="flex justify-center">

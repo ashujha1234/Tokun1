@@ -1,4 +1,10 @@
 import { useEffect, useState } from "react";
+import {
+  peekPayoutStatus,
+  getPayoutStatus,
+  getBusinessCategories,
+  clearPayoutStatus,
+} from "@/lib/sellerPrefetch";
 
 interface SellerLinkedAccountFormProps {
   open: boolean;
@@ -104,7 +110,15 @@ export default function SellerLinkedAccountForm({
 }: SellerLinkedAccountFormProps) {
   const normalizedApiBase = apiBase.replace(/\/$/, "");
 
-  const [phase, setPhase] = useState<Phase>("checking");
+  // Starts on "form" whenever the prefetched status already says this seller
+  // has no payout account — the spinner would only be showing a question we
+  // already know the answer to.
+  const prefetched = peekPayoutStatus(token);
+  const [phase, setPhase] = useState<Phase>(
+    prefetched?.ok && prefetched.canSell !== false && !prefetched.hasPayoutSetup
+      ? "form"
+      : "checking"
+  );
   const [errMsg, setErrMsg] = useState<string | null>(null);
   // Set from the backend's `field` when Razorpay pinned the failure to one
   // input. Null for errors that aren't about a specific value.
@@ -113,7 +127,9 @@ export default function SellerLinkedAccountForm({
   // Not a choice the seller makes — the backend derives it from their account
   // type (an ORG workspace is a registered entity by definition) and returns it
   // from payout-status. We only use it to decide which fields to render.
-  const [sellerType, setSellerType] = useState<SellerType>("individual");
+  const [sellerType, setSellerType] = useState<SellerType>(
+    prefetched?.sellerType === "organization" ? "organization" : "individual"
+  );
 
   // Organization-only.
   const [businessType, setBusinessType] = useState("");
@@ -147,64 +163,59 @@ export default function SellerLinkedAccountForm({
 
   // On open, check whether the seller already has a payout account — if so,
   // skip this form entirely and go straight to the prompt-upload form.
+  //
+  // Both requests are served from the prefetch cache and, crucially, run
+  // concurrently. They used to be strictly serial — the category list was only
+  // requested after payout-status came back, and the form waited on both — so
+  // opening this form cost two full round-trips end to end.
   useEffect(() => {
     if (!open) return;
 
     let cancelled = false;
-    setPhase("checking");
     setErrMsg(null);
 
+    // Fired now, not after the status resolves. The dropdown is far down the
+    // form; it only has to be ready before the seller scrolls to it.
+    getBusinessCategories(normalizedApiBase, token).then((cats) => {
+      if (cancelled || !cats) return;
+      setBusinessCategories(cats.categories);
+      setKycMatrix(cats.kycRequirements);
+    });
+
     (async () => {
-      try {
-        const res = await fetch(`${normalizedApiBase}/api/bankaccount/payout-status`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json().catch(() => ({}));
-        if (cancelled) return;
+      const data = await getPayoutStatus(normalizedApiBase, token);
+      if (cancelled) return;
 
-        // Team members can't sell. Checked BEFORE hasPayoutSetup, because the
-        // server reports that as true for them (they have nothing to set up) —
-        // falling through would call onSubmitted() and open the Sell modal,
-        // which is the one thing a team member must not reach.
-        if (res.ok && data?.canSell === false) {
-          setErrMsg(
-            data?.message ||
-              "Your organization handles selling. Ask your org owner to publish this from the organization account."
-          );
-          setPhase("error");
-          return;
-        }
-
-        if (res.ok && data?.success && data.hasPayoutSetup) {
-          onSubmitted();
-          return;
-        }
-
-        if (data?.sellerType === "organization") {
-          setSellerType("organization");
-        }
-
-        // Only fetched once we know the form is actually going to render —
-        // a seller who already has payout set up is redirected above and
-        // never sees these dropdowns.
-        try {
-          const catRes = await fetch(`${normalizedApiBase}/api/bankaccount/business-categories`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const catData = await catRes.json().catch(() => ({}));
-          if (!cancelled && catRes.ok && catData?.categories) {
-            setBusinessCategories(catData.categories);
-            setKycMatrix(catData.kycRequirements ?? {});
-          }
-        } catch {
-          // Left empty — the dropdown renders disabled with an explanatory
-          // note rather than letting the seller submit a pair we can't offer.
-        }
-
+      // The request itself failed — don't block upload over a transient check
+      // failure, same as before.
+      if (!data.ok) {
         setPhase("form");
-      } catch {
-        if (!cancelled) setPhase("form"); // don't block upload over a transient check failure
+        return;
       }
+
+      // Team members can't sell. Checked BEFORE hasPayoutSetup, because the
+      // server reports that as true for them (they have nothing to set up) —
+      // falling through would call onSubmitted() and open the Sell modal,
+      // which is the one thing a team member must not reach.
+      if (data.canSell === false) {
+        setErrMsg(
+          data.message ||
+            "Your organization handles selling. Ask your org owner to publish this from the organization account."
+        );
+        setPhase("error");
+        return;
+      }
+
+      if (data.success && data.hasPayoutSetup) {
+        onSubmitted();
+        return;
+      }
+
+      if (data.sellerType === "organization") {
+        setSellerType("organization");
+      }
+
+      setPhase("form");
     })();
 
     return () => {
@@ -370,6 +381,22 @@ export default function SellerLinkedAccountForm({
         setErrField(data?.field ?? null);
         throw new Error(data?.message || "Could not set up your payout account.");
       }
+
+      // The cached "no payout account" answer is now wrong — drop it so the
+      // next Upload click asks again instead of reopening this form.
+      clearPayoutStatus();
+
+      // …and immediately refill it. There is exactly ONE linked account per
+      // seller, shared by prompt selling and freelancing, so whoever set it up
+      // first must never be asked again by the other flow.
+      //
+      // Clearing alone already achieved that — the next Upload click re-fetched,
+      // saw hasPayoutSetup and skipped straight through — but it did so via a
+      // visible "Checking your payout setup…" frame, because Header reads the
+      // snapshot synchronously (see peekPayoutStatus) and an empty cache reads
+      // the same as "don't know". Re-priming now means the next click has the
+      // answer in hand and opens the Sell modal directly.
+      void getPayoutStatus(normalizedApiBase, token, { force: true });
 
       setPhase("under_review");
     } catch (e: any) {

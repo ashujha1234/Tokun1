@@ -330,6 +330,7 @@
 import React, { useEffect, useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import PromptThumb from "@/components/PromptThumb";
+import { toast } from "@/components/ui/use-toast";
 
 interface Member {
   userId: string;
@@ -361,20 +362,27 @@ export default function RequestToBuyModal({
 }: RequestToBuyModalProps) {
   const [message, setMessage] = useState("");
   const [members, setMembers] = useState<Member[]>([]);
-  const [selectedMember, setSelectedMember] = useState("");
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
+  const [sending, setSending] = useState(false);
+  // The org this user belongs to, resolved from the server. A TM needs it to
+  // know who their request actually goes to — the prompt's seller email is a
+  // different person entirely.
+  const [org, setOrg] = useState<{ orgId?: string; ownerEmail?: string } | null>(null);
 
   const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
   const token = localStorage.getItem("token");
 
-  // ✅ Fetch members list when Owner opens modal
+  // Both sides need this call: the Owner for the member checkboxes, the TM for
+  // their org id + owner email. It was previously fired for the Owner only,
+  // which is why nothing org-related reached the TM view.
   useEffect(() => {
-    if (userType === "ORG" && role === "Owner" && open) {
-      fetchMembers();
-    }
+    if (!open) return;
+    setSelectedMembers([]);
+    fetchOrgDirectory();
   }, [open]);
 
-  async function fetchMembers() {
+  async function fetchOrgDirectory() {
     try {
       setLoadingMembers(true);
       const res = await fetch(`${API_BASE}/api/org/members/emaillist`, {
@@ -383,15 +391,27 @@ export default function RequestToBuyModal({
       const data = await res.json();
       if (data.success) {
         setMembers(data.members || []);
+        setOrg({ orgId: data.orgId, ownerEmail: data.owner?.email });
       } else {
-        console.error("Failed to load members:", data.error);
+        console.error("Failed to load org directory:", data.error);
       }
     } catch (err) {
-      console.error("Failed to fetch members:", err);
+      console.error("Failed to fetch org directory:", err);
     } finally {
       setLoadingMembers(false);
     }
   }
+
+  const allSelected =
+    members.length > 0 && selectedMembers.length === members.length;
+
+  const toggleAll = () =>
+    setSelectedMembers(allSelected ? [] : members.map((m) => m.userId));
+
+  const toggleOne = (userId: string) =>
+    setSelectedMembers((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
 
   const handleSend = async () => {
     try {
@@ -403,15 +423,28 @@ export default function RequestToBuyModal({
         url = `${API_BASE}/api/prompt-collab/team/request/${promptId}`;
         body = { message };
       } else if (userType === "ORG" && role === "Owner") {
-        // ✅ Org owner suggests prompt to a member
-        if (!selectedMember) {
-          alert("Please select a member");
+        if (!selectedMembers.length) {
+          toast({
+            title: "Select a member",
+            description: "Pick at least one team member to share this with.",
+          });
           return;
         }
-        url = `${API_BASE}/api/prompt-collab/org/suggest/${promptId}`;
-        body = { memberId: selectedMember, message };
+        // /org/share, not /org/suggest.
+        //
+        // These are two different actions and this modal was calling the wrong
+        // one. `suggest` only fires a "have a look at this" notification — it
+        // grants no access and writes no SharedPrompt row, so the share never
+        // appeared under "Recently Shared with Team" on the org dashboard and
+        // the member still couldn't open the prompt. `share` records the
+        // SharedPrompt (which /shared/team checks before revealing promptText)
+        // and notifies the member, which is what a button labelled "Share with
+        // your team" is expected to do.
+        url = `${API_BASE}/api/prompt-collab/org/share/${promptId}`;
+        body = { memberIds: selectedMembers, message };
       }
 
+      setSending(true);
       const res = await fetch(url, {
         method: "POST",
         headers: {
@@ -423,16 +456,32 @@ export default function RequestToBuyModal({
 
       const data = await res.json();
       if (data.success) {
-        alert("✅ Request sent successfully!");
+        toast({
+          title: userType === "TM" ? "Request sent" : "Shared with your team",
+          description:
+            userType === "TM"
+              ? "Your organization owner has been notified."
+              : `${selectedMembers.length} member${
+                  selectedMembers.length === 1 ? "" : "s"
+                } notified.`,
+        });
         onOpenChange(false);
         setMessage("");
-        setSelectedMember("");
+        setSelectedMembers([]);
       } else {
-        alert("❌ " + (data.error || "Failed to send request"));
+        toast({
+          title: "Couldn't send",
+          description: data.error || "Failed to send request.",
+        });
       }
     } catch (err) {
       console.error("❌ handleSend error:", err);
-      alert("Something went wrong. Please try again.");
+      toast({
+        title: "Something went wrong",
+        description: "Please try again.",
+      });
+    } finally {
+      setSending(false);
     }
   };
 
@@ -475,33 +524,75 @@ export default function RequestToBuyModal({
             <label className="block text-sm mb-1 text-gray-400">Owner email</label>
             <input
               type="email"
-              value={ownerEmail || ""}
+              // The org owner, resolved from the org directory. The prop
+              // fallback is the prompt's seller, which is who this request is
+              // ABOUT, not who it goes TO.
+              value={org?.ownerEmail || ownerEmail || ""}
               disabled
+              placeholder={loadingMembers ? "Loading…" : "Owner email unavailable"}
               className="w-full bg-[#222225] border border-white/10 rounded-lg px-3 py-2 text-gray-300 text-sm"
             />
           </div>
         ) : (
           <div className="mb-4">
-            <label className="block text-sm mb-1 text-gray-400">Select Member</label>
-            <select
-              value={selectedMember}
-              onChange={(e) => setSelectedMember(e.target.value)}
-              className="w-full bg-[#222225] border border-white/10 rounded-lg px-3 py-2 text-gray-300 text-sm"
-              disabled={loadingMembers}
-            >
+            <div className="mb-1 flex items-center justify-between">
+              <label className="block text-sm text-gray-400">
+                Select members
+                {selectedMembers.length > 0 && (
+                  <span className="ml-1 text-gray-500">
+                    ({selectedMembers.length} selected)
+                  </span>
+                )}
+              </label>
+              {members.length > 0 && (
+                <button
+                  type="button"
+                  onClick={toggleAll}
+                  className="text-xs text-[#1A73E8] hover:underline"
+                >
+                  {allSelected ? "Deselect all" : `Select all (${members.length})`}
+                </button>
+              )}
+            </div>
+
+            <div className="max-h-48 overflow-y-auto rounded-lg border border-white/10 bg-[#222225]">
               {loadingMembers ? (
-                <option>Loading members...</option>
+                <div className="px-3 py-4 text-sm text-gray-400">Loading members…</div>
+              ) : members.length === 0 ? (
+                <div className="px-3 py-4 text-sm text-gray-400">No team members yet.</div>
               ) : (
                 <>
-                  <option value="">-- Select a member --</option>
+                  {/* "All" as its own row — with 10+ members, hunting for the
+                      link above the box is the slow path. */}
+                  <label className="flex items-center gap-3 px-3 py-2.5 border-b border-white/10 cursor-pointer hover:bg-white/5">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleAll}
+                      className="accent-[#FF14EF]"
+                    />
+                    <span className="text-sm font-medium text-gray-100">
+                      Everyone in the team ({members.length})
+                    </span>
+                  </label>
+
                   {members.map((m) => (
-                    <option key={m.userId} value={m.userId}>
-                      {m.email}
-                    </option>
+                    <label
+                      key={m.userId}
+                      className="flex items-center gap-3 px-3 py-2.5 border-b border-white/5 last:border-b-0 cursor-pointer hover:bg-white/5"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedMembers.includes(m.userId)}
+                        onChange={() => toggleOne(m.userId)}
+                        className="accent-[#FF14EF]"
+                      />
+                      <span className="text-sm text-gray-200">{m.email}</span>
+                    </label>
                   ))}
                 </>
               )}
-            </select>
+            </div>
           </div>
         )}
 
@@ -535,9 +626,10 @@ export default function RequestToBuyModal({
             </button>
             <button
               onClick={handleSend}
-              className="px-5 py-2 rounded-md text-white bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] hover:opacity-90 transition-all"
+              disabled={sending}
+              className="px-5 py-2 rounded-md text-white bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] hover:opacity-90 transition-all disabled:opacity-50"
             >
-              Send
+              {sending ? "Sending…" : "Send"}
             </button>
           </div>
         </div>

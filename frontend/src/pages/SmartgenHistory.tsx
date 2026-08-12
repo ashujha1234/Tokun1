@@ -3,6 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import Header from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import HistoryPagination from "@/components/HistoryPagination";
 import { Loader2, Trash, Star, Copy } from "lucide-react";
 
 const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
@@ -50,7 +51,7 @@ function HistorySmartgenList() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState<boolean>(false);
 
-  const SMARTGEN_URLS = [`${base}/api/smartgen`, `${base}/api/smartgen/history`];
+  const SMARTGEN_URLS = [`${base}/api/smartgen`];
   const SMARTGEN_API = `${base}/api/smartgen`;
   const SMARTGEN_DELETE_ALL = `${base}/api/smartgen/user/all`;
 
@@ -62,8 +63,32 @@ function HistorySmartgenList() {
     return arr;
   }, [items, sortBy, favorites]);
 
+  /* ---------------- Pagination ---------------- */
+  const PER_PAGE = 10;
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(viewList.length / PER_PAGE));
+
+  // Deleting the last row on page 5, or switching to a filter with fewer
+  // results, must not strand the user on an empty page.
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  useEffect(() => { setPage(1); }, [sortBy]);
+
+  const pageList = useMemo(
+    () => viewList.slice((page - 1) * PER_PAGE, page * PER_PAGE),
+    [viewList, page]
+  );
+
+  const goToPage = (next: number) => {
+    setPage(Math.min(Math.max(1, next), totalPages));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // "Select all" applies to what's on screen, which is now one page.
   const allOnPageSelected =
-    viewList.length > 0 && viewList.every((it) => selected.has(it._id));
+    pageList.length > 0 && pageList.every((it) => selected.has(it._id));
 
   /* ---------------- Load history ---------------- */
   useEffect(() => {
@@ -147,7 +172,6 @@ function HistorySmartgenList() {
         toast({
           title: "Couldn’t load smartgen history",
           description: e?.message || "Try again",
-          variant: "destructive",
         });
       } finally {
         setLoading(false);
@@ -172,9 +196,9 @@ function HistorySmartgenList() {
   const selectAllToggle = () => {
     setSelected((prev) => {
       const n = new Set(prev);
-      const allSelected = viewList.length > 0 && viewList.every((it) => n.has(it._id));
-      if (allSelected) viewList.forEach((it) => n.delete(it._id));
-      else viewList.forEach((it) => n.add(it._id));
+      const allSelected = pageList.length > 0 && pageList.every((it) => n.has(it._id));
+      if (allSelected) pageList.forEach((it) => n.delete(it._id));
+      else pageList.forEach((it) => n.add(it._id));
       return n;
     });
   };
@@ -206,7 +230,6 @@ function HistorySmartgenList() {
         toast({
           title: "Delete failed",
           description: data?.error || `http_${res.status}`,
-          variant: "destructive",
         });
         return;
       }
@@ -222,7 +245,6 @@ function HistorySmartgenList() {
       toast({
         title: "Delete failed",
         description: err?.message || "Try again",
-        variant: "destructive",
       });
     } finally {
       setDeletingId(null);
@@ -246,7 +268,6 @@ function HistorySmartgenList() {
         toast({
           title: "Delete all failed",
           description: data?.error || `http_${res.status}`,
-          variant: "destructive",
         });
         return;
       }
@@ -258,7 +279,6 @@ function HistorySmartgenList() {
       toast({
         title: "Delete all failed",
         description: err?.message || "Try again",
-        variant: "destructive",
       });
     } finally {
       setBulkDeleting(false);
@@ -345,10 +365,13 @@ function HistorySmartgenList() {
 
       {/* List */}
       {loading && items.length === 0 ? (
-        <div className="text-white flex items-center gap-2">
+        // Centred, and given the same vertical room as the empty state below —
+        // it sat hard against the left margin while everything that replaces it
+        // is centred, so the page visibly jumped once loading finished.
+        <div className="flex items-center justify-center gap-2 py-16 text-white">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading…
         </div>
-      ) : viewList.length === 0 ? (
+      ) : pageList.length === 0 ? (
         <div className="text-center py-16">
           <img src="/icons/void.png" alt="" className="mx-auto mb-6 h-40 w-auto opacity-90" />
           <p className="text-white text-xl">No smartgen history</p>
@@ -356,7 +379,7 @@ function HistorySmartgenList() {
         </div>
       ) : (
         <ul className="flex flex-col items-center gap-4">
-          {viewList.map((it) => {
+          {pageList.map((it) => {
             const created = it.createdAt ? new Date(it.createdAt) : null;
             const isFav = favorites.has(it._id);
             const { title, body } = splitTitleBody(it.text);
@@ -440,6 +463,14 @@ function HistorySmartgenList() {
           })}
         </ul>
       )}
+
+      <HistoryPagination
+        page={page}
+        totalPages={totalPages}
+        totalItems={viewList.length}
+        perPage={PER_PAGE}
+        onPageChange={goToPage}
+      />
     </div>
   );
 }

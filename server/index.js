@@ -4383,13 +4383,26 @@ const adminEscrowRouter = require("./routes/adminEscrow");
 const adminPromptValidationRouter = require("./routes/adminPromptValidation");
 const adminNotificationsRouter = require("./routes/adminNotifications");
 const adminRefundsRouter = require("./routes/adminRefunds");
+const escrowCancellationRoutes = require("./routes/escrowCancellation");
+const myOrdersRoutes = require("./routes/myOrders");
+const briefAttachmentRoutes = require("./routes/briefAttachments");
+const progressReviewRoutes = require("./routes/progressReview");
+const reviewRoutes = require("./routes/reviews");
+const adminDisputesRouter = require("./routes/adminDisputes");
 const adminPlatformRevenueRouter = require("./routes/adminPlatformRevenue");
+/* Everything that moved through Razorpay, joined to Tokun's own commission
+   ledger, so reconciling a month doesn't mean reading two systems. */
+const adminPaymentsRouter = require("./routes/adminPayments");
 const activityRoutes = require("./routes/activityRoutes");
 const userAdminRoutes = require("./routes/userAdminRoutes");
 const adminOrgsRouter = require("./routes/adminOrgs");
 const walletRoutes = require("./routes/walletRoutes");
 const reportRoutes = require("./routes/report");
 const screenRecordingRoutes = require("./routes/screenRecording");
+
+// ✅ Become-a-Freelancer onboarding + its admin review queue
+const freelancerRoutes = require("./routes/freelancerRoutes");
+const adminFreelancersRouter = require("./routes/adminFreelancers");
 
 // ✅ New separate admin message route
 const adminMessageRoutes = require("./routes/adminMessageRoutes");
@@ -4404,6 +4417,18 @@ const smartgenDetectRoutes = require("./routes/smartgenDetectRoutes");
 
 require("./cron/autoReleaseEscrow");
 require("./cron/autoReleaseServiceEscrow");
+/* Razorpay stops holding a transfer at 90 days. This warns both parties (and
+   logs for admin) a week before a still-open booking hits that wall. */
+require("./cron/escrowDeadlineWatch");
+/* A revision nobody answers is the one state the auto-release cron can't see —
+   it only looks at WORK_SUBMITTED. This nudges at 7 days and refers it to an
+   admin at 14, so the money can't sit held until the 90-day wall. */
+require("./cron/stalledRevisionWatch");
+/* A hire proposal the freelancer never answers, or a booking the client never
+   pays for, would otherwise sit open forever. Closed after
+   REQUEST_RESPONSE_DAYS (3). Pre-payment states only — no money is ever moved
+   by this one. */
+require("./cron/staleRequestWatch");
 
 const app = express();
 
@@ -5153,10 +5178,36 @@ app.use("/api/admin/escrow", adminEscrowRouter);
 app.use("/api/admin/prompt-validation", adminPromptValidationRouter);
 app.use("/api/admin/notifications", adminNotificationsRouter);
 app.use("/api/admin/refunds", adminRefundsRouter);
+/* Cancelling a funded booking, and the split when the two sides can't agree.
+   One router for both hire deals and service bookings — the order kind is a
+   path param, because the money maths is identical for the two. */
+app.use("/api/escrow", escrowCancellationRoutes);
+/* One feed of everything the caller has bought and sold — prompts, service
+   bookings and hire deals — so the header's Orders button has a single place
+   to point at. */
+app.use("/api/my-orders", myOrdersRoutes);
+/* Reference material a client attaches to a brief — uploaded before the order
+   exists, then read back through the same private-blob gate deliverables use. */
+app.use("/api/brief", briefAttachmentRoutes);
+/* Mid-project checkpoints — the client asks to see progress, the freelancer
+   answers with a screenshot or recording. Doubles as dated evidence when a
+   cancellation turns into an argument about how much was done. */
+app.use("/api/progress-review", progressReviewRoutes);
+/* Reviews between the two sides of a finished booking — anchored to a real
+   paid transaction, one per booking per direction. */
+app.use("/api/reviews", reviewRoutes);
+app.use("/api/admin/disputes", adminDisputesRouter);
 app.use("/api/admin/platform-revenue", adminPlatformRevenueRouter);
+app.use("/api/admin/payments", adminPaymentsRouter);
 app.use("/api/admin/orgs", adminOrgsRouter);
 app.use("/api/report", reportRoutes);
 app.use("/api/screen-recording", screenRecordingRoutes);
+
+/* Become-a-Freelancer. The admin queue is mounted on its own path rather than
+   under adminRoutes because it authenticates as an admin token (req.isAdmin),
+   matching the other /api/admin/* routers above. */
+app.use("/api/freelancer", freelancerRoutes);
+app.use("/api/admin/freelancers", adminFreelancersRouter);
 
 // ✅ Separate Admin Message APIs
 app.use("/api/admin-message", adminMessageRoutes);
@@ -5298,6 +5349,23 @@ const {
   onlineFrom,
 } = require("./utils/presence");
 
+/**
+ * Tell each recipient a chat message arrived, on their personal room.
+ *
+ * "new-message" goes to the conversation room, which a client only joins while
+ * that thread is open — useless for a header badge on any other page. This lands
+ * wherever the user has the app open.
+ */
+function notifyRecipients(recipientIds, payload) {
+  (recipientIds || []).forEach((id) => {
+    io.to(String(id)).emit("chat:notify", payload);
+  });
+}
+
+// So HTTP routes (e.g. the chat attachment upload) can broadcast the same way
+// the socket handlers do.
+app.set("notifyChatRecipients", notifyRecipients);
+
 // --- REAL-TIME SOCKET LOGIC ---
 io.on("connection", (socket) => {
 
@@ -5387,7 +5455,7 @@ io.on("connection", (socket) => {
     socket.join(String(conversationId));
   });
 
-  socket.on("send-message", async ({ conversationId, senderId, text }) => {
+  socket.on("send-message", async ({ conversationId, senderId, text, clientId }) => {
     try {
       if (!conversationId || !senderId || !String(text || "").trim()) return;
 
@@ -5408,11 +5476,13 @@ io.on("connection", (socket) => {
       // connected right now. This is what turns one tick into two: "stored" vs
       // "actually reached the other person's client".
       let deliveredTo = [];
+      let recipients = [];
       try {
         const convo = await Conversation.findById(conversationId).select("participants").lean();
-        deliveredTo = (convo?.participants || [])
+        recipients = (convo?.participants || [])
           .map(String)
-          .filter((p) => p !== String(senderId) && isUserOnline(p));
+          .filter((p) => p !== String(senderId));
+        deliveredTo = recipients.filter((p) => isUserOnline(p));
 
         if (deliveredTo.length) {
           await Message.updateOne(
@@ -5429,11 +5499,23 @@ io.on("connection", (socket) => {
       io.to(String(conversationId)).emit("new-message", {
         _id: message._id,
         conversationId,
+        // Echoed back untouched so the sender can swap its optimistic row for
+        // the stored message instead of rendering both.
+        clientId: clientId || null,
         sender: senderId,
         text,
         createdAt: message.createdAt,
         deliveredTo,
         readBy: [String(senderId)],
+      });
+
+      // The room above only contains people with this thread open, so it can't
+      // drive an app-wide unread badge. Each recipient's personal room can.
+      notifyRecipients(recipients, {
+        conversationId: String(conversationId),
+        messageId: String(message._id),
+        senderId: String(senderId),
+        preview: String(text).slice(0, 140),
       });
 
       // ✅ REVERSE-MIRROR: agar ye "Tokun Admin" wala conversation hai,
@@ -5487,81 +5569,12 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("message:edit", async ({ messageId, userId: editorId, text } = {}) => {
-    try {
-      const clean = String(text || "").trim();
-      if (!messageId || !editorId || !clean) return;
-
-      const message = await Message.findById(messageId);
-      if (!message) return;
-
-      // Only the author may edit, and never a deleted message. Enforced here
-      // rather than in the UI — the client can't be trusted with either rule.
-      if (String(message.sender) !== String(editorId) || message.deleted) {
-        return socket.emit("message-error", { success: false, error: "not_allowed" });
-      }
-      if (message.text === clean) return;
-
-      // Keep the first version only; editing twice shouldn't lose the original.
-      if (!message.originalText) message.originalText = message.text;
-      message.text = clean;
-      message.editedAt = new Date();
-      await message.save();
-
-      // Keep the conversation preview honest if this was the latest message.
-      const convo = await Conversation.findById(message.conversationId).select("lastMessage lastSender");
-      if (convo && String(convo.lastSender) === String(editorId)) {
-        await Conversation.updateOne({ _id: message.conversationId }, { lastMessage: clean });
-      }
-
-      io.to(String(message.conversationId)).emit("message:edited", {
-        _id: String(message._id),
-        conversationId: String(message.conversationId),
-        text: clean,
-        editedAt: message.editedAt.toISOString(),
-      });
-    } catch (err) {
-      console.error("Socket message:edit error:", err);
-    }
-  });
-
-  socket.on("message:delete", async ({ messageId, userId: deleterId } = {}) => {
-    try {
-      if (!messageId || !deleterId) return;
-
-      const message = await Message.findById(messageId);
-      if (!message) return;
-      if (String(message.sender) !== String(deleterId)) {
-        return socket.emit("message-error", { success: false, error: "not_allowed" });
-      }
-      if (message.deleted) return;
-
-      // Soft delete, but the text is genuinely cleared — hiding it client-side
-      // would leave the content sitting in the database and in any payload the
-      // other participant could inspect.
-      message.deleted = true;
-      message.deletedAt = new Date();
-      message.text = "";
-      message.attachment = undefined;
-      await message.save();
-
-      const convo = await Conversation.findById(message.conversationId).select("lastMessage lastSender");
-      if (convo && String(convo.lastSender) === String(deleterId)) {
-        await Conversation.updateOne(
-          { _id: message.conversationId },
-          { lastMessage: "This message was deleted" }
-        );
-      }
-
-      io.to(String(message.conversationId)).emit("message:deleted", {
-        _id: String(message._id),
-        conversationId: String(message.conversationId),
-        deletedAt: message.deletedAt.toISOString(),
-      });
-    } catch (err) {
-      console.error("Socket message:delete error:", err);
-    }
-  });
+  // Message edit / delete were removed from the product: the chat UI no longer
+  // offers either action, so the `message:edit` / `message:delete` socket
+  // handlers are gone too — leaving them live would let a hand-crafted socket
+  // event mutate history the UI says is immutable. Inbound `message:edited` /
+  // `message:deleted` rendering stays on the client so rows changed before this
+  // still display correctly.
 
   /* ===============================
      CALL SOCKETS

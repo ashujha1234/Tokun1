@@ -3,6 +3,7 @@ const path = require("path");
 const transporter = require("../utils/mailer");
 const { getPrivacyPolicyPDF } = require("./privacyPolicyPdf.service");
 const { PLAN_CARD_CONTENT, PLAN_GRADIENTS } = require("../config/planCardContent");
+const { getInvoiceCopy } = require("../config/invoiceCopy");
 
 function escapeHtml(str) {
   return String(str ?? "")
@@ -12,14 +13,34 @@ function escapeHtml(str) {
 }
 
 // The intro line every invoice email opens with — makes it unambiguous what
-// the email/attached PDF is for, subscription or a regular purchase.
-function buildIntroText(planCard) {
+// the email/attached PDF is for: a subscription, a prompt, a booked service or
+// a funded project. Copy comes from config/invoiceCopy.js, the same source the
+// PDF reads, so the email body and its own attachment can never say different
+// things about one payment.
+function buildIntroText(planCard, kind) {
   if (planCard) {
     const planKey = String(planCard.plan || "pro").toLowerCase();
     const content = PLAN_CARD_CONTENT[planKey] || PLAN_CARD_CONTENT.pro;
     return `This is your invoice for your Tokun ${escapeHtml(content.title)} subscription — thank you for subscribing!`;
   }
-  return "This is your invoice for your recent purchase from Tokun.World.";
+  return escapeHtml(getInvoiceCopy(kind).intro);
+}
+
+/* Escrow is the thing buyers most often misunderstand — "I paid, so why hasn't
+   the freelancer been paid yet?" — so the answer goes on the receipt they'll
+   still have months from now. Empty for prompts-with-no-note and subscriptions,
+   in which case nothing renders. */
+function buildInvoiceNoteHtml(planCard, kind) {
+  if (planCard) return "";
+  const note = getInvoiceCopy(kind).note;
+  if (!note) return "";
+
+  return `
+    <tr><td style="padding:18px 0 0">
+      <div style="border-radius:10px;background:rgba(255,255,255,0.04);border:1px solid #222222;padding:14px 16px;font-size:12px;line-height:19px;color:rgba(255,255,255,0.55)">
+        ${escapeHtml(note)}
+      </div>
+    </td></tr>`;
 }
 
 // Same content/gradient the invoice PDF draws — kept identical so the email
@@ -88,6 +109,9 @@ exports.sendInvoiceEmail = async ({
   total,
   pdfBuffer,
   planCard,
+  // "prompt" | "service" | "hire" — decides the intro line and the escrow /
+  // refund note. Omitted falls back to the generic wording.
+  kind,
 }) => {
   const templatePath = path.join(
     __dirname,
@@ -112,7 +136,8 @@ exports.sendInvoiceEmail = async ({
     .join("");
 
   const planCardHtml = buildPlanCardHtml(planCard);
-  const introText = buildIntroText(planCard);
+  const introText = buildIntroText(planCard, kind);
+  const invoiceNoteHtml = buildInvoiceNoteHtml(planCard, kind);
 
   // 🔁 Replace placeholders
   html = html
@@ -121,6 +146,7 @@ exports.sendInvoiceEmail = async ({
     .replace(/{{BUYER_NAME}}/g, escapeHtml(buyerName))
     .replace(/{{BUYER_EMAIL}}/g, escapeHtml(buyerEmail))
     .replace(/{{INTRO_TEXT}}/g, introText)
+    .replace(/{{INVOICE_NOTE_HTML}}/g, invoiceNoteHtml)
     .replace(/{{PLAN_CARD_HTML}}/g, planCardHtml)
     .replace(/{{ITEMS_ROWS}}/g, itemsRows)
     .replace(/{{SUBTOTAL}}/g, subtotal)

@@ -2,7 +2,7 @@
 
 
 // // src/components/Header.tsx
-// import { useMemo, useState,useEffect ,useRef} from "react";
+// import { useMemo, useState,useEffect ,useRef, useCallback} from "react";
 // import { useLocation, useNavigate } from "react-router-dom";
 // import { Button } from "@/components/ui/button";
 // import { socket } from "@/lib/socket";
@@ -240,8 +240,7 @@
 //     toast({
 //       title: "Please log in",
 //       description: "You must be logged in to upload prompts.",
-//       variant: "destructive",
-//     });
+//       //     });
 //     navigate("/login");
 //     return;
 //   }
@@ -619,7 +618,7 @@
 //     toast({ title: "Default bank updated", description: "This account is now default." });
 //   } catch (err: any) {
 //     console.error("[BankSetDefault] ❌ FAILED:", err?.message || err);
-//     toast({ title: "Failed to set default", description: err?.message || "Try again.", variant: "destructive" });
+//     toast({ title: "Failed to set default", description: err?.message || "Try again." });
 //   } finally {
 //     console.groupEnd();
 //   }
@@ -699,8 +698,7 @@
 // //     toast({
 // //       title: "Unauthorized",
 // //       description: "Please login first.",
-// //       variant: "destructive",
-// //     });
+// //       // //     });
 // //     return;
 // //   }
 
@@ -837,8 +835,7 @@
 // //     toast({
 // //       title: "Checkout failed",
 // //       description: err?.message || "Something went wrong.",
-// //       variant: "destructive",
-// //     });
+// //       // //     });
 // //     console.groupEnd();
 // //   }
 // // };
@@ -852,8 +849,7 @@
 //     toast({
 //       title: "Unauthorized",
 //       description: "Please login first.",
-//       variant: "destructive",
-//     });
+//       //     });
 //     return;
 //   }
 
@@ -988,8 +984,7 @@
 //     toast({
 //       title: "Checkout failed",
 //       description: err?.message || "Something went wrong.",
-//       variant: "destructive",
-//     });
+//       //     });
 //     console.groupEnd();
 //   }
 // };
@@ -1000,8 +995,7 @@
 //     toast({
 //       title: "Please log in",
 //       description: "You must be logged in to checkout.",
-//       variant: "destructive",
-//     });
+//       //     });
 //     navigate("/login");
 //     return;
 //   }
@@ -2574,7 +2568,7 @@
 
 
 // src/components/Header.tsx
-import { useMemo, useState,useEffect ,useRef} from "react";
+import { useMemo, useState,useEffect ,useRef, useCallback} from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { socket } from "@/lib/socket";
@@ -2598,11 +2592,15 @@ import { useCart } from "@/contexts/CartContext";
  import { Zap } from "lucide-react";
 import { Crown } from "lucide-react";
 import { MessageCircle } from "lucide-react";
-import { Users, ReceiptText } from "lucide-react";
+import { Users, ReceiptText, Briefcase, Package } from "lucide-react";
 import { LuBadgeCheck } from "react-icons/lu";
-import KycGateModal from "@/components/KycGateModal";
+// Shared with Landing.tsx's HeroAccountMenu, which is a second copy of this
+// dropdown — the hook keeps the freelancer entry identical in both.
+import { useFreelancerMenu } from "@/hooks/useFreelancerMenu";
 import SellerLinkedAccountForm from "@/components/SellerLinkedAccountForm";
+import { primeSellerData, peekPayoutStatus, getPayoutStatus } from "@/lib/sellerPrefetch";
 import { isTeamMember, canManageTeam, TEAM_MEMBER_SELL_TOAST } from "@/lib/orgRoles";
+import { userInitials, userAvatarUrl } from "@/lib/userInitials";
 // import { useAuth } from "@/contexts/AuthContext";
 // import { toast } from "@/components/ui/use-toast";
 
@@ -2624,6 +2622,12 @@ const HEADER_NOTIF_TYPE_LABELS: Record<string, string> = {
 const Header = () => {
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Owns the freelancer menu row plus the onboarding wizard and payout dialog.
+  // `freelancerMenu.modals` is rendered near the end of this component, NOT
+  // inside the dropdown — the dropdown unmounts its contents when it closes,
+  // which would take the wizard down with it.
+  const freelancerMenu = useFreelancerMenu();
 const CHAT_BADGE_KEY = "tokun_chat_badge_count";
 
 const getStoredChatBadge = () => {
@@ -2668,8 +2672,6 @@ const userPlanColor =
   message: string;
 } | null>(null);
 
-  const [kycOpen, setKycOpen] = useState(false);
-const [pendingCheckout, setPendingCheckout] = useState(false);
 const [sellerFormOpen, setSellerFormOpen] = useState(false);
 const [hideHeader, setHideHeader] = useState(false);
 // useEffect(() => {
@@ -2712,6 +2714,19 @@ useEffect(() => {
     if (displayEmail) return displayEmail.split("@")[0];
     return "User";
   }, [displayName, displayEmail]);
+
+  // What the account button shows instead of the name.
+  const initials = useMemo(
+    () => userInitials(user?.name, user?.email),
+    [user?.name, user?.email]
+  );
+  const [avatarBroken, setAvatarBroken] = useState(false);
+  const rawAvatarUrl = userAvatarUrl(user as any);
+  const avatarUrl = avatarBroken ? null : rawAvatarUrl;
+  // A new upload deserves a fresh attempt even if the previous URL 404'd.
+  useEffect(() => {
+    setAvatarBroken(false);
+  }, [rawAvatarUrl]);
 
   // Nav helpers
   const handleBrandClick = () => navigate(user ? "/app" : "/");
@@ -2803,47 +2818,13 @@ const goToWallet = () => {
 };
 
 
-const ensureKycVerified = async () => {
-  if (!token) return false;
-
-  try {
-   const res = await fetch(`${API_BASE}/api/kyc/status`, {
-      headers: { Authorization: `Bearer ${token}` },
-      credentials: "include",
-    });
-
-    const data = await res.json().catch(() => ({}));
-    const s = data?.kycStatus || data?.status;
-
-    if (s === "VERIFIED") return true;
-
-    setKycOpen(true);
-    return false;
-  } catch {
-    setKycOpen(true);
-    return false;
-  }
-};
-
-const handleChatClick = async () => {
-  setUnreadChats(0);
-  setStoredChatBadge(0);
-
+// Opening the chat page is NOT the same as reading every thread. This used to
+// fire /conversations/read-all, which marked every message in every
+// conversation as read — so senders saw blue double ticks for messages nobody
+// had opened. Each thread now marks itself read when it's actually opened, and
+// the badge just reflects the server's unread count.
+const handleChatClick = () => {
   navigate("/chat");
-
-  if (!token) return;
-
-  try {
-    await fetch(`${API_BASE}/api/chat/conversations/read-all`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      credentials: "include",
-    });
-
-    window.dispatchEvent(new CustomEvent("chat-read"));
-  } catch (err) {
-    console.error("Chat badge clear failed", err);
-  }
 };
 
 // const handlePostPrompt = async () => {
@@ -2851,8 +2832,7 @@ const handleChatClick = async () => {
 //     toast({
 //       title: "Please log in",
 //       description: "You must be logged in to upload prompts.",
-//       variant: "destructive",
-//     });
+//       //     });
 //     navigate("/login");
 //     return;
 //   }
@@ -2866,12 +2846,27 @@ const handleChatClick = async () => {
 //   setSellOpen(true);
 // };
 
-const handlePostPrompt = async () => {
+// Warm the payout status, the Razorpay business categories and the prompt
+// categories as soon as we know who the user is. All three used to be fetched
+// only after the Upload click, in series, which is why the button sat there
+// doing nothing for a round-trip or two.
+useEffect(() => {
+  if (!token || isTeamMember(user)) return;
+  primeSellerData(API_BASE, token);
+}, [token, user]);
+
+// Second chance to warm the cache for anyone who lands on the button before
+// the mount prefetch finished — pointing at it is already a strong signal.
+const warmSellerData = () => {
+  if (!token || isTeamMember(user)) return;
+  primeSellerData(API_BASE, token);
+};
+
+const handlePostPrompt = () => {
   if (!token) {
     toast({
       title: "Please log in",
       description: "You must be logged in to upload prompts.",
-      variant: "destructive",
     });
     navigate("/login");
     return;
@@ -2882,6 +2877,20 @@ const handlePostPrompt = async () => {
   // onboarding screen for an account they'd have no use for.
   if (isTeamMember(user)) {
     toast(TEAM_MEMBER_SELL_TOAST);
+    return;
+  }
+
+  // Read synchronously, not with await: even an already-resolved promise costs
+  // a tick, and the whole point is that the modal is up in the same frame as
+  // the click. Null means the prefetch hasn't landed yet — the payout form
+  // handles that case itself and awaits the same cached request.
+  const status = peekPayoutStatus(token);
+  if (status?.ok && status.canSell !== false && status.hasPayoutSetup) {
+    setSellOpen(true);
+    // Revalidate behind the open modal. The snapshot could be minutes old and
+    // the account suspended since; this costs the user nothing and means the
+    // next click is right even if this one raced.
+    void getPayoutStatus(API_BASE, token, { force: true });
     return;
   }
 
@@ -3259,7 +3268,7 @@ const setDefaultBankAccount = async (accountId: string): Promise<void> => {
     toast({ title: "Default bank updated", description: "This account is now default." });
   } catch (err: any) {
     console.error("[BankSetDefault] ❌ FAILED:", err?.message || err);
-    toast({ title: "Failed to set default", description: err?.message || "Try again.", variant: "destructive" });
+    toast({ title: "Failed to set default", description: err?.message || "Try again." });
   } finally {
     console.groupEnd();
   }
@@ -3330,6 +3339,42 @@ const unreadCount = useMemo(() => notifs.filter(n => !n.read).length, [notifs]);
 const goToNotifications = () => navigate("/notifications");
 const markAllRead = () => setNotifs(prev => prev.map(n => ({ ...n, read: true })));
 
+/* Orders — how many of the user's own transactions are waiting on THEM.
+   Only the count is fetched here; the page itself does the full load. Both
+   sides of the marketplace need this: a client who just paid wants to see what
+   they bought, and a creator wants to see what they've been hired for without
+   digging four clicks into Service Bookings. */
+const [ordersNeedingAction, setOrdersNeedingAction] = useState(0);
+
+useEffect(() => {
+  if (!token) {
+    setOrdersNeedingAction(0);
+    return;
+  }
+
+  let cancelled = false;
+  const loadOrderCount = () => {
+    fetch(`${API_BASE}/api/my-orders`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled && d?.success) setOrdersNeedingAction(d.counts?.needsAction || 0);
+      })
+      .catch(() => {
+        // A failed badge count is not worth telling the user about — the
+        // button still works, it just won't show a dot.
+      });
+  };
+
+  loadOrderCount();
+  // Same cadence as the notification poll below; an order moving to
+  // "needs your review" isn't urgent enough to warrant anything tighter.
+  const interval = setInterval(loadOrderCount, 60000);
+  return () => {
+    cancelled = true;
+    clearInterval(interval);
+  };
+}, [token]);
+
 
 // const { token } = useAuth();
 
@@ -3339,8 +3384,7 @@ const markAllRead = () => setNotifs(prev => prev.map(n => ({ ...n, read: true })
 //     toast({
 //       title: "Unauthorized",
 //       description: "Please login first.",
-//       variant: "destructive",
-//     });
+//       //     });
 //     return;
 //   }
 
@@ -3477,8 +3521,7 @@ const markAllRead = () => setNotifs(prev => prev.map(n => ({ ...n, read: true })
 //     toast({
 //       title: "Checkout failed",
 //       description: err?.message || "Something went wrong.",
-//       variant: "destructive",
-//     });
+//       //     });
 //     console.groupEnd();
 //   }
 // };
@@ -3492,7 +3535,6 @@ const doCheckout = async () => {
     toast({
       title: "Unauthorized",
       description: "Please login first.",
-      variant: "destructive",
     });
     return;
   }
@@ -3633,7 +3675,6 @@ fetchCart();
     toast({
       title: "Checkout failed",
       description: err?.message || "Something went wrong.",
-      variant: "destructive",
     });
     console.groupEnd();
   }
@@ -3645,24 +3686,21 @@ const handleCheckout = async () => {
     toast({
       title: "Please log in",
       description: "You must be logged in to checkout.",
-      variant: "destructive",
     });
     navigate("/login");
     return;
   }
 
-  // ✅ Cart pehle band karo — warna KYC modal uske neeche dab jaata hai
   setCartOpen(false);
 
-  // Thoda wait karo taaki cart close animation complete ho
+  // Let the cart's close animation finish before checkout takes over.
   await new Promise((res) => setTimeout(res, 150));
 
-  const ok = await ensureKycVerified();
-  if (!ok) {
-    setPendingCheckout(true);
-    return;
-  }
-
+  // The identity-KYC gate that used to sit here is gone. It belonged to the old
+  // pre-Route flow where buyers had to be KYC-verified before paying; selling is
+  // now gated on a Razorpay Route linked account instead (see
+  // SellerLinkedAccountForm), and buying was never meant to require identity
+  // verification at all. It was still blocking checkout for every buyer.
   await doCheckout();
 };
 
@@ -3754,31 +3792,93 @@ useEffect(() => {
 
 // Header.tsx me existing useEffect ke andar add karo
 
-useEffect(() => {
-  if (location.pathname === "/chat") {
-    setUnreadChats(0);
-    setStoredChatBadge(0);
-  } else {
-    setUnreadChats(getStoredChatBadge());
+/* ── Chat badge ──────────────────────────────────────────────────────────
+   The count comes from the server (sum of per-conversation unreadCount), not
+   from a local tally. The old version incremented on the "new-message" socket
+   event, which is emitted only into the conversation's room — a room you are
+   only in while that thread is open on the chat page. So off the chat page,
+   where the badge actually matters, it never moved. `chat:notify` is emitted
+   to each recipient's personal room instead, so it arrives anywhere in the app.
+   localStorage is kept purely as a first-paint cache so the number doesn't
+   flash 0 before the fetch lands. */
+const refreshChatBadge = useCallback(async () => {
+  if (!token) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/chat/conversations`, {
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!data?.success || !Array.isArray(data.conversations)) return;
+    const total = data.conversations.reduce(
+      (sum: number, c: any) => sum + (Number(c?.unreadCount) || 0),
+      0
+    );
+    setUnreadChats(total);
+    setStoredChatBadge(total);
+  } catch (err) {
+    console.error("Chat badge refresh failed", err);
   }
-}, [location.pathname]);
+}, [token]);
+
+useEffect(() => {
+  refreshChatBadge();
+}, [refreshChatBadge, location.pathname]);
+
+/* ── Header background ───────────────────────────────────────────────────
+   Transparent at the very top so the hero (video on the marketplace, artwork
+   elsewhere) reads as full-bleed, then a blurred dark bar once you scroll.
+   The header is sticky with no background at all today, so past the hero the
+   nav sits straight on top of cards and body copy — white text on whatever
+   happens to scroll under it. */
+const [scrolled, setScrolled] = useState(false);
+useEffect(() => {
+  // Separate on/off thresholds. With a single line, a scroll that hovers around
+  // it flips the state every frame and the bar strobes — that was part of the
+  // shake on the SmartGen and optimiser pages. The gap between them is the
+  // dead zone.
+  const SHOW_AT = 80;
+  const HIDE_AT = 40;
+
+  let frame = 0;
+  // Mirrors `scrolled` outside React so the rAF callback can compare against
+  // the current value without the effect depending on it (which would tear the
+  // listener down and rebuild it on every toggle).
+  let visible = false;
+
+  const measure = () => {
+    frame = 0;
+    const y = window.scrollY || document.documentElement.scrollTop || 0;
+    const next = visible ? y > HIDE_AT : y > SHOW_AT;
+    // Scroll fires far more often than the screen refreshes, and almost every
+    // one of those reads the same answer. Only touching state on an actual
+    // change keeps React out of the scroll path entirely.
+    if (next !== visible) {
+      visible = next;
+      setScrolled(next);
+    }
+  };
+
+  // Coalesce a burst of scroll events into one read per frame.
+  const onScroll = () => {
+    if (!frame) frame = requestAnimationFrame(measure);
+  };
+
+  measure(); // a reload part-way down the page must not start transparent
+  window.addEventListener("scroll", onScroll, { passive: true });
+  return () => {
+    window.removeEventListener("scroll", onScroll);
+    if (frame) cancelAnimationFrame(frame);
+  };
+}, []);
 
 useEffect(() => {
   const myId = user?._id || user?.id;
 
-  const handleIncomingMessage = (msg: any) => {
-    if (!msg) return;
-
-    // apne khud ke bheje hue messages count mat karo
-    if (String(msg.sender) === String(myId)) return;
-
-    // agar user chat page par hai to badge 0 hi rahe
-    if (location.pathname === "/chat") {
-      setUnreadChats(0);
-      setStoredChatBadge(0);
-      return;
-    }
-
+  const handleNotify = (payload: any) => {
+    // Own messages never count — the server already excludes the sender, this
+    // is just belt-and-braces for a mirrored/echoed payload.
+    if (payload && String(payload.senderId) === String(myId)) return;
     setUnreadChats((prev) => {
       const next = prev + 1;
       setStoredChatBadge(next);
@@ -3786,29 +3886,41 @@ useEffect(() => {
     });
   };
 
-  const handleChatRead = () => {
-    setUnreadChats(0);
-    setStoredChatBadge(0);
-  };
+  // A thread was read somewhere in the app — re-ask the server rather than
+  // assuming everything is now zero.
+  const handleChatRead = () => { refreshChatBadge(); };
 
-  socket.on("new-message", handleIncomingMessage);
+  socket.on("chat:notify", handleNotify);
   window.addEventListener("chat-read", handleChatRead);
 
   return () => {
-    socket.off("new-message", handleIncomingMessage);
+    socket.off("chat:notify", handleNotify);
     window.removeEventListener("chat-read", handleChatRead);
   };
-}, [location.pathname, user?._id, user?.id]);
+}, [user?._id, user?.id, refreshChatBadge]);
 
   return (
     <>
     
 <header
-  className="sticky top-0 left-0 right-0 z-50 flex justify-center pointer-events-none"
+  className={`site-header sticky top-0 left-0 right-0 z-50 flex justify-center pointer-events-none${
+    scrolled ? " site-header--scrolled" : ""
+  }`}
 >
+  {/* Decorative only — the nav content is a sibling, so nothing here ever sits
+      between a logo and the pointer. Styles live in index.css so the panel and
+      the nav row can share one width, and the blur radii can drop on small
+      screens without duplicating them in JS. */}
+  <div aria-hidden className="site-header__bg">
+    <span className="site-header__glow" />
+  </div>
 
-
-  <div className="pointer-events-auto w-full max-w-[1180px] text-white px-4 sm:px-6 py-2 flex items-center justify-between">
+  {/* max-width is set in CSS, not here: it shrinks on scroll in step with the
+      panel behind it, and one declaration owning both keeps them from drifting
+      apart mid-transition.
+      z-10 keeps the logo and icons above the panel and, being a separate
+      layer, they never inherit its blur. */}
+  <div className="site-header__inner pointer-events-auto relative z-10 w-full text-white px-4 sm:px-6 py-2 flex items-center justify-between">
   
         {/* Brand */}
         
@@ -3816,18 +3928,19 @@ useEffect(() => {
  <button
     type="button"
     onClick={handleBrandClick}
-    className="flex items-center gap-2 sm:gap-3 min-w-0 group shrink-0"
+    className="site-header__brand flex items-center gap-2 sm:gap-3 min-w-0 group shrink-0"
     aria-label="Go to home"
   >
+   {/* Height is in CSS, not Tailwind classes: it condenses on scroll along
+       with the panel, and the responsive ladder has to live in one place for
+       the two to stay in step. The logo is the tallest thing in this row, so
+       it alone decides the bar's height — which is why the icons had so much
+       air above and below them once the panel appeared. */}
    <img
   src="/icons/Tokun.png"
   alt="Tokun.world Logo"
   className="
-    h-12
-    sm:h-14
-    md:h-16
-    lg:h-20
-    xl:h-24
+    site-header__logo
     w-auto
     max-w-none
     object-contain
@@ -3846,7 +3959,7 @@ useEffect(() => {
         
 
         {/* Actions (Get Pro removed) */}
-         <div className="flex items-center gap-1 sm:gap-2 md:gap-3 flex-nowrap shrink-0">
+         <div className="site-header__actions flex items-center gap-1 sm:gap-2 md:gap-3 flex-nowrap shrink-0">
       
   {/* 🔔 HEADER TOAST */}
   {/* 🔔 HEADER TOAST */}
@@ -3891,7 +4004,9 @@ useEffect(() => {
     className="relative flex items-center justify-center rounded-md p-2 hover:bg-white/10 transition"
     title="Saved"
   >
-    <img src="/icons/cop.png" alt="" className="w-4 h-4 sm:w-5 sm:h-5" />
+    {/* Sized down to sit level with the lucide icons either side of it — as a
+        raster mark it read a size larger than them at the same box. */}
+    <img src="/icons/cop.png" alt="" className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
   </button>
 </div>
 
@@ -3915,6 +4030,30 @@ useEffect(() => {
      <span className="hidden md:inline text-sm text-white">Team</span>
    </button>
  )}
+
+ {/* ORDERS — everything bought and sold, both sides of the marketplace.
+     Sits in the top-level action row on purpose: a client who has just paid
+     for something needs one obvious place to see what they paid for, and a
+     creator needs the same for what they've been hired to do. Previously both
+     were buried — prompt purchases under a dashboard tab, service bookings
+     four clicks inside Service Bookings, hire deals only inside their chat. */}
+ <button
+   type="button"
+   onClick={() => navigate("/orders")}
+   title="Orders — what you've bought and sold"
+   aria-label="Orders"
+   className="relative flex items-center gap-1.5 rounded-full px-2 py-2 sm:px-3 hover:bg-white/10 transition"
+ >
+   <Package className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+   {/* Label hidden on the narrowest screens so the action row still fits. */}
+   <span className="hidden md:inline text-sm text-white">Orders</span>
+
+   {ordersNeedingAction > 0 && (
+     <span className="absolute -top-1 -right-1 bg-[#C084FC] text-white text-[10px] sm:text-xs w-4 h-4 sm:w-5 sm:h-5 grid place-items-center rounded-full">
+       {ordersNeedingAction > 9 ? "9+" : ordersNeedingAction}
+     </span>
+   )}
+ </button>
 
  {/* CHAT */}
     <button
@@ -4053,6 +4192,8 @@ useEffect(() => {
           <button
       type="button"
       onClick={handlePostPrompt}
+      onMouseEnter={warmSellerData}
+      onFocus={warmSellerData}
       className="hidden sm:inline-flex items-center gap-2 px-3 h-9 rounded-full text-black font-medium whitespace-nowrap"
       style={{ background: "#D9D9D9" }}
     >
@@ -4065,6 +4206,7 @@ useEffect(() => {
     {/* MOBILE UPLOAD BUTTON */}
     <button
       onClick={handlePostPrompt}
+      onTouchStart={warmSellerData}
       className="sm:hidden grid place-items-center w-9 h-9 rounded-full"
       style={{
         background: "linear-gradient(270deg,#FF14EF 0%,#1A73E8 100%)"
@@ -4087,16 +4229,40 @@ useEffect(() => {
     className="group inline-flex items-center gap-2 px-2 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#2C2C2C] text-white whitespace-nowrap"
   >
 
-    {/* NAME + PLAN → hidden on mobile */}
+    {/* Avatar stands in for "Hello, <full name>", which pushed the header wide
+        enough to crowd everything left of it — and grew with the name. Uploaded
+        picture if there is one, initials if not. */}
+    <span
+      aria-hidden="true"
+      className="shrink-0 grid place-items-center w-7 h-7 rounded-full overflow-hidden bg-[#3A3A3A] text-white text-[11px] font-semibold leading-none select-none"
+      style={
+        user?.plan === "pro"
+          ? { boxShadow: "0 0 0 1.5px #FF14EF" }
+          : user?.plan === "enterprise"
+          ? { boxShadow: "0 0 0 1.5px #FACC15" }
+          : undefined
+      }
+    >
+      {avatarUrl ? (
+        <img
+          src={avatarUrl}
+          alt=""
+          className="w-full h-full object-cover"
+          // A broken/expired blob URL would otherwise leave an empty circle
+          // with no hint of who is signed in.
+          onError={() => setAvatarBroken(true)}
+        />
+      ) : (
+        initials
+      )}
+    </span>
+
+    {/* PLAN → hidden on mobile */}
     <div className="hidden sm:flex items-center gap-2">
 
       {/* PRO PLAN */}
       {user?.plan === "pro" && (
         <>
-          <span className="truncate font-semibold bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] text-transparent bg-clip-text">
-            Hello, {fullName}
-          </span>
-
           <LuBadgeCheck
             className="w-[22px] h-[22px]"
             style={{
@@ -4120,10 +4286,6 @@ useEffect(() => {
       {/* ENTERPRISE PLAN */}
       {user?.plan === "enterprise" && (
         <>
-          <span className="truncate font-semibold bg-gradient-to-r from-[#FACC15] to-[#CA8A04] text-transparent bg-clip-text">
-            Hello, {fullName}
-          </span>
-
           <LuBadgeCheck
             className="w-[22px] h-[22px]"
             style={{
@@ -4146,15 +4308,9 @@ useEffect(() => {
 
       {/* FREE PLAN */}
       {(!user?.plan || user?.plan === "free") && (
-        <>
-          <span className="truncate font-semibold text-white">
-            Hello, {fullName}
-          </span>
-
-          <span className="px-2 py-0.5 text-xs rounded-md bg-gray-700 text-gray-300">
-            FREE
-          </span>
-        </>
+        <span className="px-2 py-0.5 text-xs rounded-md bg-gray-700 text-gray-300">
+          FREE
+        </span>
       )}
 
     </div>
@@ -4196,7 +4352,20 @@ useEffect(() => {
 
     {/* Primary items — with icons */}
     {[
-      { label: "Set up profile", icon: User,            onClick: goToMyProfile },
+      // "Set up profile" read like an unfinished chore even for someone whose
+      // profile was long since complete. This is simply where your account
+      // lives — public profile, freelancer sections and all.
+      { label: "My Account", icon: User, onClick: goToMyProfile },
+
+      // Only while there's something to DO. "Become a Freelancer" and "Finish
+      // freelancer profile" are actions; "My freelancer profile" was not — once
+      // the profile is ACTIVE it renders inside My Account and is edited there,
+      // so a second entry pointing at the same place just made the menu look
+      // like it had two profiles in it.
+      ...(freelancerMenu.status === "ACTIVE"
+        ? []
+        : [{ label: freelancerMenu.label, icon: Briefcase, onClick: freelancerMenu.open }]),
+
       { label: "My Wallet",      icon: Wallet,          onClick: goToWallet },
       { label: "Dashboard",      icon: LayoutDashboard, onClick: () => navigate("/self-dash") },
       { label: "My Feedback",    icon: MessageCircle,   onClick: () => navigate("/my-feedback") },
@@ -4533,44 +4702,58 @@ useEffect(() => {
       {/* Footer */}
  {cart.length > 0 && (
   <div className="flex-shrink-0 border-t border-black/10 p-6 space-y-3">
-    <div className="space-y-2 text-sm text-white">
-      <div className="flex justify-between">
-        <span>Subtotal</span>
-        <span>
-          ₹
-          {cart
-            .filter((i) => i.price !== 0)
-            .reduce((sum, i) => sum + (i.price || 0), 0)
-            .toFixed(2)}
-        </span>
-      </div>
-      <div className="flex justify-between">
-        <span>+ 5% Tokun fees</span>
-        <span>
-          ₹
-          {(
-            cart
-              .filter((i) => i.price !== 0)
-              .reduce((sum, i) => sum + (i.price || 0), 0) * 0.05
-          ).toFixed(2)}
-        </span>
-      </div>
-    </div>
+    {/* Cart items carry `price` = what checkout charges (list price + Tokun's
+        fee, the same figure shown on the marketplace card) and `listPrice` =
+        the seller's own price. The fee is the DIFFERENCE between them.
 
-    <div className="mt-4 flex items-center justify-end gap-4">
-      <span className="text-sm text-white">Month (inclusive of GST)</span>
-      <button
-        onClick={handleCheckout}
-        className="px-6 h-12 rounded-lg text-white"
-        style={{
-          background: "linear-gradient(270deg,#FF14EF 0%, #1A73E8 100%)",
-          fontFamily: "Inter",
-          fontWeight: 400,
-        }}
-      >
-        Checkout
-      </button>
-    </div>
+        This used to sum `price` as the subtotal and then add another 5% on top,
+        so a ₹100 prompt already displayed as ₹105 became ₹110.25 — the fee was
+        counted twice. Deriving it instead of recomputing a hardcoded 5% also
+        means the line stays correct if the commission rate ever changes. */}
+    {(() => {
+      const paid = cart.filter((i) => i.price !== 0);
+      const charged = paid.reduce((sum, i) => sum + (i.price || 0), 0);
+      const listTotal = paid.reduce((sum, i) => sum + (i.listPrice ?? i.price ?? 0), 0);
+      const fee = Math.max(0, +(charged - listTotal).toFixed(2));
+
+      return (
+        <>
+          <div className="space-y-2 text-sm text-white">
+            <div className="flex justify-between">
+              <span>Subtotal</span>
+              <span>₹{listTotal.toFixed(2)}</span>
+            </div>
+            {fee > 0 && (
+              <div className="flex justify-between">
+                <span className="text-white/70">Platform fee</span>
+                <span className="text-white/70">₹{fee.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between pt-2 border-t border-white/10 font-semibold">
+              <span>Total</span>
+              <span>₹{charged.toFixed(2)}</span>
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center justify-end gap-4">
+            {/* The old label here read "Month (inclusive of GST)" — leftover
+                subscription copy on a one-off prompt cart, and it claimed a GST
+                treatment this total doesn't apply. */}
+            <button
+              onClick={handleCheckout}
+              className="px-6 h-12 rounded-lg text-white"
+              style={{
+                background: "linear-gradient(270deg,#FF14EF 0%, #1A73E8 100%)",
+                fontFamily: "Inter",
+                fontWeight: 400,
+              }}
+            >
+              Checkout ₹{charged.toFixed(2)}
+            </button>
+          </div>
+        </>
+      );
+    })()}
   </div>
 )}
     </div>
@@ -5181,30 +5364,9 @@ style={{
   </div>
 )}
 
- {token && kycOpen && (
-  <KycGateModal
-    open={kycOpen}
-    onClose={() => {
-      setKycOpen(false);
-      setPendingCheckout(false);
-    }}
-    token={token}
-    apiBase={API_BASE}
-    defaultCountry="IN"
-    requiredForLabel="buying prompts"
-  onVerified={async () => {
-  setKycOpen(false);
-  setCartOpen(false);
-
-  if (pendingCheckout) {
-    setPendingCheckout(false);
-    await new Promise((res) => setTimeout(res, 100));
-    await doCheckout();
-  }
-}}
-
-  />
-)}
+{/* KycGateModal removed — nothing opens it any more. It gated "buying prompts"
+    behind identity KYC, which the Route linked-account flow replaced for
+    sellers and which buyers never needed. */}
 
 {token && (
   <SellerLinkedAccountForm
@@ -5218,6 +5380,11 @@ style={{
     }}
   />
 )}
+
+{/* Become-a-Freelancer wizard + its payout dialog. Rendered here, at the
+    component root, because the account dropdown unmounts its own contents on
+    close — a wizard inside the menu would disappear the moment it opened. */}
+{freelancerMenu.modals}
 
 {screenPermOpen && (
   <ScreenRecordPermissionModal

@@ -364,6 +364,7 @@
 
 // server/routes/smartgenRoutes.js
 const express = require("express");
+const mongoose = require("mongoose");
 const Smartgen = require("../models/Smartgen");
 const { requireAuth } = require("../utils/auth");
 const { ensureMonthlyQuota, spendMonthlyTokens } = require("../utils/quota");
@@ -573,6 +574,10 @@ router.put("/:id", requireAuth, upload.array("attachments", 5), async (req, res)
     const { inputPrompt, detailedPrompt, tokensUsed } = req.body ?? {};
     const smartgenId = req.params.id;
 
+    if (!mongoose.isValidObjectId(smartgenId)) {
+      return res.status(404).json({ success: false, error: "smartgen_not_found_or_access_denied" });
+    }
+
     const smartgen = await Smartgen.findOne({ _id: smartgenId, userId: req.user._id });
     if (!smartgen) {
       return res.status(404).json({ success: false, error: "smartgen_not_found_or_access_denied" });
@@ -681,6 +686,10 @@ router.get("/", requireAuth, async (req, res) => {
 // GET /:id
 router.get("/:id", requireAuth, async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).json({ success: false, error: "not_found" });
+    }
+
     const doc = await Smartgen.findById(req.params.id);
     if (!doc || doc.isDeleted) {
       return res.status(404).json({ success: false, error: "not_found" });
@@ -717,6 +726,11 @@ router.get("/:id", requireAuth, async (req, res) => {
 router.delete("/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(404).json({ success: false, error: "smartgen_not_found" });
+    }
+
     const deleted = await Smartgen.findOneAndDelete({ _id: id, userId: req.user._id });
 
     if (!deleted) {

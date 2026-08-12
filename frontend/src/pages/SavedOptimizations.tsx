@@ -98,8 +98,7 @@
 //       toast({
 //         title: "Couldn’t load",
 //         description: err?.message || "Try again",
-//         variant: "destructive",
-//       });
+//         //       });
 //     } finally {
 //       setLoading(false);
 //     }
@@ -126,8 +125,7 @@
 //       toast({
 //         title: "Delete failed",
 //         description: err?.message || "Try again",
-//         variant: "destructive",
-//       });
+//         //       });
 //     } finally {
 //       setDeletingId(null);
 //     }
@@ -306,6 +304,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Trash, Star, Copy } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import HistoryPagination from "@/components/HistoryPagination";
 
 interface OptimizedPromptDoc {
   _id: string;
@@ -351,7 +350,31 @@ const SavedOptimizations = () => {
     return arr;
   }, [items, sortBy, favorites]);
 
-  const allOnPageSelected = viewList.length > 0 && viewList.every((it) => selected.has(it._id));
+  /* ---------------- Pagination ---------------- */
+  const PER_PAGE = 10;
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(viewList.length / PER_PAGE));
+
+  // Deleting the last row on a page, or switching to a filter with fewer
+  // results, must not strand the user on an empty page.
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  useEffect(() => { setPage(1); }, [sortBy]);
+
+  const pageList = useMemo(
+    () => viewList.slice((page - 1) * PER_PAGE, page * PER_PAGE),
+    [viewList, page]
+  );
+
+  const goToPage = (next: number) => {
+    setPage(Math.min(Math.max(1, next), totalPages));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // "Select all" applies to what's on screen, which is now one page.
+  const allOnPageSelected = pageList.length > 0 && pageList.every((it) => selected.has(it._id));
 
   const load = async () => {
     setLoading(true);
@@ -373,7 +396,6 @@ const SavedOptimizations = () => {
       toast({
         title: "Couldn’t load optimiser history",
         description: err?.message || "Try again",
-        variant: "destructive",
       });
     } finally {
       setLoading(false);
@@ -405,7 +427,6 @@ const SavedOptimizations = () => {
       toast({
         title: "Delete failed",
         description: err?.message || "Try again",
-        variant: "destructive",
       });
     }
   };
@@ -428,11 +449,11 @@ const SavedOptimizations = () => {
   const selectAllToggle = () => {
     if (allOnPageSelected) {
       const n = new Set(selected);
-      viewList.forEach((it) => n.delete(it._id));
+      pageList.forEach((it) => n.delete(it._id));
       setSelected(n);
     } else {
       const n = new Set(selected);
-      viewList.forEach((it) => n.add(it._id));
+      pageList.forEach((it) => n.add(it._id));
       setSelected(n);
     }
   };
@@ -512,10 +533,13 @@ const SavedOptimizations = () => {
 
         {/* List */}
         {loading && items.length === 0 ? (
-          <div className="mx-auto max-w-[1000px] text-white flex items-center gap-2">
+          // Centred, and given the same vertical room as the empty state below —
+          // it sat hard against the left margin while everything that replaces
+          // it is centred, so the page visibly jumped once loading finished.
+          <div className="flex items-center justify-center gap-2 py-16 text-white">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading…
           </div>
-        ) : viewList.length === 0 ? (
+        ) : pageList.length === 0 ? (
           <div className="text-center py-16">
             <img src="/icons/void.png" alt="" className="mx-auto mb-6 h-40 w-auto opacity-90" />
             <p className="text-white text-xl">No Prompt optimiser history</p>
@@ -523,7 +547,7 @@ const SavedOptimizations = () => {
           </div>
         ) : (
           <ul className="flex flex-col items-center gap-4">
-            {viewList.map((it) => {
+            {pageList.map((it) => {
               const input = it.inputPrompt || "";
               const output = it.outputPrompt || "";
               const preview = output || input; // Copy uses output if available, else input
@@ -611,6 +635,14 @@ const SavedOptimizations = () => {
             })}
           </ul>
         )}
+
+        <HistoryPagination
+          page={page}
+          totalPages={totalPages}
+          totalItems={viewList.length}
+          perPage={PER_PAGE}
+          onPageChange={goToPage}
+        />
       </main>
 
       <Footer />

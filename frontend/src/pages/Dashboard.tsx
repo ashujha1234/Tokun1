@@ -13975,6 +13975,7 @@ import {
   Landmark,
   MoreHorizontal,
   Building2,
+  Briefcase,
 } from "lucide-react";
 
 import {
@@ -14006,15 +14007,20 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import EscrowAdminDashboard from "./EscrowAdminDashboard";
 import PromptValidationAdminDashboard from "./PromptValidationAdminDashboard";
-import ScreenRecordingsAdmin from "./Screenrecordingsadmin ";
+import FreelancerReviewAdminDashboard from "./FreelancerReviewAdminDashboard";
 import AdminSellerMessageModal from "@/components/AdminSellerMessageModal";
 // Resolves API-relative upload paths against the API origin — see lib/mediaUrl.
 import { mediaUrl } from "@/lib/mediaUrl";
 
 // ✅ ADD reports here
-type NavKey = "dashboard" | "sellers" | "products" | "reports" | "analytics" | "account" | "withdrawals" | "escrow" | "recordings" | "feedback";
+// "withdrawals" was removed — the money view an admin actually needs is
+// "payments", which covers everything that moved through Razorpay rather than
+// just the payouts leaving the wallet.
+/* No "escrow" here any more — the tab was removed from the admin dashboard.
+   Dropping it from the union means any leftover setActive("escrow") is a
+   compile error rather than a tab that silently renders nothing. */
+type NavKey = "dashboard" | "sellers" | "products" | "reports" | "analytics" | "account" | "payments" | "feedback" | "freelancers";
 
 
 const kpiCardBase =
@@ -14514,8 +14520,760 @@ const AccountView = ({
 };
 
 
+/* ── PaymentsView ───────────────────────────────────────────────────────────
+   Where the money went, without opening Razorpay.
+
+   The dashboard could show what Tokun EARNED and nothing about what Razorpay
+   charged, so working out what was actually kept meant reading two systems side
+   by side. Razorpay is the source of truth for captured/fees/refunds here;
+   Tokun's commission comes from our own ledger. */
+/* Its own token reader, because this now lives at module scope.
+
+   It was originally written inside the Dashboard component — which is where
+   every other view in this file lives — and that is why it kept flashing back
+   to "Loading…" and losing its data. A component declared inside another
+   component is a NEW component type on every parent render, so React unmounts
+   and remounts it each time, wiping its state and re-running the fetch. Out
+   here its identity is stable and it renders once. */
+const readAdminToken = () =>
+  localStorage.getItem("tokun_admin_token") ||
+  localStorage.getItem("adminToken") ||
+  localStorage.getItem("token") ||
+  localStorage.getItem("tokun_token") ||
+  "";
+
+const fmtINR = (n: any) =>
+  "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+
+const fmtWhen = (d: any) =>
+  d
+    ? new Date(d).toLocaleString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "—";
+
+/** One place for the admin auth dance, since three panels now need it. */
+const adminGet = async (path: string) => {
+  const token = readAdminToken();
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    credentials: "include",
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.success) {
+    throw new Error(json?.message || json?.error || "Request failed.");
+  }
+  return json;
+};
+
+/* Colour by what the row means, not by taste: money in is green, money out is
+   amber, and a refund — money out that we also lost the fee on — is blue, the
+   same blue the live table already uses for refunds. */
+const LEDGER_KIND_TONE: Record<string, string> = {
+  PAYMENT: "text-[#19E66C]",
+  REFUND: "text-[#63A6F2]",
+  TRANSFER: "text-[#FABC4E]",
+  TRANSFER_HOLD: "text-white/50",
+  PAYOUT: "text-[#FABC4E]",
+  SETTLEMENT: "text-white/70",
+  COMMISSION: "text-[#19E66C]",
+  ADJUSTMENT: "text-white/50",
+};
+
+/* ── LedgerPanel ────────────────────────────────────────────────────────────
+   The same money as the tab beside it, but read from OUR database instead of
+   Razorpay's API.
+
+   Two independent views on purpose. Where they disagree is the thing
+   reconciliation is for — a refund issued from the Razorpay dashboard shows up
+   live but has no ledger row until the webhook records it, and that gap is
+   exactly what you want visible rather than smoothed over.
+
+   Declared at module scope for the reason spelled out above readAdminToken:
+   a component defined inside another remounts on every parent render and
+   loses its state. */
+const LedgerPanel = ({ days }: { days: number }) => {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [kind, setKind] = useState("");
+  const [purpose, setPurpose] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const qs = new URLSearchParams({ days: String(days), limit: "300" });
+        if (kind) qs.set("kind", kind);
+        if (purpose) qs.set("purpose", purpose);
+        const json = await adminGet(`/api/admin/payments/ledger?${qs}`);
+        if (!cancelled) setData(json);
+      } catch (e: any) {
+        if (!cancelled) {
+          setError(e?.message || "Couldn't load the ledger.");
+          setData(null);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [days, kind, purpose]);
+
+  const selectCls =
+    "h-8 rounded-lg border border-white/10 bg-white/[0.04] px-2 text-xs text-white/70 outline-none";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <select className={selectCls} value={kind} onChange={(e) => setKind(e.target.value)}>
+          <option value="">All kinds</option>
+          {["PAYMENT", "REFUND", "TRANSFER", "TRANSFER_HOLD", "PAYOUT", "SETTLEMENT", "ADJUSTMENT"].map(
+            (k) => (
+              <option key={k} value={k}>
+                {k}
+              </option>
+            )
+          )}
+        </select>
+        <select className={selectCls} value={purpose} onChange={(e) => setPurpose(e.target.value)}>
+          <option value="">All purposes</option>
+          {["PROMPT_PURCHASE", "HIRE_ESCROW", "SERVICE_ORDER", "SUBSCRIPTION", "WALLET_TOPUP", "OTHER"].map(
+            (p) => (
+              <option key={p} value={p}>
+                {p.replace(/_/g, " ")}
+              </option>
+            )
+          )}
+        </select>
+      </div>
+
+      {loading && <p className="text-sm text-white/40">Loading the ledger…</p>}
+
+      {error && (
+        <div className="rounded-xl border border-red-500/25 bg-red-500/[0.06] p-4">
+          <p className="text-sm text-red-300">{error}</p>
+        </div>
+      )}
+
+      {data && !loading && (
+        <>
+          {/* Totals come from an aggregate over the WHOLE window, not from the
+              rows below — those are capped, and a total that silently covered
+              only the first page would be worse than none. */}
+          {!!data.totals?.length && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {data.totals.map((t: any) => (
+                <div
+                  key={`${t.kind}-${t.direction}`}
+                  className="rounded-xl border border-white/10 bg-white/[0.03] p-4"
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+                    {t.kind} {t.direction === "IN" ? "in" : "out"}
+                  </p>
+                  <p className={`mt-1.5 text-xl font-bold ${LEDGER_KIND_TONE[t.kind] || "text-white"}`}>
+                    {fmtINR(t.amount)}
+                  </p>
+                  <p className="mt-1 text-[11px] text-white/35">
+                    {t.count} row{t.count === 1 ? "" : "s"}
+                    {t.fee ? ` · fee ${fmtINR(t.fee)}` : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-white/40 px-4 pt-4 pb-3">
+              Ledger entries ({data.count})
+              {data.truncated && <span className="text-white/25"> · showing the newest 300</span>}
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-wider text-white/35 border-b border-white/10">
+                    <th className="text-left font-semibold px-4 py-2">Occurred</th>
+                    <th className="text-left font-semibold px-4 py-2">Kind</th>
+                    <th className="text-left font-semibold px-4 py-2">For</th>
+                    <th className="text-left font-semibold px-4 py-2">Reference</th>
+                    <th className="text-left font-semibold px-4 py-2">Who</th>
+                    <th className="text-right font-semibold px-4 py-2">Amount</th>
+                    <th className="text-right font-semibold px-4 py-2">Fee</th>
+                    <th className="text-left font-semibold px-4 py-2">Source</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data.entries || []).map((e: any) => (
+                    <tr key={e.id} className="border-b border-white/[0.05]">
+                      <td className="px-4 py-2 text-white/45 text-xs whitespace-nowrap">
+                        {fmtWhen(e.occurredAt)}
+                        {/* When we RECORDED it, shown only when it differs from
+                            when it happened — during an outage or a backfill
+                            that gap is the whole story. */}
+                        {e.recordedAt &&
+                          Math.abs(new Date(e.recordedAt).getTime() - new Date(e.occurredAt).getTime()) >
+                            60_000 && (
+                            <span className="block text-[10px] text-white/25">
+                              logged {fmtWhen(e.recordedAt)}
+                            </span>
+                          )}
+                      </td>
+                      <td className={`px-4 py-2 text-xs font-semibold ${LEDGER_KIND_TONE[e.kind] || "text-white/70"}`}>
+                        {e.kind}
+                      </td>
+                      <td className="px-4 py-2 text-xs text-white/50">
+                        {(e.purpose || "—").replace(/_/g, " ")}
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className="text-white/60 text-[11px] font-mono">
+                          {e.razorpayRefundId ||
+                            e.razorpayTransferId ||
+                            e.razorpaySettlementId ||
+                            e.razorpayPaymentId ||
+                            "—"}
+                        </span>
+                        {e.methodDetail && (
+                          <span className="block text-[10px] text-white/30">{e.methodDetail}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-xs text-white/50">
+                        {e.user?.name || e.user?.email || "—"}
+                        {e.counterparty && (
+                          <span className="block text-[10px] text-white/25">
+                            ↔ {e.counterparty.name || e.counterparty.email}
+                          </span>
+                        )}
+                      </td>
+                      <td
+                        className={`px-4 py-2 text-right font-medium whitespace-nowrap ${
+                          e.direction === "IN" ? "text-white" : "text-white/60"
+                        }`}
+                      >
+                        {e.direction === "IN" ? "" : "−"}
+                        {fmtINR(e.amount)}
+                      </td>
+                      <td className="px-4 py-2 text-right text-[#FABC4E] text-xs whitespace-nowrap">
+                        {e.fee ? fmtINR(e.fee + e.tax) : "—"}
+                      </td>
+                      <td className="px-4 py-2">
+                        <span
+                          className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                            e.source === "webhook"
+                              ? "bg-[#19E66C]/10 text-[#19E66C]"
+                              : e.source === "backfill"
+                              ? "bg-[#FABC4E]/10 text-[#FABC4E]"
+                              : "bg-white/[0.06] text-white/45"
+                          }`}
+                        >
+                          {e.source}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {!data.entries?.length && (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-6 text-center text-sm text-white/35">
+                        Nothing recorded in this window. The ledger only holds what has happened
+                        since it was switched on — run the backfill script to pull in older history.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-white/30 leading-relaxed">
+            <span className="text-[#19E66C]">webhook</span> rows came from Razorpay telling us
+            directly and are the most trustworthy;{" "}
+            <span className="text-white/45">api</span> rows are what our own code recorded as it ran;{" "}
+            <span className="text-[#FABC4E]">backfill</span> rows were reconstructed after the fact
+            and are the first to doubt when two figures disagree.
+          </p>
+        </>
+      )}
+    </div>
+  );
+};
+
+/* ── WebhooksPanel ──────────────────────────────────────────────────────────
+   Did Razorpay actually tell us, and what did they say?
+
+   Every event used to be processed and thrown away, so when something didn't
+   happen there was no way to tell whether the event never arrived, arrived and
+   was ignored, or arrived and broke. This answers that. */
+const WebhooksPanel = () => {
+  const [events, setEvents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState("");
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<any>(null);
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const qs = new URLSearchParams({ limit: "150" });
+      if (status) qs.set("status", status);
+      const json = await adminGet(`/api/admin/payments/webhooks?${qs}`);
+      setEvents(json.events || []);
+    } catch (e: any) {
+      setError(e?.message || "Couldn't load webhook deliveries.");
+      setEvents([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
+
+  const openDetail = async (id: string) => {
+    if (openId === id) {
+      setOpenId(null);
+      setDetail(null);
+      return;
+    }
+    setOpenId(id);
+    setDetail(null);
+    try {
+      const json = await adminGet(`/api/admin/payments/webhooks/${id}`);
+      setDetail(json.event);
+    } catch {
+      setDetail({ error: "Couldn't load this payload." });
+    }
+  };
+
+  const STATUS_TONE: Record<string, string> = {
+    processed: "bg-[#19E66C]/10 text-[#19E66C]",
+    ignored: "bg-white/[0.06] text-white/45",
+    failed: "bg-red-500/10 text-red-300",
+    received: "bg-[#FABC4E]/10 text-[#FABC4E]",
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        {["", "processed", "ignored", "failed", "received"].map((s) => (
+          <button
+            key={s || "all"}
+            onClick={() => setStatus(s)}
+            className={`px-3 h-8 rounded-full text-xs font-medium transition capitalize ${
+              status === s ? "bg-white/15 text-white" : "text-white/45 hover:bg-white/[0.06]"
+            }`}
+          >
+            {s || "All"}
+          </button>
+        ))}
+        <button
+          onClick={load}
+          className="ml-auto px-3 h-8 rounded-full text-xs font-medium text-white/45 hover:bg-white/[0.06]"
+        >
+          Refresh
+        </button>
+      </div>
+
+      {loading && <p className="text-sm text-white/40">Loading deliveries…</p>}
+
+      {error && (
+        <div className="rounded-xl border border-red-500/25 bg-red-500/[0.06] p-4">
+          <p className="text-sm text-red-300">{error}</p>
+        </div>
+      )}
+
+      {!loading && !error && (
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-white/40 px-4 pt-4 pb-3">
+            Webhook deliveries ({events.length})
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-[10px] uppercase tracking-wider text-white/35 border-b border-white/10">
+                  <th className="text-left font-semibold px-4 py-2">Received</th>
+                  <th className="text-left font-semibold px-4 py-2">Event</th>
+                  <th className="text-left font-semibold px-4 py-2">Status</th>
+                  <th className="text-left font-semibold px-4 py-2">Reference</th>
+                  <th className="text-right font-semibold px-4 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {events.map((e: any) => (
+                  <React.Fragment key={e._id}>
+                    <tr className="border-b border-white/[0.05]">
+                      <td className="px-4 py-2 text-white/45 text-xs whitespace-nowrap">
+                        {fmtWhen(e.createdAt)}
+                      </td>
+                      <td className="px-4 py-2 text-xs font-mono text-white/70">{e.event}</td>
+                      <td className="px-4 py-2">
+                        <span
+                          className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                            STATUS_TONE[e.status] || "bg-white/[0.06] text-white/45"
+                          }`}
+                        >
+                          {e.status}
+                        </span>
+                        {e.error && (
+                          <span className="block text-[10px] text-red-300/70 mt-0.5">{e.error}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-[11px] font-mono text-white/50">
+                        {e.paymentId || e.refundId || e.transferId || e.orderId || "—"}
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <button
+                          onClick={() => openDetail(e._id)}
+                          className="text-[11px] text-white/45 hover:text-white underline underline-offset-2"
+                        >
+                          {openId === e._id ? "Hide" : "Payload"}
+                        </button>
+                      </td>
+                    </tr>
+                    {openId === e._id && (
+                      <tr className="border-b border-white/[0.05]">
+                        <td colSpan={5} className="px-4 py-3 bg-black/30">
+                          {!detail ? (
+                            <p className="text-xs text-white/35">Loading payload…</p>
+                          ) : (
+                            <pre className="text-[11px] leading-relaxed text-white/60 overflow-x-auto max-h-80">
+                              {JSON.stringify(detail.payload ?? detail, null, 2)}
+                            </pre>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+                {!events.length && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-6 text-center text-sm text-white/35">
+                      No deliveries recorded. If you expected some, check that the webhook is
+                      configured in Razorpay for this mode and that RAZORPAY_WEBHOOK_SECRET matches —
+                      a wrong secret is rejected before anything is stored.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const PaymentsView = () => {
+  /* Three views over the same money: what Razorpay says live, what we
+     recorded ourselves, and what Razorpay actually sent us. */
+  const [view, setView] = useState<"live" | "ledger" | "webhooks">("live");
+  const [days, setDays] = useState(30);
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async (d: number) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = readAdminToken();
+      const res = await fetch(`${API_BASE}/api/admin/payments?days=${d}`, {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        credentials: "include",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.message || json?.error || "Couldn't load payment data.");
+      }
+      setData(json);
+    } catch (e: any) {
+      setError(e?.message || "Couldn't load payment data.");
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // Only the live view costs a Razorpay round-trip, so it isn't fetched
+    // while another tab is open.
+    if (view !== "live") return;
+    load(days);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [days, view]);
+
+  const inr = (n: any) =>
+    "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+
+  const t = data?.totals;
+
+  const Stat = ({
+    label,
+    value,
+    hint,
+    tone,
+  }: { label: string; value: string; hint?: string; tone?: string }) => (
+    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">{label}</p>
+      <p className={`mt-1.5 text-xl font-bold ${tone || "text-white"}`}>{value}</p>
+      {hint && <p className="mt-1 text-[11px] text-white/35 leading-snug">{hint}</p>}
+    </div>
+  );
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Payments</h2>
+          <p className="text-xs text-white/45 mt-0.5">
+            {view === "live"
+              ? "Live from Razorpay, joined to Tokun's own commission ledger."
+              : view === "ledger"
+              ? "Recorded in Tokun's own database, with the timestamp of each movement."
+              : "Every webhook Razorpay has sent us, and what we did with it."}
+          </p>
+        </div>
+        {/* The date range only applies to the two money views; the delivery log
+            has its own, much shorter, horizon. */}
+        {view !== "webhooks" && (
+          <div className="flex gap-1.5">
+            {[7, 30, 90, 365].map((d) => (
+              <button
+                key={d}
+                onClick={() => setDays(d)}
+                className={`px-3 h-8 rounded-full text-xs font-medium transition ${
+                  days === d ? "bg-white/15 text-white" : "text-white/45 hover:bg-white/[0.06]"
+                }`}
+              >
+                {d === 365 ? "1 year" : `${d}d`}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-1 border-b border-white/10 -mt-1">
+        {(
+          [
+            ["live", "Razorpay (live)"],
+            ["ledger", "Ledger (our DB)"],
+            ["webhooks", "Webhooks"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setView(key)}
+            className={`px-3 pb-2 text-xs font-medium transition border-b-2 -mb-px ${
+              view === key
+                ? "border-white text-white"
+                : "border-transparent text-white/40 hover:text-white/70"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === "ledger" && <LedgerPanel days={days} />}
+      {view === "webhooks" && <WebhooksPanel />}
+
+      {view === "live" && loading && <p className="text-sm text-white/40">Loading from Razorpay…</p>}
+
+      {view === "live" && error && (
+        <div className="rounded-xl border border-red-500/25 bg-red-500/[0.06] p-4">
+          <p className="text-sm text-red-300">{error}</p>
+          {/* Razorpay being unreachable is exactly when the ledger earns its
+              keep, so point at it rather than leaving a dead end. */}
+          <button
+            onClick={() => setView("ledger")}
+            className="mt-2 text-xs text-white/60 hover:text-white underline underline-offset-2"
+          >
+            View the same window from our own ledger instead →
+          </button>
+        </div>
+      )}
+
+      {view === "live" && t && !loading && (
+        <>
+          {/* The number an admin is actually here for is `net` — commission
+              earned minus what the processor took. */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <Stat
+              label="Captured"
+              value={inr(t.captured)}
+              hint={`${t.capturedCount} payment${t.capturedCount === 1 ? "" : "s"} clients actually paid`}
+            />
+            <Stat
+              label="Tokun commission"
+              value={inr(t.tokunCommission)}
+              tone="text-[#19E66C]"
+              hint="Our own ledger, same window"
+            />
+            <Stat
+              label="Razorpay charges"
+              value={inr(t.razorpayCharges)}
+              tone="text-[#FABC4E]"
+              hint={`Fee ${inr(t.razorpayFee)} + GST ${inr(t.razorpayTax)}`}
+            />
+            <Stat
+              label="Net kept"
+              value={inr(t.net)}
+              tone={t.net >= 0 ? "text-white" : "text-red-400"}
+              hint="Commission minus Razorpay's cut"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+            <Stat label="Refunded out" value={inr(t.refunded)} hint="Returned to clients" />
+            <Stat label="Platform balance" value={inr(t.platformBalance)} hint="Un-withdrawn commission" />
+            <Stat label="Lifetime revenue" value={inr(t.platformTotalRevenue)} hint="All time, all sources" />
+          </div>
+
+          {/* Razorpay only fills `fee` once THEY settle, so a fresh payment
+              legitimately shows ₹0 charges. Said plainly, because otherwise it
+              reads as free money. */}
+          <p className="text-[11px] text-white/30 leading-relaxed">
+            Razorpay's fee appears only after they settle a payment, so very recent ones show ₹0
+            charges and the figure climbs over the following days. A refund does not return their
+            fee, which is why "Net kept" can go negative in a heavy refund month.
+            {data.truncated && " Showing the most recent 2,000 payments only."}
+          </p>
+
+          {!!data.byMethod?.length && (
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-white/40 mb-3">
+                By method
+              </p>
+              <div className="space-y-1.5">
+                {data.byMethod.map((m: any) => (
+                  <div key={m.method} className="flex items-center justify-between text-sm">
+                    <span className="text-white/70 capitalize">{m.method}</span>
+                    <span className="text-white/45 text-xs">
+                      {m.count} · <span className="text-white font-medium">{inr(m.amount)}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-white/40 px-4 pt-4 pb-3">
+              Payments ({data.payments?.length || 0})
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-wider text-white/35 border-b border-white/10">
+                    <th className="text-left font-semibold px-4 py-2">When</th>
+                    <th className="text-left font-semibold px-4 py-2">Payment</th>
+                    <th className="text-left font-semibold px-4 py-2">For</th>
+                    <th className="text-right font-semibold px-4 py-2">Amount</th>
+                    <th className="text-right font-semibold px-4 py-2">RZP fee</th>
+                    <th className="text-right font-semibold px-4 py-2">Refunded</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data.payments || []).map((p: any) => (
+                    <tr key={p.id} className="border-b border-white/[0.05]">
+                      <td className="px-4 py-2 text-white/45 text-xs whitespace-nowrap">
+                        {new Date(p.createdAt).toLocaleString("en-IN", {
+                          day: "2-digit",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className="text-white/70 text-xs font-mono">{p.id}</span>
+                        <span className="block text-[10px] text-white/30 capitalize">
+                          {p.method} · {p.email || p.contact || "—"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-xs text-white/50">{p.kind || "—"}</td>
+                      <td className="px-4 py-2 text-right font-medium whitespace-nowrap">
+                        {inr(p.amount)}
+                      </td>
+                      <td className="px-4 py-2 text-right text-[#FABC4E] text-xs whitespace-nowrap">
+                        {p.fee ? inr(p.fee + p.tax) : "—"}
+                      </td>
+                      <td className="px-4 py-2 text-right text-xs whitespace-nowrap">
+                        {p.refunded ? (
+                          <span className="text-[#63A6F2]">{inr(p.refunded)}</span>
+                        ) : (
+                          <span className="text-white/20">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {!data.payments?.length && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-6 text-center text-sm text-white/35">
+                        No captured payments in this window.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 const Dashboard = () => {
   const [active, setActive] = useState<NavKey>("dashboard");
+
+  /* How many refunds and disputes are actually waiting on someone.
+     Both buttons looked identical whether the queue was empty or had a dozen
+     cases in it, so the only way to find out was to open them — which is how a
+     dispute sits unruled for days. Polled, because an admin leaves this tab
+     open all day and a count fetched once at mount goes stale immediately. */
+  const [queueCounts, setQueueCounts] = useState({ refunds: 0, disputes: 0 });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCounts = async () => {
+      const token = readAdminToken();
+      if (!token) return;
+      const headers = { Authorization: `Bearer ${token.replace(/^Bearer\s+/i, "")}` };
+
+      const [refunds, disputes] = await Promise.all([
+        fetch(`${API_BASE}/api/admin/refunds?status=PENDING`, { headers })
+          .then((r) => r.json())
+          .catch(() => null),
+        fetch(`${API_BASE}/api/admin/disputes?status=ADMIN_REVIEW`, { headers })
+          .then((r) => r.json())
+          .catch(() => null),
+      ]);
+
+      if (cancelled) return;
+      setQueueCounts({
+        refunds: refunds?.success ? refunds.refundRequests?.length ?? 0 : 0,
+        disputes: disputes?.success ? disputes.total ?? disputes.disputes?.length ?? 0 : 0,
+      });
+    };
+
+    loadCounts();
+    const id = setInterval(loadCounts, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
 const [currentView, setCurrentView] = useState<"seller" | "user" | "org">("seller");
  const [showAllUsers, setShowAllUsers] = useState(false);
 
@@ -14629,6 +15387,9 @@ const [platformRevenue, setPlatformRevenue] = useState({
   availableBalance: 0,
   totalRevenue: 0,
   totalWithdrawn: 0,
+  // GST charged on Tokun's fees. Shown apart from revenue because it's owed
+  // onward to the government — counting it as earnings overstates the margin.
+  gstCollected: 0,
   transactions: [] as Array<{ _id: string; type: string; amount: number; source: string; description: string; createdAt: string }>,
 });
 const [platformRevenueLoading, setPlatformRevenueLoading] = useState(false);
@@ -15697,7 +16458,10 @@ useEffect(() => {
 
 
 const ReportsSidebar = () => {
-  const [tab, setTab] = useState<"product" | "review">("product");
+  /* The "Review Moderation" tab is gone — it only ever rendered "coming
+     soon…", so it was a control that cost a click to learn it did nothing.
+     This panel is the product-reports queue. */
+  const [sort, setSort] = useState<"new" | "old">("new");
 
   const openCount = (reports || []).filter((r) => r.status === "Open").length;
 
@@ -15708,16 +16472,22 @@ const ReportsSidebar = () => {
   };
 
   const grouped = useMemo(() => {
-    const list = [...reports].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    /* Risk grouping stays — a high-risk report an hour old and a low-risk one
+       an hour old are not the same job. The control reorders WITHIN each
+       group, so newest-first never buries something urgent under something
+       trivial that happens to be newer. */
+    const list = [...reports].sort((a, b) => {
+      const ta = new Date(a.createdAt).getTime();
+      const tb = new Date(b.createdAt).getTime();
+      return sort === "new" ? tb - ta : ta - tb;
+    });
 
     return {
       High: list.filter((r) => r.priority === "High"),
       Medium: list.filter((r) => r.priority === "Medium"),
       Low: list.filter((r) => r.priority === "Low"),
     };
-  }, [reports]);
+  }, [reports, sort]);
 
   const Item = (r: ReportItem) => {
     const isActive = selectedReport?.id === r.id;
@@ -15760,60 +16530,39 @@ setMobileReportsPage("details"); // ✅ on phone open details page
 
   return (
     <aside className={[kpiCardBase, "overflow-hidden"].join(" ")}>
-      {/* Tabs */}
-      <div className="px-4 pt-4">
-        <div className="flex items-center gap-8 text-sm">
-          <button
-            onClick={() => setTab("product")}
-            className={[
-              "pb-3 transition",
-              tab === "product"
-                ? "text-white border-b-2 border-fuchsia-400"
-                : "text-white/60 hover:text-white/85",
-            ].join(" ")}
-          >
-            Product Reports
-          </button>
-
-          <button
-            onClick={() => setTab("review")}
-            className={[
-              "pb-3 transition",
-              tab === "review"
-                ? "text-white border-b-2 border-fuchsia-400"
-                : "text-white/60 hover:text-white/85",
-            ].join(" ")}
-          >
-            Review Moderation
-          </button>
-        </div>
+      {/* Heading. A single tab is not a tab. */}
+      <div className="px-4 pt-4 pb-3 border-b border-white/10">
+        <div className="text-sm text-white font-medium">Product Reports</div>
       </div>
 
-      {/* Count + Filter */}
-      <div className="px-4 py-4 flex items-center justify-between border-b border-white/10">
+      {/* Count + sort */}
+      <div className="px-4 py-3 flex items-center justify-between gap-3 border-b border-white/10">
         <div className="text-xs text-white/60 uppercase tracking-wide">
           {openCount} Pending Reports
         </div>
 
-        <button className="text-xs text-white/70 flex items-center gap-2 hover:text-white">
-          <span className="inline-flex items-center justify-center h-8 px-3 rounded-xl border border-white/10 bg-white/[0.03]">
-            <span className="mr-2">⌄</span> FILTER
-          </span>
-        </button>
+        {/* A real control. What was here was a button labelled FILTER with no
+            onClick and nothing behind it — it looked like the queue could be
+            filtered and it could not. */}
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as "new" | "old")}
+          aria-label="Sort reports"
+          className="h-8 rounded-lg border border-white/10 bg-white/[0.04] px-2 text-xs text-white/75 outline-none hover:bg-white/[0.07] transition cursor-pointer"
+        >
+          <option value="new">Newest first</option>
+          <option value="old">Oldest first</option>
+        </select>
       </div>
 
       {/* List */}
       <div className="max-h-[calc(100vh-170px)] overflow-y-auto">
-        {tab === "review" ? (
-          <div className="p-4 text-sm text-white/60">
-            Review moderation (coming soon…)
-          </div>
-        ) : (
-          <>
-            {grouped.High.map(Item)}
-            {grouped.Medium.map(Item)}
-            {grouped.Low.map(Item)}
-          </>
+        {grouped.High.map(Item)}
+        {grouped.Medium.map(Item)}
+        {grouped.Low.map(Item)}
+
+        {openCount === 0 && !reports.length && (
+          <p className="p-6 text-center text-sm text-white/35">Nothing reported.</p>
         )}
       </div>
     </aside>
@@ -15968,6 +16717,7 @@ const fetchPlatformRevenue = async () => {
         availableBalance: Number(data.availableBalance || 0),
         totalRevenue: Number(data.totalRevenue || 0),
         totalWithdrawn: Number(data.totalWithdrawn || 0),
+        gstCollected: Number(data.gstCollected || 0),
         transactions: Array.isArray(data.transactions) ? data.transactions : [],
       });
     }
@@ -16180,8 +16930,12 @@ useEffect(() => {
     return (
       <button
         onClick={() => setActive(id)}
+        /* px-2 and nowrap: at eight items the row was 55px wider than the space
+           between the brand and the account menu, which clipped "Feedback" and
+           broke "Prompt Validation" onto two lines. Tighter padding buys more
+           back than the nowrap costs. */
         className={[
-          "inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition",
+          "inline-flex items-center gap-1.5 px-2 py-2 rounded-xl text-sm transition whitespace-nowrap",
           isActive ? "text-fuchsia-300" : "text-white/75 hover:text-white",
         ].join(" ")}
       >
@@ -16214,11 +16968,280 @@ useEffect(() => {
   }).length;
 }, [userRows]);
 
+/* The sidebar's contents, grouped.
+   Eight flat items read as one undifferentiated list; grouped, an admin can
+   find "Payments" by looking at the money heading rather than scanning all of
+   them. Order within a group is by how often it's opened. */
+/* ── RevenueCharts ──────────────────────────────────────────────────────────
+   Two questions the totals above can't answer: when the money came in, and
+   where from.
+
+   Series colours are NOT the brand magenta/blue. Those two measure ΔE 1.8
+   against each other under protanopia — a red-blind reader sees one colour
+   where there are two. The four below were validated against the dark chart
+   surface (#0F1117): all inside the OKLCH lightness band, chroma above floor,
+   worst adjacent CVD separation ΔE 14.0, all above 3:1 contrast.
+
+   Declared at module scope, like PaymentsView and for the same reason: a
+   component defined inside another is a new type on every parent render and
+   loses its state. */
+const CHART_SERIES = {
+  blue: "#4F86F7",
+  amber: "#CE7C1C",
+  teal: "#12A594",
+  violet: "#AB5BEE",
+};
+
+const CHART_AXIS = "rgba(255,255,255,0.35)";
+const CHART_GRID = "rgba(255,255,255,0.06)";
+
+const RevenueCharts = ({
+  transactions,
+  loading,
+}: {
+  transactions: Array<{ type: string; amount: number; source: string; createdAt: string }>;
+  loading: boolean;
+}) => {
+  /* Daily totals. Commission is money in, withdrawals and refunds are money
+     out, so they can't be summed together — a day with a big withdrawal would
+     otherwise read as a day with no earnings. */
+  const daily = useMemo(() => {
+    const byDay = new Map<string, { day: string; earned: number; out: number }>();
+
+    for (const t of transactions || []) {
+      const d = new Date(t.createdAt);
+      if (Number.isNaN(d.getTime())) continue;
+      const key = d.toISOString().slice(0, 10);
+      const row = byDay.get(key) || { day: key, earned: 0, out: 0 };
+      const amount = Math.abs(Number(t.amount) || 0);
+      if (t.type === "commission") row.earned += amount;
+      else row.out += amount;
+      byDay.set(key, row);
+    }
+
+    return Array.from(byDay.values())
+      .sort((a, b) => a.day.localeCompare(b.day))
+      .slice(-30)
+      .map((r) => ({
+        ...r,
+        label: new Date(r.day).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }),
+      }));
+  }, [transactions]);
+
+  /* Where the earnings came from. Commission only — a withdrawal has a source
+     too, and mixing it in would double-count the same rupee. */
+  const bySource = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const t of transactions || []) {
+      if (t.type !== "commission") continue;
+      const key = (t.source || "other").replace(/_/g, " ");
+      totals.set(key, (totals.get(key) || 0) + Math.abs(Number(t.amount) || 0));
+    }
+    return Array.from(totals, ([source, amount]) => ({ source, amount })).sort(
+      (a, b) => b.amount - a.amount
+    );
+  }, [transactions]);
+
+  const inr = (n: any) => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+
+  /* One tooltip for both charts. Recharts' default is a white box with the
+     series colour used as the label text — text wearing a series colour is
+     exactly what the palette rules forbid, so the swatch carries identity and
+     the text stays in normal ink. */
+  const Tip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div className="rounded-lg border border-white/10 bg-[#15171E] px-3 py-2 shadow-xl">
+        <p className="text-[11px] text-white/45 mb-1">{label}</p>
+        {payload.map((p: any) => (
+          <p key={p.dataKey} className="text-xs text-white flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.color }} />
+            <span className="text-white/60">{p.name}</span>
+            <span className="ml-auto font-semibold">{inr(p.value)}</span>
+          </p>
+        ))}
+      </div>
+    );
+  };
+
+  const card =
+    "rounded-2xl border border-white/[0.08] bg-white/[0.03] p-5";
+
+  /* Only on the FIRST load. Showing it whenever `loading` is true would blank
+     a chart the admin is already reading every time the page refetches — the
+     data is still there, so it stays on screen. */
+  if (loading && !transactions?.length) {
+    return (
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className={`${card} lg:col-span-2 h-[300px] flex items-center justify-center text-white/35 text-sm`}>
+          Loading revenue…
+        </div>
+        <div className={`${card} h-[300px] flex items-center justify-center text-white/35 text-sm`}>
+          Loading sources…
+        </div>
+      </div>
+    );
+  }
+
+  if (!daily.length) {
+    return (
+      <div className={`${card} mt-6 h-[180px] flex flex-col items-center justify-center gap-1`}>
+        <p className="text-white/45 text-sm">No revenue recorded yet.</p>
+        <p className="text-white/25 text-xs">Charts appear once the first commission lands.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* Earnings over time. Two series, so a legend is present — identity is
+          never carried by colour alone. */}
+      <section className={`${card} lg:col-span-2`}>
+        <div className="flex items-baseline justify-between gap-3 mb-4">
+          <div>
+            <h3 className="text-sm font-semibold text-white">Earnings over time</h3>
+            <p className="text-[11px] text-white/35 mt-0.5">Last {daily.length} days with activity</p>
+          </div>
+          <div className="flex items-center gap-3 text-[11px]">
+            <span className="flex items-center gap-1.5 text-white/55">
+              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: CHART_SERIES.teal }} />
+              Earned
+            </span>
+            <span className="flex items-center gap-1.5 text-white/55">
+              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: CHART_SERIES.amber }} />
+              Paid out
+            </span>
+          </div>
+        </div>
+
+        <ResponsiveContainer width="100%" height={230}>
+          <AreaChart data={daily} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
+            <defs>
+              <linearGradient id="gEarned" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={CHART_SERIES.teal} stopOpacity={0.35} />
+                <stop offset="100%" stopColor={CHART_SERIES.teal} stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="gOut" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={CHART_SERIES.amber} stopOpacity={0.28} />
+                <stop offset="100%" stopColor={CHART_SERIES.amber} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            {/* Horizontal only, and recessive — vertical lines add nothing when
+                the x axis is already labelled. */}
+            <CartesianGrid stroke={CHART_GRID} vertical={false} />
+            <XAxis
+              dataKey="label"
+              tick={{ fill: CHART_AXIS, fontSize: 11 }}
+              tickLine={false}
+              axisLine={false}
+              minTickGap={24}
+            />
+            <YAxis
+              tick={{ fill: CHART_AXIS, fontSize: 11 }}
+              tickLine={false}
+              axisLine={false}
+              width={54}
+              tickFormatter={(v) => (v >= 1000 ? `₹${Math.round(v / 1000)}k` : `₹${v}`)}
+            />
+            <Tooltip content={<Tip />} cursor={{ stroke: "rgba(255,255,255,0.18)" }} />
+            <Area
+              type="monotone"
+              dataKey="earned"
+              name="Earned"
+              stroke={CHART_SERIES.teal}
+              strokeWidth={2}
+              fill="url(#gEarned)"
+            />
+            <Area
+              type="monotone"
+              dataKey="out"
+              name="Paid out"
+              stroke={CHART_SERIES.amber}
+              strokeWidth={2}
+              fill="url(#gOut)"
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </section>
+
+      {/* Where it came from. One series, so no legend — the heading names it,
+          and each bar is directly labelled by its own axis. */}
+      <section className={card}>
+        <h3 className="text-sm font-semibold text-white">Earnings by source</h3>
+        <p className="text-[11px] text-white/35 mt-0.5 mb-4">Commission only</p>
+
+        {bySource.length === 0 ? (
+          <div className="h-[230px] flex items-center justify-center text-white/30 text-sm">
+            No commission yet
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={230}>
+            <BarChart data={bySource} layout="vertical" margin={{ top: 0, right: 12, left: 0, bottom: 0 }}>
+              <CartesianGrid stroke={CHART_GRID} horizontal={false} />
+              <XAxis
+                type="number"
+                tick={{ fill: CHART_AXIS, fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v) => (v >= 1000 ? `₹${Math.round(v / 1000)}k` : `₹${v}`)}
+              />
+              <YAxis
+                type="category"
+                dataKey="source"
+                tick={{ fill: CHART_AXIS, fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+                width={96}
+              />
+              <Tooltip content={<Tip />} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
+              {/* Rounded on the data end only, anchored to the baseline. */}
+              <Bar dataKey="amount" name="Earned" fill={CHART_SERIES.blue} radius={[0, 4, 4, 0]} barSize={18} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </section>
+    </div>
+  );
+};
+
+const ADMIN_NAV_SECTIONS: Array<{
+  title: string;
+  items: { id: NavKey; label: string; icon: React.ReactNode }[];
+}> = [
+  {
+    title: "Overview",
+    items: [
+      { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-[17px] w-[17px]" /> },
+    ],
+  },
+  {
+    title: "Marketplace",
+    items: [
+      { id: "sellers", label: "Sellers", icon: <Store className="h-[17px] w-[17px]" /> },
+      { id: "products", label: "Products", icon: <Package className="h-[17px] w-[17px]" /> },
+      { id: "analytics", label: "Prompt Validation", icon: <ShieldCheck className="h-[17px] w-[17px]" /> },
+      { id: "freelancers", label: "Freelancers", icon: <Briefcase className="h-[17px] w-[17px]" /> },
+    ],
+  },
+  {
+    title: "Money",
+    items: [
+      { id: "payments", label: "Payments", icon: <Wallet className="h-[17px] w-[17px]" /> },
+    ],
+  },
+  {
+    title: "Trust & Safety",
+    items: [
+      { id: "reports", label: "Reports", icon: <ShieldAlert className="h-[17px] w-[17px]" /> },
+      { id: "feedback", label: "Feedback", icon: <MessageSquare className="h-[17px] w-[17px]" /> },
+    ],
+  },
+];
+
 const MOBILE_NAV_MORE_ITEMS: { id: NavKey; label: string; icon: React.ReactNode }[] = [
   { id: "analytics", label: "Prompt Validation", icon: <ShieldCheck className="h-4 w-4" /> },
-  { id: "withdrawals", label: "Withdrawals", icon: <Wallet className="h-4 w-4" /> },
-  { id: "escrow", label: "Escrow", icon: <Landmark className="h-4 w-4" /> },
-  { id: "recordings", label: "Screen Recordings", icon: <Video className="h-4 w-4" /> },
+  { id: "freelancers", label: "Freelancers", icon: <Briefcase className="h-4 w-4" /> },
+  { id: "payments", label: "Payments", icon: <Wallet className="h-4 w-4" /> },
   { id: "feedback", label: "Feedback", icon: <MessageSquare className="h-4 w-4" /> },
 ];
 
@@ -20010,52 +21033,34 @@ const WithdrawalsView = () => {
     <div className="min-h-screen w-full bg-[#07080B] text-white font-inter">
       {/* Top Nav */}
       <header className="sticky top-0 z-40 border-b border-white/10 bg-[#07080B]/80 backdrop-blur">
-        <div className="mx-auto max-w-[1200px] px-5 sm:px-6">
-          <div className="h-[74px] flex items-center">
+        {/* Full width, not a centred 1200px box.
+            Brand + eight nav items + the actions cluster came to ~1,250px, so
+            inside a 1200px container the row spilled 52px past the right edge
+            and the whole page scrolled sideways. The nav also has to be allowed
+            to shrink (min-w-0) or a flex child refuses to go below its content
+            width and pushes the overflow back. */}
+        <div className="w-full px-4 sm:px-6">
+          <div className="h-[74px] flex items-center gap-2">
 
-
-            
             {/* LEFT: Brand */}
-            <div className="flex items-center">
-              <div className="text-white font-semibold tracking-wide">
+            <div className="flex items-center shrink-0">
+              <div className="text-white font-semibold tracking-wide whitespace-nowrap">
                 Tokun Admin
               </div>
             </div>
 
-            {/* CENTER: Nav */}
-            <div className="hidden md:flex flex-1 justify-center">
-              <nav className="flex items-center gap-2">
-                <NavItem
-                  id="dashboard"
-                  label="Dashboard"
-                  icon={<LayoutDashboard className="h-4 w-4" />}
-                />
-                <NavItem
-                  id="sellers"
-                  label="Sellers"
-                  icon={<Store className="h-4 w-4" />}
-                />
-                <NavItem
-                  id="products"
-                  label="Products"
-                  icon={<Package className="h-4 w-4" />}
-                />
-                <NavItem
-                  id="analytics"
-                  label="Prompt Validation"
-                  icon={<ShieldCheck className="h-4 w-4" />}
-                />
-
-                <NavItem id="reports" label="Reports" icon={<ShieldAlert className="h-4 w-4" />} />
-                 <NavItem id="withdrawals" label="Withdrawals" icon={<Wallet className="h-4 w-4" />} />
-                 <NavItem id="feedback" label="Feedback" icon={<MessageSquare className="h-4 w-4" />} />
-              </nav>
-            </div>
+            {/* The nav moved to the sidebar on the left. It lived here as a
+                centred row of eight items, which at this width had to be
+                shrunk to px-2 with nowrap and still overflowed — a list that
+                grows sideways is the wrong shape for a section list that keeps
+                growing. */}
 
             
 
-            {/* RIGHT: Actions */}
-            <div className="flex items-center gap-3 ml-auto">
+            {/* RIGHT: Actions. shrink-0 so it keeps its size and the nav in the
+                middle gives way instead — the account menu is the one thing
+                here that must never be clipped. */}
+            <div className="flex items-center gap-3 ml-auto shrink-0">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -20117,11 +21122,43 @@ const WithdrawalsView = () => {
                 </DropdownMenuContent>
               </DropdownMenu>
 
+          {/* Both queues carry a count, and go colour when there's something in
+              them — amber for refunds, fuchsia for disputes. Two identical grey
+              pills told an admin nothing about whether either needed opening. */}
           <button
             onClick={() => { window.location.href = "/admin/refunds"; }}
-            className="h-10 px-4 rounded-full border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] flex items-center gap-2 text-sm text-white/80"
+            className={`h-10 px-4 rounded-full border flex items-center gap-2 text-sm transition ${
+              queueCounts.refunds > 0
+                ? "border-[#FABC4E]/40 bg-[#FABC4E]/[0.10] text-[#FABC4E] hover:bg-[#FABC4E]/[0.16]"
+                : "border-white/10 bg-white/[0.04] text-white/80 hover:bg-white/[0.06]"
+            }`}
           >
             Refunds
+            {queueCounts.refunds > 0 && (
+              <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#FABC4E] text-[#07080B] text-[11px] font-bold grid place-items-center">
+                {queueCounts.refunds}
+              </span>
+            )}
+          </button>
+
+          {/* Cancellations the two parties couldn't split between themselves.
+              Separate from Refunds because that queue is prompt purchases —
+              a yes/no on a fixed amount — whereas this one is a judgement
+              about how much of a job was actually done. */}
+          <button
+            onClick={() => { window.location.href = "/admin/disputes"; }}
+            className={`h-10 px-4 rounded-full border flex items-center gap-2 text-sm transition ${
+              queueCounts.disputes > 0
+                ? "border-[#C084FC]/40 bg-[#C084FC]/[0.10] text-[#C084FC] hover:bg-[#C084FC]/[0.16]"
+                : "border-white/10 bg-white/[0.04] text-white/80 hover:bg-white/[0.06]"
+            }`}
+          >
+            Disputes
+            {queueCounts.disputes > 0 && (
+              <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#C084FC] text-[#07080B] text-[11px] font-bold grid place-items-center">
+                {queueCounts.disputes}
+              </span>
+            )}
           </button>
 
           <DropdownMenu>
@@ -20142,18 +21179,6 @@ const WithdrawalsView = () => {
     Account
   </DropdownMenuItem>
 
-  <DropdownMenuSeparator className="bg-white/10" />
-
-  <DropdownMenuItem
-    onClick={() => setActive("escrow")}
-    className="cursor-pointer focus:bg-white/[0.06]"
-  >
-    Escrow
-  </DropdownMenuItem>
-  <DropdownMenuSeparator className="bg-white/10" />
-<DropdownMenuItem onClick={() => setActive("recordings")} className="cursor-pointer focus:bg-white/[0.06]">
-  Screen Recordings
-</DropdownMenuItem>
 </DropdownMenuContent>
 
 </DropdownMenu>
@@ -20169,19 +21194,76 @@ const WithdrawalsView = () => {
 {/* Body */}
 <div className="w-full">
   <div className="flex w-full">
+
+    {/* ── PRIMARY NAV ──────────────────────────────────────────────────────
+        A vertical list, because the set of admin sections keeps growing and a
+        horizontal row does not. Each new item here costs one row of height
+        nobody notices, where across the top it cost width the page did not
+        have. Sticky and self-scrolling so it stays put no matter how long the
+        page beside it gets. */}
+    <aside className="hidden md:flex flex-col w-[228px] shrink-0 border-r border-white/[0.07] bg-white/[0.015]">
+      <nav className="sticky top-[74px] max-h-[calc(100vh-74px)] overflow-y-auto no-scrollbar px-3 py-5 flex flex-col gap-0.5">
+        {ADMIN_NAV_SECTIONS.map((section) => (
+          <div key={section.title} className="mb-1">
+            <p className="px-3 pt-3 pb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-white/25">
+              {section.title}
+            </p>
+            {section.items.map((item) => {
+              const isActive = active === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActive(item.id)}
+                  className={[
+                    "group w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors relative",
+                    isActive
+                      ? "bg-white/[0.07] text-white font-medium"
+                      : "text-white/55 hover:text-white hover:bg-white/[0.04]",
+                  ].join(" ")}
+                >
+                  {/* The active marker is a bar, not just a colour — colour
+                      alone is the one cue some people can't use. */}
+                  <span
+                    className={[
+                      "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r",
+                      isActive ? "bg-[#4F86F7]" : "bg-transparent",
+                    ].join(" ")}
+                  />
+                  <span className={isActive ? "text-[#4F86F7]" : "text-white/40 group-hover:text-white/70"}>
+                    {item.icon}
+                  </span>
+                  <span className="truncate">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </nav>
+    </aside>
+
     {/* ✅ LEFT: Always-visible Reports Sidebar */}
   {/* ✅ LEFT: Reports Sidebar (DESKTOP ONLY) */}
-<div className="hidden md:block w-[380px] shrink-0 pl-5 sm:pl-6 pr-4 py-10">
-  <div className="sticky top-[90px] h-[calc(100vh-110px)]">
-    <ReportsSidebar />
-  </div>
-</div>
+{/* The reports queue is a SECOND panel, and it belongs to one section.
+        It used to render on every tab, so with the primary nav now on the left
+        the page carried 608px of chrome before the content started — the
+        dashboard itself was squeezed into whatever was left. It opens when you
+        open Reports, and gets out of the way otherwise. */}
+    {active === "reports" && (
+      <div className="hidden md:block w-[340px] shrink-0 border-r border-white/[0.07] pl-5 pr-4 py-8">
+        <div className="sticky top-[90px] h-[calc(100vh-110px)]">
+          <ReportsSidebar />
+        </div>
+      </div>
+    )}
 
 
     {/* ✅ RIGHT: Pages (never broken by sidebar) */}
-<main className="flex-1 min-w-0 py-10 px-5 sm:px-6 md:pl-0 md:pr-5 lg:pr-6 pb-24 md:pb-10">
+{/* `md:pl-0` was here because the reports panel used to supply the left
+        gap on every page. It doesn't render on most pages any more, so without
+        real padding the content sat flush against the nav. */}
+<main className="flex-1 min-w-0 py-8 px-5 sm:px-6 lg:px-8 pb-24 md:pb-10">
 
-   <div className={active === "reports" ? "w-full" : "mx-auto max-w-[1200px]"}>
+   <div className={active === "reports" ? "w-full" : "mx-auto max-w-[1320px]"}>
 
 
               {active === "dashboard" && currentView === "seller" && selectedSellerMain && (
@@ -20323,13 +21405,24 @@ const WithdrawalsView = () => {
       </div>
     </section>
 
+    {/* ── Revenue charts ────────────────────────────────────────────────────
+        Built from platformRevenue.transactions — the real ledger, not a
+        sample. The number cards above answer "how much"; these answer "when"
+        and "from where", which a column of totals cannot.
+
+        Palette note: the brand magenta/blue pair FAILS a colourblind check
+        against each other (ΔE 1.8 under protanopia — indistinguishable), so
+        the series colours here are a separately validated set. */}
+    <RevenueCharts transactions={platformRevenue.transactions} loading={platformRevenueLoading} />
+
     {/* Platform Revenue — Tokun's own commission wallet + withdraw */}
     <section className={`${kpiCardBase} mt-6 p-6`}>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold">Tokun Platform Revenue</h2>
           <p className="mt-1 text-sm text-white/55">
-            5% commission from prompt sales + hire deals. Not included in seller payouts.
+            3% buyer platform fee on every sale, plus 10% seller commission on services and
+            hire deals. Earnings only — GST is tracked separately and is not yours to withdraw.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-4 sm:gap-6 w-full lg:w-auto">
@@ -20340,6 +21433,15 @@ const WithdrawalsView = () => {
           <div>
             <div className="text-xs text-white/50">Withdrawn so far</div>
             <div className="text-2xl font-semibold text-white/70">₹{platformRevenue.totalWithdrawn.toLocaleString()}</div>
+          </div>
+          {/* Deliberately not folded into the numbers beside it — this is a
+              liability, and an admin reading it as profit would over-report. */}
+          <div>
+            <div className="text-xs text-white/50">GST collected</div>
+            <div className="text-2xl font-semibold text-[#FABC4E]">
+              ₹{platformRevenue.gstCollected.toLocaleString()}
+            </div>
+            <div className="text-[11px] text-white/35">payable, not earnings</div>
           </div>
           <button
             onClick={() => { setWithdrawAmount(""); setWithdrawNote(""); setWithdrawModalOpen(true); }}
@@ -21456,8 +22558,9 @@ const WithdrawalsView = () => {
         {active === "sellers" && <SellersView />}
         {active === "reports" && <ReportsView />}
         {active === "analytics" && <PromptValidationAdminDashboard />}
+{active === "freelancers" && <FreelancerReviewAdminDashboard />}
 
-{active === "withdrawals" && <WithdrawalsView />}
+{active === "payments" && <PaymentsView />}
 {active === "feedback" && <FeedbackView />}
 
 
@@ -21468,8 +22571,6 @@ const WithdrawalsView = () => {
           />
         )}
 
-{active === "escrow" && <EscrowAdminDashboard />}
-{active === "recordings" && <ScreenRecordingsAdmin getToken={getToken} />}
 
 
       </div>

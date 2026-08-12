@@ -594,7 +594,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
   /* ── Core generate function ── */
   const doGenerate = useCallback(async (answersOverride?: Record<string,string>) => {
     if (!user) { navigate("/login"); return; }
-    if (!prompt.trim()) { toast({title:"Enter a prompt first",variant:"destructive"}); return; }
+    if (!prompt.trim()) { toast({title:"Enter a prompt first"}); return; }
     // Token limit reached → block generation and prompt to subscribe.
     if (isOutOfTokens(user)) { toast(TOKEN_LIMIT_TOAST); return; }
     if (isGenerating) { abortRef.current?.abort(); return; }
@@ -605,7 +605,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
     // generation had already streamed onto the screen.
     const gate = await llmService.checkSmartgenEligibility();
     if (!gate.allowed) {
-      toast({ title: "Can't generate", description: gate.message, variant: "destructive" });
+      toast({ title: "Can't generate", description: gate.message });
       return;
     }
 
@@ -675,7 +675,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
         warnIfQuotaSaveFailed(saveRes);
         onPromptGenerated?.(clean);
       } catch(fe) {
-        toast({title:"Generation failed",description:(fe as Error).message,variant:"destructive"});
+        toast({title:"Generation failed",description:(fe as Error).message});
       }
     } finally { setIsGenerating(false); }
   }, [user, prompt, skillMode, effectiveDomainId, selectedSubcat, effectiveSubcatLabel, deepAnswers, navigate, onPromptGenerated, isGenerating]);
@@ -692,7 +692,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
     if (isOutOfTokens(user)) { toast(TOKEN_LIMIT_TOAST); return; }
     const gate = await llmService.checkSmartgenEligibility();
     if (!gate.allowed) {
-      toast({ title: "Can't generate", description: gate.message, variant: "destructive" });
+      toast({ title: "Can't generate", description: gate.message });
       return;
     }
 
@@ -739,7 +739,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
       warnIfQuotaSaveFailed(saveRes);
       onPromptGenerated?.(data.prompt);
     } catch (err) {
-      toast({ title: "PDF conversion failed", description: (err as Error).message, variant: "destructive" });
+      toast({ title: "PDF conversion failed", description: (err as Error).message });
     } finally {
       setIsGenerating(false);
     }
@@ -767,11 +767,11 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
     e.target.value = "";
     if (!file) return;
     if (file.type !== "application/pdf") {
-      toast({ title: "PDF files only", variant: "destructive" });
+      toast({ title: "PDF files only" });
       return;
     }
     if (file.size > 20 * 1024 * 1024) {
-      toast({ title: "File too large", description: "PDF must be under 20MB.", variant: "destructive" });
+      toast({ title: "File too large", description: "PDF must be under 20MB." });
       return;
     }
     setAttachedPdf(file);

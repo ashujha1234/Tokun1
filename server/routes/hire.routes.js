@@ -357,6 +357,22 @@ const HireDeal = require("../models/HireDeal");
 const Notification = require("../models/Notification");
 const Message = require("../models/Message");
 const { releaseEscrowToFreelancer, EscrowAlreadyReleasedError } = require("../services/escrowRelease.service");
+const { checkPayoutReady, buildHeldTransfer } = require("../utils/routeEscrow");
+const { validateTargetDate, escrowExpiryFrom } = require("../utils/escrowWindow");
+const { transactionSplit, SERVICE_COMMISSION_PERCENT } = require("../utils/fees");
+const { normalizeBriefAttachments } = require("./briefAttachments");
+const { resolveHireRevisionsAllowed, getRevisionState } = require("../utils/revisionPolicy");
+const {
+  normalizeDeliverableLink,
+  uploadWorkFileToAzure,
+  getWorkFileDownloadUrl,
+} = require("../utils/serviceWorkStorage");
+const {
+  isWatermarkableImage,
+  isSettled,
+  watermarkImageBuffer,
+} = require("../utils/deliverableWatermark");
+const { fetchTransferIdsByAccount } = require("../utils/routePayouts");
 const { generateInvoicePDF } = require("../services/invoice.service");
 const { sendInvoiceEmail } = require("../services/email.service");
 
@@ -425,6 +441,8 @@ router.post("/create-proposal", requireAuth, blockIfSuspended, async (req, res) 
       budget,
       targetDate,
       deliveryPreference,
+      briefAttachments,
+      revisionsAllowed,
     } = req.body;
 
     if (!freelancerId || !conversationId) {
@@ -449,13 +467,49 @@ router.post("/create-proposal", requireAuth, blockIfSuspended, async (req, res) 
       });
     }
 
-    // Tokun charges the same commission % on BOTH sides: platformFee comes out
-    // of the freelancer's payout, clientFee is added on top of what the client pays.
-    const commissionPercent = Number(process.env.TOKUN_COMMISSION_PERCENT || 0);
-    const platformFee = +(amount * commissionPercent / 100).toFixed(2);
-    const freelancerAmount = +(amount - platformFee).toFixed(2);
-    const clientFee = +(amount * commissionPercent / 100).toFixed(2);
-    const totalPayable = +(amount + clientFee).toFixed(2);
+    // Sending a proposal to someone who can't be paid is a dead end — they
+    // physically cannot accept it, so the client would write a whole brief and
+    // then hit a wall at the accept step. Checked here as well as at accept and
+    // payment, because a disabled button in the UI is not a control.
+    const payoutReady = await checkPayoutReady(freelancerId, "buyer");
+    if (!payoutReady.ok) {
+      return res.status(409).json({
+        success: false,
+        error: payoutReady.error,
+        reason: payoutReady.reason,
+        message: payoutReady.message,
+      });
+    }
+
+    // A date the escrow can't reach is worse than no date: Razorpay stops
+    // holding the money at 90 days from payment, so a delivery further out than
+    // 60 leaves no room for review, revisions or a dispute before the hold
+    // lapses.
+    const dateCheck = validateTargetDate(targetDate);
+    if (!dateCheck.ok) {
+      return res.status(400).json({
+        success: false,
+        error: dateCheck.error,
+        message: dateCheck.message,
+      });
+    }
+
+    /* Both sides, from utils/fees.js — the same rates a service booking and a
+       prompt sale use, so a client is never charged a different platform fee
+       depending on which screen they bought from.
+
+       Client:     amount + platform fee + GST on that fee
+       Freelancer: amount − commission − GST on that commission
+
+       Fixed here, at proposal time, alongside the rest of the terms. */
+    const split = transactionSplit(amount, SERVICE_COMMISSION_PERCENT);
+
+    const platformFee = split.seller.commission;
+    const platformFeeGst = split.seller.commissionGst;
+    const freelancerAmount = split.seller.netToSeller;
+    const clientFee = split.buyer.platformFee;
+    const clientFeeGst = split.buyer.platformFeeGst;
+    const totalPayable = split.buyer.totalPayable;
 
     const deal = await HireDeal.create({
       clientId: req.user._id,
@@ -463,10 +517,20 @@ router.post("/create-proposal", requireAuth, blockIfSuspended, async (req, res) 
       chatId: conversationId,
       title: title || "Project Proposal",
       description: description || "",
+      // Only blobName-bearing descriptors survive normalisation, so a client
+      // can't get an arbitrary URL stored as if it were an uploaded file.
+      briefAttachments: normalizeBriefAttachments(briefAttachments),
+      // Fixed now, at proposal time, so neither side can change the terms once
+      // the money is in escrow. Hire deals were uncapped before this: a client
+      // could send the same project back indefinitely while the freelancer's
+      // payout sat frozen.
+      revisionsAllowed: resolveHireRevisionsAllowed(revisionsAllowed),
       amount,
       platformFee,
+      platformFeeGst,
       freelancerAmount,
       clientFee,
+      clientFeeGst,
       totalPayable,
       currency: "INR",
       deliveryDate: targetDate ? new Date(targetDate) : undefined,
@@ -486,6 +550,15 @@ router.post("/create-proposal", requireAuth, blockIfSuspended, async (req, res) 
       amount,
       targetDate,
       deliveryPreference: deliveryPreference || "complete",
+      // Names only, indexed — the freelancer decides whether to accept from
+      // this card, so reference files they can't see may as well not have been
+      // attached. No URLs: downloads go through the gated brief route by index,
+      // because a brief can hold unreleased material.
+      briefAttachments: (deal.briefAttachments || []).map((f, index) => ({
+        index,
+        name: f.name,
+        size: f.size,
+      })),
       status: "PENDING",
     };
 
@@ -535,14 +608,25 @@ router.post("/:dealId/upload-work-file", requireAuth, uploadWorkFile.single("fil
       });
     }
 
-    const fileUrl = `/uploads/hire-work/${req.file.filename}`;
+    /* Streamed into the PRIVATE container, same as service deliverables.
+       These used to land on local disk under /uploads/hire-work, which
+       express.static serves publicly with guessable filenames — so a client's
+       paid-for deliverable was fetchable by anyone who could construct the URL,
+       before approval and by people who weren't party to the deal at all.
+       Reads now go through the gated download route below. */
+    const { blobName, url } = await uploadWorkFileToAzure(
+      req.file.path,
+      req.file.originalname,
+      `hire/${deal._id}`
+    );
 
     return res.json({
       success: true,
       file: {
-        url: fileUrl,
+        url,
+        blobName,
+        kind: "file",
         name: req.file.originalname,
-        filename: req.file.filename,
         size: req.file.size,
         mimeType: req.file.mimetype,
       },
@@ -588,12 +672,24 @@ router.post("/:dealId/upload-nda", requireAuth, uploadNdaFile.single("nda"), asy
     const fileUrl = `/uploads/nda/${req.file.filename}`;
     const now = new Date();
 
+    /* The drawn signature, kept so the agreement renders signed forever.
+       It used to live only in the modal's own state, so reopening the NDA
+       showed a blank signature line. Capped: this is a small canvas PNG, and
+       anything larger is not a signature. */
+    const signatureDataUrl = String(req.body?.signature || "");
+    const validSignature =
+      signatureDataUrl.startsWith("data:image/") && signatureDataUrl.length <= 200_000
+        ? signatureDataUrl
+        : "";
+
     if (isClient) {
       deal.ndaClientUrl = fileUrl;
       deal.ndaClientSignedAt = now;
+      if (validSignature) deal.ndaClientSignature = validSignature;
     } else {
       deal.ndaFreelancerUrl = fileUrl;
       deal.ndaFreelancerSignedAt = now;
+      if (validSignature) deal.ndaFreelancerSignature = validSignature;
     }
 
     await deal.save();
@@ -664,6 +760,21 @@ router.post("/:dealId/accept", requireAuth, async (req, res) => {
 
     if (deal.status !== "PENDING_ACCEPTANCE") {
       return res.status(400).json({ success: false, error: "This proposal is already processed" });
+    }
+
+    // Accepting is a commitment to be paid, and the money is routed to this
+    // freelancer's Razorpay linked account and held there. An account Razorpay
+    // hasn't ACTIVATED can't receive a transfer, so accepting would strand the
+    // client's payment. Blocked here — with wording aimed at the freelancer,
+    // since they're the one who has to fix it.
+    const payoutReady = await checkPayoutReady(deal.freelancerId._id, "self");
+    if (!payoutReady.ok) {
+      return res.status(409).json({
+        success: false,
+        error: payoutReady.error,
+        reason: payoutReady.reason,
+        message: payoutReady.message,
+      });
     }
 
     deal.status = "ACCEPTED_WAITING_PAYMENT";
@@ -746,7 +857,11 @@ router.post("/:dealId/cancel", requireAuth, async (req, res) => {
     deal.status = "CANCELLED";
     deal.cancelledAt = new Date();
     deal.cancelReason = String(reason || "").slice(0, 500);
-    deal.cancelledBy = req.user._id;
+    // Which SIDE walked away, matching what the settlement service writes. This
+    // used to store req.user._id, which only worked because a duplicate schema
+    // declaration had quietly retyped the field as an ObjectId — the same
+    // duplicate that made every post-payment settlement throw.
+    deal.cancelledBy = isClient ? "buyer" : "seller";
     await deal.save();
 
     return res.json({ success: true, message: "Deal cancelled", deal });
@@ -788,6 +903,19 @@ router.post("/:dealId/create-payment-order", requireAuth, blockIfSuspended, asyn
 
     const chargeAmount = Number(deal.totalPayable || deal.amount);
 
+    // Re-checked even though accept already gated on it — the account can be
+    // suspended in between, and this is the last moment before the client's
+    // money is actually taken.
+    const payoutReady = await checkPayoutReady(deal.freelancerId, "buyer");
+    if (!payoutReady.ok) {
+      return res.status(409).json({
+        success: false,
+        error: payoutReady.error,
+        reason: payoutReady.reason,
+        message: payoutReady.message,
+      });
+    }
+
     const order = await razorpay.orders.create({
       amount: Math.round(chargeAmount * 100),
       currency: deal.currency || "INR",
@@ -799,9 +927,36 @@ router.post("/:dealId/create-payment-order", requireAuth, blockIfSuspended, asyn
         clientId: String(deal.clientId),
         freelancerId: String(deal.freelancerId),
       },
+      /* Escrow. Attached to the order so Razorpay applies it as part of the
+         capture — no window where the money is taken but the transfer failed.
+
+         The FULL amount goes on hold, not the freelancer's post-commission
+         share. Tokun's cut is reversed out of the hold when the work is
+         approved; until then it sits in the same held transfer as the rest.
+
+         This used to hold freelancerAmount only, and it broke the one case that
+         matters most: an admin ruling wholly in the freelancer's favour owes
+         them the whole ₹3,000 (Tokun waives its commission on anything it has
+         to arbitrate) against a ₹2,850 hold. The ₹150 gap cannot be sent
+         afterwards — a transfer from our own balance is a separate Razorpay
+         feature that answers "This feature is not enabled for this merchant".
+         Holding the whole amount means every outcome is payable out of the
+         hold, with no second call needed. */
+      transfers: [
+        buildHeldTransfer({
+          account: payoutReady.linkedAccountId,
+          amountRupees: deal.totalPayable,
+          notes: {
+            kind: "HIRE_ESCROW",
+            dealId: String(deal._id),
+            dealTitle: deal.title,
+          },
+        }),
+      ],
     });
 
     deal.razorpayOrderId = order.id;
+    deal.routeLinkedAccountId = payoutReady.linkedAccountId;
     deal.paymentStatus = "ORDER_CREATED";
     await deal.save();
 
@@ -850,6 +1005,35 @@ router.post("/:dealId/verify-payment", requireAuth, blockIfSuspended, async (req
     deal.fundsStatus = "HELD_BY_TOKUN";
     deal.status = "FUNDED";
     deal.paidAt = new Date();
+    // Razorpay won't hold the transfer past this, so every decision about this
+    // money has to happen before it.
+    deal.escrowExpiresAt = escrowExpiryFrom(deal.paidAt);
+
+    // The transfer was attached to the Razorpay order so it already exists —
+    // but its id is only knowable by asking, and without it we'd have no handle
+    // to release the escrow with later.
+    //
+    // Non-fatal on purpose: the payment IS captured and the money IS held by
+    // Razorpay whether or not this lookup succeeds. Failing the request would
+    // tell the client their payment didn't work, which is false. The transfer.*
+    // webhook fills the id in if this misses.
+    try {
+      const transfersByAccount = await fetchTransferIdsByAccount(razorpay_payment_id);
+      const transferId = deal.routeLinkedAccountId
+        ? transfersByAccount.get(String(deal.routeLinkedAccountId))
+        : [...transfersByAccount.values()][0];
+      if (transferId) {
+        deal.routeTransferId = transferId;
+        deal.routeTransferStatus = "on_hold";
+        // What the hold actually carries. Recorded rather than re-derived,
+        // because deals funded before this change hold freelancerAmount and the
+        // settlement math has to be able to tell the two apart.
+        deal.routeHeldAmount = deal.totalPayable;
+      }
+    } catch (transferErr) {
+      console.error("Hire deal transfer lookup failed:", transferErr.message);
+    }
+
     await deal.save();
 
     // ✅ FIXED: correct Message fields
@@ -895,9 +1079,19 @@ router.post("/:dealId/verify-payment", requireAuth, blockIfSuspended, async (req
             price: chargeAmount,
           },
         ];
+        // GST is off, matching generateInvoicePDF and the prompt/cart flows.
+        //
+        // It was being ADDED on top of chargeAmount — but chargeAmount IS what
+        // Razorpay collected, so the email body claimed a total the client
+        // never paid. The attached PDF had GST switched off already, so the
+        // email and its own attachment disagreed on the same invoice.
+        //
+        // Re-enable only once GST registration and the inclusive/exclusive
+        // treatment are settled — and change the CHARGE at the same time, not
+        // just the invoice.
         const subtotal = chargeAmount;
-        const gst = +(subtotal * 0.18).toFixed(2);
-        const total = +(subtotal + gst).toFixed(2);
+        const gst = 0;
+        const total = +subtotal.toFixed(2);
 
         const logoPath = path.join(__dirname, "../assets/icons/Tokun.png");
         const logoBase64 = fs.existsSync(logoPath)
@@ -911,6 +1105,10 @@ router.post("/:dealId/verify-payment", requireAuth, blockIfSuspended, async (req
           buyerName: client.name || "Customer",
           buyerEmail: client.email || "",
           items,
+          // Makes the invoice say what this payment actually is — money held in
+          // escrow until the client approves, and split by completion if the
+          // project is cancelled after work starts.
+          kind: "hire",
         });
 
         await sendInvoiceEmail({
@@ -924,6 +1122,7 @@ router.post("/:dealId/verify-payment", requireAuth, blockIfSuspended, async (req
           gst,
           total,
           pdfBuffer,
+          kind: "hire",
         });
       }
     } catch (invoiceErr) {
@@ -953,20 +1152,127 @@ router.get("/:dealId", requireAuth, async (req, res) => {
       return res.status(404).json({ success: false, error: "Deal not found" });
     }
 
+    /* Optional chaining because a populated ref comes back NULL when the user
+       it points at no longer exists — clientId/freelancerId are required on the
+       schema, so they are never null in the document itself, only after
+       populate fails to resolve them. Dereferencing that null threw a 500 on a
+       deal whose counterparty had been deleted, which made the deal
+       unreachable for the party who was still around.
+
+       Failing to `false` is the safe direction: an id that can't be resolved
+       can't be matched against the caller, so they are not a party to it. The
+       surviving party still matches on their own side. */
     const isParty =
-      String(deal.clientId._id) === String(req.user._id) ||
-      String(deal.freelancerId._id) === String(req.user._id);
+      String(deal.clientId?._id || "") === String(req.user._id) ||
+      String(deal.freelancerId?._id || "") === String(req.user._id);
 
     if (!isParty) {
       return res.status(403).json({ success: false, error: "Access denied" });
     }
 
-    return res.json({ success: true, deal });
+    // Sent alongside the deal so the order screen can show "1 of 3 revisions
+    // used" without re-deriving the cap. The service endpoint has always
+    // returned this; hire deals only gained a cap alongside it, so this is the
+    // matching half.
+    return res.json({ success: true, deal, revisionState: getRevisionState(deal) });
   } catch (err) {
     console.error("get deal error:", err);
     return res.status(500).json({ success: false, error: "Failed to fetch deal" });
   }
 });
+/* ══════════════════════════════════════════════════════════════════════════
+   GET /api/hire/:dealId/deliverables/:index/download
+
+   The gate that makes escrow mean something on hire deals too. Mirrors the
+   service route: /uploads was public static with guessable filenames, so a
+   deliverable was fetchable by anyone who could construct the URL — before the
+   client had approved, and by people who weren't party to the deal.
+
+   Also where the watermark is applied. A client has to be able to SEE the work
+   to approve it, but for image work seeing it is most of the value — nothing
+   stopped someone previewing the final artwork and then cancelling. So while
+   the money is still held, the client gets a stamped copy; the moment the
+   escrow settles they get the original. The freelancer is never watermarked.
+   ══════════════════════════════════════════════════════════════════════════ */
+router.get("/:dealId/deliverables/:index/download", requireAuth, async (req, res) => {
+  try {
+    const deal = await HireDeal.findById(req.params.dealId).select(
+      "clientId freelancerId deliverables fundsStatus"
+    );
+    if (!deal) return res.status(404).json({ success: false, error: "deal_not_found" });
+
+    const isClient = String(deal.clientId) === String(req.user._id);
+    const isFreelancer = String(deal.freelancerId) === String(req.user._id);
+    if (!isClient && !isFreelancer) {
+      return res.status(403).json({ success: false, error: "not_authorized" });
+    }
+
+    const index = Number(req.params.index);
+    const deliverable = deal.deliverables?.[index];
+    if (!deliverable) {
+      return res.status(404).json({ success: false, error: "deliverable_not_found" });
+    }
+
+    if (deliverable.kind === "link") {
+      return res.json({ success: true, url: deliverable.url, kind: "link" });
+    }
+
+    const needsWatermark =
+      isClient &&
+      !isSettled(deal.fundsStatus) &&
+      isWatermarkableImage(deliverable.name, deliverable.mimeType);
+
+    if (deliverable.blobName) {
+      if (needsWatermark) {
+        // Fetched server-side and re-encoded — handing back a signed URL would
+        // give away the untouched original.
+        const signedUrl = getWorkFileDownloadUrl(deliverable.blobName);
+        const upstream = await fetch(signedUrl);
+        if (!upstream.ok) throw new Error(`blob fetch failed: ${upstream.status}`);
+
+        const stamped = await watermarkImageBuffer(Buffer.from(await upstream.arrayBuffer()));
+        res.setHeader("Content-Type", "image/png");
+        res.setHeader("X-Tokun-Watermarked", "1");
+        res.setHeader(
+          "Content-Disposition",
+          `inline; filename="preview-${String(deliverable.name || "image").replace(/[^\x20-\x7E]/g, "_")}"`
+        );
+        return res.send(stamped);
+      }
+
+      return res.json({
+        success: true,
+        kind: "file",
+        name: deliverable.name,
+        url: getWorkFileDownloadUrl(deliverable.blobName),
+      });
+    }
+
+    // Pre-Azure record: still on this host's disk. Streamed through the same
+    // auth check rather than handing back the public /uploads path.
+    const legacyName = path.basename(String(deliverable.url || ""));
+    const legacyPath = path.join(workUploadDir, legacyName);
+    if (legacyName && fs.existsSync(legacyPath)) {
+      if (needsWatermark) {
+        const stamped = await watermarkImageBuffer(await fs.promises.readFile(legacyPath));
+        res.setHeader("Content-Type", "image/png");
+        res.setHeader("X-Tokun-Watermarked", "1");
+        return res.send(stamped);
+      }
+      return res.download(legacyPath, deliverable.name || legacyName);
+    }
+
+    return res.status(404).json({
+      success: false,
+      error: "file_missing",
+      message: "This file is no longer available. Ask the freelancer to re-upload it.",
+    });
+  } catch (err) {
+    console.error("download hire deliverable error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
 // ─── 1. Work Submit (Ashutosh submits deliverables) ───
 // ─── Submit work deliverables ────────────────────────────
 router.post("/:dealId/submit-work", requireAuth, async (req, res) => {
@@ -998,27 +1304,66 @@ router.post("/:dealId/submit-work", requireAuth, async (req, res) => {
       });
     }
 
-    const normalizedDeliverables = Array.isArray(deliverables)
-      ? deliverables.map((d) => ({
-          url: d.url,
-          name: d.name || d.description || "Work file",
-          description: d.description || d.name || "Work file",
-          size: d.size || 0,
-          mimeType: d.mimeType || "",
+    /* A delivery is either an uploaded file or a LINK the freelancer pasted —
+       a GitHub repo, a Drive folder, a deployed URL. Service bookings accepted
+       links already; hire deals didn't, which meant the most common way to hand
+       over a built site ("here's the deployment") had nowhere to go. */
+    const normalizedDeliverables = [];
+    for (const d of Array.isArray(deliverables) ? deliverables : []) {
+      if (d?.kind === "link") {
+        const link = normalizeDeliverableLink(d.url, d.name);
+        if (!link.ok) {
+          return res.status(400).json({ success: false, error: "invalid_link", message: link.message });
+        }
+        normalizedDeliverables.push({
+          kind: "link",
+          provider: link.provider,
+          url: link.url,
+          name: link.label,
+          description: d.description || link.label,
+          size: 0,
+          mimeType: "",
+          blobName: "",
           uploadedAt: new Date(),
-        }))
-      : [];
+        });
+        continue;
+      }
+
+      if (!d?.url) continue;
+      normalizedDeliverables.push({
+        kind: "file",
+        provider: "",
+        url: d.url,
+        blobName: d.blobName || "",
+        name: d.name || d.description || "Work file",
+        description: d.description || d.name || "Work file",
+        size: d.size || 0,
+        mimeType: d.mimeType || "",
+        uploadedAt: new Date(),
+      });
+    }
 
     if (!normalizedDeliverables.length && !String(note || "").trim()) {
       return res.status(400).json({
         success: false,
-        error: "Attach at least one file or add a note",
+        error: "empty_submission",
+        message: "Attach a file, add a repo/deployment link, or write a note before submitting.",
       });
     }
 
     deal.status = "WORK_SUBMITTED";
     deal.workSubmittedAt = new Date();
     deal.deliverables = normalizedDeliverables;
+    // Appended, never replaced — see the comment on HireDeal.submissions.
+    deal.submissions = [
+      ...(deal.submissions || []),
+      {
+        version: (deal.submissions?.length || 0) + 1,
+        note: note || "",
+        deliverables: normalizedDeliverables,
+        submittedAt: new Date(),
+      },
+    ];
     deal.submissionNote = note || "";
     await deal.save();
 
@@ -1053,7 +1398,19 @@ router.post("/:dealId/submit-work", requireAuth, async (req, res) => {
         amount: deal.amount,
         budget: deal.amount,
         note: note || "",
-        deliverables: normalizedDeliverables,
+        // Indexed, not URL-bearing: an uploaded file is fetched through
+        // /deliverables/:index/download, so the chat message itself never
+        // carries anything openable without an auth check — and the client's
+        // copy goes through the watermark on the way out.
+        deliverables: normalizedDeliverables.map((d, index) => ({
+          index,
+          kind: d.kind || "file",
+          provider: d.provider || "",
+          name: d.name,
+          size: d.size || 0,
+          mimeType: d.mimeType || "",
+          url: d.kind === "link" ? d.url : "",
+        })),
         status: "WORK_SUBMITTED",
         message: `${deal.freelancerId.name || "Freelancer"} submitted the project work. Please review the attached files.`,
       })}`,
@@ -1196,7 +1553,10 @@ router.post("/:dealId/approve-work", requireAuth, async (req, res) => {
       success: true,
       message: `₹${payoutAmount} credited to freelancer's Tokun Wallet`,
       deal,
-      walletBalance: wallet.availableBalance,
+      // null once the money goes out over Route instead of the internal
+      // ledger — there is no Tokun-side balance to report, Razorpay settles it
+      // to the freelancer's own bank. Only legacy deals still return a wallet.
+      walletBalance: wallet ? wallet.availableBalance : null,
     });
   } catch (err) {
     console.error("approve-work error:", err);
@@ -1219,9 +1579,28 @@ router.post("/:dealId/request-revision", requireAuth, async (req, res) => {
     if (deal.status !== "WORK_SUBMITTED")
       return res.status(400).json({ success: false, error: "Work not submitted yet" });
 
+    // The cap agreed at proposal time. Without this the endpoint just appended,
+    // so a client could send the same project back forever and the
+    // freelancer's payout would stay frozen in escrow for as long as they felt
+    // like — and now that escrow has a hard 90-day ceiling, an uncapped loop
+    // can run the whole hold out.
+    const revisionState = getRevisionState(deal);
+    if (revisionState.exhausted) {
+      return res.status(400).json({
+        success: false,
+        error: "revisions_exhausted",
+        message: `This project included ${revisionState.allowed} revision${
+          revisionState.allowed === 1 ? "" : "s"
+        }, and you've used ${revisionState.used}. Approve the work, or cancel and let our team decide the split if something is genuinely wrong.`,
+        revisionState,
+      });
+    }
+
     deal.status = "REVISION_REQUESTED";
     deal.revisions = [...(deal.revisions || []), { reason, requestedAt: new Date() }];
     await deal.save();
+
+    const updatedRevisionState = getRevisionState(deal);
 
     await Notification.create({
       senderId: req.user._id,
@@ -1229,11 +1608,18 @@ router.post("/:dealId/request-revision", requireAuth, async (req, res) => {
       receiverUserId: deal.freelancerId._id,
       type: "HIRE_REVISION_REQUESTED",
       hireDealId: deal._id,
-      message: `${deal.clientId.name} ne revision manga: ${reason || "No reason given"}`,
-      meta: { title: deal.title, reason },
+      message: `${deal.clientId.name} requested a revision (${updatedRevisionState.label}): ${reason || "No reason given"}`,
+      meta: { title: deal.title, reason, revisionState: updatedRevisionState },
     });
 
-    return res.json({ success: true, message: "Revision requested", deal });
+    return res.json({
+      success: true,
+      message: updatedRevisionState.unlimited
+        ? "Revision requested"
+        : `Revision requested — ${updatedRevisionState.remaining} of ${updatedRevisionState.allowed} left`,
+      deal,
+      revisionState: updatedRevisionState,
+    });
   } catch (err) {
     return res.status(500).json({ success: false, error: "Failed to request revision" });
   }

@@ -1129,7 +1129,6 @@ const mapped: Prompt[] = (body.purchases || []).map((p: any) => {
       toast({
         title: "Couldn’t load purchases",
         description: err?.message || "Please try again.",
-        variant: "destructive",
       });
     } finally {
       setPurchasesLoading(false);
@@ -1330,7 +1329,6 @@ const mapped: Prompt[] = (body.purchases || []).map((p: any) => {
         toast({
           title: "Couldn’t load your uploads",
           description: err?.message || "Please try again.",
-          variant: "destructive",
         });
       } finally {
         setUploadsLoading(false);
@@ -1401,7 +1399,6 @@ const totalEarningsINR = uploadHistory.reduce((sum, p) => {
       toast({
         title: "Delete failed",
         description: err?.message || "Could not delete the prompt.",
-        variant: "destructive",
       });
     }
   };
@@ -1454,7 +1451,6 @@ const totalEarningsINR = uploadHistory.reduce((sum, p) => {
       toast({
         title: "Refund request failed",
         description: err?.message || "Please try again.",
-        variant: "destructive",
       });
     } finally {
       setRefundSubmitting(false);

@@ -957,8 +957,8 @@ router.get("/", async (req, res) => {
       q = q.skip((page - 1) * limit).limit(limit);
     }
 
-    const sellers = await q;
-    const total = await User.countDocuments(query);
+    // Independent of each other — the count doesn't need the page's rows.
+    const [sellers, total] = await Promise.all([q, User.countDocuments(query)]);
 
     const userIds = sellers.map((u) => u._id);
 
@@ -978,7 +978,7 @@ router.get("/", async (req, res) => {
     /**
      * ✅ 1) Sell/upload count = Prompt.userId count
      */
-    const uploadedAgg = await Prompt.aggregate([
+    const uploadedAggP = Prompt.aggregate([
       {
         $match: {
           userId: { $in: userIds },
@@ -997,7 +997,7 @@ router.get("/", async (req, res) => {
      * ✅ 2) Seller sold count + earning = Purchase -> Prompt owner
      * Do NOT use Prompt.sold because sold=true only works for exclusive prompts.
      */
-    const salesAgg = await Purchase.aggregate([
+    const salesAggP = Purchase.aggregate([
       {
         $match: {
           paymentStatus: { $ne: "FAILED" },
@@ -1043,7 +1043,7 @@ router.get("/", async (req, res) => {
     /**
      * ✅ 3) Buy count = Purchase.buyer count
      */
-    const buyAgg = await Purchase.aggregate([
+    const buyAggP = Purchase.aggregate([
       {
         $match: {
           buyer: { $in: userIds },
@@ -1057,6 +1057,30 @@ router.get("/", async (req, res) => {
           totalSpent: { $sum: { $ifNull: ["$pricePaid", 0] } },
         },
       },
+    ]);
+
+    // Whether each seller has an ACTIVATED Razorpay linked account — used by
+    // the admin dashboard's "Pending Approval" seller count (a seller who's
+    // uploaded prompts but hasn't finished payout verification yet).
+    const bankAccountsP = BankAccount.find({ userId: { $in: userIds } })
+      .select("userId activationStatus")
+      .lean();
+
+    /* These four don't depend on each other, so they run together. They were
+       four sequential awaits, which cost four round trips to Atlas on a page
+       that is otherwise just waiting — and this endpoint has no pagination
+       when limit=0, so each one is a full pass.
+
+       This await has to stay ABOVE the maps below: they read uploadedAgg /
+       salesAgg / buyAgg, and while it sat underneath them every single call to
+       this endpoint died in the temporal dead zone with "Cannot access
+       'uploadedAgg' before initialization" — a 500 that emptied the prompt-seller
+       half of the Find Creators directory for everyone. */
+    const [uploadedAgg, salesAgg, buyAgg, bankAccounts] = await Promise.all([
+      uploadedAggP,
+      salesAggP,
+      buyAggP,
+      bankAccountsP,
     ]);
 
     const uploadedMap = new Map(
@@ -1083,12 +1107,6 @@ router.get("/", async (req, res) => {
       ])
     );
 
-    // Whether each seller has an ACTIVATED Razorpay linked account — used by
-    // the admin dashboard's "Pending Approval" seller count (a seller who's
-    // uploaded prompts but hasn't finished payout verification yet).
-    const bankAccounts = await BankAccount.find({ userId: { $in: userIds } })
-      .select("userId activationStatus")
-      .lean();
     const activatedSellerIds = new Set(
       bankAccounts.filter((b) => b.activationStatus === "ACTIVATED").map((b) => String(b.userId))
     );

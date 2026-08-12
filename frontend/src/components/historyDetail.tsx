@@ -12,6 +12,7 @@ import {
 import { RiShareForwardLine } from "react-icons/ri";
 import { AiOutlineStar, AiFillStar } from "react-icons/ai";
 import RequestToBuyModal from "@/components/RequestToBuyModel";
+import SharePromptMenu from "@/components/SharePromptMenu";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/use-toast";
 
@@ -95,6 +96,12 @@ export default function DetailsPrompt({
       user.email.trim().toLowerCase() === prompt.ownerEmail.trim().toLowerCase());
   // Share modal state
   const [showRequestModal, setShowRequestModal] = useState(false);
+
+  // Points at the listing, never the prompt text — the recipient lands on the
+  // marketplace with this prompt open and buys their own copy.
+  const shareUrl = `${window.location.origin}/prompt-marketplace?prompt=${encodeURIComponent(
+    String(prompt?.id ?? "")
+  )}`;
 
   // Feedback stars (interactive)
   const [feedback, setFeedback] = useState<number>(0);
@@ -352,17 +359,28 @@ pb-8 sm:pb-10
     >
       {prompt.fullPrompt}
     </div>
-    <button
-      type="button"
-      onClick={() => {
-        navigator.clipboard.writeText(prompt.fullPrompt!);
-        toast({ title: "Copied!", description: "Prompt copied to clipboard." });
-      }}
-      className="mt-2 px-4 h-9 rounded-lg text-sm text-white"
-      style={{ background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)" }}
-    >
-      Copy Prompt
-    </button>
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={() => {
+          navigator.clipboard.writeText(prompt.fullPrompt!);
+          toast({ title: "Copied!", description: "Prompt copied to clipboard." });
+        }}
+        className="px-4 h-9 rounded-lg text-sm text-white"
+        style={{ background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)" }}
+      >
+        Copy Prompt
+      </button>
+
+      {/* Shares the listing, not the text above — anyone you send this to
+          lands on the prompt's page and buys it themselves. */}
+      <SharePromptMenu
+        url={shareUrl}
+        title={prompt?.title}
+        align="left"
+        className="px-4 h-9 rounded-lg text-sm text-white border border-white/15 bg-[#1C1C1E] hover:bg-[#2A2A2D] transition-colors inline-flex items-center gap-1.5"
+      />
+    </div>
   </div>
 )}
 

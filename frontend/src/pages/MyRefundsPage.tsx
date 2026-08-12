@@ -196,7 +196,7 @@ export default function MyRefundsPage() {
               our support team — contact them if you need one.
             </p>
             <button
-              onClick={() => navigate("/purchases")}
+              onClick={() => navigate("/self-dash?tab=prompts&p=purchased")}
               className="mt-5 rounded-lg bg-[#1A73E8] px-5 py-2 text-sm font-medium text-white hover:opacity-90"
             >
               Go to purchase history
@@ -316,6 +316,18 @@ export default function MyRefundsPage() {
             . Something not right?{" "}
             <a href="/support" className="underline hover:text-white">
               Contact Support
+            </a>
+            .
+          </p>
+          {/* Requests are filed from the purchased prompts list, so the page
+              always offers a way back to it — not just when it's empty. */}
+          <p className="mt-3 text-white/60 text-xs leading-relaxed">
+            Want to request a new refund? Open{" "}
+            <a
+              href="/self-dash?tab=prompts&p=purchased"
+              className="underline hover:text-white"
+            >
+              your purchased prompts
             </a>
             .
           </p>

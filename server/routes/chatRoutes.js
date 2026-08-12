@@ -72,70 +72,75 @@ router.get("/messages/:conversationId", requireAuth, async (req, res) => {
 });
 
 
+/* The chat list.
+   Took ~4.2s for eleven conversations, almost all of it self-inflicted:
+
+     • one countDocuments PER conversation — eleven separate round trips to
+       Atlas just to produce eleven numbers (2,694ms of the total)
+     • a `lastSender` populate whose result was never read; the response below
+       has never contained it (another ~430ms)
+     • full Mongoose hydration of documents that get flattened immediately
+
+   Now: one find, one aggregation, no hydration. */
 router.get("/conversations", requireAuth, async (req, res) => {
-  const myId = req.user._id;
-
-  const conversations = await Conversation.find({
-    participants: myId,
-  })
-.populate("participants", "name avatar role")
-    .populate("lastSender", "name")
-    .sort({ updatedAt: -1 });
-
-  // Add unread count
-  const enriched = await Promise.all(
-    conversations.map(async (c) => {
-    const unreadCount = await Message.countDocuments({
-  conversationId: c._id,
-  sender: { $ne: myId },
-  readBy: { $ne: myId },
-});
-
-      const otherUser = c.participants.find(
-        (p) => p._id.toString() !== myId.toString()
-      );
-
-      return {
-        _id: c._id,
-        otherUser,
-        lastMessage: c.lastMessage,
-        unreadCount,
-        updatedAt: c.updatedAt,
-      };
-    })
-  );
-
-  res.json({ success: true, conversations: enriched });
-});
-
-
-router.delete("/conversation/:conversationId", requireAuth, async (req, res) => {
   try {
-    const { conversationId } = req.params;
     const myId = req.user._id;
 
-    if (!mongoose.Types.ObjectId.isValid(conversationId)) {
-      return res.status(400).json({ success: false, error: "Invalid ID" });
+    const conversations = await Conversation.find({ participants: myId })
+      .select("participants lastMessage updatedAt")
+      .populate("participants", "name avatar role")
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    if (!conversations.length) {
+      return res.json({ success: true, conversations: [] });
     }
 
-    const convo = await Conversation.findOne({
-      _id: conversationId,
-      participants: myId,
-    });
+    /* Every unread count in a single pass, keyed by conversation. The previous
+       loop asked the same question once per row; this asks it once. */
+    const counts = await Message.aggregate([
+      {
+        $match: {
+          conversationId: { $in: conversations.map((c) => c._id) },
+          sender: { $ne: myId },
+          readBy: { $ne: myId },
+        },
+      },
+      { $group: { _id: "$conversationId", n: { $sum: 1 } } },
+    ]);
 
-    if (!convo) {
-      return res.status(403).json({ success: false, error: "Not allowed" });
-    }
+    const unreadBy = new Map(counts.map((c) => [String(c._id), c.n]));
+    const me = String(myId);
 
-    await Message.deleteMany({ conversationId });
-    await Conversation.deleteOne({ _id: conversationId });
+    const enriched = conversations.map((c) => ({
+      _id: c._id,
+      otherUser: (c.participants || []).find((p) => String(p._id) !== me),
+      lastMessage: c.lastMessage,
+      unreadCount: unreadBy.get(String(c._id)) || 0,
+      updatedAt: c.updatedAt,
+    }));
 
-    res.json({ success: true });
+    res.json({ success: true, conversations: enriched });
   } catch (err) {
-    console.error("Delete chat error:", err);
-    res.status(500).json({ success: false });
+    console.error("GET /api/chat/conversations error:", err);
+    res.status(500).json({ success: false, error: "server_error" });
   }
 });
+
+
+// DELETE /conversation/:conversationId was removed along with the chat UI's
+// delete button.
+//
+// Worth stating why it went rather than just being left unreachable: it
+// hard-deleted the Conversation AND every Message in it, for BOTH participants,
+// on one person's say-so. The other side lost the entire history — including
+// anything agreed about a paid hire — with no record and no way back.
+//
+// The route is gone rather than merely unused for the same reason the
+// message:edit / message:delete socket handlers were removed (see the note in
+// index.js): an endpoint the UI no longer exposes is still reachable by a
+// hand-crafted request, so leaving it live would mean chat history is only as
+// immutable as an attacker chooses.
 
 
 router.post(
@@ -144,10 +149,14 @@ router.post(
   upload.single("file"),
   async (req, res) => {
     try {
-      const { conversationId } = req.body;
+      const { conversationId, clientId } = req.body;
 
       if (!req.file) {
         return res.status(400).json({ success: false });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(conversationId)) {
+        return res.status(400).json({ success: false, error: "Invalid conversationId" });
       }
 
       // 🔥 Upload to Azure
@@ -167,6 +176,53 @@ router.post(
     type: req.file.mimetype.startsWith("image") ? "image" : "file",
   },
 });
+
+      // Keep the thread preview in step with text messages, which already do
+      // this — otherwise sending a file leaves the list showing the previous
+      // message and the thread doesn't move to the top.
+      const isImage = req.file.mimetype.startsWith("image");
+      await Conversation.findByIdAndUpdate(conversationId, {
+        lastMessage: isImage ? "📷 Photo" : `📎 ${req.file.originalname}`,
+        lastSender: req.user._id,
+        updatedAt: new Date(),
+      });
+
+      // Broadcast. This route used to return the message and nothing else — the
+      // client emitted "new-message" itself, which the server has no handler
+      // for, so the other side never saw an attachment until a reload.
+      try {
+        const io = req.app.get("io");
+        const notify = req.app.get("notifyChatRecipients");
+        const convo = await Conversation.findById(conversationId).select("participants").lean();
+        const recipients = (convo?.participants || [])
+          .map(String)
+          .filter((p) => p !== String(req.user._id));
+
+        if (io) {
+          io.to(String(conversationId)).emit("new-message", {
+            _id: message._id,
+            conversationId: String(conversationId),
+            clientId: clientId || null,
+            sender: String(req.user._id),
+            attachment: message.attachment,
+            createdAt: message.createdAt,
+            deliveredTo: [],
+            readBy: [String(req.user._id)],
+          });
+        }
+        if (typeof notify === "function") {
+          notify(recipients, {
+            conversationId: String(conversationId),
+            messageId: String(message._id),
+            senderId: String(req.user._id),
+            preview: isImage ? "📷 Photo" : `📎 ${req.file.originalname}`,
+          });
+        }
+      } catch (e) {
+        // The upload succeeded and is being returned; a failed broadcast only
+        // costs the recipient a refresh.
+        console.error("Attachment broadcast failed:", e?.message);
+      }
 
       res.json({ success: true, message });
     } catch (err) {

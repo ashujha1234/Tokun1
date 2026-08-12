@@ -16,6 +16,7 @@ const user=require('../models/User');
 const Prompt=require('../models/Prompt');
 const  razorpay  = require("../utils/razorpay");
 const { splitPromptSale } = require("../utils/commission");
+const ledger = require("../utils/ledger");
 const {
   getSellerLinkedAccountId,
   fetchTransferIdsByAccount,
@@ -46,6 +47,22 @@ router.post("/add/:promptId", requireAuth, async (req, res) => {
     // block if one-time and already sold
     if (prompt.exclusive && prompt.sold) {
       return res.status(400).json({ success: false, error: "prompt_already_sold" });
+    }
+
+    // Already bought it — adding it again could only lead to paying twice for
+    // the same thing. Caught here so the buyer is told immediately rather than
+    // finding out at checkout.
+    const owned = await Purchase.findOne({
+      buyer: req.user._id,
+      prompt: prompt._id,
+      paymentStatus: "SUCCESS",
+    }).select({ _id: 1 });
+    if (owned) {
+      return res.status(400).json({
+        success: false,
+        error: "already_purchased",
+        message: "You already own this prompt — find it in your purchase history.",
+      });
     }
 
     let cart = await Cart.findOne({ user: req.user._id });
@@ -110,6 +127,23 @@ router.get("/", requireAuth, async (req, res) => {
     // ✅ filter out deleted prompts
     cart.items = cart.items.filter((item) => item.prompt && !item.prompt.deleted);
 
+    // …and anything already owned. A prompt bought outside the cart (Buy Now,
+    // or a shared/org purchase) used to stay in the cart forever and get
+    // charged for again at checkout. Dropped from the saved cart, not just
+    // hidden, so it doesn't reappear on the next load.
+    const owned = await Purchase.find({
+      buyer: req.user._id,
+      paymentStatus: "SUCCESS",
+      prompt: { $in: cart.items.map((i) => i.prompt._id) },
+    })
+      .select({ prompt: 1 })
+      .lean();
+
+    if (owned.length) {
+      const ownedIds = new Set(owned.map((p) => String(p.prompt)));
+      cart.items = cart.items.filter((i) => !ownedIds.has(String(i.prompt._id)));
+    }
+
     // if any items removed, save cart
     await cart.save();
 
@@ -165,6 +199,31 @@ router.post("/checkout", requireAuth, blockIfSuspended, blockOrgTeamMemberPurcha
       return res.status(400).json({ success: false, error: "cart_empty" });
     }
 
+    // Anything the buyer already owns must not be charged for. /verify skips
+    // creating a duplicate purchase for these, so without this the buyer would
+    // pay for the item and get no purchase record in return. This is the money
+    // side of the same problem GET / fixes for display.
+    const alreadyOwned = await Purchase.find({
+      buyer: req.user._id,
+      paymentStatus: "SUCCESS",
+      prompt: { $in: cart.items.map((i) => i.prompt?._id).filter(Boolean) },
+    })
+      .select({ prompt: 1 })
+      .lean();
+    const ownedIds = new Set(alreadyOwned.map((p) => String(p.prompt)));
+
+    const payableItems = cart.items.filter(
+      (i) => i.prompt && !ownedIds.has(String(i.prompt._id))
+    );
+
+    if (payableItems.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "cart_already_purchased",
+        message: "You already own everything in your cart.",
+      });
+    }
+
     // calculate total
     let totalAmount = 0;
     const purchasablePrompts = [];
@@ -175,7 +234,7 @@ router.post("/checkout", requireAuth, blockIfSuspended, blockOrgTeamMemberPurcha
     // recipient on an order.
     const transferPaiseByAccount = new Map();
 
-    for (let item of cart.items) {
+    for (let item of payableItems) {
       const p = item.prompt;
 
       // skip free prompts → they don't require payment
@@ -319,12 +378,19 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
     // Nothing in here swallows its error: a failed wallet credit must roll the
     // purchases back, not be logged and forgotten.
     const purchases = [];
+    // Ledger rows are COLLECTED inside the transaction and written after it
+    // commits. Writing them inline would either join the transaction (so a
+    // bookkeeping failure could abort a paid checkout) or sit outside it (so a
+    // rolled-back checkout would leave ledger rows for purchases that never
+    // existed). Neither is acceptable in a ledger.
+    let ledgerRows = [];
     const session = await mongoose.startSession();
     try {
       await session.withTransaction(async () => {
         // Reset on retry — withTransaction may run this callback more than once
         // on a transient error, and appending twice would duplicate the invoice.
         purchases.length = 0;
+        ledgerRows = [];
 
         for (let item of cart.items) {
           const p = item.prompt;
@@ -356,6 +422,10 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
                   // cart refund try to claw back the full amount from a seller
                   // who was only ever paid the net.
                   platformCommission: split.platformCut,
+                  // The non-refundable half of that cut, itemised — a refund
+                  // returns the list price and keeps these.
+                  platformFee: split.platformFee,
+                  platformFeeGst: split.platformFeeGst,
                   razorpayPaymentId,
                   razorpayOrderId,
                   paymentStatus: "SUCCESS",
@@ -405,10 +475,23 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
                 });
               }
 
-              await PlatformWallet.recordCommission(split.platformCut, {
+              // Earnings and tax recorded apart: platformCut includes the GST
+              // charged on the fee, and that portion is owed to the government
+              // rather than withdrawable by Tokun.
+              await PlatformWallet.recordCommission(
+                +(split.platformCut - Number(split.platformFeeGst || 0)).toFixed(2),
+                {
+                  source: "prompt_purchase",
+                  refId: purchase._id,
+                  description: `Commission: "${p.title}"`,
+                  session,
+                }
+              );
+
+              await PlatformWallet.recordGst(Number(split.platformFeeGst || 0), {
                 source: "prompt_purchase",
                 refId: purchase._id,
-                description: `Commission: "${p.title}"`,
+                description: `GST on fee: "${p.title}"`,
                 session,
               });
             }
@@ -418,6 +501,34 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
 
             req.user.purchasedPrompts.push(purchase._id);
             purchases.push(purchase);
+
+            // Pure JS, no I/O — cannot affect the transaction. Flushed below,
+            // once the commit has actually happened.
+            //
+            // NOTE there is no per-item PAYMENT row. The buyer made ONE payment
+            // for the whole cart, and the ledger records what happened, not how
+            // many things it bought — a row per item would report a ₹900 cart
+            // as ₹900 collected three times. The single payment row is written
+            // after the loop; the per-seller rows below are the ones that
+            // genuinely differ per item.
+            if (split.sellerNet > 0) {
+              const paidByRoute = !!purchase.routeTransferId;
+              ledgerRows.push({
+                kind: paidByRoute ? "TRANSFER" : "PAYOUT",
+                direction: "OUT",
+                purpose: "PROMPT_PURCHASE",
+                amount: ledger.toPaise(split.sellerNet),
+                occurredAt: new Date(),
+                razorpayTransferId: purchase.routeTransferId || "",
+                razorpayPaymentId,
+                source: "api",
+                user: p.userId,
+                counterparty: req.user._id,
+                purchase: purchase._id,
+                prompt: p._id,
+                meta: { via: paidByRoute ? "route" : "wallet", viaCart: true },
+              });
+            }
           }
         }
 
@@ -439,6 +550,37 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
       await session.endSession();
     }
 
+    /* -------------------- LEDGER (safe — the transaction has committed) ----- */
+    if (purchases.length > 0) {
+      // One payment in, once. Deduped against the webhook's own row for the
+      // same payment id, so whichever arrives first wins and the other is a
+      // no-op. The individual purchases live in meta rather than in the
+      // linkage columns, because this row belongs to all of them.
+      const cartTotal = purchases.reduce((sum, p) => sum + Number(p.pricePaid || 0), 0);
+      await ledger.record({
+        kind: "PAYMENT",
+        direction: "IN",
+        purpose: "PROMPT_PURCHASE",
+        amount: ledger.toPaise(cartTotal),
+        occurredAt: purchases[0].purchasedAt || new Date(),
+        razorpayPaymentId,
+        razorpayOrderId,
+        source: "api",
+        user: req.user._id,
+        meta: {
+          viaCart: true,
+          items: purchases.length,
+          purchaseIds: purchases.map((p) => String(p._id)),
+        },
+      });
+    }
+
+    // Sequential rather than Promise.all: a burst of concurrent duplicate-key
+    // errors is noisier than it's worth for a handful of cart items.
+    for (const row of ledgerRows) {
+      await ledger.record(row);
+    }
+
     /* -------------------- INVOICE (safe — purchases already saved) -------------------- */
     try {
       if (purchases.length > 0 && req.user.email) {
@@ -450,8 +592,10 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
           price: Number(purchase.pricePaid || 0),
         }));
         const subtotal = items.reduce((s, it) => s + it.price, 0);
-        const gst = +(subtotal * 0.18).toFixed(2);
-        const total = +(subtotal + gst).toFixed(2);
+        // GST off — see services/invoice.service.js for why.
+        // const gst = +(subtotal * 0.18).toFixed(2);
+        const gst = 0;
+        const total = +subtotal.toFixed(2);
 
         const logoPath = path.join(__dirname, "../assets/icons/Tokun.png");
         const logoBase64 = fs.existsSync(logoPath)
@@ -465,6 +609,9 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
           buyerName: req.user.name || "Customer",
           buyerEmail: req.user.email || "",
           items,
+          // Instant delivery and a 24-hour refund window — a very different
+          // thing from the escrow-backed service and hire invoices.
+          kind: "prompt",
         });
 
         await sendInvoiceEmail({
@@ -478,6 +625,7 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
           gst,
           total,
           pdfBuffer,
+          kind: "prompt",
         });
       }
     } catch (invoiceErr) {

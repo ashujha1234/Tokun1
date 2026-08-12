@@ -967,13 +967,17 @@ export default function EscrowAdminDashboard() {
   const showToast = (message: string, type = "success") => setToast({ message, type });
 
   // ─── RELEASE ───────────────────────────────────────────────────────────
-  const handleRelease = async (dealId: string) => {
+  // `orderKind` tells the server which collection the id belongs to — the list
+  // carries hire deals and service bookings now, and a service booking settles
+  // through a different code path.
+  const handleRelease = async (dealId: string, orderKind?: string) => {
     setActionLoading(true);
     try {
       const res = await fetch(`${API_BASE}/${dealId}/release`, {
         method: "POST",
         credentials: "include",
         headers: getAuthHeaders(),
+        body: JSON.stringify({ orderKind: orderKind || "hire" }),
       });
       let data: any = null;
       try { data = await res.json(); } catch { data = null; }
@@ -990,14 +994,14 @@ export default function EscrowAdminDashboard() {
   };
 
   // ─── REFUND ────────────────────────────────────────────────────────────
-  const handleRefund = async (dealId: string, reason: string) => {
+  const handleRefund = async (dealId: string, reason: string, orderKind?: string) => {
     setActionLoading(true);
     try {
       const res = await fetch(`${API_BASE}/${dealId}/refund`, {
         method: "POST",
         credentials: "include",
         headers: getAuthHeaders(),
-        body: JSON.stringify({ reason }),
+        body: JSON.stringify({ reason, orderKind: orderKind || "hire" }),
       });
       let data: any = null;
       try { data = await res.json(); } catch { data = null; }
@@ -1408,7 +1412,7 @@ export default function EscrowAdminDashboard() {
       {modal?.type === "release" && (
         <ReleaseModal
           deal={modal.deal}
-          onConfirm={handleRelease}
+          onConfirm={(id: string) => handleRelease(id, modal.deal?.orderKind)}
           onClose={() => setModal(null)}
           loading={actionLoading}
         />
@@ -1416,7 +1420,9 @@ export default function EscrowAdminDashboard() {
       {modal?.type === "refund" && (
         <RefundModal
           deal={modal.deal}
-          onConfirm={handleRefund}
+          onConfirm={(id: string, reason: string) =>
+            handleRefund(id, reason, modal.deal?.orderKind)
+          }
           onClose={() => setModal(null)}
           loading={actionLoading}
         />

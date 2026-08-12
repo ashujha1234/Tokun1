@@ -146,4 +146,9 @@ const messageSchema = new mongoose.Schema(
 // open; both are per-conversation scans.
 messageSchema.index({ conversationId: 1, createdAt: 1 });
 
+/* The unread-count aggregation behind the chat list matches on all three of
+   these together. Without it that query walks every message in each
+   conversation to count the few that are unread. */
+messageSchema.index({ conversationId: 1, readBy: 1, sender: 1 });
+
 module.exports = mongoose.model("Message", messageSchema);

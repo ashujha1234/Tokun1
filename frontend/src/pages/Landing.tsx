@@ -11957,7 +11957,7 @@
 
 
 
-import { Suspense, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   AnimatePresence,
   motion,
@@ -11970,34 +11970,33 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowRight,
   BarChart3,
+  Briefcase,
   ChevronDown,
   Facebook,
   Instagram,
   LayoutDashboard,
-  Library,
   Linkedin,
   LogOut,
   MessageSquarePlus,
   Mouse,
   Play,
-  Settings,
   Sparkles,
   Star,
   TrendingUp,
   Twitter,
   User as UserIcon,
+  Users,
   Wallet,
   Zap,
 } from 'lucide-react'
-import { Canvas, useFrame } from '@react-three/fiber'
-import { OrbitControls, useGLTF, Environment } from '@react-three/drei'
-import * as THREE from 'three'
 import { useAuth } from '@/contexts/AuthContext'
+import { useFreelancerMenu } from '@/hooks/useFreelancerMenu'
 // The shared footer. This file used to define a private `Footer()` of its own
 // further down, which shadowed this import — so any link added to the real
 // footer (Refund Policy, Report Policy) never showed up on the landing page.
 import Footer from '@/components/Footer'
 import CookieConsentBanner from '@/components/CookieConsentBanner'
+import { prefetchLandingRoutes } from '@/lib/prefetchRoutes'
 import './landing-page.css'
 
 const TOKUN_LOGO_SRC = '/icons/Tokun.png'
@@ -12011,6 +12010,7 @@ const ROUTES = {
   promptLibrary: '/prompt-library',
   smartgen: '/smartgen',
   marketplace: '/prompt-marketplace',
+  findCreators: '/find-creators',
 }
 
 /* ============================================================
@@ -12106,6 +12106,11 @@ function HeroAccountMenu() {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
+  // Shared with Header.tsx's account dropdown, which is the other copy of this
+  // menu. `modals` is rendered below the panel rather than inside it, so closing
+  // the menu doesn't take the wizard with it.
+  const freelancerMenu = useFreelancerMenu()
+
   const toTitleCase = (value: string) =>
     value
       .split(' ')
@@ -12145,17 +12150,35 @@ function HeroAccountMenu() {
       : null
 
   const primaryItems = [
+    // "Set up profile" read like an unfinished chore even for someone whose
+    // profile was long since complete. Same wording as the Header's account
+    // menu: this is simply where your account lives.
     {
-      label: 'Set up profile',
+      label: 'My Account',
       icon: UserIcon,
       onClick: () => {
         const id = user?._id || user?.id
         go(id ? `/profile/${id}` : '/profile')
       },
     },
+    // Same entry as the Header's account menu, from the same hook — its label
+    // tracks whether the user has no profile, a draft, or a live one. Dropped
+    // once the profile is ACTIVE, because then it only points back at My
+    // Account and the menu looks like it holds two profiles.
+    ...(freelancerMenu.status === 'ACTIVE'
+      ? []
+      : [
+          {
+            label: freelancerMenu.label,
+            icon: Briefcase,
+            onClick: () => {
+              setOpen(false)
+              freelancerMenu.open()
+            },
+          },
+        ]),
     { label: 'My Wallet', icon: Wallet, onClick: () => go('/wallet') },
     { label: 'Dashboard', icon: LayoutDashboard, onClick: () => go('/self-dash') },
-    { label: 'Settings', icon: Settings, onClick: () => go('/profile') },
   ]
 
   const secondaryItems = [
@@ -12348,6 +12371,10 @@ function HeroAccountMenu() {
           </button>
         </div>
       )}
+
+      {/* Outside the `open &&` panel above on purpose: the panel is unmounted
+          when the menu closes, and clicking the freelancer item closes it. */}
+      {freelancerMenu.modals}
     </div>
   )
 }
@@ -13268,14 +13295,20 @@ const OFFERS = [
     description:
       'Built a great prompt? Trade it. Monetize your creativity and earn from your best prompt innovations.',
     accent: '#ec4899',
+    href: ROUTES.marketplace,
   },
   {
+    // Replaced Prompt Library here. The library is a signed-in tool — it shows
+    // you prompts you already have access to — so it had nothing to offer the
+    // visitor this section is written for. Find Creators does: it's the half of
+    // the product a logged-out reader can act on immediately.
     num: '04',
-    icon: Library,
-    title: 'Prompt Library',
+    icon: Users,
+    title: 'Find Creators',
     description:
-      'Access categorized prompts for Coding, Design, Marketing, Video Creation, and more.',
-    accent: '#818cf8',
+      'Hire the people behind the prompts. Browse verified creators and freelancers, see their work, and book them with payment held safely.',
+    accent: '#22d3ee',
+    href: ROUTES.findCreators,
   },
 ]
 
@@ -13328,8 +13361,12 @@ function WhatWeOffer() {
                 <h3 className="offer-card__title">{offer.title}</h3>
                 <p className="offer-card__desc">{offer.description}</p>
 
-                {offer.title === 'Prompt Marketplace' ? (
-                  <Link to={ROUTES.marketplace} className="offer-card__link">
+                {/* Driven by the offer's own `href` rather than a title match,
+                    so adding a card is one entry in OFFERS. The rest still fall
+                    back to #explore — a dead anchor, but that's what they
+                    pointed at before and those pages need a sign-in first. */}
+                {offer.href ? (
+                  <Link to={offer.href} className="offer-card__link">
                     Explore
                     <span className="offer-card__link-icon">
                       <ArrowRight size={14} />
@@ -13758,91 +13795,9 @@ const REVIEW_POSITIONS_MOBILE = [
   { left: '22%', top: '31%', lineTo: 'right' },
 ]
 
-const GLOBE_MODEL_URL = '/models/airports_around_the_world.glb'
-
-function GlobeModel() {
-  const groupRef = useRef(null)
-  const { scene } = useGLTF(GLOBE_MODEL_URL)
-  const clonedScene = useMemo(() => scene.clone(true), [scene])
-
-  useEffect(() => {
-    if (!clonedScene || !groupRef.current) return
-
-    clonedScene.traverse((child) => {
-      if (child.isMesh) {
-        child.castShadow = true
-        child.receiveShadow = true
-        const mats = Array.isArray(child.material) ? child.material : [child.material]
-        mats.forEach((mat) => {
-          if (!mat) return
-          mat.transparent = false
-          mat.depthWrite = true
-          if ('roughness' in mat && typeof mat.roughness === 'number') {
-            mat.roughness = Math.min(mat.roughness, 0.82)
-          }
-          if ('metalness' in mat && typeof mat.metalness === 'number') {
-            mat.metalness = Math.max(mat.metalness, 0.08)
-          }
-        })
-      }
-    })
-
-    const box = new THREE.Box3().setFromObject(clonedScene)
-    const size = new THREE.Vector3()
-    const center = new THREE.Vector3()
-    box.getSize(size)
-    box.getCenter(center)
-    clonedScene.position.set(-center.x, -center.y, -center.z)
-
-    const maxAxis = Math.max(size.x, size.y, size.z) || 1
-    const fitScale = 2.45 / maxAxis
-    groupRef.current.scale.setScalar(fitScale)
-    groupRef.current.position.set(0, -0.08, 0)
-  }, [clonedScene])
-
-  return (
-    <group ref={groupRef}>
-      <primitive object={clonedScene} />
-    </group>
-  )
-}
-
-function GlobeRig() {
-  const globeRef = useRef(null)
-  useFrame((state) => {
-    if (!globeRef.current) return
-    globeRef.current.rotation.y += 0.0034
-    globeRef.current.rotation.x = 0.24 + Math.sin(state.clock.elapsedTime * 0.7) * 0.02
-    globeRef.current.rotation.z = -0.05 + Math.sin(state.clock.elapsedTime * 0.45) * 0.01
-  })
-  return (
-    <group ref={globeRef} rotation={[0.24, 0.45, -0.05]}>
-      <GlobeModel />
-    </group>
-  )
-}
-
-function GlobeScene() {
-  return (
-    <>
-      <ambientLight intensity={0.8} />
-      <hemisphereLight args={['#cfe8ff', '#0a0d17', 0.72]} />
-      <directionalLight position={[5, 4, 6]} intensity={2.0} />
-      <directionalLight position={[-3, -2, -4]} intensity={0.85} color="#1A73E8" />
-      <pointLight position={[2, 1, 4]} intensity={1.15} color="#FF14EF" />
-      <spotLight position={[0, 6, 6]} angle={0.45} penumbra={1} intensity={1.35} color="#ffffff" />
-      <Environment preset="city" />
-      <GlobeRig />
-      <OrbitControls
-        enableZoom={false}
-        enablePan={false}
-        autoRotate={false}
-        minPolarAngle={Math.PI / 2.18}
-        maxPolarAngle={Math.PI / 1.84}
-      />
-    </>
-  )
-}
+// three / drei / the 7.8 MB globe model all live in this chunk. It is fetched
+// only when the globe is about to enter the viewport — see GlobeSection below.
+const LandingGlobeCanvas = lazy(() => import('./LandingGlobeCanvas'))
 
 function GlobeFallback() {
   return <div style={{ width: '100%', aspectRatio: '1 / 1', background: 'transparent' }} />
@@ -13956,6 +13911,12 @@ function GlobeSection() {
   const [userIndex, setUserIndex] = useState(0)
   const [isMobile, setIsMobile] = useState(false)
 
+  // The 3D chunk + model are only worth fetching once the reader is heading
+  // here. 300px of margin gives the download a head start so the globe is
+  // usually already there by the time the section is on screen.
+  const canvasHostRef = useRef(null)
+  const globeNear = useInView(canvasHostRef, { once: true, margin: '300px' })
+
   useEffect(() => {
     const sync = () => setIsMobile(window.innerWidth <= 640)
     sync()
@@ -13992,16 +13953,9 @@ function GlobeSection() {
       <div className="globe-wrap" style={{ maxWidth: isMobile ? 320 : 460 }}>
         <div className="globe-wrap__glow" />
 
-        <div className="globe-canvas-box">
+        <div className="globe-canvas-box" ref={canvasHostRef}>
           <Suspense fallback={<GlobeFallback />}>
-            <Canvas
-              camera={{ position: isMobile ? [0, 0.18, 7.2] : [0, 0.22, 7.0], fov: isMobile ? 26 : 24 }}
-              dpr={[1, 2]}
-              gl={{ alpha: true }}
-              style={{ background: 'transparent' }}
-            >
-              <GlobeScene />
-            </Canvas>
+            {globeNear ? <LandingGlobeCanvas isMobile={isMobile} /> : <GlobeFallback />}
           </Suspense>
 
           <AnimatePresence mode="wait">
@@ -14028,8 +13982,6 @@ function GlobeSection() {
     </div>
   )
 }
-
-useGLTF.preload(GLOBE_MODEL_URL)
 
 /* ============================================================
    FAQSection
@@ -14109,7 +14061,13 @@ const PROMPT_STEPS = [
   'Entering the Promptverse…',
 ]
 
-const MIN_LOAD_MS = 1600
+// How long the curtain is guaranteed to stay up. It's a floor, not a timer —
+// the curtain also waits for window 'load', so on a slow connection it stays
+// longer. On a repeat visit within the same tab the bundle and images are
+// already cached, so sitting through the full intro again is just a delay.
+const MIN_LOAD_MS_FIRST = 1600
+const MIN_LOAD_MS_REPEAT = 450
+const SEEN_CURTAIN_KEY = 'tokun:seen-curtain'
 const HOLD_AT_100_MS = 120
 const CURTAIN_LIFT_S = 0.68
 
@@ -14151,6 +14109,15 @@ function LoadingScreen({ onComplete }) {
   }, [])
 
   useEffect(() => {
+    let seen = false
+    try {
+      seen = sessionStorage.getItem(SEEN_CURTAIN_KEY) === '1'
+      sessionStorage.setItem(SEEN_CURTAIN_KEY, '1')
+    } catch {
+      // private mode / storage disabled — just treat it as a first visit
+    }
+    const minLoadMs = seen ? MIN_LOAD_MS_REPEAT : MIN_LOAD_MS_FIRST
+
     const start = performance.now()
     let raf = 0
     let finished = false
@@ -14203,7 +14170,7 @@ function LoadingScreen({ onComplete }) {
 
     const tick = (now) => {
       const elapsed = now - start
-      const timeRatio = Math.min(elapsed / MIN_LOAD_MS, 1)
+      const timeRatio = Math.min(elapsed / minLoadMs, 1)
       const eased = 1 - (1 - timeRatio) ** 2.2
       const next = Math.min(92, Math.floor(eased * 92))
 
@@ -14212,7 +14179,7 @@ function LoadingScreen({ onComplete }) {
         setProgress(next)
       }
 
-      if (pageReady && elapsed >= MIN_LOAD_MS) {
+      if (pageReady && elapsed >= minLoadMs) {
         complete()
       } else {
         raf = requestAnimationFrame(tick)
@@ -14220,7 +14187,7 @@ function LoadingScreen({ onComplete }) {
     }
 
     raf = requestAnimationFrame(tick)
-    const safety = setTimeout(complete, MIN_LOAD_MS + 2000)
+    const safety = setTimeout(complete, minLoadMs + 2000)
 
     return () => {
       cancelAnimationFrame(raf)
@@ -14376,6 +14343,9 @@ function FeedbackButton() {
   const [role, setRole] = useState('')
   const [screenshots, setScreenshots] = useState<File[]>([])
   const [issue, setIssue] = useState('')
+  // What that note is. The field was labelled "Any Issue?" and nothing else, so
+  // anyone with an idea rather than a bug had to file it as a bug.
+  const [noteType, setNoteType] = useState<'issue' | 'suggestion'>('issue')
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [otpSending, setOtpSending] = useState(false)
@@ -14385,7 +14355,7 @@ function FeedbackButton() {
 
   const reset = () => {
     setRating(0); setHoverStar(0); setName(''); setEmail(''); setExperience('')
-    setRole(''); setScreenshots([]); setIssue('')
+    setRole(''); setScreenshots([]); setIssue(''); setNoteType('issue')
     setError(''); setSubmitted(false); setStep('form'); setOtp('')
   }
 
@@ -14444,7 +14414,10 @@ function FeedbackButton() {
       formData.append('experience', experience.trim())
       formData.append('rating', String(rating))
       if (role.trim()) formData.append('role', role.trim())
-      if (issue.trim()) formData.append('issue', issue.trim())
+      if (issue.trim()) {
+        formData.append('issue', issue.trim())
+        formData.append('noteType', noteType)
+      }
       screenshots.forEach(f => formData.append('screenshots', f))
 
       const res = await fetch(`${API_BASE}/api/feedback`, { method: 'POST', body: formData })
@@ -14707,10 +14680,46 @@ function FeedbackButton() {
                       <input type="text" value={role} onChange={e => setRole(e.target.value)} placeholder="e.g. Developer, Designer, Student…" style={fbInputStyle} onFocus={focusBorder} onBlur={blurBorder} />
                     </div>
 
-                    {/* Any Issue */}
+                    {/* Issue or suggestion — one field, two meanings */}
                     <div style={{ marginBottom: 16 }}>
-                      <label style={fbLabelStyle}>Any Issue? <span style={{ color: '#6b7280', fontWeight: 400 }}>(optional)</span></label>
-                      <input type="text" value={issue} onChange={e => setIssue(e.target.value)} placeholder="Describe any issue you faced…" style={fbInputStyle} onFocus={focusBorder} onBlur={blurBorder} />
+                      <label style={fbLabelStyle}>
+                        Anything to tell us? <span style={{ color: '#6b7280', fontWeight: 400 }}>(optional)</span>
+                      </label>
+
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                        {([['issue', 'Report an issue'], ['suggestion', 'Suggest an idea']] as const).map(([key, label]) => (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => setNoteType(key)}
+                            style={{
+                              padding: '6px 14px',
+                              borderRadius: 999,
+                              fontSize: 12,
+                              fontFamily: 'inherit',
+                              cursor: 'pointer',
+                              transition: 'background 0.2s, border-color 0.2s, color 0.2s',
+                              background: noteType === key ? 'rgba(167,139,250,0.16)' : 'rgba(255,255,255,0.05)',
+                              border: `1px solid ${noteType === key ? 'rgba(167,139,250,0.7)' : 'rgba(255,255,255,0.12)'}`,
+                              color: noteType === key ? '#c4b5fd' : '#9ca3af',
+                            }}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <input
+                        type="text"
+                        value={issue}
+                        onChange={e => setIssue(e.target.value)}
+                        placeholder={noteType === 'suggestion'
+                          ? 'What would you like us to build or change?'
+                          : 'Describe any issue you faced…'}
+                        style={fbInputStyle}
+                        onFocus={focusBorder}
+                        onBlur={blurBorder}
+                      />
                     </div>
 
                     {/* Screenshots */}
@@ -14760,7 +14769,12 @@ export default function LandingPage() {
     setShowCurtain(false)
     // 2 rAF gap — curtain unmount ke baad paint clear hone do, tab heavy sections mount ho
     requestAnimationFrame(() =>
-      requestAnimationFrame(() => setBelowFold(true))
+      requestAnimationFrame(() => {
+        setBelowFold(true)
+        // Landing is settled; spend the idle time pulling in the chunks for the
+        // pages people click through to, so those navigations feel instant.
+        prefetchLandingRoutes()
+      })
     )
   }
 

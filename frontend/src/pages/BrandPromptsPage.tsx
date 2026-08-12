@@ -206,7 +206,7 @@ const LogoPromptCard = ({ logo }: { logo: BrandLogo }) => {
       toast({ title: "Prompt copied", description: `Ready to paste into Smartgen.` });
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast({ title: "Could not copy", variant: "destructive" });
+      toast({ title: "Could not copy" });
     }
   };
 
@@ -257,9 +257,9 @@ const BrandPromptsPage = () => {
 
   return (
     <div className="dark min-h-screen bg-background text-foreground">
-      <div className="sticky top-0 z-50">
-        <Header />
-      </div>
+      {/* Header is `sticky top-0` on its own -- nesting a second sticky at
+          the same offset makes the two fight and the bar jitters on scroll. */}
+      <Header />
 
       <div className="container mx-auto px-4 sm:px-6 pb-20">
         <div className="pt-14 pb-12 text-center max-w-2xl mx-auto">

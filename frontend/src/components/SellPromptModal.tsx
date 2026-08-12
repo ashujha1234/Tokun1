@@ -122,16 +122,14 @@
 // //         toast({
 // //           title: "Invalid file type",
 // //           description: "Only image and video files are allowed",
-// //           variant: "destructive",
-// //         });
+// //           // //         });
 // //         return false;
 // //       }
 // //       if (!okSize) {
 // //         toast({
 // //           title: "File too large",
 // //           description: "Files must be under 50MB",
-// //           variant: "destructive",
-// //         });
+// //           // //         });
 // //         return false;
 // //       }
 // //       return true;
@@ -140,8 +138,7 @@
 // //       toast({
 // //         title: "Too many files",
 // //         description: "Maximum 5 attachments allowed",
-// //         variant: "destructive",
-// //       });
+// //         // //       });
 // //       return;
 // //     }
 // //     setAttachments((p) => [...p, ...valid]);
@@ -157,8 +154,7 @@
 // //       toast({
 // //         title: "Missing Information",
 // //         description: "Please fill in all required fields",
-// //         variant: "destructive",
-// //       });
+// //         // //       });
 // //       return;
 // //     }
 
@@ -712,8 +708,7 @@
 // //         toast({
 // //           title: "Couldn’t load categories",
 // //           description: "You can still type your prompt, but choose a category later.",
-// //           variant: "destructive",
-// //         });
+// //           // //         });
 // //       } finally {
 // //         setCatsLoading(false);
 // //       }
@@ -746,16 +741,14 @@
 // //         toast({
 // //           title: "Invalid file type",
 // //           description: "Only image and video files are allowed",
-// //           variant: "destructive",
-// //         });
+// //           // //         });
 // //         return false;
 // //       }
 // //       if (!okSize) {
 // //         toast({
 // //           title: "File too large",
 // //           description: "Files must be under 50MB",
-// //           variant: "destructive",
-// //         });
+// //           // //         });
 // //         return false;
 // //       }
 // //       return true;
@@ -765,8 +758,7 @@
 // //       toast({
 // //         title: "Only one attachment allowed",
 // //         description: "Your API expects a single ‘attachment’. Pick just one image or video.",
-// //         variant: "destructive",
-// //       });
+// //         // //       });
 // //       return;
 // //     }
 // //     if (valid.length) {
@@ -784,8 +776,7 @@
 // //       toast({
 // //         title: "Missing Information",
 // //         description: "Please fill in all required fields",
-// //         variant: "destructive",
-// //       });
+// //         // //       });
 // //       return;
 // //     }
 
@@ -793,8 +784,7 @@
 // //       toast({
 // //         title: "Attachment required",
 // //         description: "Please upload one image or video.",
-// //         variant: "destructive",
-// //       });
+// //         // //       });
 // //       return;
 // //     }
 
@@ -840,7 +830,7 @@
 // //         if (code === "attachment_required") msg = "Please attach an image or video.";
 // //         if (code === "only_image_or_video_allowed") msg = "Attachment must be image or video.";
 // //         if (code === "invalid_categories") msg = `Invalid categories: ${data?.invalid?.join(", ")}`;
-// //         toast({ title: "Upload failed", description: msg, variant: "destructive" });
+// //         toast({ title: "Upload failed", description: msg });
 // //         return;
 // //       }
 
@@ -875,8 +865,7 @@
 // //       toast({
 // //         title: "Network error",
 // //         description: err?.message || "Could not reach the server.",
-// //         variant: "destructive",
-// //       });
+// //         // //       });
 // //     }
 // //   };
 
@@ -1519,8 +1508,7 @@
 //         toast({
 //           title: "Couldn't load categories",
 //           description: "You can still type your prompt, but choose a category later.",
-//           variant: "destructive",
-//         });
+//           //         });
 //       } finally {
 //         setCatsLoading(false);
 //       }
@@ -1550,18 +1538,18 @@
 //       const okType = file.type.startsWith("image/") || file.type.startsWith("video/");
 //       const okSize = file.size <= 50 * 1024 * 1024;
 //       if (!okType) {
-//         toast({ title: "Invalid file type", description: "Only image and video files are allowed", variant: "destructive" });
+//         toast({ title: "Invalid file type", description: "Only image and video files are allowed" });
 //         return false;
 //       }
 //       if (!okSize) {
-//         toast({ title: "File too large", description: "Files must be under 50MB", variant: "destructive" });
+//         toast({ title: "File too large", description: "Files must be under 50MB" });
 //         return false;
 //       }
 //       return true;
 //     });
 
 //     if ((attachments.length ? 1 : 0) + valid.length > 1) {
-//       toast({ title: "Only one attachment allowed", description: "Pick just one image or video.", variant: "destructive" });
+//       toast({ title: "Only one attachment allowed", description: "Pick just one image or video." });
 //       return;
 //     }
 //     if (valid.length) setAttachments((p) => [...p, valid[0]]);
@@ -1573,12 +1561,12 @@
 //     e.preventDefault();
 
 //     if (!title || !description || !promptText || !category || (!isFree && !price)) {
-//       toast({ title: "Missing Information", description: "Please fill in all required fields", variant: "destructive" });
+//       toast({ title: "Missing Information", description: "Please fill in all required fields" });
 //       return;
 //     }
 
 //     if (attachments.length === 0) {
-//       toast({ title: "Attachment required", description: "Please upload one image or video.", variant: "destructive" });
+//       toast({ title: "Attachment required", description: "Please upload one image or video." });
 //       return;
 //     }
 
@@ -1612,7 +1600,7 @@
 //         if (code === "attachment_required") msg = "Please attach an image or video.";
 //         if (code === "only_image_or_video_allowed") msg = "Attachment must be image or video.";
 //         if (code === "invalid_categories") msg = `Invalid categories: ${data?.invalid?.join(", ")}`;
-//         toast({ title: "Upload failed", description: msg, variant: "destructive" });
+//         toast({ title: "Upload failed", description: msg });
 //         return;
 //       }
 
@@ -1643,7 +1631,7 @@
 //       }
 //       setOpen(false);
 //     } catch (err: any) {
-//       toast({ title: "Network error", description: err?.message || "Could not reach the server.", variant: "destructive" });
+//       toast({ title: "Network error", description: err?.message || "Could not reach the server." });
 //     }
 //   };
 
@@ -1996,6 +1984,7 @@ import { Switch } from "@/components/ui/switch";
 import { Plus, X, Upload, Image, Video, FileX, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { getPromptCategories, clearPromptCategories } from "@/lib/sellerPrefetch";
 
 interface SellPromptModalProps {
   onPromptSubmitted?: (prompt?: any) => void;
@@ -2092,20 +2081,23 @@ export default function SellPromptModal({
   }, []);
 
   // ✅ FIX: reusable loader + retry support
-  const loadCategories = async () => {
+  // Served from the prefetch cache, which the header warms as soon as the user
+  // is known — so by the time this modal opens the list is usually already in
+  // memory and the dropdown is populated on the first paint. `force` is what
+  // the Retry button passes, since a cached failure must not be replayed.
+  const loadCategories = async (force = false) => {
     try {
       setCatsLoading(true);
       setCatsError(null);
-      const res = await fetch(`${API_BASE}/api/category`);
-      const data = await res.json();
-      if (!res.ok || !data?.success) throw new Error(data?.error || "failed_to_load_categories");
-      setCategories(data.categories || []);
+      if (force) clearPromptCategories();
+      const cats = await getPromptCategories(API_BASE);
+      if (!cats) throw new Error("failed_to_load_categories");
+      setCategories(cats);
     } catch (err: any) {
       setCatsError(err?.message || "Failed to load categories");
       toast({
         title: "Couldn't load categories",
         description: "Tap 'Retry' below the category field.",
-        variant: "destructive",
       });
     } finally {
       setCatsLoading(false);
@@ -2141,18 +2133,18 @@ export default function SellPromptModal({
       const okType = file.type.startsWith("image/") || file.type.startsWith("video/");
       const okSize = file.size <= 50 * 1024 * 1024;
       if (!okType) {
-        toast({ title: "Invalid file type", description: "Only image and video files are allowed", variant: "destructive" });
+        toast({ title: "Invalid file type", description: "Only image and video files are allowed" });
         return false;
       }
       if (!okSize) {
-        toast({ title: "File too large", description: "Files must be under 50MB", variant: "destructive" });
+        toast({ title: "File too large", description: "Files must be under 50MB" });
         return false;
       }
       return true;
     });
 
     if ((attachments.length ? 1 : 0) + valid.length > 1) {
-      toast({ title: "Only one attachment allowed", description: "Pick just one image or video.", variant: "destructive" });
+      toast({ title: "Only one attachment allowed", description: "Pick just one image or video." });
       return;
     }
     if (valid.length) setAttachments((p) => [...p, valid[0]]);
@@ -2167,12 +2159,12 @@ export default function SellPromptModal({
     const finalCategory = isOtherCategory ? customCategory.trim() : category;
 
     if (!title || !description || !promptText || !finalCategory || (!isFree && !price)) {
-      toast({ title: "Missing Information", description: "Please fill in all required fields", variant: "destructive" });
+      toast({ title: "Missing Information", description: "Please fill in all required fields" });
       return;
     }
 
     if (attachments.length === 0) {
-      toast({ title: "Attachment required", description: "Please upload one image or video.", variant: "destructive" });
+      toast({ title: "Attachment required", description: "Please upload one image or video." });
       return;
     }
 
@@ -2196,7 +2188,6 @@ export default function SellPromptModal({
           toast({
             title: "Couldn't create category",
             description: catErr?.message || "Please try again.",
-            variant: "destructive",
           });
           setUploading(false);
           return;
@@ -2242,7 +2233,7 @@ export default function SellPromptModal({
         if (code === "invalid_categories") msg = `Invalid categories: ${data?.invalid?.join(", ")}`;
         if (code === "duplicate_content") msg = data?.message || "Sorry, this has already been uploaded. You can't upload it again.";
         setUploading(false);
-        toast({ title: "Upload failed", description: msg, variant: "destructive" });
+        toast({ title: "Upload failed", description: msg });
         return;
       }
 
@@ -2278,7 +2269,7 @@ export default function SellPromptModal({
       const msg = err?.name === "AbortError"
         ? "Upload timed out. Try a smaller file or check your connection."
         : err?.message || "Could not reach the server.";
-      toast({ title: "Upload failed", description: msg, variant: "destructive" });
+      toast({ title: "Upload failed", description: msg });
     }
   };
 
@@ -2379,7 +2370,7 @@ export default function SellPromptModal({
                 Couldn't load categories.{" "}
                 <button
                   type="button"
-                  onClick={loadCategories}
+                  onClick={() => loadCategories(true)}
                   className="underline text-white/80 hover:text-white"
                 >
                   Retry

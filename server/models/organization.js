@@ -35,6 +35,13 @@ const OrganizationSchema = new mongoose.Schema(
       },
     ],
 
+    // Invitations sent but not yet answered. A seat and its token allowance are
+    // reserved from the moment an invitation goes out — otherwise an owner with
+    // three seats could send ten invitations and over-commit both the headcount
+    // and the token pool. Decremented on accept (the seat becomes a real
+    // member), decline, revoke or expiry.
+    pendingInvites: { type: Number, default: 0, min: 0 },
+
     // Org subscription state (when plan === "enterprise")
 subscriptionStatus: { type: String, enum: ["active","past_due","grace","suspended","canceled", null], default: null }, // <- NEW
 billingAnchor: { type: Date, default: null },     // first start                   <- NEW

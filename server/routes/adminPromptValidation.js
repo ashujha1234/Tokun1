@@ -40,8 +40,14 @@ router.get("/queue", async (req, res) => {
     if (status && status !== "all") {
       filter["mediaValidation.status"] = status;
     } else if (!status) {
-      // Default view: what actually needs a human, not the whole catalog.
-      filter["mediaValidation.status"] = { $in: ["pending_review", "flagged"] };
+      /* Default view: what actually needs a human, not the whole catalog.
+         "pending" is in here deliberately. It is the schema default, so a
+         prompt sits in it from upload until the async check writes a result —
+         and if that check never runs (a restart mid-validation, a worker that
+         died), it stays there for good. Excluded from this list, such a prompt
+         was invisible to every admin while its seller waited on an approval
+         that could never come. */
+      filter["mediaValidation.status"] = { $in: ["pending", "pending_review", "flagged"] };
     }
     if (search) {
       filter.title = { $regex: search, $options: "i" };

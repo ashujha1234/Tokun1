@@ -105,8 +105,12 @@ router.get("/", requireAuth, async (req, res) => {
         // the app knew it belonged to an org but had no idea who owned it, so it
         // couldn't offer to message them or open their profile.
         if (org.ownerId && String(org.ownerId) !== String(user._id)) {
+          // `avatarUrl` is the schema field; `avatar` is selected too only
+          // because it was here first and something may still read that key.
+          // Selecting `avatar` alone meant the owner's picture was always
+          // undefined on the client.
           orgOwner = await User.findById(org.ownerId)
-            .select({ name: 1, email: 1, avatar: 1, role: 1 })
+            .select({ name: 1, email: 1, avatar: 1, avatarUrl: 1, role: 1 })
             .lean();
         }
       }

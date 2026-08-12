@@ -382,6 +382,7 @@ const mongoose = require("mongoose");
 const Razorpay = require("../utils/razorpay");
 const Prompt = require("../models/Prompt");
 const Purchase = require("../models/Purchase");
+const Cart = require("../models/Cart");
 const Category = require("../models/Category");
 const User = require("../models/User");
 const Wallet = require("../models/Wallet");
@@ -389,6 +390,7 @@ const PlatformWallet = require("../models/PlatformWallet");
 const BankAccount = require("../models/BankAccount");
 const { requireAuth, blockIfSuspended, blockOrgTeamMemberPurchase } = require("../utils/auth");
 const { splitPromptSale } = require("../utils/commission");
+const ledger = require("../utils/ledger");
 const { requireKycVerified } = require("../utils/requireKycVerified");
 const { logActivity } = require("../utils/activityLogger");
 const crypto = require("crypto");
@@ -655,6 +657,10 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
       prompt: prompt._id,
       pricePaid,
       platformCommission,
+      // Carried onto the purchase so a refund can tell the non-refundable fee
+      // apart from the rest of Tokun's cut.
+      platformFee: split.platformFee,
+      platformFeeGst: split.platformFeeGst,
       razorpayPaymentId,
       razorpayOrderId,
       paymentStatus: "SUCCESS",
@@ -709,9 +715,53 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
       console.error("Route transfer lookup failed (falling back to Wallet):", routeErr?.message);
     }
 
+    // Ledger row for the payment, tied to our own entities. The webhook records
+    // the same payment from Razorpay's side with the gateway fee attached; the
+    // natural-key index collapses the two. What only this side knows is WHICH
+    // purchase, prompt, buyer and seller the money was for — the webhook
+    // payload can't say.
+    await ledger.record({
+      kind: "PAYMENT",
+      direction: "IN",
+      purpose: "PROMPT_PURCHASE",
+      amount: ledger.toPaise(pricePaid),
+      occurredAt: purchase.purchasedAt || new Date(),
+      razorpayPaymentId,
+      razorpayOrderId,
+      source: "api",
+      user: req.user._id,
+      counterparty: sellerId,
+      purchase: purchase._id,
+      prompt: prompt._id,
+      meta: {
+        listPrice: split.listPrice,
+        sellerNet: split.sellerNet,
+        platformCommission,
+      },
+    });
+
     if (routeTransferId) {
       purchase.routeTransferId = routeTransferId;
       await purchase.save();
+
+      // The seller's side of the same sale. Recorded here as well as from the
+      // transfer.* webhook because a Route transfer attached at order-creation
+      // time may never produce an event we see.
+      await ledger.record({
+        kind: "TRANSFER",
+        direction: "OUT",
+        purpose: "PROMPT_PURCHASE",
+        amount: ledger.toPaise(split.sellerNet),
+        occurredAt: new Date(),
+        razorpayTransferId: routeTransferId,
+        razorpayPaymentId,
+        source: "api",
+        user: sellerId,
+        counterparty: req.user._id,
+        purchase: purchase._id,
+        prompt: prompt._id,
+        meta: { via: "route" },
+      });
     } else {
       // Fallback: seller hasn't onboarded to Route yet. Same net as the Route
       // transfer above — list price less Tokun's seller-side commission — so a
@@ -731,14 +781,40 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
           message: walletErr.message,
         });
       }
+
+      // Wallet payout has no Razorpay id of its own, so the natural-key index
+      // can't dedupe it — the purchase id in meta is what makes it traceable,
+      // and it's written once, right here, after the credit succeeded.
+      await ledger.record({
+        kind: "PAYOUT",
+        direction: "OUT",
+        purpose: "PROMPT_PURCHASE",
+        amount: ledger.toPaise(split.sellerNet),
+        occurredAt: new Date(),
+        razorpayPaymentId,
+        source: "api",
+        user: sellerId,
+        counterparty: req.user._id,
+        purchase: purchase._id,
+        prompt: prompt._id,
+        meta: { via: "wallet" },
+      });
     }
 
     // Record Tokun's commission cut for this sale (non-fatal — purchase already succeeded)
     try {
-      await PlatformWallet.recordCommission(platformCommission, {
+      // Earnings, net of the GST charged on the platform fee. That GST goes to
+      // gstCollected instead — it's owed to the government, not earned here.
+      const gstOnFees = Number(split.platformFeeGst || 0);
+      await PlatformWallet.recordCommission(+(platformCommission - gstOnFees).toFixed(2), {
         source: "prompt_purchase",
         refId: purchase._id,
         description: `Commission: "${prompt.title}"`,
+      });
+      await PlatformWallet.recordGst(gstOnFees, {
+        source: "prompt_purchase",
+        refId: purchase._id,
+        description: `GST on fee: "${prompt.title}"`,
       });
     } catch (revErr) {
       console.error("PlatformWallet commission record failed:", revErr);
@@ -748,17 +824,34 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
     req.user.purchasedPrompts.push(purchase._id);
     await req.user.save();
 
+    // Buying a prompt directly (Buy Now) left it sitting in the cart, because
+    // nothing outside the cart flow ever touched the cart. It would then be
+    // charged for again at cart checkout — and the verify step's
+    // already-owned guard would skip creating the purchase, so the buyer paid
+    // and received nothing. Pulling it out here closes that off at the source.
+    try {
+      await Cart.updateOne(
+        { user: req.user._id },
+        { $pull: { items: { prompt: prompt._id } } }
+      );
+    } catch (cartErr) {
+      // Non-fatal: the purchase is done and owned. GET /api/cart filters
+      // already-purchased items anyway, so a failure here is cosmetic.
+      console.error("Cart cleanup after purchase failed:", cartErr?.message);
+    }
+
     /* -------------------- INVOICE (safe — purchase already saved) -------------------- */
     try {
       const invoiceNo = `INV-${purchase._id}`;
       const date = new Date(purchase.createdAt || Date.now()).toLocaleDateString("en-GB");
 
-      // generateInvoicePDF derives subtotal/GST/total from `items` itself
-      // (subtotal = sum of item prices, GST = 18% on top) — mirror the same
-      // math here so the email body matches the attached PDF exactly.
+      // Mirrors generateInvoicePDF's own maths so the email body matches the
+      // attached PDF exactly. GST is off in both — see the note in
+      // services/invoice.service.js.
       const subtotal = Number(pricePaid || 0);
-      const gst = +(subtotal * 0.18).toFixed(2);
-      const total = +(subtotal + gst).toFixed(2);
+      // const gst = +(subtotal * 0.18).toFixed(2);
+      const gst = 0;
+      const total = +subtotal.toFixed(2);
       const items = [
         {
           title: prompt.title,
@@ -778,6 +871,9 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
         buyerName: req.user.name || "Customer",
         buyerEmail: req.user.email || "",
         items,
+        // Instant delivery and a 24-hour refund window — a very different
+        // thing from the escrow-backed service and hire invoices.
+        kind: "prompt",
       });
 
       if (req.user.email) {
@@ -792,6 +888,7 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
           gst,
           total,
           pdfBuffer,
+          kind: "prompt",
         });
       }
     } catch (invoiceErr) {

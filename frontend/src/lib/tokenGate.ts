@@ -37,5 +37,4 @@ export const TOKEN_LIMIT_TOAST = {
   title: "Token limit reached",
   description:
     "You've used all your tokens. Please upgrade your subscription to keep using the optimiser and SmartGen.",
-  variant: "destructive" as const,
 };

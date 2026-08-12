@@ -462,7 +462,7 @@
 
 //   const handleOptimize = async () => {
 //     if (!text.trim()) {
-//       toast({ title: "Empty prompt", description: "Please enter text to optimize", variant: "destructive" });
+//       toast({ title: "Empty prompt", description: "Please enter text to optimize" });
 //       return;
 //     }
 
@@ -471,8 +471,7 @@
 //       toast({
 //         title: "API key missing",
 //         description: `Please set your ${config.provider.toUpperCase()} API key in the settings`,
-//         variant: "destructive",
-//       });
+//         //       });
 //       return;
 //     }
 
@@ -569,8 +568,7 @@
 //         title: "Optimization failed",
 //         description:
 //           error instanceof Error ? error.message : "Unknown error occurred",
-//         variant: "destructive",
-//       });
+//         //       });
 //     } finally {
 //       setIsProcessing(false);
 //     }
@@ -682,7 +680,7 @@
 //       setLastUsage(undefined);
 //       await countTokens("");
 //     } catch (err: any) {
-//       toast({ title: "Copy failed", description: err?.message || "Could not copy the prompt.", variant: "destructive" });
+//       toast({ title: "Copy failed", description: err?.message || "Could not copy the prompt." });
 //     }
 //   };
 
@@ -714,7 +712,7 @@
 //   const handleSaveFromDropdown = async (payload?: { title?: string; category?: string; quick?: boolean }) => {
 //     const textToSave = optimizationOption?.text || text;
 //     if (!textToSave.trim()) {
-//       toast({ title: "Nothing to save", description: "Generate or enter a prompt first.", variant: "destructive" });
+//       toast({ title: "Nothing to save", description: "Generate or enter a prompt first." });
 //       return;
 //     }
 
@@ -756,8 +754,7 @@
 //       toast({
 //         title: "Save failed",
 //         description: err?.message || "Could not save to saved collections.",
-//         variant: "destructive",
-//       });
+//         //       });
 //     }
 //   };
 
@@ -823,8 +820,7 @@
 //       toast({
 //         title: "Failed to start collaboration",
 //         description: data.message,
-//         variant: "destructive",
-//       });
+//         //       });
 //       return null;
 //     }
 
@@ -837,8 +833,7 @@
 //     console.error(err);
 //     toast({
 //       title: "Network error",
-//       variant: "destructive",
-//     });
+//       //     });
 //     return null;
 //   }
 // };
@@ -1226,8 +1221,7 @@
 //                 toast({
 //                   title: "Email required",
 //                   description: "Please enter an email to send the invite.",
-//                   variant: "destructive",
-//                 });
+//                   //                 });
 //                 return;
 //               }
 
@@ -1333,7 +1327,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePrompt } from "@/contexts/PromptContext";
 import { llmService } from "@/services/llmService";
-import LLMSelector from "./LLMSelector";
+import LLMSelector, { LLM_OPTIONS } from "./LLMSelector";
 import { Sparkles, Check, X, Loader2, Lightbulb, Copy, History, UserPlus } from "lucide-react";
 import ModalComponent from "@/components/ModalComponent";
 import { saveItem } from "@/lib/savedCollections";
@@ -1807,7 +1801,7 @@ const handleConfirmEndSession = () => {
 
   const handleOptimize = async () => {
     if (!text.trim()) {
-      toast({ title: "Empty prompt", description: "Please enter text to optimize", variant: "destructive" });
+      toast({ title: "Empty prompt", description: "Please enter text to optimize" });
       return;
     }
 
@@ -1826,7 +1820,6 @@ const handleConfirmEndSession = () => {
       toast({
         title: "Can't optimise",
         description: gate.message,
-        variant: "destructive",
       });
       return;
     }
@@ -1895,7 +1888,6 @@ const handleConfirmEndSession = () => {
         title: "Optimization failed",
         description:
           error instanceof Error ? error.message : "Unknown error occurred",
-        variant: "destructive",
       });
     } finally {
       setIsProcessing(false);
@@ -2025,7 +2017,7 @@ const handleConfirmEndSession = () => {
       setLastUsage(undefined);
       await countTokens("");
     } catch (err: any) {
-      toast({ title: "Copy failed", description: err?.message || "Could not copy the prompt.", variant: "destructive" });
+      toast({ title: "Copy failed", description: err?.message || "Could not copy the prompt." });
     }
   };
 
@@ -2057,7 +2049,7 @@ const handleConfirmEndSession = () => {
   const handleSaveFromDropdown = async (payload?: { title?: string; category?: string; quick?: boolean }) => {
     const textToSave = optimizationOption?.text || text;
     if (!textToSave.trim()) {
-      toast({ title: "Nothing to save", description: "Generate or enter a prompt first.", variant: "destructive" });
+      toast({ title: "Nothing to save", description: "Generate or enter a prompt first." });
       return;
     }
 
@@ -2099,7 +2091,6 @@ const handleConfirmEndSession = () => {
       toast({
         title: "Save failed",
         description: err?.message || "Could not save to saved collections.",
-        variant: "destructive",
       });
     }
   };
@@ -2169,7 +2160,6 @@ const startCollaboration = async (): Promise<string | null> => {
       toast({
         title: "Failed to start collaboration",
         description: data.message,
-        variant: "destructive",
       });
       return null;
     }
@@ -2183,7 +2173,6 @@ const startCollaboration = async (): Promise<string | null> => {
     console.error(err);
     toast({
       title: "Network error",
-      variant: "destructive",
     });
     return null;
   }
@@ -2371,35 +2360,24 @@ const startCollaboration = async (): Promise<string | null> => {
             </div>
 
             <div className="mt-4 flex items-center justify-between gap-3">
+              {/* Same models, same logos, same order as the selector at the top
+                  of this page — driven by the one exported list, so the two
+                  rows can't drift apart again. These were PNG logos on white
+                  pills in a different order, which read as a second, unrelated
+                  set of buttons. */}
               <div className="flex flex-wrap gap-3">
-                <button
-                  className="flex items-center justify-center bg-white min-w-[100px] h-[40px] rounded-[200px] hover:opacity-90 transition"
-                  onClick={() => openLLMWebsite("openai", optimizationOption.text)}
-                  title="Open ChatGPT"
-                >
-                  <img src="/icons/chatgpt.png" alt="ChatGPT" className="w-[60px] h-[22px] object-contain" />
-                </button>
-                <button
-                  className="flex items-center justify-center bg-white min-w-[100px] h-[40px] rounded-[200px] hover:opacity-90 transition"
-                  onClick={() => openLLMWebsite("anthropic", optimizationOption.text)}
-                  title="Open Claude"
-                >
-                  <img src="/icons/claude.png" alt="Claude" className="w-[60px] h-[22px] object-contain" />
-                </button>
-                <button
-                  className="flex items-center justify-center bg-white min-w-[100px] h-[40px] rounded-[200px] hover:opacity-90 transition"
-                  onClick={() => openLLMWebsite("google", optimizationOption.text)}
-                  title="Open Gemini"
-                >
-                  <img src="/icons/Gemini.png" alt="Gemini" className="w-[60px] h-[22px] object-contain" />
-                </button>
-                <button
-                  className="flex items-center justify-center bg-white min-w-[100px] h-[40px] rounded-[200px] hover:opacity-90 transition"
-                  onClick={() => openLLMWebsite("perplexity", optimizationOption.text)}
-                  title="Open Perplexity"
-                >
-                  <img src="/icons/perplexity.png" alt="Perplexity" className="w-[60px] h-[22px] object-contain" />
-                </button>
+                {LLM_OPTIONS.map(({ key, Icon, color, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => openLLMWebsite(key, optimizationOption.text)}
+                    title={`Open ${label}`}
+                    className="flex items-center gap-2.5 w-[140px] h-[42px] rounded-[10px] px-3 border border-white/10 bg-[#1a1a1b] hover:border-white/25 hover:bg-[#222224] transition-all select-none"
+                  >
+                    <Icon size={18} color={color} className="flex-shrink-0" />
+                    <span className="text-sm text-white/90 truncate">{label}</span>
+                  </button>
+                ))}
               </div>
 
               <div className="flex items-center gap-2">
@@ -2592,7 +2570,6 @@ const startCollaboration = async (): Promise<string | null> => {
                 toast({
                   title: "Email required",
                   description: "Please enter an email to send the invite.",
-                  variant: "destructive",
                 });
                 return;
               }

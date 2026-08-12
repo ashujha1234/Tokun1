@@ -1595,9 +1595,14 @@ body.is-loading { overflow: hidden; }
    CTA SECTION
    ============================================================ */
 
+/* padding-bottom was 130px, and .testimonials below adds another 88px of its
+   own padding-top — 218px of empty black between the button and the next
+   heading. Every other section on this page closes at 72–100px, so the CTA was
+   the outlier rather than the page being loose. 72px brings the boundary to
+   160px, in line with the 148px between what-we-offer and how-it-works. */
 .cta-section {
   position: relative;
-  padding: 110px 24px 130px;
+  padding: 110px 24px 72px;
   background: #06040f;
   overflow: hidden;
   text-align: center;
@@ -1707,7 +1712,9 @@ body.is-loading { overflow: hidden; }
 }
 
 @media (max-width: 640px) {
-  .cta-section { padding: 88px 20px 110px; }
+  /* Same trim as the desktop rule above — the gap reads even longer on a
+     narrow screen, where it can be most of a scroll. */
+  .cta-section { padding: 88px 20px 56px; }
   .cta-section__header { margin-bottom: 44px; }
   .cta-btn { width: auto; justify-content: center; padding: 16px 18px 16px 28px; font-size: 16px; gap: 16px; }
 }

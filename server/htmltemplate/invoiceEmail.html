@@ -92,13 +92,19 @@
               <tr>
                 <td align="right" style="font-size:14px;color:#ffffff">
                   Subtotal: ₹{{SUBTOTAL}}<br/>
-                  GST (18%): ₹{{GST}}<br/>
+                  <!-- GST line switched off along with the calculation in
+                       services/invoice.service.js. Put it back only when GST is
+                       actually being charged, not just displayed. -->
+                  <!-- GST (18%): ₹{{GST}}<br/> -->
                   <strong style="font-size:18px">
                     Total: ₹{{TOTAL}}
                   </strong>
                 </td>
               </tr>
             </table>
+            <!-- What this payment means — escrow terms for a service/project,
+                 the refund window for a prompt. Empty for subscriptions. -->
+            <table width="100%">{{INVOICE_NOTE_HTML}}</table>
           </td>
         </tr>
 

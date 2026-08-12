@@ -14,6 +14,10 @@ router.get("/", async (req, res) => {
       availableBalance: wallet.availableBalance,
       totalRevenue: wallet.totalRevenue,
       totalWithdrawn: wallet.totalWithdrawn,
+      // GST charged on Tokun's fees and collected from buyers and sellers.
+      // Reported alongside revenue but never inside it — this is owed to the
+      // government, and it is not part of availableBalance either.
+      gstCollected: wallet.gstCollected || 0,
       transactions: wallet.transactions.slice(0, 50),
     });
   } catch (err) {

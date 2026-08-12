@@ -38,7 +38,6 @@ export const TEAM_MEMBER_PURCHASE_TOAST = {
   title: "Your organization buys for you",
   description:
     "Team members can't purchase directly. Send a request and your org owner can buy and share it with you.",
-  variant: "destructive" as const,
 };
 
 // Selling is the same story from the other direction: listings and payouts sit
@@ -49,5 +48,4 @@ export const TEAM_MEMBER_SELL_TOAST = {
   title: "Your organization sells for you",
   description:
     "Team members can't list prompts or set up a payout account. Ask your org owner to publish it from the organization account.",
-  variant: "destructive" as const,
 };

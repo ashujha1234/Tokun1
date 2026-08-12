@@ -975,7 +975,7 @@
 // //     // ✅ Send the reminder email
 // //     await sendEmail({
 // //       to: member.email,
-// //       subject: `Reminder: Your Tokun.ai Invitation Awaits 🚀`,
+// //       subject: `Reminder: Your Tokun.World Invitation Awaits 🚀`,
 // //       html,
 // //     });
 
@@ -1384,7 +1384,7 @@
 
 //         await sendEmail({
 //           to: member.email,
-//           subject: `${org.name} invites you to Tokun.ai`,
+//           subject: `${org.name} invites you to Tokun.World`,
 //           html,
 //         });
 //         results.push({ email, success: true, invited:true ,created: !member.isVerified, tokens });
@@ -1655,7 +1655,7 @@
 //     // ✅ Send the reminder email
 //     await sendEmail({
 //       to: member.email,
-//       subject: `Reminder: Your Tokun.ai Invitation Awaits 🚀`,
+//       subject: `Reminder: Your Tokun.World Invitation Awaits 🚀`,
 //       html,
 //     });
 
@@ -1903,6 +1903,12 @@ const User = require("../models/User");
 const Organization = require("../models/organization");
 const Purchase = require("../models/Purchase");
 const SharedPrompt = require("../models/SharedPrompt");
+const OrgInvitation = require("../models/OrgInvitation");
+// Required for its side effect: the dashboard's nested populate of
+// prompt.categories resolves the "Category" model by name, and mongoose throws
+// MissingSchemaError if nothing has registered it yet. Relying on some other
+// route happening to load first would make this file order-dependent.
+require("../models/Category");
 const { PLANS } = require("../config/plans");
 const Notification = require("../models/Notification");
 const fs =require("fs");
@@ -2026,71 +2032,83 @@ router.post("/add", requireAuth, async (req, res) => {
       }
 
       const normEmail = String(email).toLowerCase().trim();
-      let member = await User.findOne({ email: normEmail });
+      const existingUser = await User.findOne({ email: normEmail });
 
-      if (member) {
-        if (member.orgId && String(member.orgId) !== String(org._id)) {
+      if (existingUser) {
+        if (existingUser.orgId && String(existingUser.orgId) !== String(org._id)) {
           results.push({ email, success: false, error: "user_belongs_to_another_org" });
           continue;
         }
-        if (member.userType === "TM" && String(member.orgId) === String(org._id)) {
+        if (existingUser.userType === "TM" && String(existingUser.orgId) === String(org._id)) {
           results.push({ email, success: false, error: "user_already_in_org" });
           continue;
         }
+      }
 
-        member.userType = "TM";
-        member.role = role;
-        member.orgId = org._id;
-        member.plan = null;
-        member.billingCycle = null;
-        member.currentPeriodEnd = null;
-        member.orgAssignedCap = tokens;
-        member.orgTokensRemaining = tokens;
-        member.tokensLastResetDateIST = todayIST;
+      const alreadyInvited = await OrgInvitation.findOne({
+        orgId: org._id,
+        email: normEmail,
+        status: "PENDING",
+      });
+      if (alreadyInvited) {
+        results.push({ email, success: false, error: "invitation_already_pending" });
+        continue;
+      }
 
-        await member.save();
-      } else {
-        member = await User.create({
-          name: name || normEmail.split("@")[0],
-          email: normEmail,
-          isVerified: false,
-          userType: "TM",
-          role,
-          orgId: org._id,
-          plan: null,
-          billingCycle: null,
-          currentPeriodEnd: null,
-          orgAssignedCap: tokens,
-          orgTokensRemaining: tokens,
-          tokensLastResetDateIST: todayIST,
+      /* NOTHING about the invitee's account is touched here.
+         This used to rewrite their User document on the spot — flipping
+         userType to "TM" and clearing `plan` — which meant they were shown as
+         an active member without ever seeing the invitation, and anyone on a
+         paid individual plan had it wiped just by being invited. The intended
+         role and allowance live on the invitation until they accept. */
+      const invitation = await OrgInvitation.create({
+        orgId: org._id,
+        orgName: org.name,
+        email: normEmail,
+        userId: existingUser?._id || null,
+        name: name || existingUser?.name || normEmail.split("@")[0],
+        role,
+        assignedCap: tokens,
+        invitedBy: req.user._id,
+        invitedByName: req.user.name || "",
+        status: "PENDING",
+      });
+
+      /* The seat and the tokens ARE reserved from now, even though nothing has
+         been granted. Otherwise an owner with 3 seats could send 10 invitations
+         and over-commit both the headcount and the token pool. Released again
+         if the invitation is declined, revoked or expires. */
+      org.pendingInvites = (org.pendingInvites || 0) + 1;
+      org.totalAssignedCap += tokens;
+      assignable -= tokens;
+      org.teamMembersLimitRemaining = Math.max(
+        0,
+        maxMembers - org.members.length - org.pendingInvites
+      );
+
+      // In-app, independent of the email below — an existing user who is signed
+      // in should see this in their bell immediately, and it still lands if the
+      // invitation email bounces. The Accept button reads `invitationId`.
+      if (existingUser) {
+        await notifyMember({
+          owner: req.user,
+          org,
+          memberId: existingUser._id,
+          type: "ORG_INVITATION",
+          message: `${org.name} invited you to join their team as ${
+            role === "Admin" ? "an Admin" : "a Member"
+          } with ${tokens.toLocaleString("en-IN")} tokens. Accept to join.`,
+          meta: {
+            orgName: org.name,
+            role,
+            assignedCap: tokens,
+            invitationId: String(invitation._id),
+            requiresAction: true,
+          },
         });
       }
 
-      org.members.push({
-        userId: member._id,
-        role: role === "Admin" ? "ADMIN" : "MEMBER",
-        assignedCap: tokens,
-        usedThisPeriod: 0,
-        sectionUsage: {},
-      });
-
-      org.totalAssignedCap += tokens;
-      assignable -= tokens;
-
-      // ✅ Decrease teamMembersLimitRemaining
-      org.teamMembersLimitRemaining = Math.max(0, maxMembers - org.members.length);
-
-      // In-app notification, independent of the email below — an existing user
-      // who is signed in should see this in their bell immediately, and it still
-      // lands if the invitation email bounces or the SMTP call fails.
-      await notifyMember({
-        owner: req.user,
-        org,
-        memberId: member._id,
-        type: "ORG_MEMBER_ADDED",
-        message: `You were added to ${org.name} as ${role === "Admin" ? "an Admin" : "a Member"} with ${tokens.toLocaleString("en-IN")} tokens.`,
-        meta: { orgName: org.name, role, assignedCap: tokens },
-      });
+      const member = existingUser || { _id: invitation._id, name: invitation.name, email: normEmail, isVerified: false };
 
     try {
         // SITE_URL is the login page; the member id is appended so the invite
@@ -2108,7 +2126,7 @@ router.post("/add", requireAuth, async (req, res) => {
 
         await sendEmail({
           to: member.email,
-          subject: `${org.name} invites you to Tokun.ai`,
+          subject: `${org.name} invites you to Tokun.World`,
           html,
         });
         results.push({ email, success: true, invited:true ,created: !member.isVerified, tokens });
@@ -2137,6 +2155,225 @@ router.post("/add", requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error("org/members/add", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   INVITATIONS — the consent step between "the owner added you" and "you are a
+   member". Nothing about the invitee's account changes until they accept.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Frees the seat and tokens an outstanding invitation was holding. */
+async function releaseInviteReservation(org, invitation) {
+  org.pendingInvites = Math.max(0, (org.pendingInvites || 0) - 1);
+  org.totalAssignedCap = Math.max(0, org.totalAssignedCap - Number(invitation.assignedCap || 0));
+
+  const maxMembers = org.teamMembersLimit || PLANS.enterprise.features.teamMembersLimit || 0;
+  org.teamMembersLimitRemaining = Math.max(
+    0,
+    maxMembers - org.members.length - (org.pendingInvites || 0)
+  );
+  await org.save();
+}
+
+/* GET /api/org/members/invitations/mine — what's waiting for me.
+   Matched on email as well as userId, because most invitations are sent to
+   people who had no account at the time and so were never linked by id. */
+router.get("/invitations/mine", requireAuth, async (req, res) => {
+  try {
+    const invitations = await OrgInvitation.find({
+      status: "PENDING",
+      $or: [{ userId: req.user._id }, { email: String(req.user.email || "").toLowerCase() }],
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.json({
+      success: true,
+      invitations: invitations.map((i) => ({
+        _id: i._id,
+        orgName: i.orgName,
+        role: i.role,
+        assignedCap: i.assignedCap,
+        invitedByName: i.invitedByName,
+        createdAt: i.createdAt,
+      })),
+    });
+  } catch (err) {
+    console.error("org invitations/mine", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+/* POST /api/org/members/invitations/:id/accept */
+router.post("/invitations/:id/accept", requireAuth, async (req, res) => {
+  const todayIST = getISTDateString();
+
+  try {
+    const invitation = await OrgInvitation.findById(req.params.id);
+    if (!invitation) return res.status(404).json({ success: false, error: "invitation_not_found" });
+
+    const isMine =
+      String(invitation.userId || "") === String(req.user._id) ||
+      String(invitation.email || "").toLowerCase() === String(req.user.email || "").toLowerCase();
+    if (!isMine) return res.status(403).json({ success: false, error: "not_your_invitation" });
+
+    if (invitation.status !== "PENDING") {
+      return res.status(400).json({
+        success: false,
+        error: "invitation_not_pending",
+        message: `This invitation was already ${invitation.status.toLowerCase()}.`,
+      });
+    }
+
+    // Re-checked at accept time, not just at invite time — they may have joined
+    // a different org in between.
+    const me = await User.findById(req.user._id);
+    if (me.orgId && String(me.orgId) !== String(invitation.orgId)) {
+      return res.status(400).json({
+        success: false,
+        error: "already_in_another_org",
+        message: "You're already part of another organization. Leave it before joining a new one.",
+      });
+    }
+
+    const org = await Organization.findById(invitation.orgId);
+    if (!org) return res.status(404).json({ success: false, error: "org_not_found" });
+
+    /* Only now does the account change. This is the work /add used to do
+       immediately — moved behind the person's consent, which is also what stops
+       an invitation silently clearing someone's paid individual plan. */
+    me.userType = "TM";
+    me.role = invitation.role;
+    me.orgId = org._id;
+    me.plan = null;
+    me.billingCycle = null;
+    me.currentPeriodEnd = null;
+    me.orgAssignedCap = invitation.assignedCap;
+    me.orgTokensRemaining = invitation.assignedCap;
+    me.tokensLastResetDateIST = todayIST;
+    await me.save();
+
+    /* The reservation becomes a real seat rather than being released: the
+       tokens were already counted into totalAssignedCap when the invitation
+       went out, so only the pending counter moves. */
+    org.members.push({
+      userId: me._id,
+      role: invitation.role === "Admin" ? "ADMIN" : "MEMBER",
+      assignedCap: invitation.assignedCap,
+      usedThisPeriod: 0,
+      sectionUsage: {},
+    });
+    org.pendingInvites = Math.max(0, (org.pendingInvites || 0) - 1);
+
+    const maxMembers = org.teamMembersLimit || PLANS.enterprise.features.teamMembersLimit || 0;
+    org.teamMembersLimitRemaining = Math.max(
+      0,
+      maxMembers - org.members.length - (org.pendingInvites || 0)
+    );
+    await org.save();
+
+    invitation.status = "ACCEPTED";
+    invitation.userId = me._id;
+    invitation.respondedAt = new Date();
+    await invitation.save();
+
+    try {
+      await Notification.create({
+        senderId: me._id,
+        senderName: me.name,
+        receiverUserId: invitation.invitedBy,
+        type: "ORG_INVITATION_ACCEPTED",
+        message: `${me.name || me.email} accepted your invitation to join ${org.name}.`,
+        meta: { orgName: org.name, role: invitation.role },
+      });
+    } catch (notifyErr) {
+      console.error("Invitation-accepted notification failed:", notifyErr.message);
+    }
+
+    return res.json({
+      success: true,
+      message: `You've joined ${org.name}.`,
+      org: { _id: org._id, name: org.name },
+      role: invitation.role,
+      assignedCap: invitation.assignedCap,
+    });
+  } catch (err) {
+    console.error("org invitation accept", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+/* POST /api/org/members/invitations/:id/decline */
+router.post("/invitations/:id/decline", requireAuth, async (req, res) => {
+  try {
+    const invitation = await OrgInvitation.findById(req.params.id);
+    if (!invitation) return res.status(404).json({ success: false, error: "invitation_not_found" });
+
+    const isMine =
+      String(invitation.userId || "") === String(req.user._id) ||
+      String(invitation.email || "").toLowerCase() === String(req.user.email || "").toLowerCase();
+    if (!isMine) return res.status(403).json({ success: false, error: "not_your_invitation" });
+
+    if (invitation.status !== "PENDING") {
+      return res.status(400).json({ success: false, error: "invitation_not_pending" });
+    }
+
+    invitation.status = "DECLINED";
+    invitation.respondedAt = new Date();
+    await invitation.save();
+
+    // Give the seat and its tokens back to the org.
+    const org = await Organization.findById(invitation.orgId);
+    if (org) await releaseInviteReservation(org, invitation);
+
+    try {
+      await Notification.create({
+        senderId: req.user._id,
+        senderName: req.user.name,
+        receiverUserId: invitation.invitedBy,
+        type: "ORG_INVITATION_DECLINED",
+        message: `${req.user.name || req.user.email} declined your invitation to join ${invitation.orgName}.`,
+        meta: { orgName: invitation.orgName },
+      });
+    } catch (notifyErr) {
+      console.error("Invitation-declined notification failed:", notifyErr.message);
+    }
+
+    return res.json({ success: true, message: "Invitation declined." });
+  } catch (err) {
+    console.error("org invitation decline", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+/* POST /api/org/members/invitations/:id/revoke — the owner takes it back. */
+router.post("/invitations/:id/revoke", requireAuth, async (req, res) => {
+  try {
+    if (req.user.userType !== "ORG" || req.user.role !== "Owner" || !req.user.orgId) {
+      return res.status(403).json({ success: false, error: "not_org_owner" });
+    }
+
+    const invitation = await OrgInvitation.findById(req.params.id);
+    if (!invitation) return res.status(404).json({ success: false, error: "invitation_not_found" });
+    if (String(invitation.orgId) !== String(req.user.orgId)) {
+      return res.status(403).json({ success: false, error: "not_your_org" });
+    }
+    if (invitation.status !== "PENDING") {
+      return res.status(400).json({ success: false, error: "invitation_not_pending" });
+    }
+
+    invitation.status = "REVOKED";
+    invitation.respondedAt = new Date();
+    await invitation.save();
+
+    const org = await Organization.findById(invitation.orgId);
+    if (org) await releaseInviteReservation(org, invitation);
+
+    return res.json({ success: true, message: "Invitation revoked." });
+  } catch (err) {
+    console.error("org invitation revoke", err);
     return res.status(500).json({ success: false, error: "server_error" });
   }
 });
@@ -2182,9 +2419,38 @@ router.get("/", requireAuth, async (req, res) => {
 
       .lean();
 
+    /* Outstanding invitations are shown alongside real members, because from
+       the owner's point of view they're the same thing: a seat and an
+       allowance that has been committed. Without this they'd vanish from the
+       roster entirely between sending and acceptance, while still counting
+       against the limit — which reads as tokens going missing. */
+    const invitations = await OrgInvitation.find({
+      orgId: req.user.orgId,
+      status: "PENDING",
+    })
+      .select("_id name email role assignedCap createdAt")
+      .lean();
+
     return res.json({
       success: true,
-      members,
+      members: [
+        ...members.map((m) => ({ ...m, membershipStatus: "ACTIVE", isInvitation: false })),
+        ...invitations.map((i) => ({
+          _id: i._id,
+          name: i.name,
+          email: i.email,
+          role: i.role,
+          isVerified: false,
+          isDeletedFromOrg: false,
+          orgAssignedCap: i.assignedCap,
+          // Nothing has been granted yet, so there is nothing available to
+          // spend — showing the full allowance here would imply otherwise.
+          orgTokensRemaining: 0,
+          membershipStatus: "INVITED",
+          isInvitation: true,
+          invitedAt: i.createdAt,
+        })),
+      ],
       teamMembersLimit: org?.teamMembersLimit || 0,
       teamMembersLimitRemaining: org?.teamMembersLimitRemaining || 0,
     });
@@ -2248,7 +2514,14 @@ router.get("/dashboard", requireAuth, async (req, res) => {
         .lean(),
       SharedPrompt.countDocuments({ orgId: req.user.orgId }),
       SharedPrompt.find({ orgId: req.user.orgId })
-        .populate("promptId", "title")
+        // Enough to render a real prompt card, not just a line of text —
+        // thumbnail, price and category, the same fields the marketplace card
+        // uses. categories is a ref array, so it needs its own nested populate.
+        .populate({
+          path: "promptId",
+          select: "title price tokun_price free attachment categories deleted",
+          populate: { path: "categories", select: "name" },
+        })
         .populate("sharedBy", "name email")
         .sort({ createdAt: -1 })
         .limit(10)
@@ -2260,7 +2533,13 @@ router.get("/dashboard", requireAuth, async (req, res) => {
       // The dashboard is where the owner decides what to buy, so it belongs here.
       Notification.countDocuments({ receiverOrgId: req.user.orgId, type: "TM_REQUEST" }),
       Notification.find({ receiverOrgId: req.user.orgId, type: "TM_REQUEST" })
-        .populate("promptId", "title price tokun_price")
+        // Same field set as the shares above, so both panels can render the
+        // identical prompt card.
+        .populate({
+          path: "promptId",
+          select: "title price tokun_price free attachment categories deleted",
+          populate: { path: "categories", select: "name" },
+        })
         .sort({ createdAt: -1 })
         .limit(10)
         .lean(),
@@ -2296,7 +2575,15 @@ router.get("/dashboard", requireAuth, async (req, res) => {
         count: sharedCount,
         recent: recentShares.map((sp) => ({
           id: sp._id,
+          promptId: sp.promptId?._id || null,
           promptTitle: sp.promptId?.title || "Untitled",
+          // Absolute or API-relative; the client's mediaUrl() resolves either.
+          thumbnail: sp.promptId?.attachment?.type === "image" ? sp.promptId.attachment.path : null,
+          category: sp.promptId?.categories?.[0]?.name || null,
+          isFree: Boolean(sp.promptId?.free),
+          // What a buyer pays, same figure the marketplace card shows.
+          price: sp.promptId?.tokun_price || sp.promptId?.price || 0,
+          promptDeleted: Boolean(sp.promptId?.deleted),
           sharedByName: sp.sharedBy?.name || sp.sharedBy?.email || "Owner",
           sharedToCount: (sp.sharedTo || []).length,
           sharedAt: sp.createdAt,
@@ -2309,8 +2596,12 @@ router.get("/dashboard", requireAuth, async (req, res) => {
           id: n._id,
           promptId: n.promptId?._id || null,
           promptTitle: n.promptId?.title || "Untitled",
+          thumbnail: n.promptId?.attachment?.type === "image" ? n.promptId.attachment.path : null,
+          category: n.promptId?.categories?.[0]?.name || null,
+          isFree: Boolean(n.promptId?.free),
           // What the owner would pay if they buy it, matching the marketplace.
           price: n.promptId?.tokun_price || n.promptId?.price || 0,
+          promptDeleted: Boolean(n.promptId?.deleted),
           requestedByName: n.senderName || n.senderEmail || "Team member",
           message: n.message || "",
           read: Boolean(n.read),
@@ -2566,7 +2857,7 @@ router.post("/resend-invite/:memberId", requireAuth, async (req, res) => {
     // ✅ Send the reminder email
     await sendEmail({
       to: member.email,
-      subject: `Reminder: Your Tokun.ai Invitation Awaits 🚀`,
+      subject: `Reminder: Your Tokun.World Invitation Awaits 🚀`,
       html,
     });
 
@@ -2689,16 +2980,27 @@ router.get("/emaillist", requireAuth, async (req, res) => {
     const members = org.members.map((m) => ({
       userId: m.userId?._id,
       email: m.userId?.email,
-       
+
       orgId: org._id,
-       
+
     }));
 
-     
+    // A team member calls this to find out who their request goes to. Without
+    // the owner in the payload they had no way to resolve it, and the request
+    // UI fell back to the prompt seller's email — a different person.
+    const owner = org.ownerId
+      ? {
+          userId: org.ownerId._id,
+          email: org.ownerId.email,
+          name: org.ownerId.name,
+        }
+      : null;
 
     res.json({
       success: true,
       orgId: org._id,
+      orgName: org.name,
+      owner,
       totalMembers: members.length , // +1 for owner
      members: members,
 

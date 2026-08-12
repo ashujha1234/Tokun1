@@ -184,10 +184,31 @@ lastInvoiceDueAt: { type: Date, default: null },  // optional reporting
 sellerStatus: { type: String, enum: ["ACTIVE", "SUSPENDED"], default: "ACTIVE" },
 location: { type: String, default: null },
 
+// Mirror of FreelancerProfile.status, written whenever that document's status
+// changes. The full profile lives in its own collection; this copy exists so
+// listing screens (Find Creators, the admin seller table) can badge and filter
+// freelancers without joining every row against it.
+//   NONE   — never started the Become-a-Freelancer flow
+//   DRAFT  — onboarding started but not finished
+//   ACTIVE — profile is live; no admin approval is involved
+freelancerStatus: {
+  type: String,
+  enum: ["NONE", "DRAFT", "ACTIVE"],
+  default: "NONE",
+  index: true,
+},
+
 sellerRating: { type: Number, default: 0 },
 sellerReviewsCount: { type: Number, default: 0 },
 sellerRefundRate: { type: Number, default: 0 },
 sellerRefundThreshold: { type: Number, default: 5 },
+
+// How many times this seller has walked away from work a client had already
+// paid for. Abandoning a funded booking costs the client nothing in money —
+// they get a full refund — but it costs them time, so it can't be free for the
+// seller either. Incremented on every seller-initiated cancellation after work
+// had started; the admin queue surfaces repeat offenders for suspension.
+cancelledAfterPaymentCount: { type: Number, default: 0 },
 
 
 // RazorpayX payout setup

@@ -159,8 +159,7 @@
 // // //       toast({
 // // //         title: "Could not load prompt",
 // // //         description: err?.message || "Please try again.",
-// // //         variant: "destructive",
-// // //       });
+// // //         // // //       });
 // // //     }
 // // //   };
 
@@ -503,8 +502,7 @@
 // //     toast({
 // //       title: "Could not load prompt",
 // //       description: err?.message || "Please try again.",
-// //       variant: "destructive",
-// //     });
+// //       // //     });
 // //   }
 // // };
 
@@ -868,8 +866,7 @@
 //       toast({
 //         title: "Prompt not found",
 //         description: "Could not open this prompt. Try refreshing.",
-//         variant: "destructive",
-//       });
+//         //       });
 //       return;
 //     }
    
@@ -902,8 +899,7 @@
 //     toast({
 //       title: "Invalid session",
 //       description: "Could not join collaboration session.",
-//       variant: "destructive",
-//     });
+//       //     });
 //     return;
 //   }
 
@@ -1184,6 +1180,11 @@ type Notif = {
     deliveryDate?: string;
     paymentRequired?: boolean;
     fundsStatus?: string;
+    // Team invitations — the id is what the Accept/Decline buttons act on.
+    invitationId?: string;
+    orgName?: string;
+    role?: string;
+    assignedCap?: number;
   };
 
   promptId?: {
@@ -1363,6 +1364,53 @@ export default function NotificationsPage() {
     }
   };
 
+  /* Answering a team invitation.
+     Tracked per invitation id rather than as one page-wide flag, because
+     someone can have invitations from more than one org sitting in the list
+     and only the one being answered should show as busy. */
+  const [orgInviteBusy, setOrgInviteBusy] = useState<string | null>(null);
+  const [orgInviteAnswered, setOrgInviteAnswered] = useState<
+    Record<string, "accepted" | "declined">
+  >({});
+
+  const respondToOrgInvite = async (
+    invitationId: string,
+    action: "accept" | "decline",
+    notificationId: string
+  ) => {
+    if (!token || !invitationId) return;
+
+    try {
+      setOrgInviteBusy(invitationId);
+      const res = await fetch(
+        `${API_BASE}/api/org/members/invitations/${invitationId}/${action}`,
+        { method: "POST", headers: { ...(authHeader as any) } }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || data?.error || "Couldn't complete that.");
+      }
+
+      setOrgInviteAnswered((prev) => ({
+        ...prev,
+        [invitationId]: action === "accept" ? "accepted" : "declined",
+      }));
+      await markNotificationRead(notificationId);
+
+      if (action === "accept") {
+        // Accepting rewrites this account — userType, role, org and token
+        // allowance all change — so the cached auth state is now stale. A
+        // reload is the honest way to pick all of that up.
+        window.alert(data.message || "You've joined the team.");
+        window.location.reload();
+      }
+    } catch (err: any) {
+      window.alert(err?.message || "Couldn't complete that. Please try again.");
+    } finally {
+      setOrgInviteBusy(null);
+    }
+  };
+
   const markAllRead = async () => {
     if (!token) return;
 
@@ -1389,7 +1437,6 @@ export default function NotificationsPage() {
       toast({
         title: "Prompt not found",
         description: "Could not open this prompt. Try refreshing.",
-        variant: "destructive",
       });
       return;
     }
@@ -1436,7 +1483,6 @@ export default function NotificationsPage() {
       toast({
         title: "Invalid session",
         description: "Could not join collaboration session.",
-        variant: "destructive",
       });
       return;
     }
@@ -1653,6 +1699,47 @@ export default function NotificationsPage() {
       senderName: n.senderName || n.senderId?.name,
       senderEmail: n.senderEmail || n.senderId?.email,
     };
+
+    /* Being added to a team is now an invitation, not a fait accompli — the
+       owner's click sends this, and nothing about the person's account changes
+       until they press Accept here. */
+    if (n.type === "ORG_INVITATION") {
+      const invitationId = n.meta?.invitationId;
+      const answered = invitationId ? orgInviteAnswered[invitationId] : undefined;
+
+      return NotifCard({
+        ...base,
+        message: n.message || "You've been invited to join a team.",
+        title: n.meta?.orgName ? `${n.meta.orgName} — team invitation` : "Team invitation",
+        attachmentPath: undefined,
+        prompt: null,
+        actionButton: !invitationId ? undefined : answered ? (
+          <span className="text-xs text-white/45">
+            {answered === "accepted" ? "Joined" : "Declined"}
+          </span>
+        ) : (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={orgInviteBusy === invitationId}
+              onClick={() => respondToOrgInvite(invitationId, "decline", n._id)}
+              className="h-8 px-3 rounded-full text-xs font-medium text-white/60 border border-white/15 hover:bg-white/[0.06] disabled:opacity-50"
+            >
+              Decline
+            </button>
+            <button
+              type="button"
+              disabled={orgInviteBusy === invitationId}
+              onClick={() => respondToOrgInvite(invitationId, "accept", n._id)}
+              className="h-8 px-4 rounded-full text-xs font-semibold text-white disabled:opacity-50"
+              style={{ background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)" }}
+            >
+              {orgInviteBusy === invitationId ? "Joining…" : "Accept"}
+            </button>
+          </div>
+        ),
+      });
+    }
 
     if (n.type === "COLLAB_INVITE") {
       return NotifCard({

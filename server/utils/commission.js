@@ -1,38 +1,52 @@
-// The money split for one prompt sale, in one place.
+// The money split for one prompt sale.
 //
-// Tokun charges TOKUN_COMMISSION_PERCENT on both sides of a prompt sale — the
-// same shape the hire flow already uses (see hire.routes.js: platformFee comes
-// out of the freelancer's payout, clientFee is added on top of the client's).
-// Before this existed the prompt flow only charged the buyer side, so a seller
-// listing at ₹100 received the full ₹100 while Tokun's take rate was half what
-// the hire flow's was.
+// The rates themselves now live in utils/fees.js, which every flow on the
+// platform reads — a prompt, a service booking and a hire deal all charge the
+// buyer the SAME platform fee. This file is just the prompt-shaped view of it.
 //
-// For a ₹100 listing at 5%:
+// What changed: the buyer-side fee used to be TOKUN_COMMISSION_PERCENT, the
+// same variable services and hire used for the SELLER's commission. So raising
+// the seller's commission silently raised what prompt buyers paid, and prompt
+// buyers were carrying a 5% fee that was never a decision about prompts. There
+// is now one buyer fee, TOKUN_PLATFORM_FEE_PERCENT, and it is the only thing
+// added to a buyer's bill anywhere.
 //
-//   listPrice   100.00   what the seller typed in
-//   buyerFee      5.00   added on top      → buyerPays 105.00
-//   sellerFee     5.00   taken off the top → sellerNet   95.00
-//   platformCut  10.00   buyerFee + sellerFee
+// For a ₹100 prompt at platform fee 3%, GST 18%, prompt seller commission 0%:
+//
+//   listPrice     100.00   what the seller typed in
+//   platformFee     3.00   added on top
+//   platformFeeGst  0.54   GST on the fee, not on the prompt
+//   buyerPays     103.54
+//   sellerFee       0.00   prompt sellers keep their list price
+//   sellerNet     100.00
+//   platformCut     3.54   buyerPays − sellerNet
 //
 // platformCut is deliberately defined as (buyerPays − sellerNet) rather than
 // summed from the two fees. It's stored on Purchase.platformCommission, and the
 // refund path recovers `pricePaid − platformCommission` from the seller — which
 // only equals what the seller was actually paid if the two are derived from
 // each other. Keep them that way.
-const COMMISSION_PERCENT = Number(process.env.TOKUN_COMMISSION_PERCENT || 0);
-
-const round2 = (n) => +Number(n || 0).toFixed(2);
+const {
+  PLATFORM_FEE_PERCENT,
+  PROMPT_SELLER_COMMISSION_PERCENT,
+  buyerCharge,
+  sellerPayout,
+  round2,
+} = require("./fees");
 
 /**
  * @param {{ price?: number, tokun_price?: number, free?: boolean }} prompt
- * @returns {{ listPrice: number, buyerPays: number, buyerFee: number,
- *             sellerFee: number, sellerNet: number, platformCut: number }}
+ * @returns {{ listPrice:number, buyerPays:number, buyerFee:number,
+ *             platformFee:number, platformFeeGst:number,
+ *             sellerFee:number, sellerNet:number, platformCut:number }}
  */
 function splitPromptSale(prompt) {
   const zero = {
     listPrice: 0,
     buyerPays: 0,
     buyerFee: 0,
+    platformFee: 0,
+    platformFeeGst: 0,
     sellerFee: 0,
     sellerNet: 0,
     platformCut: 0,
@@ -43,25 +57,35 @@ function splitPromptSale(prompt) {
   const listPrice = round2(prompt.price);
   if (listPrice <= 0) return zero;
 
-  // tokun_price is maintained by Prompt's pre-save hook, but it only runs on
-  // save — a document written before the hook existed can still hold 0. Falling
-  // back to the same formula avoids the alternative, which is billing the buyer
-  // ₹0 and handing the prompt over for free.
-  const storedBuyerPays = round2(prompt.tokun_price);
-  const buyerPays =
-    storedBuyerPays > 0 ? storedBuyerPays : round2(listPrice + (listPrice * COMMISSION_PERCENT) / 100);
+  /* Computed live from the current rates rather than read from the stored
+     tokun_price. tokun_price is maintained by Prompt's pre-save hook, so every
+     prompt saved before a rate change still carries the OLD fee — and this is
+     the number the buyer is actually charged. Reading it here would mean a fee
+     change only reached prompts their sellers happened to re-save.
 
-  const sellerFee = round2((listPrice * COMMISSION_PERCENT) / 100);
-  const sellerNet = round2(listPrice - sellerFee);
+     tokun_price is still written and still used for DISPLAY on listings; it
+     just isn't the source of truth for the charge any more. */
+  const buyer = buyerCharge(listPrice);
+  const seller = sellerPayout(listPrice, PROMPT_SELLER_COMMISSION_PERCENT);
 
   return {
     listPrice,
-    buyerPays,
-    buyerFee: round2(buyerPays - listPrice),
-    sellerFee,
-    sellerNet,
-    platformCut: round2(buyerPays - sellerNet),
+    buyerPays: buyer.totalPayable,
+    // Everything added on top of the list price — fee plus its GST. Kept as one
+    // number because that's what the old callers used; the two components are
+    // below for anything that needs to itemise them.
+    buyerFee: round2(buyer.totalPayable - listPrice),
+    platformFee: buyer.platformFee,
+    platformFeeGst: buyer.platformFeeGst,
+    sellerFee: seller.commissionTotal,
+    sellerNet: seller.netToSeller,
+    platformCut: round2(buyer.totalPayable - seller.netToSeller),
   };
 }
 
-module.exports = { COMMISSION_PERCENT, splitPromptSale };
+module.exports = {
+  // Re-exported under their old names so existing importers keep working.
+  COMMISSION_PERCENT: PLATFORM_FEE_PERCENT,
+  SELLER_COMMISSION_PERCENT: PROMPT_SELLER_COMMISSION_PERCENT,
+  splitPromptSale,
+};

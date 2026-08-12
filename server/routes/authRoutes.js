@@ -177,7 +177,7 @@ const day = new Date().getDate();
 
 await sendEmail({
   to: normalizedEmail,
-  subject: "Your Tokun.ai login code",
+  subject: "Your Tokun.World login code",
   //text: `Hi ${user.name ? user.name.split(" ")[0] : "there"}, your login code is ${otp}. It expires in 5 minutes.`,
   html: buildOtpEmailHtml({
     name: user.name,
@@ -355,7 +355,7 @@ if (userType === "ORG" && orgName && !user.orgId) {
     
     await sendEmail({
       to: normalizedEmail,
-      subject: "Your Tokun.ai login code",
+      subject: "Your Tokun.World login code",
       html: buildOtpEmailHtml({
         name: user.name,
         otp,
@@ -370,7 +370,7 @@ if (userType === "ORG" && orgName && !user.orgId) {
 // try {
 //   await sendEmail({
 //     to: normalizedEmail,
-//     subject: "Your Tokun.ai login code",
+//     subject: "Your Tokun.World login code",
 //     html: buildOtpEmailHtml({
 //       name: user.name,
 //       otp,
@@ -618,7 +618,7 @@ router.post("/login/initiate", otpLimiter, async (req, res) => {
 
 await sendEmail({
   to: normalizedEmail,
-  subject: "Your Tokun.ai login code",
+  subject: "Your Tokun.World login code",
   html: buildOtpEmailHtml({
     name: user.name,
     otp,
@@ -633,7 +633,7 @@ await sendEmail({
 // try {
 //   await sendEmail({
 //     to: normalizedEmail,
-//     subject: "Your Tokun.ai login code",
+//     subject: "Your Tokun.World login code",
 //     html: buildOtpEmailHtml({
 //       name: user.name,
 //       otp,

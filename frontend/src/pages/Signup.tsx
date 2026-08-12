@@ -29,8 +29,7 @@
 // //     toast({
 // //       title: "Missing details",
 // //       description: "Please enter your full name and email.",
-// //       variant: "destructive",
-// //     });
+// //       // //     });
 // //     return;
 // //   }
 
@@ -38,8 +37,7 @@
 // //     toast({
 // //       title: "Missing details",
 // //       description: "Please enter your company name and business email.",
-// //       variant: "destructive",
-// //     });
+// //       // //     });
 // //     return;
 // //   }
 
@@ -86,8 +84,7 @@
 // //     toast({
 // //       title: "Signup failed",
 // //       description: err?.message || "Unexpected error. Please try again.",
-// //       variant: "destructive",
-// //     });
+// //       // //     });
 // //   } finally {
 // //     setIsLoading(false);
 // //   }
@@ -303,8 +300,7 @@
 //   //     toast({
 //   //       title: "Missing details",
 //   //       description: "Please enter your full name and email.",
-//   //       variant: "destructive",
-//   //     });
+//   //       //   //     });
 //   //     return;
 //   //   }
 
@@ -312,8 +308,7 @@
 //   //     toast({
 //   //       title: "Missing details",
 //   //       description: "Please enter your company name and business email.",
-//   //       variant: "destructive",
-//   //     });
+//   //       //   //     });
 //   //     return;
 //   //   }
 
@@ -366,8 +361,7 @@
 //   //     toast({
 //   //       title: "Signup failed",
 //   //       description: err?.message || "Unexpected error. Please try again.",
-//   //       variant: "destructive",
-//   //     });
+//   //       //   //     });
 //   //   } finally {
 //   //     setIsLoading(false);
 //   //   }
@@ -389,8 +383,7 @@
 // //     toast({
 // //       title: "Missing details",
 // //       description: "Please enter your full name and email.",
-// //       variant: "destructive",
-// //     });
+// //       // //     });
 // //     return;
 // //   }
 
@@ -398,8 +391,7 @@
 // //     toast({
 // //       title: "Missing details",
 // //       description: "Please enter your company name and business email.",
-// //       variant: "destructive",
-// //     });
+// //       // //     });
 // //     return;
 // //   }
 
@@ -451,8 +443,7 @@
 // //     toast({
 // //       title: "Signup failed",
 // //       description: err?.message || "Unexpected error. Please try again.",
-// //       variant: "destructive",
-// //     });
+// //       // //     });
 // //     console.groupEnd();
 // //   } finally {
 // //     setIsLoading(false);
@@ -469,11 +460,11 @@
 //   const businessNorm = businessEmail.trim().toLowerCase();
 
 //   if (isIndividual && (!nameTrim || !emailNorm)) {
-//     toast({ title: "Missing details", description: "Please enter your full name and email.", variant: "destructive" });
+//     toast({ title: "Missing details", description: "Please enter your full name and email." });
 //     return;
 //   }
 //   if (!isIndividual && (!companyTrim || !businessNorm)) {
-//     toast({ title: "Missing details", description: "Please enter your company name and business email.", variant: "destructive" });
+//     toast({ title: "Missing details", description: "Please enter your company name and business email." });
 //     return;
 //   }
 
@@ -562,8 +553,7 @@
 //     toast({
 //       title: "Signup failed",
 //       description: err?.message || "Unexpected error. Please try again.",
-//       variant: "destructive",
-//     });
+//       //     });
 //     console.groupEnd();
 //   } finally {
 //     setIsLoading(false);
@@ -750,8 +740,7 @@
 //       toast({
 //         title: "Missing details",
 //         description: "Please enter your full name and email.",
-//         variant: "destructive",
-//       });
+//         //       });
 //       return;
 //     }
 
@@ -759,8 +748,7 @@
 //       toast({
 //         title: "Missing details",
 //         description: "Please enter your company name and business email.",
-//         variant: "destructive",
-//       });
+//         //       });
 //       return;
 //     }
 
@@ -849,8 +837,7 @@
 //       toast({
 //         title: "Signup failed",
 //         description: err?.message || "Unexpected error. Please try again.",
-//         variant: "destructive",
-//       });
+//         //       });
 //       console.groupEnd();
 //     } finally {
 //       setIsLoading(false);
@@ -1310,7 +1297,6 @@ const Signup = () => {
       toast({
         title: "Missing details",
         description: "Please enter your full name and email.",
-        variant: "destructive",
       });
       return;
     }
@@ -1319,7 +1305,6 @@ const Signup = () => {
       toast({
         title: "Missing details",
         description: "Please enter your company name and business email.",
-        variant: "destructive",
       });
       return;
     }
@@ -1410,7 +1395,6 @@ const Signup = () => {
       toast({
         title: "Signup failed",
         description: err?.message || "Unexpected error. Please try again.",
-        variant: "destructive",
       });
       console.groupEnd();
     } finally {

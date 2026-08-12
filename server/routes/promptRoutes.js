@@ -1173,18 +1173,16 @@ router.get("/others", async (req, res) => {
         : { $nin: suspendedSellerIds };
     }
 
-    // Two independent gates, both must pass — seller payout verification
-    // (above) and, separately, the Prompt-Media Match Validation result.
-    // Old prompts (no mediaValidation.status persisted at all, pre-dating
-    // this feature) are grandfathered in, same pattern as
-    // requiresSellerVerification above.
+    // Prompt-Media Match Validation. This one still HIDES — it's a content
+    // check, and a prompt whose media doesn't match (or hasn't been checked
+    // yet) must not be on the marketplace in any form. Old prompts (no
+    // mediaValidation.status persisted at all, pre-dating this feature) are
+    // grandfathered in.
+    //
+    // Seller payout verification is deliberately NOT a filter any more — see
+    // below. It used to hide the listing outright, so a seller mid-onboarding
+    // uploaded a prompt and watched it vanish with no explanation.
     filter.$and = [
-      {
-        $or: [
-          { requiresSellerVerification: { $ne: true } },
-          { userId: { $in: verifiedSellerIds } },
-        ],
-      },
       {
         $or: [
           { "mediaValidation.status": { $exists: false } },
@@ -1196,12 +1194,92 @@ router.get("/others", async (req, res) => {
     const prompts = await Prompt.find(filter)
       .populate("categories", "name")
       .populate("userId", "name")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
-    res.json({ success: true, prompts });
+    // Payout verification now LABELS instead of hiding: the listing shows as
+    // "coming soon" and the UI locks its buy button. Nothing here weakens the
+    // actual money guard — POST /api/purchase and the cart both still reject
+    // these with `seller_not_verified`, so a direct link can't buy one either.
+    const verifiedSet = new Set(verifiedSellerIds.map(String));
+    const decorated = prompts.map((p) => ({
+      ...p,
+      sellerVerificationPending:
+        !!p.requiresSellerVerification &&
+        !verifiedSet.has(String(p.userId?._id || p.userId)),
+    }));
+
+    // Buyable listings first. The sort above is newest-first and these are by
+    // definition the newest uploads, so without this the top of the
+    // marketplace would fill up with things nobody can actually buy.
+    decorated.sort((a, b) => {
+      if (a.sellerVerificationPending !== b.sellerVerificationPending) {
+        return a.sellerVerificationPending ? 1 : -1;
+      }
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+
+    res.json({ success: true, prompts: decorated });
   } catch (err) {
     console.error("GET /others error:", err);
     res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+/* =====================================================================
+   GET /public/:id — one prompt, for a shared link
+
+   Someone opening a link you sent them may not be logged in, and the prompt
+   may not be in whatever filtered list the marketplace happened to load. This
+   resolves it directly. It applies the same visibility rules as /others
+   (deleted / flagged / suspended sellers stay hidden) and never returns
+   promptText — that's the paid content and is served by the purchase flow.
+   ===================================================================== */
+router.get("/public/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, error: "invalid_prompt_id" });
+    }
+
+    const prompt = await Prompt.findOne({
+      _id: id,
+      deleted: { $ne: true },
+      flagged: { $ne: true },
+    })
+      .select("-promptText")
+      .populate("categories", "name")
+      .populate("userId", "name sellerStatus isDeleted");
+
+    if (!prompt) {
+      return res.status(404).json({ success: false, error: "prompt_not_found" });
+    }
+
+    const seller = prompt.userId;
+    if (seller?.sellerStatus === "SUSPENDED" || seller?.isDeleted) {
+      return res.status(404).json({ success: false, error: "prompt_not_found" });
+    }
+
+    // Same "coming soon" label the feed applies, so a shared link to a listing
+    // whose seller is still onboarding shows the locked state rather than a
+    // buy button that would fail at checkout.
+    let sellerVerificationPending = false;
+    if (prompt.requiresSellerVerification) {
+      const activated = await BankAccount.exists({
+        userId: seller?._id || prompt.userId,
+        activationStatus: "ACTIVATED",
+      });
+      sellerVerificationPending = !activated;
+    }
+
+    return res.json({
+      success: true,
+      prompt: { ...prompt.toObject(), sellerVerificationPending },
+    });
+  } catch (err) {
+    console.error("GET /public/:id error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
   }
 });
 

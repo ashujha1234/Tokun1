@@ -10,6 +10,8 @@ const HireDeal = require("../models/HireDeal");
 const User = require("../models/User");
 const Wallet = require("../models/Wallet");
 const PlatformWallet = require("../models/PlatformWallet");
+const { releaseTransfer } = require("../utils/routeEscrow");
+const { reverseTransfer } = require("../utils/routePayouts");
 
 class EscrowAlreadyReleasedError extends Error {
   constructor() {
@@ -53,17 +55,65 @@ async function releaseEscrowToFreelancer(dealId, releasedBy) {
   }
 
   try {
-    const wallet = await Wallet.creditHireEscrow(deal.freelancerId, deal.freelancerAmount, {
-      dealId: deal._id,
-      dealTitle: deal.title,
-    });
+    // The money is held by Razorpay as an on_hold transfer, so "release" means
+    // telling Razorpay to let it go — it then settles to the freelancer's
+    // linked account on that account's own schedule.
+    //
+    // Deals funded before Route escrow shipped have no transfer to release;
+    // their money genuinely is sitting in the Wallet ledger, so they keep
+    // settling the old way. New deals never take this branch.
+    let wallet = null;
+
+    if (deal.routeTransferId) {
+      /* Take Tokun's commission out of the hold before letting the rest go.
+
+         The hold now carries the FULL amount the client paid, not the
+         freelancer's post-commission share — that's what makes a dispute
+         decided in the freelancer's favour payable. The trade is that on a
+         normal, undisputed completion the commission has to be reversed back
+         to our balance here, because it's sitting inside the freelancer's
+         transfer.
+
+         Deals funded before that change hold freelancerAmount already, so
+         routeHeldAmount is 0 on them and nothing is reversed — their
+         commission never entered the transfer in the first place. */
+      const held = Number(deal.routeHeldAmount || 0);
+      const commission = Number(deal.platformFee || 0) + Number(deal.clientFee || 0);
+      const toReverse = +Math.min(commission, Math.max(0, held - Number(deal.freelancerAmount || 0))).toFixed(2);
+
+      if (toReverse > 0) {
+        await reverseTransfer(deal.routeTransferId, toReverse);
+      }
+
+      await releaseTransfer(deal.routeTransferId);
+      await HireDeal.updateOne(
+        { _id: deal._id },
+        { $set: { routeTransferStatus: "released", transferReleasedAt: now, routeTransferError: "" } }
+      );
+      deal.routeTransferStatus = "released";
+      deal.transferReleasedAt = now;
+    } else {
+      wallet = await Wallet.creditHireEscrow(deal.freelancerId, deal.freelancerAmount, {
+        dealId: deal._id,
+        dealTitle: deal.title,
+      });
+    }
 
     try {
+      // Earnings only — both fees net of GST. The tax on them is recorded
+      // separately so it never lands in the withdrawable balance.
       const totalCommission = Number(deal.platformFee || 0) + Number(deal.clientFee || 0);
       await PlatformWallet.recordCommission(totalCommission, {
         source: "hire_escrow",
         refId: deal._id,
         description: `Commission: "${deal.title}"`,
+      });
+
+      const totalGst = Number(deal.platformFeeGst || 0) + Number(deal.clientFeeGst || 0);
+      await PlatformWallet.recordGst(totalGst, {
+        source: "hire_escrow",
+        refId: deal._id,
+        description: `GST on fees: "${deal.title}"`,
       });
     } catch (revErr) {
       // Non-fatal — freelancer is already paid; commission bookkeeping
@@ -77,13 +127,18 @@ async function releaseEscrowToFreelancer(dealId, releasedBy) {
 
     return { deal, wallet };
   } catch (err) {
-    // Wallet credit itself failed after we already claimed the deal —
-    // revert the claim so it's retryable instead of leaving the deal stuck
-    // "released" with no money ever having moved.
+    // The release itself failed after we already claimed the deal — revert the
+    // claim so it's retryable instead of leaving the deal stuck "released" with
+    // no money ever having moved.
+    //
+    // This is the safe-failure direction the whole design turns on: the
+    // transfer is still on_hold at Razorpay, so nothing has reached the
+    // freelancer, and the hourly auto-release cron will pick this deal up again.
     await HireDeal.findByIdAndUpdate(dealId, {
       $set: {
         fundsStatus: "HELD_BY_TOKUN",
         status: "WORK_SUBMITTED",
+        routeTransferError: String(err?.message || "release_failed").slice(0, 500),
       },
       $unset: {
         approvedAt: "",

@@ -33,7 +33,7 @@ export default function OrgMembershipCard({ className = "" }: { className?: stri
     const conversationId = await startConversation(token, String(owner._id));
     setOpening(false);
     if (!conversationId) {
-      toast({ title: "Couldn't open the chat", description: "Please try again.", variant: "destructive" });
+      toast({ title: "Couldn't open the chat", description: "Please try again." });
       return;
     }
     navigate("/chat", { state: { conversationId } });

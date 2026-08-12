@@ -1113,11 +1113,26 @@ import {
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "@/components/ui/use-toast";
 import DetailsPrompt, { MarketplacePrompt } from "../components/historyDetail";
 import NdaButton from "@/components/NdaCard";
 import SellerLinkedAccountForm from "@/components/SellerLinkedAccountForm";
 import OrgMembershipCard from "@/components/OrgMembershipCard";
+import {
+  SERVICE_LINK_LABELS,
+  formatBytes,
+  downloadDeliverable,
+} from "@/lib/serviceDeliverables";
+import SubmitWorkModal from "@/components/escrow/SubmitWorkModal";
+import { deadlineLabel } from "@/lib/escrowApi";
 
 const GRADIENT = "linear-gradient(270deg,#FF14EF 0%, #1A73E8 100%)";
 const GRAD = "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)";
@@ -1222,6 +1237,10 @@ type Prompt = {
   isUploadedByMe?: boolean;
   promptText?: string;
   fullPrompt?: string;
+  /* Purchased prompts only — the Purchase doc id is what the refund
+     endpoint keys off, and refundStatus drives the button vs. badge. */
+  purchaseId?: string;
+  refundStatus?: "NONE" | "REQUESTED" | "APPROVED" | "REJECTED" | "REFUNDED";
   mediaValidation?: {
     status?: string;
     score?: number | null;
@@ -1674,6 +1693,7 @@ function HistoryGridCard({
   onDelete,
   onEdit,
   onShare,
+  onRequestRefund,
 }: {
   prompt: Prompt;
   showImages?: boolean;
@@ -1684,6 +1704,7 @@ function HistoryGridCard({
   onDelete?: (p: Prompt) => void;
   onEdit?: (p: Prompt) => void;
   onShare?: (p: Prompt) => void;
+  onRequestRefund?: (p: Prompt) => void;
 }) {
   const isPlaying = playingVideo === prompt.id;
   const priceLabel = prompt.isFree ? "FREE" : `₹${(prompt.price ?? 0).toFixed(2)}`;
@@ -1695,6 +1716,29 @@ function HistoryGridCard({
     !!onShare &&
     user?.userType === "ORG" &&
     user?.role === "Owner";
+
+  // Free prompts were never charged, so there's nothing to refund.
+  const canRefund =
+    !isUploaded && !!onRequestRefund && !prompt.isFree && !!prompt.purchaseId;
+  const refundPending =
+    !!prompt.refundStatus && prompt.refundStatus !== "NONE";
+  const refundBadge = refundPending
+    ? {
+        label:
+          prompt.refundStatus === "REQUESTED"
+            ? "Refund Requested"
+            : prompt.refundStatus === "APPROVED"
+            ? "Refund Approved"
+            : prompt.refundStatus === "REJECTED"
+            ? "Refund Rejected"
+            : "Refunded",
+        bg:
+          prompt.refundStatus === "REJECTED"
+            ? "rgba(239,68,68,0.15)"
+            : "rgba(34,197,94,0.15)",
+        color: prompt.refundStatus === "REJECTED" ? "#f87171" : "#4ade80",
+      }
+    : null;
 
   // Video prompts: media fills the whole card edge-to-edge, with an
   // explicit Details button (title/description are hidden under the video
@@ -1821,6 +1865,28 @@ function HistoryGridCard({
               )}
             </div>
           </div>
+
+          {/* Refund control — its own row, the pill row above is already full */}
+          {canRefund && (
+            <div className="mt-2 flex justify-end">
+              {refundBadge ? (
+                <span
+                  className="text-[10px] font-medium px-2.5 py-1 rounded-full"
+                  style={{ background: refundBadge.bg, color: refundBadge.color }}
+                >
+                  {refundBadge.label}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onRequestRefund?.(prompt); }}
+                  className="text-[11px] font-medium text-white/75 hover:text-white underline underline-offset-2"
+                >
+                  Request Refund
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </Card>
     );
@@ -1901,29 +1967,53 @@ function HistoryGridCard({
             </button>
           </div>
         ) : (
-          <div className="mt-auto pt-3 px-1 flex items-center gap-2">
-            <div
-              className="flex items-center justify-center"
-              style={{ minWidth: 42, height: 36, borderRadius: 50, background: "#333335", padding: "0 10px" }}
-            >
-              <img src="/icons/cop1.png" alt="cop1" className="h-4" />
-            </div>
-            <div
-              className="flex items-center justify-center"
-              style={{ minWidth: 60, height: 36, borderRadius: 50, padding: "0 12px", background: "#333335" }}
-            >
-              <span className="text-[12px] text-white/90">{priceLabel}</span>
-            </div>
-            {canShareWithTeam && (
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onShare?.(prompt); }}
+          <div className="mt-auto pt-3 px-1">
+            <div className="flex items-center gap-2">
+              <div
                 className="flex items-center justify-center"
-                style={{ minWidth: 42, height: 36, borderRadius: 50, padding: "0 12px", background: "rgba(255,20,239,0.2)" }}
-                title="Share with team"
+                style={{ minWidth: 42, height: 36, borderRadius: 50, background: "#333335", padding: "0 10px" }}
               >
-                <Users className="h-3.5 w-3.5 text-white/90" />
-              </button>
+                <img src="/icons/cop1.png" alt="cop1" className="h-4" />
+              </div>
+              <div
+                className="flex items-center justify-center"
+                style={{ minWidth: 60, height: 36, borderRadius: 50, padding: "0 12px", background: "#333335" }}
+              >
+                <span className="text-[12px] text-white/90">{priceLabel}</span>
+              </div>
+              {canShareWithTeam && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onShare?.(prompt); }}
+                  className="flex items-center justify-center"
+                  style={{ minWidth: 42, height: 36, borderRadius: 50, padding: "0 12px", background: "rgba(255,20,239,0.2)" }}
+                  title="Share with team"
+                >
+                  <Users className="h-3.5 w-3.5 text-white/90" />
+                </button>
+              )}
+            </div>
+
+            {/* Refund control — separate row so it never squeezes the pills */}
+            {canRefund && (
+              <div className="mt-2 flex justify-end">
+                {refundBadge ? (
+                  <span
+                    className="text-[10px] font-medium px-2.5 py-1 rounded-full"
+                    style={{ background: refundBadge.bg, color: refundBadge.color }}
+                  >
+                    {refundBadge.label}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onRequestRefund?.(prompt); }}
+                    className="text-[11px] font-medium text-white/70 hover:text-white underline underline-offset-2"
+                  >
+                    Request Refund
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -2090,6 +2180,16 @@ const SelfDash = () => {
   const [promptsTab, setPromptsTab] = useState<PromptsTab>(
     initialParams.get("p") === "uploaded" ? "uploaded" : "purchased"
   );
+
+  // The account menu links here while the user may already be on this page —
+  // without this, the URL changes but the visible tab doesn't.
+  useEffect(() => {
+    const tab = initialParams.get("tab") as DashTab | null;
+    const p = initialParams.get("p");
+    if (tab === "prompts") setActiveTab("prompts");
+    if (p === "purchased" || p === "uploaded") setPromptsTab(p);
+  }, [initialParams]);
+
   const [showCalendar, setShowCalendar] = useState(false);
   const [selectedDate, setSelectedDate] = useState(toDateValue(new Date()));
   const [calendarMonth, setCalendarMonth] = useState(() => {
@@ -2198,7 +2298,6 @@ const startUserSubscriptionPurchase = async (
     toast({
       title: "Invalid plan",
       description: "Enterprise plan uses organization checkout.",
-      variant: "destructive",
     });
     return;
   }
@@ -2265,7 +2364,6 @@ const startUserSubscriptionPurchase = async (
       toast({
         title: "Subscription failed",
         description: err?.message || "Could not start subscription payment.",
-        variant: "destructive",
       });
     }
   } finally {
@@ -2282,7 +2380,6 @@ const startEnterpriseSubscriptionPurchase = async (annual: boolean) => {
     toast({
       title: "Login required",
       description: "Please login again.",
-      variant: "destructive",
     });
     return;
   }
@@ -2293,7 +2390,6 @@ const startEnterpriseSubscriptionPurchase = async (annual: boolean) => {
     toast({
       title: "Organization missing",
       description: "We could not find your Organization ID.",
-      variant: "destructive",
     });
     return;
   }
@@ -2364,7 +2460,6 @@ const startEnterpriseSubscriptionPurchase = async (annual: boolean) => {
       toast({
         title: "Enterprise checkout failed",
         description: err?.message || "Could not complete enterprise payment.",
-        variant: "destructive",
       });
     }
   } finally {
@@ -2536,7 +2631,6 @@ const submitAllClarifications = async () => {
       toast({
         title: "Couldn't update these fields",
         description: data?.message || "Please try again.",
-        variant: "destructive",
       });
       return;
     }
@@ -2560,7 +2654,7 @@ const submitAllClarifications = async () => {
     await fetchPayoutStatus();
   } catch (err) {
     console.error("Resolve clarification failed:", err);
-    toast({ title: "Something went wrong", description: "Please try again.", variant: "destructive" });
+    toast({ title: "Something went wrong", description: "Please try again." });
   } finally {
     setClarificationSubmitting(false);
   }
@@ -2586,7 +2680,6 @@ const handleAcceptRequest = async (item: any) => {
     toast({
   title: "Deal not found",
   description: "Could not find the request deal ID. Please refresh.",
-  variant: "destructive",
 });
 
     return;
@@ -2596,7 +2689,6 @@ const handleAcceptRequest = async (item: any) => {
     toast({
       title: "Login required",
       description: "Please login again.",
-      variant: "destructive",
     });
     return;
   }
@@ -2614,8 +2706,11 @@ const handleAcceptRequest = async (item: any) => {
 
     const data = await res.json().catch(() => ({}));
 
+    // `message` first: the payout-account gate answers with a sentence the
+    // freelancer can act on, while `error` is a slug like
+    // "payout_account_not_active".
     if (!res.ok || !data?.success) {
-      throw new Error(data?.error || "Failed to accept proposal");
+      throw new Error(data?.message || data?.error || "Failed to accept proposal");
     }
 
    toast({
@@ -2629,7 +2724,6 @@ const handleAcceptRequest = async (item: any) => {
     toast({
       title: "Accept failed",
       description: err?.message || "Could not accept request.",
-      variant: "destructive",
     });
   } finally {
     setAcceptingRequestId(null);
@@ -2682,6 +2776,8 @@ const handleAcceptRequest = async (item: any) => {
           preview: description || (promptText ? String(promptText).slice(0, 140) : ""),
           isFree, purchasedAt: p?.purchasedAt,
           isUploadedByMe: false, promptText, fullPrompt,
+          purchaseId: String(p?._id || ""),
+          refundStatus: p?.refundStatus || "NONE",
         } as Prompt;
       });
 
@@ -2695,6 +2791,60 @@ const handleAcceptRequest = async (item: any) => {
       setPurchasesError(err?.message || "Failed to load purchase history");
     } finally {
       setPurchasesLoading(false);
+    }
+  };
+
+  /* ── Request refund (buyer) ── */
+  const [refundTarget, setRefundTarget] = useState<Prompt | null>(null);
+  const [refundReason, setRefundReason] = useState("");
+  const [refundSubmitting, setRefundSubmitting] = useState(false);
+
+  const openRefundModal = (p: Prompt) => {
+    setRefundReason("");
+    setRefundTarget(p);
+  };
+
+  const submitRefundRequest = async () => {
+    if (!refundTarget?.purchaseId || !refundReason.trim()) return;
+    try {
+      setRefundSubmitting(true);
+      const res = await fetch(
+        `${PURCHASE_BASE}/${encodeURIComponent(refundTarget.purchaseId)}/refund-request`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          credentials: "include",
+          body: JSON.stringify({ reason: refundReason.trim() }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        const errorMessages: Record<string, string> = {
+          refund_window_expired: "The refund window for this purchase has closed.",
+          refund_already_requested: "You've already requested a refund for this purchase.",
+          refund_already_approved: "This purchase has already been refunded.",
+          refund_already_rejected: "A refund request for this purchase was already rejected.",
+        };
+        throw new Error(errorMessages[data?.error] || data?.error || "Could not submit refund request.");
+      }
+
+      setPurchaseHistory((prev) =>
+        prev.map((p) =>
+          p.purchaseId === refundTarget.purchaseId ? { ...p, refundStatus: "REQUESTED" } : p
+        )
+      );
+      toast({ title: "Refund requested", description: "We'll email you once an admin reviews it." });
+      setRefundTarget(null);
+    } catch (err: any) {
+      toast({
+        title: "Refund request failed",
+        description: err?.message || "Please try again.",
+      });
+    } finally {
+      setRefundSubmitting(false);
     }
   };
 
@@ -2775,6 +2925,8 @@ const handleAcceptRequest = async (item: any) => {
           price: pricePaid, imageUrl, videoUrl,
           preview: description || (promptText ? String(promptText).slice(0, 140) : ""),
           isFree, purchasedAt: purchase?.purchasedAt, promptText, fullPrompt,
+          purchaseId: String(purchase?._id || ""),
+          refundStatus: purchase?.refundStatus || "NONE",
         };
         setPurchaseHistory((prev) => {
           if (prev.some((x) => String(x.id) === String(mappedOne.id))) return prev;
@@ -2806,7 +2958,7 @@ const handleAcceptRequest = async (item: any) => {
       if (detailsOpen && detailsPrompt && String((detailsPrompt as any).id) === id) setDetailsOpen(false);
       toast({ title: "Deleted", description: "Prompt removed from your uploads." });
     } catch (err: any) {
-      toast({ title: "Delete failed", description: err?.message || "Could not delete.", variant: "destructive" });
+      toast({ title: "Delete failed", description: err?.message || "Could not delete." });
     }
   };
 
@@ -3490,6 +3642,10 @@ const RequestCard = ({ item }: { item: any }) => {
     } | null>(null);
     const [loading, setLoading] = useState(true);
     const [submitFor, setSubmitFor] = useState<any | null>(null);
+    // Which booking's detail popup is open. The cards only ever showed a title,
+    // a client name and an amount, so the seller couldn't tell what the client
+    // had actually paid for without digging through chat.
+    const [detailForId, setDetailForId] = useState<string | null>(null);
 
     const fetchSummary = async () => {
       if (!token) return;
@@ -3530,6 +3686,9 @@ const RequestCard = ({ item }: { item: any }) => {
     };
 
     const canSubmit = (status: string) => ["FUNDED", "IN_PROGRESS", "REVISION_REQUESTED"].includes(status);
+    // The server refuses a submission past the delivery date, so the button
+    // that opens the upload modal has to go with it.
+    const canStillDeliver = (p: any) => canSubmit(p?.status) && !p?.deliveryOverdue;
 
     return (
       <div className="flex h-full flex-col overflow-hidden">
@@ -3569,7 +3728,13 @@ const RequestCard = ({ item }: { item: any }) => {
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 mb-8">
                 {summary?.requests?.length ? (
                   summary.requests.map((r) => (
-                    <div key={r._id} style={{ borderRadius: 16, background: "#FFFFFF05", border: "1px solid #FFFFFF0F", padding: "16px" }}>
+                    <button
+                      key={r._id}
+                      type="button"
+                      onClick={() => setDetailForId(r._id)}
+                      className="text-left hover:border-white/25 transition"
+                      style={{ borderRadius: 16, background: "#FFFFFF05", border: "1px solid #FFFFFF0F", padding: "16px" }}
+                    >
                       <div className="flex items-center justify-between gap-3 mb-2">
                         <span style={{ fontWeight: 700, color: "#FFFFFF", fontSize: 14 }}>{r.title}</span>
                         {statusBadge(r.status)}
@@ -3577,7 +3742,12 @@ const RequestCard = ({ item }: { item: any }) => {
                       <p style={{ margin: 0, fontSize: 12, color: "#8F8996" }}>
                         From {r.buyerName} · ₹{Number(r.amount).toLocaleString("en-IN")}
                       </p>
-                    </div>
+                      {r.note && (
+                        <p style={{ margin: "8px 0 0", fontSize: 12, color: "rgba(255,255,255,0.55)", lineHeight: "18px" }} className="line-clamp-2">
+                          “{r.note}”
+                        </p>
+                      )}
+                    </button>
                   ))
                 ) : (
                   <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-5 text-white/45">No new booking requests yet.</div>
@@ -3588,24 +3758,108 @@ const RequestCard = ({ item }: { item: any }) => {
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
                 {summary?.projects?.length ? (
                   summary.projects.map((p) => (
-                    <div key={p._id} style={{ borderRadius: 16, background: "#FFFFFF05", border: "1px solid #FFFFFF0F", padding: "16px" }}>
-                      <div className="flex items-center justify-between gap-3 mb-2">
-                        <span style={{ fontWeight: 700, color: "#FFFFFF", fontSize: 14 }}>{p.title}</span>
-                        {statusBadge(p.status)}
+                    <div
+                      key={p._id}
+                      onClick={() => setDetailForId(p._id)}
+                      className="cursor-pointer hover:border-white/25 transition"
+                      style={{ borderRadius: 16, background: "#FFFFFF05", border: "1px solid #FFFFFF0F", padding: "16px" }}
+                    >
+                      <div className="flex items-start gap-3 mb-2">
+                        {p.serviceMedia && (
+                          <img
+                            src={p.serviceMedia}
+                            alt=""
+                            className="w-11 h-11 rounded-lg object-cover shrink-0"
+                          />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-3">
+                            <span style={{ fontWeight: 700, color: "#FFFFFF", fontSize: 14 }} className="truncate">
+                              {p.title}
+                            </span>
+                            {statusBadge(p.status)}
+                          </div>
+                          <p style={{ margin: "4px 0 0", fontSize: 12, color: "#8F8996" }}>
+                            {p.buyerName} · ₹{Number(p.sellerAmount ?? p.amount).toLocaleString("en-IN")}
+                          </p>
+                        </div>
                       </div>
-                      <p style={{ margin: 0, fontSize: 12, color: "#8F8996" }}>
-                        {p.buyerName} · ₹{Number(p.sellerAmount ?? p.amount).toLocaleString("en-IN")}
-                      </p>
-                      {canSubmit(p.status) && (
+
+                      {p.note && (
+                        <p style={{ margin: "0 0 8px", fontSize: 12, color: "rgba(255,255,255,0.55)", lineHeight: "18px" }} className="line-clamp-2">
+                          “{p.note}”
+                        </p>
+                      )}
+
+                      {/* The delivery clock. Kept on the card, not just inside
+                          the detail popup — a deadline nobody sees until they
+                          open the booking is a deadline that gets missed. */}
+                      {(() => {
+                        const dl = deadlineLabel(p.deliveryDueAt);
+                        if (!dl || !canSubmit(p.status)) return null;
+                        return (
+                          <p
+                            style={{
+                              margin: "0 0 8px",
+                              fontSize: 11,
+                              fontWeight: 600,
+                              color:
+                                dl.tone === "late"
+                                  ? "#FF8F8F"
+                                  : dl.tone === "soon"
+                                    ? "#FABC4E"
+                                    : "#8F8996",
+                            }}
+                          >
+                            ⏱ Delivery {dl.text}
+                          </p>
+                        );
+                      })()}
+
+                      {/* Revision budget, so the seller can see at a glance
+                          whether a client has any sendbacks left. */}
+                      {p.revisionState && p.revisionState.used > 0 && (
+                        <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 600, color: "#FABC4E" }}>
+                          ↺ {p.revisionState.label}
+                        </p>
+                      )}
+
+                      <div className="flex gap-2">
                         <button
                           type="button"
-                          onClick={() => setSubmitFor(p)}
-                          className="mt-3 w-full h-9 rounded-lg text-sm font-semibold text-white"
-                          style={{ background: GRAD }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDetailForId(p._id);
+                          }}
+                          className="flex-1 h-9 rounded-lg text-sm font-medium text-white/70 border border-white/12 hover:bg-white/[0.06]"
                         >
-                          Submit Work
+                          View details
                         </button>
-                      )}
+                        {canStillDeliver(p) && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSubmitFor(p);
+                            }}
+                            className="flex-1 h-9 rounded-lg text-sm font-semibold text-white"
+                            style={{ background: GRAD }}
+                          >
+                            {p.status === "REVISION_REQUESTED" ? "Resubmit" : "Submit Work"}
+                          </button>
+                        )}
+
+                        {canSubmit(p.status) && p.deliveryOverdue && (
+                          <button
+                            type="button"
+                            disabled
+                            title="The delivery deadline for this booking has passed."
+                            className="flex-1 h-9 rounded-lg text-sm font-semibold text-white/40 border border-white/10 cursor-not-allowed"
+                          >
+                            Deadline passed
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))
                 ) : (
@@ -3616,9 +3870,29 @@ const RequestCard = ({ item }: { item: any }) => {
           )}
         </div>
 
+        {detailForId && (
+          <BookingDetailModal
+            orderId={detailForId}
+            token={token}
+            onClose={() => setDetailForId(null)}
+            onChanged={fetchSummary}
+            onSubmitWork={(order) => {
+              setDetailForId(null);
+              setSubmitFor(order);
+            }}
+          />
+        )}
+
+        {/* The shared modal, not a local copy. There used to be two — and they
+            had already drifted: this one accepted repo/deployment links while
+            the hire-side one didn't, so the same freelancer could hand over a
+            deployed URL for a service booking but not for a project. */}
         {submitFor && (
-          <SubmitServiceWorkModal
-            order={submitFor}
+          <SubmitWorkModal
+            orderKind="service"
+            orderId={String(submitFor._id)}
+            title={submitFor.title || submitFor.serviceTitle}
+            isResubmit={submitFor.status === "REVISION_REQUESTED"}
             token={token}
             onClose={() => setSubmitFor(null)}
             onSubmitted={fetchSummary}
@@ -3908,6 +4182,7 @@ const RequestCard = ({ item }: { item: any }) => {
                 onDelete={!isPurchased ? handleDeletePrompt : undefined}
                 onEdit={!isPurchased ? setResubmitTarget : undefined}
                 onShare={isPurchased ? setShareTarget : undefined}
+                onRequestRefund={isPurchased ? openRefundModal : undefined}
               />
             ))}
           </div>
@@ -4332,6 +4607,42 @@ const RequestCard = ({ item }: { item: any }) => {
 
 
 
+      {/* Request refund on a purchased prompt.
+          The page shell is `fixed z-[60]`, so the portalled dialog's default
+          z-50 would land behind it — both overlay and content get lifted. */}
+      {!!refundTarget && (
+        <style>{`
+          [data-state="open"].fixed { z-index: 999998 !important; }
+          [role="dialog"] { z-index: 999999 !important; }
+        `}</style>
+      )}
+      <Dialog open={!!refundTarget} onOpenChange={(open) => !open && setRefundTarget(null)}>
+        <DialogContent className="z-[999999] bg-[#1C1C1C] text-white border-white/10">
+          <DialogHeader>
+            <DialogTitle>Request Refund</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-white/60 -mt-2">
+            Tell us why "{refundTarget?.title}" isn't what you expected. An admin will review
+            this before any refund is processed.
+          </p>
+          <Textarea
+            value={refundReason}
+            onChange={(e) => setRefundReason(e.target.value)}
+            placeholder="What went wrong with this prompt?"
+            className="bg-black/30 border-white/10 text-white min-h-[100px]"
+            maxLength={1000}
+          />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRefundTarget(null)} disabled={refundSubmitting}>
+              Cancel
+            </Button>
+            <Button onClick={submitRefundRequest} disabled={!refundReason.trim() || refundSubmitting}>
+              {refundSubmitting ? "Submitting…" : "Submit Request"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <style>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -4407,7 +4718,6 @@ function ProposalDetailModal({
       toast({
         title: "Login required",
         description: "Please login again.",
-        variant: "destructive",
       });
       return;
     }
@@ -4416,7 +4726,6 @@ function ProposalDetailModal({
       toast({
   title: "Deal not found",
   description: "Project ID is missing. Please refresh and try again.",
-  variant: "destructive",
 });
 
       return;
@@ -4426,7 +4735,6 @@ function ProposalDetailModal({
      toast({
   title: "Cannot submit yet",
   description: "Project can only be submitted after client payment is received.",
-  variant: "destructive",
 });
 
       return;
@@ -4436,7 +4744,6 @@ function ProposalDetailModal({
       toast({
   title: "No files attached",
   description: "Please attach files before submitting.",
-  variant: "destructive",
 });
 
       return;
@@ -4503,7 +4810,6 @@ function ProposalDetailModal({
       toast({
         title: "Submit failed",
         description: err?.message || "Could not submit files.",
-        variant: "destructive",
       });
     } finally {
       setSubmittingWork(false);
@@ -4890,130 +5196,405 @@ function ProposalDetailModal({
   );
 }
 
-/* ── Submit Work modal for a booked service (mirrors ProposalDetailModal's
-   handleSubmitWork, pointed at /api/services/orders/... instead) ── */
-function SubmitServiceWorkModal({
-  order,
+/* ── Shared helpers for service-order deliverables ──────────────────────── */
+
+const formatDate = (value?: string | Date | null) =>
+  value
+    ? new Date(value).toLocaleString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "";
+
+const handleDeliverableDownload = async (
+  orderId: string,
+  index: number,
+  fallbackName: string,
+  token?: string
+) => {
+  try {
+    await downloadDeliverable(orderId, index, fallbackName, token);
+  } catch (err: any) {
+    toast({ title: "Download failed", description: err?.message || "Please try again." });
+  }
+};
+
+/* ── Booking detail popup ─────────────────────────────────────────────────
+   Answers the question the bookings list couldn't: what did this client pay
+   for, what did they ask for, what did the listing promise, and where is the
+   money. */
+function BookingDetailModal({
+  orderId,
   token,
   onClose,
-  onSubmitted,
+  onChanged,
+  onSubmitWork,
 }: {
-  order: any;
+  orderId: string;
   token?: string;
   onClose: () => void;
-  onSubmitted: () => void | Promise<void>;
+  onChanged: () => void | Promise<void>;
+  onSubmitWork: (order: any) => void;
 }) {
-  const [note, setNote] = useState("");
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [order, setOrder] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [starting, setStarting] = useState(false);
 
-  const handleSubmit = async () => {
-    if (!token) {
-      toast({ title: "Login required", description: "Please login again.", variant: "destructive" });
-      return;
-    }
-    if (!selectedFiles.length && !note.trim()) {
-      toast({ title: "Nothing to submit", description: "Attach a file or add a note.", variant: "destructive" });
-      return;
-    }
-
+  const load = async () => {
+    if (!token) return;
     try {
-      setSubmitting(true);
-      const uploadedFiles: any[] = [];
-
-      for (const file of selectedFiles) {
-        const formData = new FormData();
-        formData.append("file", file);
-        const uploadRes = await fetch(`${API_BASE}/api/services/orders/${order._id}/upload-work-file`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-        });
-        const uploadData = await uploadRes.json().catch(() => ({}));
-        if (!uploadRes.ok || !uploadData?.success) {
-          throw new Error(uploadData?.error || `Failed to upload ${file.name}`);
-        }
-        uploadedFiles.push({
-          url: uploadData.file.url,
-          name: uploadData.file.name,
-          description: uploadData.file.name,
-          size: uploadData.file.size,
-          mimeType: uploadData.file.mimeType,
-        });
-      }
-
-      const submitRes = await fetch(`${API_BASE}/api/services/orders/${order._id}/submit-work`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ note, deliverables: uploadedFiles }),
+      setLoading(true);
+      const res = await fetch(`${API_BASE}/api/services/orders/${orderId}`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
-      const submitData = await submitRes.json().catch(() => ({}));
-      if (!submitRes.ok || !submitData?.success) {
-        throw new Error(submitData?.error || "Failed to submit work");
-      }
-
-      toast({ title: "Work submitted", description: "Sent to the client for review in chat." });
-      await onSubmitted();
-      onClose();
-    } catch (err: any) {
-      toast({ title: "Submit failed", description: err?.message || "Could not submit work.", variant: "destructive" });
+      const data = await res.json().catch(() => ({}));
+      if (data?.success) setOrder({ ...data.order, revisionState: data.revisionState });
+    } catch {
+      // Empty state below covers it — no toast for a popup the user can reopen.
     } finally {
-      setSubmitting(false);
+      setLoading(false);
     }
   };
 
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId, token]);
+
+  const handleStartWork = async () => {
+    if (!token) return;
+    try {
+      setStarting(true);
+      const res = await fetch(`${API_BASE}/api/services/orders/${orderId}/start-work`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) throw new Error(data?.message || data?.error || "Could not start");
+      toast({ title: "Work started", description: "The client has been notified." });
+      await load();
+      await onChanged();
+    } catch (err: any) {
+      toast({ title: "Couldn't start work", description: err?.message || "Please try again." });
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const service = order?.serviceId && typeof order.serviceId === "object" ? order.serviceId : null;
+  const buyer = order?.buyerId && typeof order.buyerId === "object" ? order.buyerId : null;
+  const revisionState = order?.revisionState;
+  const canSubmit = ["FUNDED", "IN_PROGRESS", "REVISION_REQUESTED"].includes(order?.status);
+
+  const timeline = [
+    { label: "Booked", at: order?.createdAt },
+    { label: "Paid", at: order?.paidAt },
+    { label: "Work started", at: order?.workStartedAt },
+    { label: "Work submitted", at: order?.workSubmittedAt },
+    { label: "Approved & released", at: order?.approvedAt },
+  ].filter((t) => t.at);
+
+  const Row = ({ label, value }: { label: string; value: React.ReactNode }) => (
+    <div className="flex items-baseline justify-between gap-4 py-1.5">
+      <span className="text-xs text-white/45 shrink-0">{label}</span>
+      <span className="text-sm text-white text-right">{value}</span>
+    </div>
+  );
+
+  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
+    <div className="rounded-xl bg-white/[0.03] border border-white/[0.07] p-4">
+      <p className="text-[10px] font-bold tracking-[1.4px] text-white/40 uppercase mb-2.5">{title}</p>
+      {children}
+    </div>
+  );
+
   return (
-    <div className="fixed inset-0 z-[99999] bg-black/70 backdrop-blur-sm flex items-center justify-center px-4">
-      <div className="w-[440px] max-w-full rounded-2xl bg-[#0E0F12] text-white border border-white/10">
-        <div className="flex items-center justify-between p-4 border-b border-white/10">
-          <div>
-            <p className="font-semibold">Submit Work</p>
-            <p className="text-xs text-white/50">{order?.title}</p>
+    <div
+      className="fixed inset-0 z-[99999] bg-black/70 backdrop-blur-sm flex items-center justify-center px-4 py-8"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-[620px] max-w-full max-h-full flex flex-col rounded-2xl bg-[#0E0F12] text-white border border-white/10 overflow-hidden"
+      >
+        <div className="flex items-start justify-between gap-3 p-5 border-b border-white/10 shrink-0">
+          <div className="flex items-start gap-3 min-w-0">
+            {order?.serviceMedia && (
+              <img src={order.serviceMedia} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
+            )}
+            <div className="min-w-0">
+              <p className="font-semibold truncate">{order?.serviceTitle || "Booking"}</p>
+              <p className="text-xs text-white/45 mt-0.5">
+                Order #{String(orderId).slice(-8).toUpperCase()}
+              </p>
+            </div>
           </div>
-          <button onClick={onClose} className="text-white/60 hover:text-white">✕</button>
+          <button onClick={onClose} className="text-white/60 hover:text-white text-lg leading-none">✕</button>
         </div>
 
-        <div className="p-4 space-y-4">
-          <div>
-            <p className="text-sm font-medium mb-2">Files</p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              hidden
-              onChange={(e) => setSelectedFiles(Array.from(e.target.files || []))}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full h-11 rounded-lg border border-dashed border-white/20 text-sm text-white/60 hover:border-white/40"
-            >
-              {selectedFiles.length ? `${selectedFiles.length} file(s) selected` : "Attach files"}
-            </button>
-          </div>
+        <div className="p-5 space-y-3 overflow-y-auto">
+          {loading ? (
+            <p className="text-white/45 text-sm">Loading booking…</p>
+          ) : !order ? (
+            <p className="text-white/45 text-sm">Couldn't load this booking. Close and try again.</p>
+          ) : (
+            <>
+              <Section title="Client">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-white/10 grid place-items-center text-sm font-semibold shrink-0">
+                    {(buyer?.name || "C").charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{buyer?.name || "Client"}</p>
+                    {buyer?.email && <p className="text-xs text-white/45 truncate">{buyer.email}</p>}
+                  </div>
+                </div>
+              </Section>
 
-          <div>
-            <p className="text-sm font-medium mb-2">Note (optional)</p>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Anything the client should know about this delivery…"
-              className="w-full h-24 rounded-lg bg-[#1A1A1A] border border-white/10 p-3 text-sm outline-none resize-none"
-            />
-          </div>
+              {/* The buyer's own brief. This is the field the seller was
+                  missing entirely — the list never carried it. */}
+              <Section title="What the client asked for">
+                {order.note ? (
+                  <p className="text-sm text-white/80 whitespace-pre-line leading-relaxed">{order.note}</p>
+                ) : (
+                  <p className="text-sm text-white/40">
+                    No brief was written — the client booked the service as listed.
+                  </p>
+                )}
+                {order.preferredDate && (
+                  <p className="text-xs text-white/45 mt-3">
+                    Preferred delivery date: {formatDate(order.preferredDate).split(",")[0]}
+                  </p>
+                )}
+              </Section>
+
+              {/* Terms live on the Service, not the order — the order only ever
+                  snapshotted the title. */}
+              {service && (
+                <Section title="What this service promises">
+                  {service.deliverables?.length ? (
+                    <ul className="space-y-1.5 mb-3">
+                      {service.deliverables.map((d: string, i: number) => (
+                        <li key={i} className="text-sm text-white/75 flex gap-2">
+                          <span className="text-white/30">•</span>
+                          <span>{d}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-white/50">
+                    {service.delivery && <span>⏱ {service.delivery}</span>}
+                    {service.revisions && <span>↺ {service.revisions}</span>}
+                    <span>₹{Number(service.price || 0).toLocaleString("en-IN")} listed</span>
+                  </div>
+                </Section>
+              )}
+
+              <Section title="Payment">
+                <Row label="Service price" value={`₹${Number(order.amount || 0).toLocaleString("en-IN")}`} />
+                {/* Itemised: a flat "platform fee" line couldn't explain why a
+                    10% commission takes 11.8% off the payout. */}
+                {!!order.platformFee && (
+                  <Row
+                    label="Commission"
+                    value={<span className="text-white/60">− ₹{Number(order.platformFee).toLocaleString("en-IN")}</span>}
+                  />
+                )}
+                {!!order.platformFeeGst && (
+                  <Row
+                    label="GST on commission"
+                    value={<span className="text-white/60">− ₹{Number(order.platformFeeGst).toLocaleString("en-IN")}</span>}
+                  />
+                )}
+                <Row
+                  label="You receive"
+                  value={
+                    <span className="font-semibold text-[#19E66C]">
+                      ₹{Number(order.sellerAmount || 0).toLocaleString("en-IN")}
+                    </span>
+                  }
+                />
+                <div className="h-px bg-white/[0.07] my-2" />
+                <Row label="Client paid" value={`₹${Number(order.totalPayable || 0).toLocaleString("en-IN")}`} />
+                <Row
+                  label="Escrow"
+                  value={
+                    order.fundsStatus === "HELD_BY_TOKUN"
+                      ? "Held by Tokun"
+                      : ["RELEASED_TO_SELLER", "AUTO_RELEASED"].includes(order.fundsStatus)
+                      ? "Released to your wallet"
+                      : "Not funded yet"
+                  }
+                />
+              </Section>
+
+              {/* The date this booking has to be delivered by, and how long is
+                  left on it. Only while the work is still owed — after delivery
+                  it's history, and the timeline below already records it. */}
+              {canSubmit && order.deliveryDueAt && (
+                <Section title="Delivery deadline">
+                  <Row
+                    label="Due"
+                    value={new Date(order.deliveryDueAt).toLocaleString("en-IN", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  />
+                  {(() => {
+                    const dl = deadlineLabel(order.deliveryDueAt);
+                    if (!dl) return null;
+                    return (
+                      <p
+                        className="mt-1 text-sm font-semibold"
+                        style={{
+                          color:
+                            dl.tone === "late"
+                              ? "#FF8F8F"
+                              : dl.tone === "soon"
+                                ? "#FABC4E"
+                                : "#63A6F2",
+                        }}
+                      >
+                        {dl.text}
+                      </p>
+                    );
+                  })()}
+                  {order.deliveryOverdue && (
+                    <p className="mt-2 text-[12px] leading-relaxed text-white/55">
+                      You can no longer submit work on this booking. Talk to the client — they
+                      can cancel for a refund, or Tokun can settle it between you.
+                    </p>
+                  )}
+                </Section>
+              )}
+
+              <Section title="Revisions">
+                <p className="text-sm text-white/80">
+                  {revisionState?.unlimited
+                    ? "Unlimited revisions included"
+                    : `${revisionState?.used ?? 0} of ${revisionState?.allowed ?? 0} used${
+                        revisionState?.exhausted ? " — no revisions left" : ""
+                      }`}
+                </p>
+                {order.revisions?.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {order.revisions.map((r: any, i: number) => (
+                      <div key={i} className="rounded-lg bg-black/25 border border-white/[0.07] p-2.5">
+                        <p className="text-[11px] text-white/40">
+                          Revision {i + 1} · {formatDate(r.requestedAt)}
+                        </p>
+                        <p className="text-sm text-white/75 mt-1 whitespace-pre-line">
+                          {r.reason || "No reason given"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Section>
+
+              {order.deliverables?.length > 0 && (
+                <Section title={`Delivered${order.submissions?.length > 1 ? ` (v${order.submissions.length})` : ""}`}>
+                  <div className="space-y-2">
+                    {order.deliverables.map((d: any, i: number) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between gap-3 rounded-lg bg-black/25 border border-white/[0.07] px-3 py-2"
+                      >
+                        <div className="min-w-0 flex items-center gap-2">
+                          <span>{d.kind === "link" ? "🔗" : "📎"}</span>
+                          <div className="min-w-0">
+                            <p className="text-sm truncate">{d.name}</p>
+                            <p className="text-[11px] text-white/35">
+                              {d.kind === "link"
+                                ? SERVICE_LINK_LABELS[d.provider] || "External link"
+                                : formatBytes(d.size)}
+                            </p>
+                          </div>
+                        </div>
+                        {d.kind === "link" ? (
+                          <a
+                            href={d.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-[#63A6F2] hover:underline shrink-0"
+                          >
+                            Open
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleDeliverableDownload(orderId, i, d.name, token)}
+                            className="text-xs text-[#63A6F2] hover:underline shrink-0"
+                          >
+                            Download
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {order.submissionNote && (
+                    <p className="mt-3 text-sm text-white/60 whitespace-pre-line">{order.submissionNote}</p>
+                  )}
+                </Section>
+              )}
+
+              {timeline.length > 0 && (
+                <Section title="Timeline">
+                  <div className="space-y-1.5">
+                    {timeline.map((t) => (
+                      <div key={t.label} className="flex justify-between gap-4">
+                        <span className="text-sm text-white/70">{t.label}</span>
+                        <span className="text-xs text-white/40">{formatDate(t.at)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Section>
+              )}
+            </>
+          )}
         </div>
 
-        <div className="p-4 border-t border-white/10">
-          <button
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="w-full h-11 rounded-full text-sm font-semibold text-white disabled:opacity-60"
-            style={{ background: GRAD }}
-          >
-            {submitting ? "Submitting…" : "Submit to Client"}
-          </button>
-        </div>
+        {!loading && order && (order.status === "FUNDED" || canSubmit) && (
+          <div className="p-4 border-t border-white/10 flex gap-2 shrink-0">
+            {order.status === "FUNDED" && (
+              <button
+                onClick={handleStartWork}
+                disabled={starting}
+                className="flex-1 h-11 rounded-full text-sm font-semibold text-white border border-white/15 hover:bg-white/[0.06] disabled:opacity-60"
+              >
+                {starting ? "Starting…" : "Start Work"}
+              </button>
+            )}
+            {canSubmit && !order.deliveryOverdue && (
+              <button
+                onClick={() => onSubmitWork({ ...order, _id: orderId, title: order.serviceTitle })}
+                className="flex-1 h-11 rounded-full text-sm font-semibold text-white"
+                style={{ background: GRAD }}
+              >
+                {order.status === "REVISION_REQUESTED" ? "Resubmit Work" : "Submit Work"}
+              </button>
+            )}
+
+            {/* The server rejects a late delivery, so this says why rather than
+                letting the seller find out after picking their files. */}
+            {canSubmit && order.deliveryOverdue && (
+              <button
+                type="button"
+                disabled
+                title="The delivery deadline for this booking has passed."
+                className="flex-1 h-11 rounded-full text-sm font-semibold text-white/40 border border-white/10 cursor-not-allowed"
+              >
+                Deadline passed — can't submit
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
