@@ -1,11 +1,13 @@
 /**
  * Arbitration queue: cancellations the two parties couldn't settle themselves.
  *
- * The whole screen is built around one decision — what percentage of the job
- * did the creator earn — because that single number is what the settlement
- * engine takes. There is deliberately no pair of free-form "refund X / pay Y"
- * inputs: two independent amounts can be set to figures that don't add up to
- * what the buyer paid, and nobody can reconcile that afterwards.
+ * The whole screen is built around one decision — who was in the right — and it
+ * is all-or-nothing: the payment goes wholly to the creator or wholly back to
+ * the client, minus the non-refundable platform fee either way. There is
+ * deliberately no percentage and no pair of free-form "refund X / pay Y"
+ * inputs. Two independent amounts can be set to figures that don't add up to
+ * what the buyer paid, and a partial ruling leaves Tokun defending a number it
+ * invented.
  *
  * Everything an admin needs to judge that number is on the detail view: the
  * creator's claim and proof, the client's objection, and — most usefully — the
@@ -178,6 +180,8 @@ export default function AdminDisputesPage() {
   const [winner, setWinner] = useState<"client" | "freelancer" | null>(null);
   const [adminNote, setAdminNote] = useState("");
   const [resolving, setResolving] = useState(false);
+  // Second step of the settle button — see the confirm panel in the footer.
+  const [confirmSettle, setConfirmSettle] = useState(false);
 
   /* What each ruling pays, taken from the server's own settlement preview
      rather than re-derived here — the same function the settlement itself runs,
@@ -235,6 +239,7 @@ export default function AdminDisputesPage() {
       // find one pre-selected and confirm it.
       setWinner(null);
       setAdminNote("");
+      setConfirmSettle(false);
     } catch (err: any) {
       setError(err?.message || "Couldn't load that dispute.");
       setOpenId(null);
@@ -243,21 +248,6 @@ export default function AdminDisputesPage() {
 
   const resolve = async () => {
     if (!detail || !winner) return;
-
-    const d = detail.dispute;
-    const who =
-      winner === "client"
-        ? d.buyerId?.name || "the client"
-        : d.sellerId?.name || "the creator";
-    // Names the person and the amount, because this is irreversible and
-    // "Settle at 100%?" told an admin neither.
-    if (
-      !window.confirm(
-        `Award ${money(winnerAmount)} to ${who}?\n\nThis moves money and can't be undone.`
-      )
-    ) {
-      return;
-    }
 
     try {
       setResolving(true);
@@ -367,14 +357,19 @@ export default function AdminDisputesPage() {
                   </div>
                   <div className="text-right shrink-0">
                     <p className="font-semibold text-sm">{rupees(d.totalPayable)}</p>
+                    {/* Percentages were reporting a partial split that can no
+                        longer happen — a claim is now one of two positions. */}
                     {d.proposedSellerPercent !== null && (
                       <p className="mt-1 text-[11px] text-white/45">
-                        Claims {d.proposedSellerPercent}%
-                        {d.preview ? ` · ${rupees(d.preview.sellerPayout)}` : ""}
+                        {d.proposedSellerPercent === 100
+                          ? "Creator claims the payment"
+                          : "Creator agreed to cancel"}
                       </p>
                     )}
                     {d.status === "RESOLVED" && d.finalSellerPercent !== null && (
-                      <p className="mt-1 text-[11px] text-[#19E66C]">Settled at {d.finalSellerPercent}%</p>
+                      <p className="mt-1 text-[11px] text-[#19E66C]">
+                        {d.finalSellerPercent === 100 ? "Paid to creator" : "Refunded to client"}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -440,7 +435,11 @@ export default function AdminDisputesPage() {
                     {detail.dispute.proposedSellerPercent !== null ? (
                       <>
                         <p className="text-sm">
-                          <strong>{detail.dispute.proposedSellerPercent}%</strong> completed
+                          <strong>
+                            {detail.dispute.proposedSellerPercent === 100
+                              ? "Says the work was delivered"
+                              : "Agreed to cancel"}
+                          </strong>
                         </p>
                         {detail.dispute.proposalNote && (
                           <p className="mt-2 text-sm text-white/65 whitespace-pre-line">
@@ -648,7 +647,11 @@ export default function AdminDisputesPage() {
                     <div className="grid grid-cols-2 gap-2.5">
                       <button
                         type="button"
-                        onClick={() => setWinner("client")}
+                        onClick={() => {
+                          setWinner("client");
+                          // Switching sides must invalidate a pending confirm.
+                          setConfirmSettle(false);
+                        }}
                         className={`rounded-xl border p-3 text-left transition ${
                           winner === "client"
                             ? "border-[#63A6F2] bg-[#63A6F2]/[0.12]"
@@ -668,7 +671,10 @@ export default function AdminDisputesPage() {
 
                       <button
                         type="button"
-                        onClick={() => setWinner("freelancer")}
+                        onClick={() => {
+                          setWinner("freelancer");
+                          setConfirmSettle(false);
+                        }}
                         className={`rounded-xl border p-3 text-left transition ${
                           winner === "freelancer"
                             ? "border-[#19E66C] bg-[#19E66C]/[0.12]"
@@ -697,28 +703,59 @@ export default function AdminDisputesPage() {
                 </div>
 
                 <div className="p-4 border-t border-white/10 shrink-0">
-                  <button
-                    onClick={resolve}
-                    disabled={
-                      resolving ||
-                      !winner ||
-                      // No preview means the order behind this dispute is gone
-                      // — the settlement would fail, so don't offer to run it.
-                      winnerAmount === null ||
-                      detail.dispute.status === "RESOLVED"
-                    }
-                    className="w-full h-11 rounded-full text-sm font-semibold text-white bg-[#C084FC] hover:bg-[#A855F7] disabled:opacity-50"
-                  >
-                    {detail.dispute.status === "RESOLVED"
-                      ? "Already settled"
-                      : resolving
-                      ? "Settling…"
-                      : !winner
-                      ? "Pick who was in the right"
-                      : winner === "client"
-                      ? `Refund ${money(clientWinsAmount)} to ${detail.dispute.buyerId?.name || "the client"}`
-                      : `Pay ${money(creatorWinsAmount)} to ${detail.dispute.sellerId?.name || "the creator"}`}
-                  </button>
+                  {/* Two-step, in page. This used to be a window.confirm — a
+                      grey OS box in the middle of a purple modal, and one the
+                      admin could dismiss with a stray Enter. The names and the
+                      amount are still spelled out, because the move is
+                      irreversible. */}
+                  {confirmSettle ? (
+                    <div className="rounded-2xl border border-[#C084FC]/30 bg-[#C084FC]/10 p-3">
+                      <p className="text-xs text-white/85">
+                        Award {money(winnerAmount)} to{" "}
+                        {winner === "client"
+                          ? detail.dispute.buyerId?.name || "the client"
+                          : detail.dispute.sellerId?.name || "the creator"}
+                        ? This moves money and can't be undone.
+                      </p>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          onClick={resolve}
+                          disabled={resolving}
+                          className="flex-1 h-10 rounded-full text-sm font-semibold text-white bg-[#C084FC] hover:bg-[#A855F7] disabled:opacity-50"
+                        >
+                          {resolving ? "Settling…" : "Yes, settle now"}
+                        </button>
+                        <button
+                          onClick={() => setConfirmSettle(false)}
+                          disabled={resolving}
+                          className="h-10 px-4 rounded-full text-sm font-semibold text-white/80 bg-white/[0.06] border border-white/10 hover:bg-white/[0.1] disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmSettle(true)}
+                      disabled={
+                        resolving ||
+                        !winner ||
+                        // No preview means the order behind this dispute is gone
+                        // — the settlement would fail, so don't offer to run it.
+                        winnerAmount === null ||
+                        detail.dispute.status === "RESOLVED"
+                      }
+                      className="w-full h-11 rounded-full text-sm font-semibold text-white bg-[#C084FC] hover:bg-[#A855F7] disabled:opacity-50"
+                    >
+                      {detail.dispute.status === "RESOLVED"
+                        ? "Already settled"
+                        : !winner
+                        ? "Pick who was in the right"
+                        : winner === "client"
+                        ? `Refund ${money(clientWinsAmount)} to ${detail.dispute.buyerId?.name || "the client"}`
+                        : `Pay ${money(creatorWinsAmount)} to ${detail.dispute.sellerId?.name || "the creator"}`}
+                    </button>
+                  )}
                 </div>
               </>
             )}

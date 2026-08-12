@@ -53,7 +53,7 @@ router.get("/queue", async (req, res) => {
       filter.title = { $regex: search, $options: "i" };
     }
 
-    const [items, total, statsAgg] = await Promise.all([
+    const [items, total, statsAgg, totalPrompts, listedProducts] = await Promise.all([
       Prompt.find(filter)
         .populate("userId", "name email")
         .select("title promptText attachment mediaValidation userId createdAt")
@@ -62,6 +62,12 @@ router.get("/queue", async (req, res) => {
         .limit(limit),
       Prompt.countDocuments(filter),
       Prompt.aggregate([{ $group: { _id: "$mediaValidation.status", count: { $sum: 1 } } }]),
+      /* The per-status counts below only add up to the prompts the validator has
+         touched, so on their own they never answer "out of how many?". These two
+         give the queue a denominator: everything uploaded, and the subset that is
+         actually live on the marketplace. */
+      Prompt.countDocuments({ deleted: { $ne: true } }),
+      Prompt.countDocuments({ deleted: { $ne: true }, draft: { $ne: true }, flagged: { $ne: true } }),
     ]);
 
     const stats = statsAgg.reduce((acc, s) => {
@@ -77,6 +83,8 @@ router.get("/queue", async (req, res) => {
       limit,
       totalPages: Math.max(1, Math.ceil(total / limit)),
       stats,
+      totalPrompts,
+      listedProducts,
     });
   } catch (err) {
     console.error("Prompt validation queue error:", err);

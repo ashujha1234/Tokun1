@@ -254,11 +254,22 @@ router.patch("/:orgId/suspend", requireAuth, requireAdmin, async (req, res) => {
     const { orgId } = req.params;
     const { action } = req.body;
 
+    /* Freezing an org locks out the owner and every member at once, so the
+       reason goes into each of their notifications — same contract as the
+       single-account suspend in sellerRoutes.js. */
+    const reason = String(req.body.reason || "").trim();
+
     if (!mongoose.Types.ObjectId.isValid(orgId)) {
       return res.status(400).json({ success: false, error: "invalid_org_id" });
     }
     if (!["suspend", "reactivate"].includes(action)) {
       return res.status(400).json({ success: false, error: "action must be 'suspend' or 'reactivate'" });
+    }
+    if (action === "suspend" && reason.length < 5) {
+      return res.status(400).json({
+        success: false,
+        error: "A reason of at least 5 characters is required to suspend an organization",
+      });
     }
 
     const org = await Organization.findById(orgId).lean();
@@ -288,14 +299,29 @@ router.patch("/:orgId/suspend", requireAuth, requireAdmin, async (req, res) => {
       const notifs = userIds.map((id) => ({
         receiverUserId: id,
         type: freeze ? "ORG_FROZEN" : "ORG_UNFROZEN",
+        // Same contract as the single-account suspend in sellerRoutes.js:
+        // nobody is signed out, only transacting stops, and the appeal route
+        // is the in-app admin chat.
         message: freeze
-          ? `Your organization "${org.name}" has been suspended by an admin. Actions are paused until it's reactivated.`
+          ? `Your organization "${org.name}" has been suspended by an admin. Reason: ${reason} — buying, selling, services, hire deals and withdrawals are paused for the whole team. You are still signed in and can view your account. If you think this is a mistake, message the admin team and ask.`
+          : reason
+          ? `Your organization "${org.name}" has been reactivated by an admin. Note: ${reason}`
           : `Your organization "${org.name}" has been reactivated by an admin. Full access is restored.`,
-        meta: { adminAction: action, orgId: String(orgId) },
+        meta: {
+          adminAction: action,
+          orgId: String(orgId),
+          reason,
+          ...(freeze
+            ? { actionUrl: "/support/admin-chat", actionLabel: "Message the admin team" }
+            : {}),
+        },
       }));
       try {
-        await Notification.insertMany(notifs);
+        await Notification.insertMany(notifs, { ordered: false });
       } catch (e) {
+        /* `ordered: false` so one bad document can't drop the rest — a member
+           whose notification fails validation shouldn't silence everyone
+           else's. Logged loudly because this used to fail for every doc. */
         console.error("org suspend notify error:", e?.message);
       }
     }

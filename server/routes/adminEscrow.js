@@ -541,10 +541,13 @@ router.get("/held", async (req, res) => {
 });
 
 /* POST /api/admin/escrow/:orderKind/:orderId/settle
-   One number decides everything: sellerPercent 0 = full refund, 100 = full
-   release, anything between = split. Deliberately not a pair of free-form
-   amounts — two independent figures can be set so they don't add up to what
-   the buyer paid, and nobody can reconcile that afterwards. */
+   One number decides everything: sellerPercent 0 = refund the buyer in full,
+   100 = pay the seller in full. Nothing in between — a settlement pays exactly
+   one party, and the buyer-side platform fee is kept either way.
+
+   Deliberately not a pair of free-form amounts: two independent figures can be
+   set so they don't add up to what the buyer paid, and nobody can reconcile
+   that afterwards. */
 router.post("/:orderKind/:orderId/settle", async (req, res) => {
   try {
     const { orderKind, orderId } = req.params;
@@ -553,11 +556,12 @@ router.post("/:orderKind/:orderId/settle", async (req, res) => {
     }
 
     const percent = Number(req.body?.sellerPercent);
-    if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+    if (percent !== 0 && percent !== 100) {
       return res.status(400).json({
         success: false,
         error: "invalid_percent",
-        message: "sellerPercent must be a number between 0 and 100.",
+        message:
+          "sellerPercent must be 0 (refund the buyer in full) or 100 (pay the seller in full).",
       });
     }
 
@@ -567,7 +571,11 @@ router.post("/:orderKind/:orderId/settle", async (req, res) => {
     try {
       result = await settleEscrow(orderKind, orderId, {
         sellerPercent: percent,
-        reason: reason || `Settled by Tokun at ${percent}%`,
+        reason:
+          reason ||
+          (percent === 100
+            ? "Settled by Tokun — paid to the creator"
+            : "Settled by Tokun — refunded to the client"),
         actor: "admin",
         // An admin splitting a stalled booking is arbitrating it — same rule as
         // the dispute queue, Tokun keeps nothing.

@@ -334,4 +334,160 @@ router.get("/webhooks/:id", async (req, res) => {
   }
 });
 
+/* ══════════════════════════════════════════════════════════════════════════
+   GET /api/admin/payments/payouts?days=30
+
+   Money OUT to sellers, creators and freelancers.
+
+   Every other view on this page is money coming in or Tokun's own cut. The one
+   thing an admin could not see anywhere was what the platform actually paid
+   the people doing the work.
+
+   Route transfers ONLY. Payouts are a Razorpay Route concern end to end: the
+   seller's share is transferred to their linked account at capture or escrow
+   release, and Razorpay is the source of truth for all of it.
+
+   This deliberately does NOT report the internal Wallet ledger. That path only
+   ever existed as a fallback for sellers who hadn't onboarded to Route, and
+   showing two payout mechanisms side by side made a simple question ("what did
+   we pay out?") need a paragraph of explanation before the number meant
+   anything. If the Wallet fallback is retired for good (see the notes on
+   Wallet.creditSale), there is nothing here to add back.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Walks Razorpay's transfers list the same way fetchPayments walks payments. */
+async function fetchTransfers(from, to) {
+  const MAX_PAGES = 20;
+  const out = [];
+  let skip = 0;
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const url = `https://api.razorpay.com/v1/transfers?count=100&skip=${skip}&from=${from}&to=${to}`;
+    const res = await fetch(url, { headers: { Authorization: authHeader() } });
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      const err = new Error(data?.error?.description || `Razorpay ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+
+    const items = data?.items || [];
+    out.push(...items);
+    if (items.length < 100) return { transfers: out, truncated: false };
+    skip += 100;
+    if (page === MAX_PAGES - 1) return { transfers: out, truncated: true };
+  }
+
+  return { transfers: out, truncated: false };
+}
+
+router.get("/payouts", async (req, res) => {
+  try {
+    if (!RZP_KEY || !RZP_SECRET) {
+      return res.status(503).json({
+        success: false,
+        error: "razorpay_not_configured",
+        message: "Razorpay keys aren't set on the server, so payout data can't be read.",
+      });
+    }
+
+    const days = Math.min(Math.max(parseInt(req.query.days, 10) || 30, 1), 365);
+    const to = Math.floor(Date.now() / 1000);
+    const from = to - days * 86400;
+
+    const [{ transfers, truncated }, paymentsResult] = await Promise.all([
+      fetchTransfers(from, to),
+      /* Refunds come from the payments list, and it must not be able to sink
+         the payout figures — those are the point of the page. */
+      fetchPayments(from, to).catch(() => null),
+    ]);
+
+    // `failed` transfers never moved money; counting them would overstate what
+    // sellers received.
+    const settled = transfers.filter((t) => t.status !== "failed");
+    const total = r(settled.reduce((s, t) => s + Number(t.amount || 0), 0));
+    const reversed = r(settled.reduce((s, t) => s + Number(t.amount_reversed || 0), 0));
+
+    /* On hold = transferred but not yet withdrawable by the seller, because the
+       transfer carries an on_hold_until (the escrow/refund window). Money the
+       platform has committed but the seller can't touch yet — an admin chasing
+       "where is my payout" is usually looking at exactly this. */
+    const onHold = r(
+      settled
+        .filter((t) => t.on_hold)
+        .reduce((s, t) => s + Number(t.amount || 0), 0)
+    );
+
+    const byStatus = {};
+    for (const t of transfers) {
+      const k = t.status || "unknown";
+      byStatus[k] = byStatus[k] || { status: k, count: 0, amount: 0 };
+      byStatus[k].count += 1;
+      byStatus[k].amount += Number(t.amount || 0);
+    }
+
+    /* Per-day series for the chart. Razorpay timestamps are epoch seconds. */
+    const byDay = new Map();
+    for (const t of settled) {
+      const day = new Date(Number(t.created_at || 0) * 1000).toISOString().slice(0, 10);
+      const row = byDay.get(day) || { day, paidOut: 0, reversed: 0 };
+      row.paidOut += Number(t.amount || 0);
+      row.reversed += Number(t.amount_reversed || 0);
+      byDay.set(day, row);
+    }
+    const series = [...byDay.values()]
+      .sort((a, b) => a.day.localeCompare(b.day))
+      .map((row) => ({ ...row, paidOut: r(row.paidOut), reversed: r(row.reversed) }));
+
+    let refundedToClients = 0;
+    let refundsAvailable = false;
+    if (paymentsResult) {
+      refundedToClients = r(
+        (paymentsResult.payments || [])
+          .filter((p) => p.status === "captured")
+          .reduce((s, p) => s + Number(p.amount_refunded || 0), 0)
+      );
+      refundsAvailable = true;
+    }
+
+    return res.json({
+      success: true,
+      days,
+      truncated,
+      totals: {
+        count: settled.length,
+        total,
+        reversed,
+        onHold,
+        net: +(total - reversed).toFixed(2),
+      },
+      byStatus: Object.values(byStatus)
+        .map((b) => ({ ...b, amount: r(b.amount) }))
+        .sort((a, b) => b.amount - a.amount),
+      series,
+      recent: settled
+        .slice(0, 25)
+        .map((t) => ({
+          id: t.id,
+          recipient: t.recipient,
+          amount: r(t.amount),
+          reversed: r(t.amount_reversed),
+          status: t.status,
+          onHold: !!t.on_hold,
+          createdAt: new Date(Number(t.created_at || 0) * 1000),
+        })),
+      refundedToClients,
+      refundsAvailable,
+    });
+  } catch (err) {
+    console.error("GET /api/admin/payments/payouts error:", err);
+    return res.status(err.status === 401 ? 502 : 500).json({
+      success: false,
+      error: "razorpay_error",
+      message: err?.message || "Couldn't read transfers from Razorpay.",
+    });
+  }
+});
+
 module.exports = router;

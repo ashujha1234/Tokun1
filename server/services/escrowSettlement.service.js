@@ -10,8 +10,22 @@
 //
 // ── The split ───────────────────────────────────────────────────────────────
 //
-// Everything is driven by ONE number: `sellerPercent`, 0–100, meaning "how much
-// of this job did the seller actually earn". Given
+// ALL OR NOTHING. `sellerPercent` accepts 0 or 100 and nothing in between.
+//
+// It used to accept any percentage, so a booking could end with the money cut
+// down the middle. That satisfied nobody: a cancellation or a dispute is an
+// argument about who was in the right, and answering "who was right" with 40%
+// leaves both sides feeling cheated and leaves an admin inventing a number they
+// can't defend. Every ending now pays exactly one party — the buyer is refunded
+// in full, or the seller is paid in full — and the buyer-side platform fee is
+// kept either way.
+//
+// The arithmetic below is unchanged and still written in terms of p, because
+// the two endpoints are p = 0 and p = 1 and the formulae are what prove the
+// parts add up. Only the values in between are rejected, at the top of
+// settleEscrow().
+//
+// Given
 //
 //     A  = amount                        (the agreed price)
 //     pf = platformFee + platformFeeGst  (seller-side commission, incl. its GST)
@@ -68,6 +82,10 @@
 //
 // At p = 0 steps 1 and 2 collapse into a single refund with reverse_all, which
 // is atomic and therefore preferred.
+//
+// With the split restricted to all-or-nothing, step 1 at p = 100 reverses
+// exactly the buyer's platform fee and nothing else — which is precisely the
+// rule "the winner gets everything except the platform fee".
 
 const mongoose = require("mongoose");
 const Razorpay = require("razorpay");
@@ -91,9 +109,11 @@ const razorpay = new Razorpay({
 });
 
 class EscrowNotSettleableError extends Error {
-  constructor(message) {
+  // `code` is optional so callers that want to distinguish a specific refusal
+  // (an out-of-range percent, say) from the generic one can.
+  constructor(message, code) {
     super(message || "escrow_not_settleable");
-    this.code = "ESCROW_NOT_SETTLEABLE";
+    this.code = code || "ESCROW_NOT_SETTLEABLE";
   }
 }
 
@@ -258,6 +278,16 @@ function computeSplit(order, kind, sellerPercent, waiveCommission = false) {
 async function settleEscrow(orderKind, orderId, opts = {}) {
   const kind = getKind(orderKind);
   const { sellerPercent, reason = "", actor = "admin", waiveCommission = false } = opts;
+
+  /* All-or-nothing, enforced here rather than at each caller so no future route
+     can reintroduce a split by passing 37. Anything that isn't exactly 0 or 100
+     is a bug in the caller, not a settlement to attempt. */
+  if (Number(sellerPercent) !== 0 && Number(sellerPercent) !== 100) {
+    throw new EscrowNotSettleableError(
+      "A settlement pays one party in full — sellerPercent must be 0 (refund the buyer) or 100 (pay the seller).",
+      "invalid_seller_percent"
+    );
+  }
 
   if (!Number.isFinite(Number(sellerPercent))) {
     throw new EscrowNotSettleableError("seller_percent_required");

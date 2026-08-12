@@ -1185,6 +1185,14 @@ type Notif = {
     orgName?: string;
     role?: string;
     assignedCap?: number;
+    /* A route this notification should offer to open, set by the server.
+       Suspension notifications use it to point at the admin chat: the whole
+       reason a suspended account keeps its session is so it can appeal, and
+       telling someone to "message the admin team" without a way through is
+       the same as telling them nothing. */
+    actionUrl?: string;
+    actionLabel?: string;
+    reason?: string;
   };
 
   promptId?: {
@@ -1782,6 +1790,22 @@ export default function NotificationsPage() {
         title: n.meta?.title || "NDA Update",
         prompt: null,
         actionButton: actionBtn("Mark Read", () => markNotificationRead(n._id), "ghost"),
+      });
+    }
+
+    /* Any notification the server attached an actionUrl to gets that button.
+       Generic on purpose — the next one that needs a call to action shouldn't
+       need another branch here. */
+    if (n.meta?.actionUrl) {
+      return NotifCard({
+        ...base,
+        message: n.message,
+        title: n.promptId?.title,
+        prompt: null,
+        actionButton: actionBtn(n.meta.actionLabel || "Open", () => {
+          markNotificationRead(n._id);
+          navigate(n.meta!.actionUrl!);
+        }),
       });
     }
 

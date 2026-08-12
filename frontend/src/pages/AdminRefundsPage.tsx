@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, RefreshCw, CheckCircle2, XCircle, Clock } from "lucide-react";
+// window.alert blocks the tab and looks nothing like the rest of the admin UI.
+import { toast } from "@/hooks/use-toast";
 
 const API_BASE = `${(import.meta.env.VITE_API_URL || "http://localhost:5002").replace(
   /\/$/,
@@ -66,8 +68,11 @@ export default function AdminRefundsPage() {
     fetchRequests(tab);
   }, [tab]);
 
+  /* Approving moves real money, so it keeps a confirm step — but as an in-page
+     panel rather than window.confirm. `confirmingId` is the row awaiting it. */
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
   const approve = async (id: string) => {
-    if (!window.confirm("Approve this refund? This will refund the buyer via Razorpay immediately.")) return;
     try {
       setActioningId(id);
       const res = await fetch(`${API_BASE}/${id}/approve`, {
@@ -80,8 +85,16 @@ export default function AdminRefundsPage() {
         throw new Error(data?.message || data?.error || "Failed to approve refund");
       }
       setRequests((prev) => prev.filter((r) => r._id !== id));
+      setConfirmingId(null);
+      toast({
+        title: "Refund approved",
+        description: "The buyer is being refunded via Razorpay and has been notified.",
+      });
     } catch (err: any) {
-      alert(err?.message || "Failed to approve refund");
+      toast({
+        title: "Refund not approved",
+        description: err?.message || "The refund didn't go through. Try again.",
+      });
     } finally {
       setActioningId(null);
     }
@@ -90,7 +103,11 @@ export default function AdminRefundsPage() {
   const reject = async (id: string) => {
     const adminNote = noteDraft[id] || "";
     if (!adminNote.trim()) {
-      alert("Add a short note explaining why this refund is being rejected.");
+      toast({
+        title: "A note is required",
+        description:
+          "Add a short note explaining why this refund is being rejected — the buyer sees it.",
+      });
       return;
     }
     try {
@@ -105,8 +122,15 @@ export default function AdminRefundsPage() {
         throw new Error(data?.error || "Failed to reject refund");
       }
       setRequests((prev) => prev.filter((r) => r._id !== id));
+      toast({
+        title: "Refund rejected",
+        description: "The buyer has been notified with your note.",
+      });
     } catch (err: any) {
-      alert(err?.message || "Failed to reject refund");
+      toast({
+        title: "Refund not rejected",
+        description: err?.message || "The action didn't go through. Try again.",
+      });
     } finally {
       setActioningId(null);
     }
@@ -206,26 +230,53 @@ export default function AdminRefundsPage() {
                     className="w-full text-sm rounded-lg p-2.5 mb-3 bg-black/30 border border-white/10 text-white placeholder:text-white/30"
                     rows={2}
                   />
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => approve(r._id)}
-                      disabled={actioningId === r._id}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
-                      style={{ background: "linear-gradient(135deg,#10b981,#059669)" }}
-                    >
-                      <CheckCircle2 size={14} />
-                      Approve &amp; Refund
-                    </button>
-                    <button
-                      onClick={() => reject(r._id)}
-                      disabled={actioningId === r._id}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
-                      style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)" }}
-                    >
-                      <XCircle size={14} />
-                      Reject
-                    </button>
-                  </div>
+                  {confirmingId === r._id ? (
+                    <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3">
+                      <p className="text-xs text-white/80">
+                        Refund ₹{Number(r.refundAmount || 0).toLocaleString("en-IN")} to{" "}
+                        {r.buyer?.name || "the buyer"} via Razorpay now? This can't be undone.
+                      </p>
+                      <div className="mt-3 flex items-center gap-2">
+                        <button
+                          onClick={() => approve(r._id)}
+                          disabled={actioningId === r._id}
+                          className="px-4 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
+                          style={{ background: "linear-gradient(135deg,#10b981,#059669)" }}
+                        >
+                          {actioningId === r._id ? "Refunding…" : "Yes, refund now"}
+                        </button>
+                        <button
+                          onClick={() => setConfirmingId(null)}
+                          disabled={actioningId === r._id}
+                          className="px-4 py-2 rounded-lg text-xs font-semibold text-white/80 disabled:opacity-50"
+                          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setConfirmingId(r._id)}
+                        disabled={actioningId === r._id}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
+                        style={{ background: "linear-gradient(135deg,#10b981,#059669)" }}
+                      >
+                        <CheckCircle2 size={14} />
+                        Approve &amp; Refund
+                      </button>
+                      <button
+                        onClick={() => reject(r._id)}
+                        disabled={actioningId === r._id}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
+                        style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)" }}
+                      >
+                        <XCircle size={14} />
+                        {actioningId === r._id ? "Rejecting…" : "Reject"}
+                      </button>
+                    </div>
+                  )}
                 </>
               ) : (
                 <p className="text-xs text-white/50">

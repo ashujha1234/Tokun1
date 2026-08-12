@@ -63,6 +63,9 @@ const OrdersPage = lazy(() => import("@/pages/OrdersPage"));
 const OrderDetailPage = lazy(() => import("@/pages/OrderDetailPage"));
 const AdminDisputesPage = lazy(() => import("@/pages/AdminDisputesPage"));
 const AdminForgotPassword = lazy(() => import("./pages/AdminForgotPassword"));
+/* The user's side of the admin conversation. Suspension notifications link
+   here — see the actionUrl in routes/sellerRoutes.js. */
+const AdminChatPage = lazy(() => import("@/pages/AdminChatPage"));
 
 const queryClient = new QueryClient();
 
@@ -145,6 +148,14 @@ export default function App() {
 />
 <Route path="/profile/:userId" element={<ProfilePage />} />
 <Route path="/chat" element={<ChatPage />} />
+<Route
+  path="/support/admin-chat"
+  element={
+    <RequireAuth>
+      <AdminChatPage />
+    </RequireAuth>
+  }
+/>
 <Route
   path="/wallet"
   element={

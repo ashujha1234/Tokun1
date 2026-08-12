@@ -244,12 +244,19 @@ export default function OrdersPage() {
                   })()}
 
                   {/* A cancelled order that just says "Cancelled" leaves the
-                      obvious question unanswered, so the split is spelled out. */}
+                      obvious question unanswered, so where the money went is
+                      spelled out. No percentage — a settlement pays one party,
+                      so there is no split to report. */}
                   {o.settlement && (
                     <p className="mt-3 pt-3 border-t border-white/[0.07] text-xs text-white/45">
-                      Settled at {o.settlement.sellerPercent}% — ₹
-                      {Number(o.settlement.sellerPayout).toLocaleString("en-IN")} to the creator, ₹
-                      {Number(o.settlement.refundAmount).toLocaleString("en-IN")} refunded to the client.
+                      {o.settlement.sellerPercent === 100
+                        ? `Settled in the creator's favour — ₹${Number(
+                            o.settlement.sellerPayout
+                          ).toLocaleString("en-IN")} paid to them.`
+                        : `Settled in the client's favour — ₹${Number(
+                            o.settlement.refundAmount
+                          ).toLocaleString("en-IN")} refunded to them.`}{" "}
+                      The platform fee is not refundable.
                     </p>
                   )}
                 </button>

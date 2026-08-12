@@ -285,12 +285,12 @@ router.post("/:id/resolve", async (req, res) => {
     }
 
     /* All or nothing.
-       An admin ruling names a winner and the whole amount goes to them — there
-       is no partial split at this stage. The two parties get to negotiate a
-       percentage between themselves (that is what the propose/accept flow is
-       for); once it reaches arbitration the question has become "who was in the
-       right", and answering that with 40% satisfies neither side and leaves
-       Tokun defending a number it invented.
+       An admin ruling names a winner and the whole amount goes to them. This
+       used to be the only stage that worked this way, with the two parties free
+       to negotiate any percentage between themselves — that is gone too, so
+       every ending of a booking now pays exactly one side. Answering "who was
+       in the right" with 40% satisfies neither of them and leaves Tokun
+       defending a number it invented.
 
        `winner` is the real input. sellerPercent is still accepted so an older
        client can't break, but only at the two ends. */

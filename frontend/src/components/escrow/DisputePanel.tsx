@@ -1,12 +1,12 @@
 /**
- * The negotiation after a client cancels mid-work: how much of the payment did
- * the creator earn?
+ * The negotiation after a client cancels mid-work: does the payment go to the
+ * creator or back to the client?
  *
- * One number drives everything — the percentage the creator says they
- * completed. Both sides always see it converted to rupees, on both sides of the
- * split, because a percentage on its own is not something anyone can sanity
- * check, and "40%" reads very differently once it says "₹360 to them, ₹660 back
- * to you".
+ * All-or-nothing. This was a 0–100 slider and the money could be cut anywhere
+ * down the middle; a mid-range claim satisfied neither side and an admin asked
+ * to arbitrate one still had to rule wholly for one party. Both sides always
+ * see the figure in rupees, because "the payment" means nothing until it says
+ * ₹1,000.
  *
  * Shown to whichever party is looking; the panel switches on `role` rather than
  * existing twice.
@@ -99,8 +99,10 @@ export default function DisputePanel({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
-  // Seller's claim
-  const [percent, setPercent] = useState(50);
+  /* The seller's claim, now all-or-nothing: 100 = "I delivered it, the payment
+     is mine", 0 = "I agree to cancel". `null` until they pick, so the submit
+     button can't fire on a default nobody chose — it used to start at 50%. */
+  const [percent, setPercent] = useState<number | null>(null);
   const [proposalNote, setProposalNote] = useState("");
   const [proofFiles, setProofFiles] = useState<BriefAttachment[]>([]);
   // The client's, kept separate from the creator's above — they're two
@@ -148,7 +150,7 @@ export default function DisputePanel({
   if (loading) return <p className="text-white/45 text-sm">Loading cancellation…</p>;
   if (!dispute) return null;
 
-  const preview = localPreview(dispute.totalPayable, dispute.sellerAmount, percent);
+  const preview = localPreview(dispute.totalPayable, dispute.sellerAmount, percent ?? 0);
   const proposedPreview =
     dispute.proposedSellerPercent !== null
       ? localPreview(dispute.totalPayable, dispute.sellerAmount, dispute.proposedSellerPercent)
@@ -171,39 +173,56 @@ export default function DisputePanel({
       {/* ── Seller, nothing claimed yet ───────────────────────────────────── */}
       {dispute.status === "OPEN" && role === "seller" && (
         <div className="space-y-4 pt-1">
-          {/* totalPayable, not sellerAmount: with no commission on a
-              cancellation the creator's share is measured against the whole
-              payment. This said ₹950 of a ₹1,000 cancellation and understated
-              what they'd actually receive. */}
+          {/* Two choices, not a slider.
+
+              This was a 0–100 range defaulting to 50%, and a mid-range claim
+              was the worst outcome available: the client read it as an
+              admission the job was unfinished, the creator read it as a
+              discount they'd been talked into, and if it went to arbitration an
+              admin had to rule all-or-nothing anyway. Every ending pays exactly
+              one party now. */}
           <p className="text-sm text-white/70">
-            Tell the client how much of this you completed. You'll be paid that share of{" "}
-            {rupees(dispute.totalPayable)}.
+            The client wants to cancel. Either the work was delivered and the payment is yours, or
+            it wasn't and it goes back to them.
           </p>
 
-          <div>
-            <div className="flex items-baseline justify-between mb-2">
-              <span className="text-sm font-medium">Completed</span>
-              <span className="text-lg font-bold">{percent}%</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={5}
-              value={percent}
-              onChange={(e) => setPercent(Number(e.target.value))}
-              className="w-full accent-[#FF14EF]"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setPercent(100)}
+              className={[
+                "rounded-xl border p-3 text-left transition",
+                percent === 100
+                  ? "border-[#FF14EF]/50 bg-[#FF14EF]/10"
+                  : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]",
+              ].join(" ")}
+            >
+              <p className="text-sm font-semibold text-white">I delivered the work</p>
+              <p className="mt-1 text-[11px] text-white/45">
+                Claim the payment — {rupees(dispute.totalPayable)}
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPercent(0)}
+              className={[
+                "rounded-xl border p-3 text-left transition",
+                percent === 0
+                  ? "border-[#FF14EF]/50 bg-[#FF14EF]/10"
+                  : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]",
+              ].join(" ")}
+            >
+              <p className="text-sm font-semibold text-white">I agree to cancel</p>
+              <p className="mt-1 text-[11px] text-white/45">
+                The client is refunded and you're paid nothing
+              </p>
+            </button>
           </div>
 
-          {/* No split bar here. Directly under the percentage slider it read as
-              a second slider — as if the creator were setting the money as well
-              as the percentage, which they aren't. The figure they'll be paid is
-              on the submit button, which is where they look before committing.
-              The client still gets the full breakdown when they're deciding
-              whether to accept. */}
           <p className="text-[11px] text-white/35">
-            Tokun takes no fee on a cancellation — whatever you don't claim goes back to the client.
+            Tokun takes no commission on a cancellation. Only the non-refundable platform fee is
+            kept, whichever way this goes.
           </p>
 
           <div>
@@ -227,23 +246,29 @@ export default function DisputePanel({
 
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || percent === null}
             onClick={() =>
               run(
                 () =>
                   proposeSplit(
                     orderKind,
                     orderId,
-                    { sellerPercent: percent, note: proposalNote, proofFiles },
+                    { sellerPercent: percent as number, note: proposalNote, proofFiles },
                     token
                   ),
-                "Claim sent"
+                "Sent to the client"
               )
             }
             className="w-full h-11 rounded-full text-sm font-semibold text-white disabled:opacity-60"
             style={{ background: GRAD }}
           >
-            {busy ? "Sending…" : `Claim ${percent}% — ${rupees(preview.sellerPayout)}`}
+            {busy
+              ? "Sending…"
+              : percent === null
+              ? "Pick one of the two above"
+              : percent === 100
+              ? `Claim the payment — ${rupees(preview.sellerPayout)}`
+              : `Agree to cancel — ${rupees(preview.refundAmount)} back to the client`}
           </button>
         </div>
       )}
@@ -269,8 +294,13 @@ export default function DisputePanel({
       {dispute.status === "PROPOSED" && proposedPreview && (
         <div className="space-y-4 pt-1">
           <div className="rounded-xl bg-black/25 border border-white/[0.07] p-4">
+            {/* A percentage here was reporting a split that can no longer
+                happen. The claim is one of two things now, so it's said as
+                one of two things. */}
             <p className="text-sm font-semibold mb-3">
-              The creator says {dispute.proposedSellerPercent}% was completed
+              {dispute.proposedSellerPercent === 100
+                ? "The creator says the work was delivered and is claiming the payment"
+                : "The creator has agreed to cancel — the payment comes back to you"}
             </p>
             <SplitBar preview={proposedPreview} totalPayable={dispute.totalPayable} />
             {dispute.proposalNote && (

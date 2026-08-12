@@ -199,6 +199,13 @@ const NotificationSchema = new mongoose.Schema(
     "ORG_MEMBER_REMOVED",
     "ORG_MEMBER_REJOINED",
 
+    /* Whole-org admin freeze (adminOrgs.js PATCH /:orgId/suspend). These were
+       being sent but were never listed here, so every one of them failed
+       validation and was swallowed by the insertMany try/catch — the owner and
+       all members were frozen out with no notification explaining why. */
+    "ORG_FROZEN",
+    "ORG_UNFROZEN",
+
     // Hire flow
     "HIRE_PROPOSAL_ACCEPTED",
     "HIRE_PAYMENT_REQUIRED",

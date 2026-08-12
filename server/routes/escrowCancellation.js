@@ -349,12 +349,20 @@ router.post("/:orderKind/:orderId/dispute/propose", requireAuth, async (req, res
       });
     }
 
+    /* All-or-nothing. The creator either stands by the work and claims the
+       payment, or agrees to the cancellation and lets it go back.
+
+       This used to take any percentage, and a mid-range claim was the worst of
+       both worlds: the buyer read it as an admission the job was unfinished,
+       the creator read it as a discount they were forced into, and if it went
+       to arbitration an admin still had to rule all-or-nothing anyway. */
     const percent = Number(req.body?.sellerPercent);
-    if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+    if (percent !== 0 && percent !== 100) {
       return res.status(400).json({
         success: false,
         error: "invalid_percent",
-        message: "Enter how much you completed, as a number between 0 and 100.",
+        message:
+          "Choose one: claim the payment in full, or agree to the cancellation and refund the client.",
       });
     }
 
@@ -389,7 +397,10 @@ router.post("/:orderKind/:orderId/dispute/propose", requireAuth, async (req, res
       receiverUserId: buyer._id,
       type: "ESCROW_DISPUTE_PROPOSED",
       amount: preview.refundAmount,
-      message: `${seller?.name || "The creator"} says ${percent}% of "${order[kind.titleField]}" was completed. Accepting means they receive ₹${preview.sellerPayout} and ₹${preview.refundAmount} comes back to you.`,
+      message:
+        percent === 100
+          ? `${seller?.name || "The creator"} says the work on "${order[kind.titleField]}" was delivered and is claiming the payment. Accepting means they receive ₹${preview.sellerPayout} and nothing comes back to you. Rejecting sends it to our team to decide.`
+          : `${seller?.name || "The creator"} has agreed to cancel "${order[kind.titleField]}". Accepting refunds you ₹${preview.refundAmount} — everything except the non-refundable platform fee.`,
       meta: { orderKind, orderId: String(orderId), disputeId: String(dispute._id), ...preview },
     });
 
@@ -452,7 +463,7 @@ router.post("/:orderKind/:orderId/dispute/respond", requireAuth, async (req, res
         senderName: buyer?.name,
         receiverUserId: seller._id,
         type: "ESCROW_DISPUTE_ESCALATED",
-        message: `${buyer?.name || "The client"} didn't agree with your ${dispute.proposedSellerPercent}% claim on "${order[kind.titleField]}". Our team will review the proof and decide.`,
+        message: `${buyer?.name || "The client"} didn't agree with your claim on "${order[kind.titleField]}". Our team will review the proof and decide who the payment goes to.`,
         meta: { orderKind, orderId: String(orderId), disputeId: String(dispute._id) },
       });
 
@@ -470,7 +481,7 @@ router.post("/:orderKind/:orderId/dispute/respond", requireAuth, async (req, res
       try {
         await notifyAdmins({
           type: "ESCROW_DISPUTE_ADMIN_REVIEW",
-          message: `${buyer?.name || "A client"} rejected ${seller?.name || "the creator"}'s ${dispute.proposedSellerPercent}% claim on "${order[kind.titleField]}" (₹${order.totalPayable}). Needs a ruling.`,
+          message: `${buyer?.name || "A client"} rejected ${seller?.name || "the creator"}'s claim on "${order[kind.titleField]}" (₹${order.totalPayable}). Needs a ruling.`,
           meta: {
             orderKind,
             orderId: String(orderId),
@@ -495,7 +506,10 @@ router.post("/:orderKind/:orderId/dispute/respond", requireAuth, async (req, res
     try {
       result = await settleEscrow(orderKind, orderId, {
         sellerPercent: dispute.proposedSellerPercent,
-        reason: `Cancellation settled by mutual agreement at ${dispute.proposedSellerPercent}%`,
+        reason:
+          dispute.proposedSellerPercent === 100
+            ? "Cancellation settled by mutual agreement — creator keeps the payment"
+            : "Cancellation settled by mutual agreement — client refunded",
         actor: "buyer",
         // Same rule as an admin ruling: this is a cancelled job, not a
         // delivered one, so Tokun keeps nothing and the full amount the client

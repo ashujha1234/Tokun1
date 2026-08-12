@@ -479,15 +479,20 @@ router.post("/create-order/:promptId", requireAuth, blockIfSuspended, blockOrgTe
     // Sellers without one yet fall back to the existing Wallet-ledger path.
     const linkedAccountId = await getSellerLinkedAccountId(prompt.userId);
 
-    // Prompts uploaded after the Route-onboarding-first flow shipped require
-    // an activated linked account to be purchasable at all — mirrors the
-    // same gate GET /others uses to hide them from the marketplace feed, so
-    // a direct/cart link can't bypass it. Older prompts (flag defaults
-    // false) still fall back to the Wallet ledger, same as always.
-    if (prompt.requiresSellerVerification && !linkedAccountId) {
+    /* An activated linked account is now required to buy ANY prompt.
+
+       It used to be gated on prompt.requiresSellerVerification, which defaults
+       to false and is only set true on new uploads — so every legacy listing
+       could still be bought from a seller who had never onboarded, and their
+       share went to the internal Wallet instead. That fallback is gone: all
+       payouts are Route transfers, so a seller with no linked account has
+       nowhere for the money to land. */
+    if (!linkedAccountId) {
       return res.status(403).json({
         success: false,
         error: "seller_not_verified",
+        message:
+          "This seller hasn't finished their payout setup yet, so their listings can't be bought right now.",
       });
     }
 
@@ -763,30 +768,29 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
         meta: { via: "route" },
       });
     } else {
-      // Fallback: seller hasn't onboarded to Route yet. Same net as the Route
-      // transfer above — list price less Tokun's seller-side commission — so a
-      // seller earns the same either way.
-      try {
-        await Wallet.creditSale(sellerId, split.sellerNet, {
-          purchaseId: purchase._id,
-          promptId: prompt._id,
-          promptTitle: prompt.title,
-        });
-      } catch (walletErr) {
-        console.error("Wallet credit failed:", walletErr);
+      /* No transfer id came back from the lookup.
 
-        return res.status(500).json({
-          success: false,
-          error: "wallet_credit_failed",
-          message: walletErr.message,
-        });
-      }
+         This is NOT "the seller didn't get paid". A linked account is required
+         at order-creation (see the gate above), so the transfer is attached to
+         the order and Razorpay executes it at capture regardless of whether
+         this lookup succeeded — the only thing missing is our record of which
+         transfer id covered it.
 
-      // Wallet payout has no Razorpay id of its own, so the natural-key index
-      // can't dedupe it — the purchase id in meta is what makes it traceable,
-      // and it's written once, right here, after the credit succeeded.
+         Crediting the Wallet here, which is what used to happen, paid the
+         seller a SECOND time whenever this lookup merely failed on a network
+         blip. The ledger row below is flagged for reconciliation instead. */
+      console.error(
+        "Route transfer id not resolved for payment",
+        razorpayPaymentId,
+        "- purchase",
+        String(purchase._id)
+      );
+
+      // Still a TRANSFER — Razorpay is moving the money — just one whose id we
+      // failed to read. `needsReconciliation` is the flag to grep for when a
+      // seller's transfer id is missing from a purchase.
       await ledger.record({
-        kind: "PAYOUT",
+        kind: "TRANSFER",
         direction: "OUT",
         purpose: "PROMPT_PURCHASE",
         amount: ledger.toPaise(split.sellerNet),
@@ -797,7 +801,7 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
         counterparty: req.user._id,
         purchase: purchase._id,
         prompt: prompt._id,
-        meta: { via: "wallet" },
+        meta: { via: "route", needsReconciliation: true },
       });
     }
 

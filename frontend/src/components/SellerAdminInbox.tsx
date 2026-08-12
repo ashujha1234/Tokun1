@@ -59,6 +59,7 @@ export default function SellerAdminInbox() {
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
@@ -80,6 +81,35 @@ export default function SellerAdminInbox() {
     });
   };
 
+  /* Opens the user's thread with the admin team, creating it if this is the
+     first message. Without this the inbox could only ever show a conversation
+     an admin had started — which is no use to the person this screen exists
+     for: someone who has just been suspended and wants to ask why. */
+  const startConversation = async () => {
+    try {
+      setStarting(true);
+      setError(null);
+      const res = await fetch(`${API_BASE}/api/admin-message/seller/conversation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        throw new Error(
+          data?.error === "no_admin_available"
+            ? "No admin is available to take messages right now. Please try again shortly."
+            : data?.error || "Couldn't open the chat"
+        );
+      }
+      await loadConversations();
+    } catch (e: any) {
+      setError(e?.message || "Couldn't open the chat");
+    } finally {
+      setStarting(false);
+    }
+  };
+
   const loadConversations = async () => {
     try {
       setError(null);
@@ -90,7 +120,11 @@ export default function SellerAdminInbox() {
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.success) throw new Error(data?.error || "Failed to load messages");
       setConversations(data.conversations || []);
-      if (!selected && data.conversations?.[0]) setSelected(data.conversations[0]);
+      // Select the newest thread whenever nothing is selected — including
+      // right after startConversation() creates the first one.
+      if (data.conversations?.[0]) {
+        setSelected((prev) => prev || data.conversations[0]);
+      }
     } catch (e: any) {
       setError(e?.message || "Failed to load messages");
     }
@@ -209,7 +243,22 @@ export default function SellerAdminInbox() {
             );
           })}
 
-          {conversations.length === 0 && <div className="p-5 text-sm text-white/50">No admin messages yet.</div>}
+          {conversations.length === 0 && (
+            <div className="p-5">
+              <p className="text-sm text-white/50">No admin messages yet.</p>
+              <p className="mt-1 text-xs text-white/35">
+                Start a thread if you need to ask the team about your account —
+                for example, why it was suspended.
+              </p>
+              <button
+                onClick={startConversation}
+                disabled={starting}
+                className="mt-3 w-full h-10 rounded-xl bg-[#249AF2] hover:opacity-90 text-sm font-semibold text-[#06111A] disabled:opacity-50"
+              >
+                {starting ? "Opening…" : "Message the admin team"}
+              </button>
+            </div>
+          )}
         </div>
       </aside>
 

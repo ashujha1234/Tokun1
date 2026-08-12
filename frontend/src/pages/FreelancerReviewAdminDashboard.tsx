@@ -1048,8 +1048,12 @@ export default function FreelancerReviewAdminDashboard() {
                       Profile live since: {formatDate(detail.activatedAt)}
                     </p>
                     {detail.user?._id && (
+                      /* ?adminView=1 strips the site header and footer from the
+                         profile page. Without it the admin got the logged-in
+                         site chrome — nav, account menu, Logout — wrapped
+                         around someone else's profile. */
                       <a
-                        href={`/profile/${detail.user._id}`}
+                        href={`/profile/${detail.user._id}?adminView=1`}
                         target="_blank"
                         rel="noreferrer noopener"
                         style={{ fontSize: 12, color: "#93C5FD" }}

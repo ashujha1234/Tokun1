@@ -14012,6 +14012,11 @@ import FreelancerReviewAdminDashboard from "./FreelancerReviewAdminDashboard";
 import AdminSellerMessageModal from "@/components/AdminSellerMessageModal";
 // Resolves API-relative upload paths against the API origin — see lib/mediaUrl.
 import { mediaUrl } from "@/lib/mediaUrl";
+/* Every admin action on this page used to end silently: a fetch resolved, some
+   local state flipped, and nothing told the admin it had worked or why it
+   hadn't. window.confirm/alert covered a few of them, which blocks the tab and
+   can't render the reason field a suspension now needs. */
+import { toast } from "@/hooks/use-toast";
 
 // ✅ ADD reports here
 // "withdrawals" was removed — the money view an admin actually needs is
@@ -14026,6 +14031,197 @@ type NavKey = "dashboard" | "sellers" | "products" | "reports" | "analytics" | "
 const kpiCardBase =
   "rounded-2xl bg-gradient-to-b from-white/[0.06] to-white/[0.03] border border-white/10 shadow-[0_8px_40px_rgba(0,0,0,0.35)]";
 
+/* ── Moderation reason ──────────────────────────────────────────────────────
+   Every restrictive action (suspend an account, freeze an org, flag or take
+   down a listing) goes through this. The reason is not an admin-side audit
+   note: the server puts it verbatim into the notification the affected person
+   receives, which is the whole point — the old window.confirm gave them no way
+   to learn why they'd been locked out.
+
+   Reactivations open the same sheet with `requireReason` off, so an admin can
+   attach a note without being forced to.                                    */
+type ModerationRequest = {
+  title: string;
+  description: string;
+  /** Copy for the confirm button, e.g. "Suspend account". */
+  confirmLabel: string;
+  /** Suggested reasons — one click fills the box, still editable. */
+  presets: string[];
+  destructive: boolean;
+  requireReason: boolean;
+  onConfirm: (reason: string) => Promise<void> | void;
+};
+
+const MIN_REASON_LENGTH = 5;
+
+const ModerationReasonModal = ({
+  request,
+  onClose,
+}: {
+  request: ModerationRequest | null;
+  onClose: () => void;
+}) => {
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  /* Reset on each opening — a stale reason carried into the next account is
+     exactly the mistake this dialog exists to prevent. Keyed on open/closed
+     rather than on `request` identity: callers rebuild the request object every
+     render, which would wipe the box mid-typing. */
+  const wasOpen = React.useRef(false);
+  useEffect(() => {
+    const isOpen = !!request;
+    if (isOpen && !wasOpen.current) {
+      setReason("");
+      setError(null);
+      setSubmitting(false);
+    }
+    wasOpen.current = isOpen;
+  }, [request]);
+
+  if (!request) return null;
+
+  const trimmed = reason.trim();
+  const tooShort = request.requireReason && trimmed.length < MIN_REASON_LENGTH;
+
+  const submit = async () => {
+    if (tooShort) {
+      setError(`Please give a reason of at least ${MIN_REASON_LENGTH} characters.`);
+      return;
+    }
+    try {
+      setSubmitting(true);
+      setError(null);
+      await request.onConfirm(trimmed);
+      onClose();
+    } catch (e: any) {
+      setError(e?.message || "Action failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-sm flex items-center justify-center px-4 py-6">
+      <div className="w-full max-w-[520px] rounded-2xl border border-white/10 bg-[#0B0D12] shadow-2xl">
+        <div className="p-6">
+          <div className="flex items-start gap-3">
+            <div
+              className={[
+                "h-10 w-10 shrink-0 rounded-xl flex items-center justify-center border",
+                request.destructive
+                  ? "bg-red-500/15 border-red-500/25 text-red-300"
+                  : "bg-emerald-500/15 border-emerald-500/25 text-emerald-300",
+              ].join(" ")}
+            >
+              {request.destructive ? (
+                <ShieldAlert className="h-5 w-5" />
+              ) : (
+                <CheckCircle2 className="h-5 w-5" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-lg font-semibold text-white">{request.title}</h3>
+              <p className="mt-1 text-sm text-white/60">{request.description}</p>
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <label className="text-xs tracking-[0.14em] text-white/55">
+              REASON {request.requireReason ? "(REQUIRED)" : "(OPTIONAL)"}
+            </label>
+            <p className="mt-1 text-[11px] text-white/40">
+              This is sent to them in a notification, word for word.
+            </p>
+
+            {request.presets.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {request.presets.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setReason(p)}
+                    className="px-3 py-1.5 rounded-full text-xs border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-white/75"
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={4}
+              autoFocus
+              maxLength={500}
+              placeholder="Explain what happened and what they can do about it…"
+              className="mt-3 w-full rounded-xl bg-black/40 border border-white/10 p-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/25 resize-none"
+            />
+            <div className="mt-1 text-right text-[11px] text-white/35">{reason.length}/500</div>
+          </div>
+
+          {error && (
+            <div className="mt-3 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+              {error}
+            </div>
+          )}
+
+          <div className="mt-5 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="h-10 px-4 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-sm text-white/80 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={submitting || tooShort}
+              className={[
+                "h-10 px-5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed",
+                request.destructive
+                  ? "bg-red-500 hover:opacity-90"
+                  : "bg-emerald-500 hover:opacity-90",
+              ].join(" ")}
+            >
+              {submitting ? "Working…" : request.confirmLabel}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* Reason presets, kept next to the modal so the wording stays consistent
+   wherever an admin reaches for the same action. */
+const ACCOUNT_SUSPEND_PRESETS = [
+  "Repeated policy violations after warnings",
+  "Fraudulent or misleading listings",
+  "Payment fraud / chargeback abuse",
+  "Selling content they don't own the rights to",
+  "Abusive behaviour towards buyers",
+];
+
+const ORG_SUSPEND_PRESETS = [
+  "Billing failure — subscription unpaid",
+  "Repeated policy violations across the team",
+  "Suspected account sharing or licence abuse",
+  "Pending verification of company details",
+];
+
+const LISTING_ACTION_PRESETS = [
+  "Content violates marketplace policy",
+  "Copyright or trademark infringement",
+  "Preview does not match the delivered prompt",
+  "Misleading title or description",
+  "Explicit or unsafe content",
+];
+
 // =======================
 // TYPES
 // =======================
@@ -14035,7 +14231,19 @@ type PromptProduct = {
   uploaderName: string;
   uploaderId?: string | null;
   price: number;
-  status: "Published" | "Draft" | "Flagged";
+  /* Four moderation states, not one.
+
+     A report action either flags a listing (hidden, reversible) or suspends it
+     (taken down). Both used to collapse into "Flagged" because `deleted` was
+     never read.
+
+     "Removed by seller" is the fourth, and it matters: DELETE /api/prompt/:id
+     ALSO sets deleted:true when a seller removes a listing that already has
+     buyers. Reading `deleted` alone counted those as admin suspensions and
+     inflated the Suspended tile with listings no admin ever touched. Admin
+     suspension always sets `flagged` too — that pairing is what tells them
+     apart. */
+  status: "Published" | "Draft" | "Flagged" | "Suspended" | "Removed by seller";
   imageUrl?: string;
   videoUrl?: string;
   category?: string;
@@ -14043,6 +14251,8 @@ type PromptProduct = {
   sold?: boolean;
   salesCount?: number;
   totalRevenue?: number;
+  /** When the listing was suspended, for the moderation views. */
+  deletedAt?: string | null;
 };
 
 type Category = { _id: string; name: string; description?: string };
@@ -14972,10 +15182,563 @@ const WebhooksPanel = () => {
   );
 };
 
+const CHART_SERIES = {
+  blue: "#4F86F7",
+  amber: "#CE7C1C",
+  teal: "#12A594",
+  violet: "#AB5BEE",
+};
+
+const CHART_AXIS = "rgba(255,255,255,0.35)";
+const CHART_GRID = "rgba(255,255,255,0.06)";
+
+/* ── RevenueSourcesPanel ────────────────────────────────────────────────────
+   "Where did the money come from" — the question the totals in the live view
+   can't answer. Subscriptions, prompt sales, and paid work (services + hire)
+   are three different businesses sharing one commission figure; an admin
+   deciding what to invest in needs them apart.
+
+   Reads /api/admin/platform-revenue/by-source, which aggregates Tokun's own
+   commission ledger. Services and hire are one bucket on purpose: to a buyer
+   they are the same product — paid work delivered through escrow.
+
+   Colours come from CHART_SERIES, the CVD-validated set — the brand
+   magenta/blue pair measures ΔE 1.8 under protanopia and can't carry three
+   series. Every series is labelled as well as coloured. */
+const SOURCE_COLORS: Record<string, string> = {
+  Subscriptions: CHART_SERIES.violet,
+  "Prompt sales": CHART_SERIES.teal,
+  "Services & hire": CHART_SERIES.amber,
+};
+
+/* These three buckets are NOT the same kind of money, and stacking them without
+   saying so is misleading. A subscription has no seller to split with, so the
+   whole payment is Tokun's — the ledger still files it under "commission"
+   because that's the only income type it has, which made ₹34k of subscription
+   revenue look like a cut of some far larger number. The other two really are
+   cuts. Spelled out per card so nobody has to guess which is which. */
+const SOURCE_BASIS: Record<string, string> = {
+  Subscriptions: "Full plan payment — no seller to split with, so all of it is ours.",
+  "Prompt sales": "Our cut only: 3% buyer fee + 10% seller commission, net of GST.",
+  "Services & hire": "Our cut only: 3% buyer fee + 10% seller commission, net of GST.",
+};
+
+const RevenueSourcesPanel = ({ days }: { days: number }) => {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const token = readAdminToken();
+        const res = await fetch(
+          `${API_BASE}/api/admin/platform-revenue/by-source?days=${days}`,
+          {
+            headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            credentials: "include",
+          }
+        );
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json?.success) {
+          throw new Error(json?.error || "Couldn't load the revenue breakdown.");
+        }
+        if (!cancelled) setData(json);
+      } catch (e: any) {
+        if (!cancelled) {
+          setError(e?.message || "Couldn't load the revenue breakdown.");
+          setData(null);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [days]);
+
+  const inr = (n: any) =>
+    "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+
+  const card = "rounded-2xl border border-white/[0.08] bg-white/[0.03] p-5";
+
+  const series = useMemo(
+    () =>
+      (data?.series || []).map((r: any) => ({
+        ...r,
+        label: new Date(r.day).toLocaleDateString("en-IN", {
+          day: "2-digit",
+          month: "short",
+        }),
+      })),
+    [data]
+  );
+
+  const grandTotal = useMemo(
+    () => (data?.bySource || []).reduce((sum: number, r: any) => sum + Math.max(0, r.amount), 0),
+    [data]
+  );
+
+  const Tip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div className="rounded-lg border border-white/10 bg-[#15171E] px-3 py-2 shadow-xl">
+        <p className="text-[11px] text-white/45 mb-1">{label}</p>
+        {payload.map((entry: any) => (
+          <p key={entry.dataKey} className="text-xs text-white flex items-center gap-2">
+            <span
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{ background: entry.color }}
+            />
+            <span className="text-white/60">{entry.name}</span>
+            <span className="ml-auto font-semibold">{inr(entry.value)}</span>
+          </p>
+        ))}
+      </div>
+    );
+  };
+
+  if (loading) return <p className="text-sm text-white/40">Loading the breakdown…</p>;
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-red-500/25 bg-red-500/[0.06] p-4">
+        <p className="text-sm text-red-300">{error}</p>
+      </div>
+    );
+  }
+
+  if (!data?.bySource?.length) {
+    return (
+      <div className={`${card} h-[180px] flex flex-col items-center justify-center gap-1`}>
+        <p className="text-white/45 text-sm">No commission recorded in this window.</p>
+        <p className="text-white/25 text-xs">Try a longer date range above.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Totals first: the three buckets, each with its share. A bare rupee
+          figure doesn't say whether ₹40k is most of the revenue or a rounding
+          error, so the percentage sits next to it. */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {data.bySource.map((row: any) => {
+          const share = grandTotal > 0 ? (row.amount / grandTotal) * 100 : 0;
+          /* Math.round() turned a real ₹134 into "0%", which reads as "nothing
+             came from here". Anything non-zero but under half a percent gets
+             "<1%" instead. */
+          const pctLabel =
+            share > 0 && share < 1 ? "<1" : String(Math.round(share));
+          return (
+            <div key={row.source} className={card}>
+              <div className="flex items-center gap-2">
+                <span
+                  className="w-2.5 h-2.5 rounded-sm shrink-0"
+                  style={{ background: SOURCE_COLORS[row.source] || CHART_SERIES.blue }}
+                />
+                <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+                  {row.source}
+                </p>
+              </div>
+              <p className="mt-2 text-xl font-bold text-white">{inr(row.amount)}</p>
+              <p className="mt-1 text-[11px] text-white/35">
+                {pctLabel}% of revenue in this window
+              </p>
+              <p className="mt-2 text-[11px] text-white/30 leading-snug">
+                {SOURCE_BASIS[row.source]}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Stacked, because the question is both "how much in total" and
+            "how was it split" — two things one chart can answer. */}
+        <section className={`${card} lg:col-span-2`}>
+          <div className="flex items-baseline justify-between gap-3 mb-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Revenue by source, over time</h3>
+              <p className="text-[11px] text-white/35 mt-0.5">
+                Last {days} days · {series.length} day{series.length === 1 ? "" : "s"} with activity
+              </p>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap justify-end">
+              {Object.entries(SOURCE_COLORS).map(([name, color]) => (
+                <span key={name} className="inline-flex items-center gap-1.5 text-[11px] text-white/50">
+                  <span className="w-2.5 h-2.5 rounded-sm" style={{ background: color }} />
+                  {name}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="h-[280px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={series} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                <CartesianGrid stroke={CHART_GRID} vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  stroke={CHART_AXIS}
+                  tick={{ fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  stroke={CHART_AXIS}
+                  tick={{ fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(v) => inr(v)}
+                  width={70}
+                />
+                <Tooltip content={<Tip />} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
+                {Object.entries(SOURCE_COLORS).map(([name, color]) => (
+                  <Bar key={name} dataKey={name} name={name} stackId="src" fill={color} />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+
+        <section className={card}>
+          <h3 className="text-sm font-semibold text-white">Window totals</h3>
+          <p className="text-[11px] text-white/35 mt-0.5 mb-4">Across all three sources</p>
+
+          <div className="space-y-3">
+            <div className="flex items-baseline justify-between">
+              <span className="text-xs text-white/50">Revenue earned</span>
+              <span className="text-sm font-semibold text-[#19E66C]">
+                {inr(data.totals.commission)}
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between">
+              <span className="text-xs text-white/50">Our commission reversed</span>
+              <span className="text-sm font-semibold text-[#FABC4E]">
+                −{inr(data.totals.refunded)}
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between border-t border-white/10 pt-3">
+              <span className="text-xs text-white/70">Net</span>
+              <span className="text-base font-bold text-white">{inr(data.totals.net)}</span>
+            </div>
+          </div>
+
+          {/* The number above is only Tokun's slice coming back. The buyer got
+              the whole payment returned — that figure lives on the Razorpay
+              tab as "Refunded to buyers" and is always the larger of the two. */}
+          <p className="mt-4 text-[11px] text-white/30 leading-relaxed">
+            This is only the commission we gave back. The full amount returned to buyers is on
+            the Razorpay tab.
+          </p>
+
+          {data.ledgerTruncated && (
+            /* Said out loud rather than quietly showing a short number: the
+               wallet keeps only its most recent 500 entries, so a long window
+               can genuinely be missing older rows. */
+            <p className="mt-5 text-[11px] text-white/30 leading-relaxed">
+              The commission ledger keeps its most recent 500 entries. A long date range may be
+              missing older movements, so treat these as a floor rather than a full total.
+            </p>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+};
+
+/* ── PayoutsPanel ───────────────────────────────────────────────────────────
+   What the platform actually paid the people doing the work.
+
+   Every other money view here is income or Tokun's own cut, so an admin could
+   see a refund figure and have nowhere to look up what sellers, creators and
+   freelancers were paid over the same period.
+
+   Razorpay Route only. Payouts are a Route concern end to end — the seller's
+   share is transferred to their linked account at capture or escrow release —
+   and Razorpay is the source of truth for every rupee of it. The internal
+   Wallet ledger is deliberately absent: it was only ever a fallback for
+   sellers who hadn't onboarded, and reporting two payout mechanisms side by
+   side meant "what did we pay out?" needed a paragraph before the number meant
+   anything. */
+/* Razorpay's own transfer statuses, in words.
+
+   These were rendered raw, so the table read "partially_reversed" — an
+   underscored API token, and a confusing one here: on this platform a partial
+   reversal is almost always the non-refundable platform fee being carved back
+   out at release, not something half-refunded. The amount pulled back is
+   already shown next to the transfer, so the status only has to say what state
+   it's in. Anything Razorpay adds later falls through to a de-underscored
+   version rather than disappearing. */
+const TRANSFER_STATUS: Record<string, string> = {
+  created: "Queued",
+  pending: "Pending",
+  processed: "Paid",
+  partially_reversed: "returned",
+  reversed: "Returned in full",
+  failed: "Failed",
+};
+
+const transferStatusLabel = (status: string) =>
+  TRANSFER_STATUS[status] || String(status || "").replace(/_/g, " ");
+
+const PayoutsPanel = ({ days }: { days: number }) => {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const token = readAdminToken();
+        const res = await fetch(`${API_BASE}/api/admin/payments/payouts?days=${days}`, {
+          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          credentials: "include",
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json?.success) {
+          throw new Error(json?.message || json?.error || "Couldn't load payout data.");
+        }
+        if (!cancelled) setData(json);
+      } catch (e: any) {
+        if (!cancelled) {
+          setError(e?.message || "Couldn't load payout data.");
+          setData(null);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [days]);
+
+  const inr = (n: any) =>
+    "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  const card = "rounded-xl border border-white/10 bg-white/[0.03] p-4";
+
+  const series = useMemo(
+    () =>
+      (data?.series || []).map((row: any) => ({
+        ...row,
+        label: new Date(row.day).toLocaleDateString("en-IN", {
+          day: "2-digit",
+          month: "short",
+        }),
+      })),
+    [data]
+  );
+
+  const Tip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div className="rounded-lg border border-white/10 bg-[#15171E] px-3 py-2 shadow-xl">
+        <p className="text-[11px] text-white/45 mb-1">{label}</p>
+        {payload.map((entry: any) => (
+          <p key={entry.dataKey} className="text-xs text-white flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: entry.color }} />
+            <span className="text-white/60">{entry.name}</span>
+            <span className="ml-auto font-semibold">{inr(entry.value)}</span>
+          </p>
+        ))}
+      </div>
+    );
+  };
+
+  if (loading) return <p className="text-sm text-white/40">Loading payouts…</p>;
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-red-500/25 bg-red-500/[0.06] p-4">
+        <p className="text-sm text-red-300">{error}</p>
+        <p className="mt-1 text-xs text-white/45">
+          Payouts are read live from Razorpay — if this keeps failing, the API keys or the
+          Route account are the place to look.
+        </p>
+      </div>
+    );
+  }
+
+  const t = data.totals;
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className={card}>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+            Transferred out
+          </p>
+          <p className="mt-1.5 text-xl font-bold text-white">{inr(t.total)}</p>
+          <p className="mt-1 text-[11px] text-white/35">
+            {t.count} transfer{t.count === 1 ? "" : "s"} to sellers
+          </p>
+        </div>
+
+        <div className={card}>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+            Clawed back
+          </p>
+          <p className="mt-1.5 text-xl font-bold text-[#FABC4E]">{inr(t.reversed)}</p>
+          <p className="mt-1 text-[11px] text-white/35">Reversed, usually a refund</p>
+        </div>
+
+        <div className={card}>
+          {/* The figure behind most "where is my payout" messages: Tokun has
+              sent it, Razorpay is holding it until the escrow window closes. */}
+          <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+            On hold
+          </p>
+          <p className="mt-1.5 text-xl font-bold text-[#4F86F7]">{inr(t.onHold)}</p>
+          <p className="mt-1 text-[11px] text-white/35">Sent, not yet withdrawable</p>
+        </div>
+
+        <div className={card}>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+            Net to sellers
+          </p>
+          <p className="mt-1.5 text-xl font-bold text-[#19E66C]">{inr(t.net)}</p>
+          <p className="mt-1 text-[11px] text-white/35">After reversals</p>
+        </div>
+      </div>
+
+      {series.length > 0 && (
+        <section className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-5">
+          <div className="flex items-baseline justify-between gap-3 mb-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Paid out over time</h3>
+              <p className="text-[11px] text-white/35 mt-0.5">
+                Last {days} days · {series.length} day{series.length === 1 ? "" : "s"} with transfers
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-white/50">
+                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: CHART_SERIES.teal }} />
+                Paid out
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-white/50">
+                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: CHART_SERIES.amber }} />
+                Clawed back
+              </span>
+            </div>
+          </div>
+
+          <div className="h-[260px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={series} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                <CartesianGrid stroke={CHART_GRID} vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  stroke={CHART_AXIS}
+                  tick={{ fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  stroke={CHART_AXIS}
+                  tick={{ fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(v) => inr(v)}
+                  width={70}
+                />
+                <Tooltip content={<Tip />} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
+                <Bar dataKey="paidOut" name="Paid out" fill={CHART_SERIES.teal} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="reversed" name="Clawed back" fill={CHART_SERIES.amber} radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      )}
+
+      {data.recent?.length > 0 && (
+        <section className="rounded-2xl border border-white/[0.08] bg-white/[0.03] overflow-hidden">
+          <div className="px-5 py-3 border-b border-white/[0.07]">
+            <h3 className="text-sm font-semibold text-white">Recent transfers</h3>
+          </div>
+          <div className="max-h-72 overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-[#15171E]">
+                <tr className="text-left text-white/40 text-[11px]">
+                  <th className="px-5 py-2 font-medium">Linked account</th>
+                  <th className="px-5 py-2 font-medium">When</th>
+                  <th className="px-5 py-2 font-medium text-right">Amount</th>
+                  <th className="px-5 py-2 font-medium text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.recent.map((row: any) => (
+                  <tr key={row.id} className="border-t border-white/5">
+                    <td className="px-5 py-2 text-white/75 text-xs font-mono">{row.recipient}</td>
+                    <td className="px-5 py-2 text-white/55 text-xs">
+                      {new Date(row.createdAt).toLocaleDateString("en-IN")}
+                    </td>
+                    <td className="px-5 py-2 text-right text-white/85 text-xs">
+                      {inr(row.amount)}
+                      {row.reversed > 0 && (
+                        <span className="text-[#FABC4E]"> (−{inr(row.reversed)})</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-2 text-right text-xs">
+                      <span
+                        className={
+                          row.onHold
+                            ? "text-[#4F86F7]"
+                            : row.status === "failed"
+                            ? "text-red-400"
+                            : row.reversed > 0
+                            ? "text-[#FABC4E]"
+                            : "text-[#19E66C]"
+                        }
+                      >
+                        {row.onHold ? "On hold" : transferStatusLabel(row.status)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      <section>
+        <h3 className="text-sm font-semibold text-white">Returned to buyers</h3>
+        <p className="text-[11px] text-white/35 mt-0.5 mb-3">
+          The full payment going back, not Tokun's commission slice of it.
+        </p>
+        <div className={`${card} max-w-xs`}>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">Refunded</p>
+          <p className="mt-1.5 text-xl font-bold text-[#FABC4E]">
+            {data.refundsAvailable ? inr(data.refundedToClients) : "—"}
+          </p>
+          <p className="mt-1 text-[11px] text-white/35">
+            {data.refundsAvailable ? "Gross, from Razorpay" : "Razorpay unreachable"}
+          </p>
+        </div>
+      </section>
+
+      {data.truncated && (
+        <p className="text-[11px] text-white/30 leading-relaxed">
+          Showing the most recent 2,000 transfers only — a longer range is incomplete.
+        </p>
+      )}
+    </div>
+  );
+};
+
 const PaymentsView = () => {
   /* Three views over the same money: what Razorpay says live, what we
      recorded ourselves, and what Razorpay actually sent us. */
-  const [view, setView] = useState<"live" | "ledger" | "webhooks">("live");
+  const [view, setView] = useState<"live" | "ledger" | "webhooks" | "sources" | "payouts">("live");
   const [days, setDays] = useState(30);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -15039,7 +15802,11 @@ const PaymentsView = () => {
               ? "Live from Razorpay, joined to Tokun's own commission ledger."
               : view === "ledger"
               ? "Recorded in Tokun's own database, with the timestamp of each movement."
-              : "Every webhook Razorpay has sent us, and what we did with it."}
+              : view === "webhooks"
+              ? "Every webhook Razorpay has sent us, and what we did with it."
+              : view === "sources"
+              ? "Which part of the product earned the money — subscriptions, prompt sales, or paid work. Read the note on each card: subscriptions are the whole payment, the other two are only our cut."
+              : "Money leaving the platform — what sellers, creators and freelancers were actually paid, and what went back to buyers."}
           </p>
         </div>
         {/* The date range only applies to the two money views; the delivery log
@@ -15067,6 +15834,8 @@ const PaymentsView = () => {
             ["live", "Razorpay (live)"],
             ["ledger", "Ledger (our DB)"],
             ["webhooks", "Webhooks"],
+            ["sources", "Where it came from"],
+            ["payouts", "Paid out"],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -15085,6 +15854,8 @@ const PaymentsView = () => {
 
       {view === "ledger" && <LedgerPanel days={days} />}
       {view === "webhooks" && <WebhooksPanel />}
+      {view === "sources" && <RevenueSourcesPanel days={days} />}
+      {view === "payouts" && <PayoutsPanel days={days} />}
 
       {view === "live" && loading && <p className="text-sm text-white/40">Loading from Razorpay…</p>}
 
@@ -15106,7 +15877,15 @@ const PaymentsView = () => {
         <>
           {/* The number an admin is actually here for is `net` — commission
               earned minus what the processor took. */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* There were three overlapping "money Tokun made" figures here —
+              Tokun commission, Platform balance and Lifetime revenue — sitting
+              next to each other with no way to tell which one to trust. Only
+              the commission survives: it's the one the date range above
+              actually controls, and it's what "Net kept" is computed from.
+              Platform balance measured un-withdrawn commission, which stopped
+              meaning anything when the withdraw flow was removed; lifetime
+              revenue is on the dashboard's Platform Revenue card. */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             <Stat
               label="Captured"
               value={inr(t.captured)}
@@ -15130,12 +15909,16 @@ const PaymentsView = () => {
               tone={t.net >= 0 ? "text-white" : "text-red-400"}
               hint="Commission minus Razorpay's cut"
             />
-          </div>
-
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-            <Stat label="Refunded out" value={inr(t.refunded)} hint="Returned to clients" />
-            <Stat label="Platform balance" value={inr(t.platformBalance)} hint="Un-withdrawn commission" />
-            <Stat label="Lifetime revenue" value={inr(t.platformTotalRevenue)} hint="All time, all sources" />
+            {/* "Returned to clients" didn't say WHAT was returned. This is the
+                GROSS payment going back to buyers — the whole ticket, not our
+                slice of it. The by-source tab shows the commission slice, a
+                much smaller number, and the two labels used to be close enough
+                to read as the same thing. */}
+            <Stat
+              label="Refunded to buyers"
+              value={inr(t.refunded)}
+              hint="Full payment returned, not just our cut"
+            />
           </div>
 
           {/* Razorpay only fills `fee` once THEY settle, so a fresh payment
@@ -15275,7 +16058,9 @@ const Dashboard = () => {
   }, []);
 
 const [currentView, setCurrentView] = useState<"seller" | "user" | "org">("seller");
- const [showAllUsers, setShowAllUsers] = useState(false);
+/* showAllUsers / showAllSellers used to live here. Three "View All" buttons set
+   them and nothing ever read them, so the buttons were decoration. They now
+   widen the users table and open Seller Management respectively. */
 
   // Admin user-profile drawer (click a user row → full profile, mirrors seller)
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
@@ -15298,6 +16083,10 @@ const [currentView, setCurrentView] = useState<"seller" | "user" | "org">("selle
   const [selectedOrg, setSelectedOrg] = useState<OrgDetail | null>(null);
   const [orgProfileLoading, setOrgProfileLoading] = useState(false);
   const [orgProfileError, setOrgProfileError] = useState<string | null>(null);
+
+  /* The reason sheet every suspend/reactivate on this page opens. One piece of
+     state, because only one such action can be in flight at a time. */
+  const [moderation, setModeration] = useState<ModerationRequest | null>(null);
 
   // Suspend action state (user profile reuses the seller /block endpoint;
   // org profile uses the whole-org freeze endpoint)
@@ -15393,10 +16182,7 @@ const [platformRevenue, setPlatformRevenue] = useState({
   transactions: [] as Array<{ _id: string; type: string; amount: number; source: string; description: string; createdAt: string }>,
 });
 const [platformRevenueLoading, setPlatformRevenueLoading] = useState(false);
-const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
-const [withdrawAmount, setWithdrawAmount] = useState("");
-const [withdrawNote, setWithdrawNote] = useState("");
-const [withdrawSubmitting, setWithdrawSubmitting] = useState(false);
+
 
 
 
@@ -15969,8 +16755,19 @@ useEffect(() => {
       if (uploadedData?.success) {
         const mapped: PromptProduct[] = (uploadedData.prompts || []).map((doc: any) => {
           const att = doc?.attachment || null;
-          const status: PromptProduct["status"] =
-            doc?.flagged ? "Flagged" : doc?.draft ? "Draft" : "Published";
+          /* deleted+flagged = an admin suspended it. deleted alone = the
+             seller deleted it themselves (soft, because it had buyers). Order
+             matters: check the deleted pair before the bare flag, or every
+             takedown reads as a flag. */
+          const status: PromptProduct["status"] = doc?.deleted
+            ? doc?.flagged
+              ? "Suspended"
+              : "Removed by seller"
+            : doc?.flagged
+            ? "Flagged"
+            : doc?.draft
+            ? "Draft"
+            : "Published";
           return {
             id: String(doc._id),
             title: doc?.title || "Untitled",
@@ -16117,68 +16914,105 @@ useEffect(() => {
 
   // Suspend / reactivate a user — reuses the seller block endpoint (users and
   // sellers are the same account; sellerStatus drives blockIfSuspended).
-  const handleUserSuspendToggle = async () => {
+  const handleUserSuspendToggle = () => {
     if (!selectedUser) return;
     const suspending = selectedUser.status !== "SUSPENDED";
     const action = suspending ? "block" : "unblock";
-    const ok = window.confirm(
-      suspending
-        ? `Suspend "${selectedUser.name}"? They won't be able to buy, sell, or withdraw.`
-        : `Reactivate "${selectedUser.name}"? They regain full access.`
-    );
-    if (!ok) return;
-    try {
-      setUserSuspendLoading(true);
-      setUserSuspendError(null);
-      const res = await fetch(`${SELLERS_BASE}/${selectedUser.id}/block`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        credentials: "include",
-        body: JSON.stringify({ action }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.success) throw new Error(data?.error || "Action failed");
-      const newStatus = suspending ? "SUSPENDED" : "ACTIVE";
-      setSelectedUser((prev) => (prev ? { ...prev, status: newStatus } : prev));
-    } catch (e: any) {
-      setUserSuspendError(e?.message || "Action failed");
-    } finally {
-      setUserSuspendLoading(false);
-    }
+
+    setModeration({
+      title: suspending ? `Suspend ${selectedUser.name}?` : `Reactivate ${selectedUser.name}?`,
+      description: suspending
+        ? "They'll be signed out and won't be able to buy, sell, or withdraw until you reactivate them."
+        : "They regain full access to buy, sell, and withdraw.",
+      confirmLabel: suspending ? "Suspend account" : "Reactivate account",
+      presets: suspending ? ACCOUNT_SUSPEND_PRESETS : [],
+      destructive: suspending,
+      requireReason: suspending,
+      onConfirm: async (reason) => {
+        try {
+          setUserSuspendLoading(true);
+          setUserSuspendError(null);
+          const res = await fetch(`${SELLERS_BASE}/${selectedUser.id}/block`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+            credentials: "include",
+            body: JSON.stringify({ action, reason }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data?.success) throw new Error(data?.error || "Action failed");
+          const newStatus = suspending ? "SUSPENDED" : "ACTIVE";
+          setSelectedUser((prev) => (prev ? { ...prev, status: newStatus } : prev));
+          toast({
+            title: suspending ? "Account suspended" : "Account reactivated",
+            description: suspending
+              ? `${selectedUser.name} has been notified with the reason you gave.`
+              : `${selectedUser.name} has full access again.`,
+          });
+        } catch (e: any) {
+          setUserSuspendError(e?.message || "Action failed");
+          // Rethrown so the modal keeps the reason on screen instead of
+          // closing over a failure the admin never saw.
+          throw e;
+        } finally {
+          setUserSuspendLoading(false);
+        }
+      },
+    });
   };
 
   // Suspend / reactivate a whole org (owner + all members) via the admin freeze
   // endpoint.
-  const handleOrgSuspendToggle = async () => {
+  const handleOrgSuspendToggle = () => {
     if (!selectedOrg) return;
     const freezing = !selectedOrg.adminFrozen;
     const action = freezing ? "suspend" : "reactivate";
-    const ok = window.confirm(
-      freezing
-        ? `Suspend the whole org "${selectedOrg.name}"? The owner and all ${selectedOrg.membersCount} members will be blocked until reactivated.`
-        : `Reactivate "${selectedOrg.name}"? The owner and members regain access.`
-    );
-    if (!ok) return;
-    try {
-      setOrgSuspendLoading(true);
-      setOrgSuspendError(null);
-      const res = await fetch(`${API_BASE}/api/admin/orgs/${selectedOrg.id}/suspend`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        credentials: "include",
-        body: JSON.stringify({ action }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.success) throw new Error(data?.error || "Action failed");
-      setSelectedOrg((prev) => (prev ? { ...prev, adminFrozen: freezing } : prev));
-      setOrgRows((prev) =>
-        prev.map((o) => (o.id === selectedOrg.id ? { ...o, adminFrozen: freezing } : o))
-      );
-    } catch (e: any) {
-      setOrgSuspendError(e?.message || "Action failed");
-    } finally {
-      setOrgSuspendLoading(false);
-    }
+    // Owner + members. The count matters here in a way it doesn't for a single
+    // account: this one click can lock out a whole company.
+    const affected = selectedOrg.membersCount + 1;
+
+    setModeration({
+      title: freezing ? `Suspend ${selectedOrg.name}?` : `Reactivate ${selectedOrg.name}?`,
+      description: freezing
+        ? `The owner and all ${selectedOrg.membersCount} member${
+            selectedOrg.membersCount === 1 ? "" : "s"
+          } (${affected} accounts) will be blocked until you reactivate the org. Each of them gets your reason.`
+        : `The owner and ${selectedOrg.membersCount} member${
+            selectedOrg.membersCount === 1 ? "" : "s"
+          } regain access immediately.`,
+      confirmLabel: freezing ? "Suspend organization" : "Reactivate organization",
+      presets: freezing ? ORG_SUSPEND_PRESETS : [],
+      destructive: freezing,
+      requireReason: freezing,
+      onConfirm: async (reason) => {
+        try {
+          setOrgSuspendLoading(true);
+          setOrgSuspendError(null);
+          const res = await fetch(`${API_BASE}/api/admin/orgs/${selectedOrg.id}/suspend`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+            credentials: "include",
+            body: JSON.stringify({ action, reason }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data?.success) throw new Error(data?.error || "Action failed");
+          setSelectedOrg((prev) => (prev ? { ...prev, adminFrozen: freezing } : prev));
+          setOrgRows((prev) =>
+            prev.map((o) => (o.id === selectedOrg.id ? { ...o, adminFrozen: freezing } : o))
+          );
+          toast({
+            title: freezing ? "Organization suspended" : "Organization reactivated",
+            description: `${data.affectedAccounts ?? affected} account${
+              (data.affectedAccounts ?? affected) === 1 ? "" : "s"
+            } updated and notified.`,
+          });
+        } catch (e: any) {
+          setOrgSuspendError(e?.message || "Action failed");
+          throw e;
+        } finally {
+          setOrgSuspendLoading(false);
+        }
+      },
+    });
   };
 
   // Open a seller profile from the dashboard seller-snapshot list. Same fetch as
@@ -16255,41 +17089,103 @@ useEffect(() => {
     setSellerMainError(null);
   };
 
-  const handleSellerMainSuspendToggle = async () => {
+  const handleSellerMainSuspendToggle = () => {
     if (!selectedSellerMain) return;
-    const action = selectedSellerMain.status === "SUSPENDED" ? "unblock" : "block";
-    const ok = window.confirm(
-      action === "block"
-        ? `Suspend "${selectedSellerMain.name}"? They won't be able to sell on the platform.`
-        : `Reactivate "${selectedSellerMain.name}"? They regain access to sell.`
-    );
-    if (!ok) return;
-    try {
-      setSellerMainSuspendLoading(true);
-      setSellerMainSuspendError(null);
-      const res = await fetch(`${SELLERS_BASE}/${selectedSellerMain.id}/block`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        credentials: "include",
-        body: JSON.stringify({ action }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.success) throw new Error(data?.error || "Action failed");
-      const newStatus = action === "block" ? "SUSPENDED" : "ACTIVE";
-      setSelectedSellerMain((prev) => (prev ? { ...prev, status: newStatus } : prev));
-      setSellerRows((prev) =>
-        prev.map((r) =>
-          r.id === selectedSellerMain.id
-            ? { ...r, status: newStatus === "SUSPENDED" ? "Blocked" : "Active" }
-            : r
-        )
-      );
-    } catch (e: any) {
-      setSellerMainSuspendError(e?.message || "Action failed");
-    } finally {
-      setSellerMainSuspendLoading(false);
-    }
+    const suspending = selectedSellerMain.status !== "SUSPENDED";
+    const action = suspending ? "block" : "unblock";
+
+    setModeration({
+      title: suspending
+        ? `Suspend ${selectedSellerMain.name}?`
+        : `Reactivate ${selectedSellerMain.name}?`,
+      description: suspending
+        ? "They'll be signed out and their listings stop selling until you reactivate them."
+        : "They regain access to sell on the platform.",
+      confirmLabel: suspending ? "Suspend seller" : "Reactivate seller",
+      presets: suspending ? ACCOUNT_SUSPEND_PRESETS : [],
+      destructive: suspending,
+      requireReason: suspending,
+      onConfirm: async (reason) => {
+        try {
+          setSellerMainSuspendLoading(true);
+          setSellerMainSuspendError(null);
+          const res = await fetch(`${SELLERS_BASE}/${selectedSellerMain.id}/block`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+            credentials: "include",
+            body: JSON.stringify({ action, reason }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data?.success) throw new Error(data?.error || "Action failed");
+          const newStatus = suspending ? "SUSPENDED" : "ACTIVE";
+          setSelectedSellerMain((prev) => (prev ? { ...prev, status: newStatus } : prev));
+          setSellerRows((prev) =>
+            prev.map((r) =>
+              r.id === selectedSellerMain.id
+                ? { ...r, status: newStatus === "SUSPENDED" ? "Blocked" : "Active" }
+                : r
+            )
+          );
+          toast({
+            title: suspending ? "Seller suspended" : "Seller reactivated",
+            description: suspending
+              ? `${selectedSellerMain.name} has been notified with the reason you gave.${
+                  data?.cascade?.cancelledCount
+                    ? ` ${data.cascade.cancelledCount} unpaid deal(s) were cancelled.`
+                    : ""
+                }`
+              : `${selectedSellerMain.name} can sell again.`,
+          });
+        } catch (e: any) {
+          setSellerMainSuspendError(e?.message || "Action failed");
+          throw e;
+        } finally {
+          setSellerMainSuspendLoading(false);
+        }
+      },
+    });
   };
+  /* Block / unblock straight from a row of the dashboard seller snapshot. The
+     button used to be `console.log(...)` — it looked live and did nothing.
+     Same endpoint and the same reason sheet as the Seller Management page. */
+  const handleSellerRowAction = (row: SellerRow) => {
+    const suspending = row.status === "Active";
+    const action = suspending ? "block" : "unblock";
+
+    setModeration({
+      title: `${suspending ? "Block" : "Unblock"} ${row.name}?`,
+      description: suspending
+        ? "Buying, selling, services, hire deals and withdrawals stop immediately. They stay signed in and can message you to appeal."
+        : "They regain full access to buy, sell, and withdraw.",
+      confirmLabel: suspending ? "Block seller" : "Unblock seller",
+      presets: suspending ? ACCOUNT_SUSPEND_PRESETS : [],
+      destructive: suspending,
+      requireReason: suspending,
+      onConfirm: async (reason) => {
+        const res = await fetch(`${SELLERS_BASE}/${row.id}/block`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+          credentials: "include",
+          body: JSON.stringify({ action, reason }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.success) throw new Error(data?.error || "Action failed");
+
+        setSellerRows((prev) =>
+          prev.map((s) =>
+            s.id === row.id ? { ...s, status: suspending ? "Blocked" : "Active" } : s
+          )
+        );
+        toast({
+          title: suspending ? "Seller blocked" : "Seller unblocked",
+          description: suspending
+            ? `${row.name} has been notified with the reason you gave.`
+            : `${row.name} has access again.`,
+        });
+      },
+    });
+  };
+
   // =======================
   // Dashboard chart/table/activity data
   // =======================
@@ -16590,7 +17486,6 @@ const [mobileReportsPage, setMobileReportsPage] = useState<"list" | "details">("
   // const [sellerRows, setSellerRows] = useState<SellerRow[]>([]);
   const [sellersLoading, setSellersLoading] = useState(false);
   const [sellersError, setSellersError] = useState<string | null>(null);
-  const [showAllSellers, setShowAllSellers] = useState(false);
     
 
 
@@ -16732,35 +17627,10 @@ useEffect(() => {
   fetchPlatformRevenue();
 }, []);
 
-const handleMarkWithdrawn = async () => {
-  const amount = Number(withdrawAmount);
-  if (!Number.isFinite(amount) || amount <= 0) return;
-  setWithdrawSubmitting(true);
-  try {
-    const token = getToken();
-    const res = await fetch(`${API_BASE}/api/admin/platform-revenue/withdraw`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      credentials: "include",
-      body: JSON.stringify({ amount, note: withdrawNote.trim() }),
-    });
-    const data = await res.json();
-    if (!res.ok || !data?.success) {
-      throw new Error(data?.error || "withdraw_failed");
-    }
-    setWithdrawModalOpen(false);
-    setWithdrawAmount("");
-    setWithdrawNote("");
-    await fetchPlatformRevenue();
-  } catch (e: any) {
-    alert(e?.message === "insufficient_balance" ? "Amount exceeds available balance." : "Could not record withdrawal.");
-  } finally {
-    setWithdrawSubmitting(false);
-  }
-};
+/* handleMarkWithdrawn was here, with the POST to
+   /api/admin/platform-revenue/withdraw. Both are gone — commission settles into
+   Tokun's Razorpay account by itself, so there was no real transfer for this to
+   record. */
 
 useEffect(() => {
   const loadPendingApprovals = async () => {
@@ -16822,14 +17692,19 @@ useEffect(() => {
         setProductsError(null);
 
         const token = getToken();
-        const res = await fetch(`${PROMPTS_BASE}/others`, {
+        /* Was `${PROMPTS_BASE}/others` — the PUBLIC marketplace feed, which
+           filters out flagged and deleted listings by design. So the instant an
+           admin flagged or suspended something from a report it disappeared
+           from this page, and the "Flagged" counter could only ever read 0.
+           /admin/all returns the whole catalogue with its moderation state. */
+        const res = await fetch(`${PROMPTS_BASE}/admin/all`, {
           headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           credentials: "include",
         });
 
         const data = await res.json();
         if (!res.ok || !data?.success) {
-          throw new Error(data?.error || "Failed to load marketplace prompts");
+          throw new Error(data?.error || "Failed to load products");
         }
 
         const mapped: PromptProduct[] = (data.prompts || []).map((doc: any) => {
@@ -16874,6 +17749,9 @@ useEffect(() => {
                 : "General"),
             exclusive: !!doc?.exclusive,
             sold: !!doc?.sold,
+            salesCount: Number(doc?.salesCount || 0),
+            totalRevenue: Number(doc?.totalRevenue || 0),
+            deletedAt: doc?.deletedAt || null,
           };
         });
 
@@ -16958,15 +17836,11 @@ useEffect(() => {
     });
   };
 
-  const activeUsersCount = useMemo(() => {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-
-  return userRows.filter(u => {
-    if (!u.lastLoginAt) return false;
-    return new Date(u.lastLoginAt).getTime() >= start.getTime();
-  }).length;
-}, [userRows]);
+/* activeUsersCount lived here and fed an "ACTIVE USERS" card in the User tab.
+   It counted logins-since-midnight over `userRows` — one page of ten users —
+   so the card showed 0 for any realistic admin session. The card is gone and
+   this went with it; a real version needs a server-side count, not a filter
+   over whatever page happens to be loaded. */
 
 /* The sidebar's contents, grouped.
    Eight flat items read as one undifferentiated list; grouped, an admin can
@@ -16985,15 +17859,9 @@ useEffect(() => {
    Declared at module scope, like PaymentsView and for the same reason: a
    component defined inside another is a new type on every parent render and
    loses its state. */
-const CHART_SERIES = {
-  blue: "#4F86F7",
-  amber: "#CE7C1C",
-  teal: "#12A594",
-  violet: "#AB5BEE",
-};
-
-const CHART_AXIS = "rgba(255,255,255,0.35)";
-const CHART_GRID = "rgba(255,255,255,0.06)";
+/* CHART_SERIES / CHART_AXIS / CHART_GRID moved above PaymentsView — they are
+   now shared with RevenueSourcesPanel, which is declared earlier in the file
+   and would hit the temporal dead zone reading them from here. */
 
 const RevenueCharts = ({
   transactions,
@@ -17547,13 +18415,19 @@ useEffect(() => {
   onDismiss,
   onFlag,
   onSuspend,
+  busy,
 }: {
   report: ReportItem;
   onClose: () => void;
   onDismiss: (id: string) => void;
   onFlag: (listingId: string) => void;
   onSuspend: (listingId: string) => void;
+  /** Which of the three actions is currently in flight, if any. */
+  busy?: "dismiss" | "flag" | "suspend" | null;
 }) => {
+  // Once the report is closed the three buttons are no-ops on the server, so
+  // they're disabled rather than left looking clickable.
+  const settled = report.status !== "Open";
   return (
   <div className="w-full min-w-0 space-y-6">
 
@@ -17574,23 +18448,39 @@ useEffect(() => {
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 md:gap-3">
       <button
         onClick={() => onDismiss(report.id)}
-        className="h-10 px-4 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] text-sm w-full"
+        disabled={settled || !!busy}
+        className="h-10 px-4 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] text-sm w-full disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        Dismiss Report
+        {busy === "dismiss" ? "Dismissing…" : "Dismiss Report"}
       </button>
       <button
         onClick={() => onFlag(report.id)}
-        className="h-10 px-4 rounded-xl bg-[#1677FF] hover:opacity-90 text-sm font-medium w-full"
+        disabled={settled || !!busy}
+        className="h-10 px-4 rounded-xl bg-[#1677FF] hover:opacity-90 text-sm font-medium w-full disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        Flag Product
+        {busy === "flag" ? "Flagging…" : "Flag Product"}
       </button>
       <button
         onClick={() => onSuspend(report.id)}
-        className="h-10 px-4 rounded-xl bg-red-500 hover:opacity-90 text-sm font-medium w-full"
+        disabled={settled || !!busy}
+        className="h-10 px-4 rounded-xl bg-red-500 hover:opacity-90 text-sm font-medium w-full disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        Suspend Listing
+        {busy === "suspend" ? "Suspending…" : "Suspend Listing"}
       </button>
     </div>
+
+    {/* What already happened to this report — the buttons above go quiet once
+        it's settled, and this says why. */}
+    {settled && (
+      <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-white/60">
+        This report is <span className="text-white/85 font-medium">{report.status}</span>
+        {report.history?.length
+          ? ` — ${report.history[report.history.length - 1].action} by ${
+              report.history[report.history.length - 1].by
+            }.`
+          : "."}
+      </div>
+    )}
   </div>
 </div>
 
@@ -17821,9 +18711,23 @@ useEffect(() => {
       );
     };
 
-    const callReportAction = async (reportId: string, action: "dismiss" | "flag" | "suspend") => {
+    /* Which report action is mid-flight, so the three buttons can show it.
+       Previously a click did its work in complete silence: on failure the only
+       trace was a console.error, and on success nothing moved except a status
+       chip further down the page. */
+    const [reportActionBusy, setReportActionBusy] = useState<
+      "dismiss" | "flag" | "suspend" | null
+    >(null);
+    const [reportModeration, setReportModeration] = useState<ModerationRequest | null>(null);
+
+    const callReportAction = async (
+      reportId: string,
+      action: "dismiss" | "flag" | "suspend",
+      note: string
+    ) => {
       const token = getToken();
       try {
+        setReportActionBusy(action);
         const res = await fetch(`${REPORTS_BASE}/${reportId}/${action}`, {
           method: "POST",
           headers: {
@@ -17831,6 +18735,8 @@ useEffect(() => {
             Authorization: `Bearer ${token}`,
           },
           credentials: "include",
+          // The seller's notification quotes this note — see promptreportRoutes.
+          body: JSON.stringify({ note }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data?.success) {
@@ -17839,27 +18745,100 @@ useEffect(() => {
         return true;
       } catch (err: any) {
         console.error(`${action} report failed:`, err.message);
-        return false;
+        // No `destructive` variant on purpose — see toastVariants; severity
+        // lives in the wording.
+        toast({
+          title: `Couldn't ${action} this report`,
+          description: err?.message || "The action didn't go through. Try again.",
+        });
+        throw err;
+      } finally {
+        setReportActionBusy(null);
       }
     };
 
-    const dismissReport = async (id: string) => {
-      const ok = await callReportAction(id, "dismiss");
-      if (ok) applyReportAction(id, "Dismissed", "Dismissed report");
+    const dismissReport = (id: string) => {
+      const report = reports.find((r) => r.id === id);
+      setReportModeration({
+        title: "Dismiss this report?",
+        description:
+          "No action is taken against the listing. The report is closed and the seller is not notified.",
+        confirmLabel: "Dismiss report",
+        presets: [
+          "No policy violation found",
+          "Duplicate of an earlier report",
+          "Reporter withdrew the complaint",
+        ],
+        destructive: false,
+        requireReason: false,
+        onConfirm: async (note) => {
+          await callReportAction(id, "dismiss", note);
+          applyReportAction(id, "Dismissed", note ? `Dismissed report — ${note}` : "Dismissed report");
+          toast({
+            title: "Report dismissed",
+            description: `"${report?.productTitle || report?.title || "The listing"}" stays live on the marketplace.`,
+          });
+        },
+      });
     };
 
-    const flagProduct = async (reportId: string) => {
-      const ok = await callReportAction(reportId, "flag");
-      if (ok) applyReportAction(reportId, "Reviewed", "Flagged product — hidden from marketplace, seller notified");
+    const flagProduct = (reportId: string) => {
+      const report = reports.find((r) => r.id === reportId);
+      setReportModeration({
+        title: "Flag this product?",
+        description:
+          "It's hidden from the marketplace immediately and the seller is notified with your reason.",
+        confirmLabel: "Flag product",
+        presets: LISTING_ACTION_PRESETS,
+        destructive: true,
+        requireReason: true,
+        onConfirm: async (note) => {
+          await callReportAction(reportId, "flag", note);
+          applyReportAction(
+            reportId,
+            "Reviewed",
+            `Flagged product — hidden from marketplace, seller notified${note ? `: ${note}` : ""}`
+          );
+          toast({
+            title: "Product flagged",
+            description: `"${report?.productTitle || report?.title || "The listing"}" is hidden from the marketplace and the seller has been told why.`,
+          });
+        },
+      });
     };
 
-    const suspendListing = async (reportId: string) => {
-      const ok = await callReportAction(reportId, "suspend");
-      if (ok) applyReportAction(reportId, "Actioned", "Suspended listing — removed from marketplace, seller notified");
+    const suspendListing = (reportId: string) => {
+      const report = reports.find((r) => r.id === reportId);
+      setReportModeration({
+        title: "Suspend this listing?",
+        description:
+          "It's taken down for good — buyers who already paid keep their access. The seller is notified with your reason.",
+        confirmLabel: "Suspend listing",
+        presets: LISTING_ACTION_PRESETS,
+        destructive: true,
+        requireReason: true,
+        onConfirm: async (note) => {
+          await callReportAction(reportId, "suspend", note);
+          applyReportAction(
+            reportId,
+            "Actioned",
+            `Suspended listing — removed from marketplace, seller notified${note ? `: ${note}` : ""}`
+          );
+          toast({
+            title: "Listing suspended",
+            description: `"${report?.productTitle || report?.title || "The listing"}" has been removed from the marketplace and the seller has been told why.`,
+          });
+        },
+      });
     };
 
     return (
       <>
+        <ModerationReasonModal
+          request={reportModeration}
+          onClose={() => setReportModeration(null)}
+        />
+
         {/* Page title */}
           <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
   <div className="text-center md:text-left">
@@ -17956,12 +18935,13 @@ useEffect(() => {
           setSelectedReport(null);
           setMobileReportsPage("list");
         }}
-        onDismiss={(id) => {
-          dismissReport(id);
-          setMobileReportsPage("list");
-        }}
-        onFlag={(listingId) => flagProduct(listingId)}
-        onSuspend={(listingId) => suspendListing(listingId)}
+        /* No jump back to the list on dismiss any more — the action opens the
+           reason sheet first, and after it lands the detail panel is where the
+           "this report is Dismissed" banner appears. */
+        onDismiss={dismissReport}
+        onFlag={flagProduct}
+        onSuspend={suspendListing}
+        busy={reportActionBusy}
       />
     </div>
   ) : (
@@ -17986,6 +18966,7 @@ useEffect(() => {
             onDismiss={dismissReport}
             onFlag={flagProduct}
             onSuspend={suspendListing}
+            busy={reportActionBusy}
           />
         </div>
       )}
@@ -18072,7 +19053,12 @@ const SellersMobileCards = ({
 
 const SellersView = () => {
   const [query, setQuery] = useState("");
-  const [tab, setTab] = useState<"all" | "active" | "blocked" | "deleted">("all");
+  /* No "deleted" tab any more — an admin can't delete or restore an account,
+     so the tab listed rows nothing on this page could act on. Suspension
+     replaced it: it stops every transaction, and the person keeps their login
+     so they can appeal. Self-deleted accounts still exist in the DB and are
+     simply not surfaced here. */
+  const [tab, setTab] = useState<"all" | "active" | "blocked">("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [selectedSeller, setSelectedSeller] = useState<SellerProfile | null>(null);
@@ -18080,16 +19066,23 @@ const SellersView = () => {
   const [sellerError, setSellerError] = useState<string | null>(null);
   const [sellerProducts, setSellerProducts] = useState<PromptProduct[]>([]);
 
-  // ✅ Popup state
+  // ✅ Popup state. The row-level block/delete buttons set this; a useMemo below
+  // turns it into the ModerationReasonModal request, so the confirm step and
+  // the reason step are the same dialog rather than two.
   const [confirmPopup, setConfirmPopup] = useState<{
-    type: "block" | "unblock" | "delete" | "restore";
+    type: "block" | "unblock";
     seller: SellerRow;
   } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // ✅ Block / Unblock API call
-  const handleBlockToggle = async (seller: SellerRow) => {
+  // Reason sheet for the seller-profile suspend button (separate from the list's
+  // confirmPopup because this component early-returns past that modal).
+  const [moderation, setModeration] = useState<ModerationRequest | null>(null);
+
+  // ✅ Block / Unblock API call. The reason comes from ModerationReasonModal and
+  // is what the seller sees in their notification — see the /block route.
+  const handleBlockToggle = async (seller: SellerRow, reason: string) => {
     const action = seller.status === "Active" ? "block" : "unblock";
     try {
       setActionLoading(true);
@@ -18102,7 +19095,7 @@ const SellersView = () => {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         credentials: "include",
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, reason }),
       });
       const data = await res.json();
       if (!res.ok || !data?.success) throw new Error(data?.error || "Failed");
@@ -18120,9 +19113,16 @@ const SellersView = () => {
           ? { ...prev, status: action === "block" ? "SUSPENDED" : "ACTIVE" }
           : prev
       );
-      setConfirmPopup(null);
+      toast({
+        title: action === "block" ? "Seller blocked" : "Seller unblocked",
+        description:
+          action === "block"
+            ? `${seller.name} has been notified with the reason you gave.`
+            : `${seller.name} can sell on the platform again.`,
+      });
     } catch (e: any) {
       setActionError(e?.message || "Action failed");
+      throw e;
     } finally {
       setActionLoading(false);
     }
@@ -18133,85 +19133,65 @@ const SellersView = () => {
   const [profileSuspendLoading, setProfileSuspendLoading] = useState(false);
   const [profileSuspendError, setProfileSuspendError] = useState<string | null>(null);
 
-  const handleProfileSuspendToggle = async () => {
+  const handleProfileSuspendToggle = () => {
     if (!selectedSeller) return;
-    const action = selectedSeller.status === "SUSPENDED" ? "unblock" : "block";
-    const confirmMsg =
-      action === "block"
-        ? `Suspend "${selectedSeller.name}"? They won't be able to sell on the platform.`
-        : `Reactivate "${selectedSeller.name}"? They will regain access to sell.`;
-    if (!window.confirm(confirmMsg)) return;
+    const suspending = selectedSeller.status !== "SUSPENDED";
+    const action = suspending ? "block" : "unblock";
 
-    try {
-      setProfileSuspendLoading(true);
-      setProfileSuspendError(null);
-      const token = getToken();
-      const res = await fetch(`${SELLERS_BASE}/${selectedSeller.id}/block`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        credentials: "include",
-        body: JSON.stringify({ action }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.success) throw new Error(data?.error || "Failed");
+    setModeration({
+      title: suspending ? `Suspend ${selectedSeller.name}?` : `Reactivate ${selectedSeller.name}?`,
+      description: suspending
+        ? "They'll be signed out and their listings stop selling until you reactivate them."
+        : "They regain access to sell on the platform.",
+      confirmLabel: suspending ? "Suspend seller" : "Reactivate seller",
+      presets: suspending ? ACCOUNT_SUSPEND_PRESETS : [],
+      destructive: suspending,
+      requireReason: suspending,
+      onConfirm: async (reason) => {
+        try {
+          setProfileSuspendLoading(true);
+          setProfileSuspendError(null);
+          const token = getToken();
+          const res = await fetch(`${SELLERS_BASE}/${selectedSeller.id}/block`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            credentials: "include",
+            body: JSON.stringify({ action, reason }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data?.success) throw new Error(data?.error || "Failed");
 
-      const newProfileStatus = action === "block" ? "SUSPENDED" : "ACTIVE";
-      setSelectedSeller((prev) => (prev ? { ...prev, status: newProfileStatus } : prev));
-      setSellerRows((prev) =>
-        prev.map((s) =>
-          s.id === selectedSeller.id
-            ? { ...s, status: newProfileStatus === "SUSPENDED" ? "Blocked" : "Active" }
-            : s
-        )
-      );
-    } catch (e: any) {
-      setProfileSuspendError(e?.message || "Action failed");
-    } finally {
-      setProfileSuspendLoading(false);
-    }
+          const newProfileStatus = suspending ? "SUSPENDED" : "ACTIVE";
+          setSelectedSeller((prev) => (prev ? { ...prev, status: newProfileStatus } : prev));
+          setSellerRows((prev) =>
+            prev.map((s) =>
+              s.id === selectedSeller.id
+                ? { ...s, status: newProfileStatus === "SUSPENDED" ? "Blocked" : "Active" }
+                : s
+            )
+          );
+          toast({
+            title: suspending ? "Seller suspended" : "Seller reactivated",
+            description: suspending
+              ? `${selectedSeller.name} has been notified with the reason you gave.`
+              : `${selectedSeller.name} can sell again.`,
+          });
+        } catch (e: any) {
+          setProfileSuspendError(e?.message || "Action failed");
+          throw e;
+        } finally {
+          setProfileSuspendLoading(false);
+        }
+      },
+    });
   };
 
-  // ✅ Soft Delete / Restore API call
-  const handleDeleteToggle = async (seller: SellerRow) => {
-    const action = seller.isDeleted ? "restore" : "delete";
-    try {
-      setActionLoading(true);
-      setActionError(null);
-      const token = getToken();
-      const res = await fetch(`${SELLERS_BASE}/${seller.id}/soft-delete`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        credentials: "include",
-        body: JSON.stringify({ action }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.success) throw new Error(data?.error || "Failed");
-
-      // ✅ Update local state
-      setSellerRows((prev) =>
-        prev.map((s) =>
-          s.id === seller.id
-            ? {
-                ...s,
-                isDeleted: action === "delete",
-                status: action === "delete" ? "Blocked" : "Active",
-              }
-            : s
-        )
-      );
-      setConfirmPopup(null);
-    } catch (e: any) {
-      setActionError(e?.message || "Action failed");
-    } finally {
-      setActionLoading(false);
-    }
-  };
+  /* handleDeleteToggle (PATCH /soft-delete) was here, removed with the delete
+     action itself. The endpoint is gone from the server too — see the note
+     where it used to live in routes/sellerRoutes.js. */
 
   const openSellerProfile = async (sellerId?: string | null) => {
     if (!sellerId) return;
@@ -18332,10 +19312,11 @@ setSelectedSeller({
     const q = query.trim().toLowerCase();
     let list = [...sellerRows];
 
-    if (tab === "active") list = list.filter((s) => s.status === "Active" && !s.isDeleted);
-    else if (tab === "blocked") list = list.filter((s) => s.status === "Blocked" && !s.isDeleted);
-    else if (tab === "deleted") list = list.filter((s) => !!s.isDeleted);
-    else list = list.filter((s) => !s.isDeleted); // "all" = non-deleted
+    // Self-deleted accounts are excluded from every tab — there is no admin
+    // action left that applies to them.
+    list = list.filter((s) => !s.isDeleted);
+    if (tab === "active") list = list.filter((s) => s.status === "Active");
+    else if (tab === "blocked") list = list.filter((s) => s.status === "Blocked");
 
     if (q) {
       list = list.filter(
@@ -18371,74 +19352,48 @@ setSelectedSeller({
     );
   }
 
-  // ✅ Popup labels helper
-  const popupConfig = confirmPopup
+  /* The row-level confirm turned into the reason sheet: blocking requires a
+     reason (the seller is shown it), unblocking doesn't. */
+  const rowModeration: ModerationRequest | null = confirmPopup
     ? {
-        block: {
-          title: "Block Seller?",
-          desc: `Are you sure you want to block "${confirmPopup.seller.name}"? They won't be able to sell on the platform.`,
-          confirmLabel: "Yes, Block",
-          confirmClass: "bg-red-500 hover:opacity-90",
+        ...{
+          block: {
+            title: `Block ${confirmPopup.seller.name}?`,
+            description:
+              "Buying, selling, services, hire deals and withdrawals stop immediately. They stay signed in and can message you to appeal.",
+            confirmLabel: "Block seller",
+            presets: ACCOUNT_SUSPEND_PRESETS,
+            destructive: true,
+            requireReason: true,
+          },
+          unblock: {
+            title: `Unblock ${confirmPopup.seller.name}?`,
+            description: "They regain full access to buy, sell, and withdraw.",
+            confirmLabel: "Unblock seller",
+            presets: [] as string[],
+            destructive: false,
+            requireReason: false,
+          },
+        }[confirmPopup.type],
+        onConfirm: async (reason: string) => {
+          await handleBlockToggle(confirmPopup.seller, reason);
         },
-        unblock: {
-          title: "Unblock Seller?",
-          desc: `Are you sure you want to unblock "${confirmPopup.seller.name}"? They will regain access to sell.`,
-          confirmLabel: "Yes, Unblock",
-          confirmClass: "bg-emerald-500 hover:opacity-90",
-        },
-        delete: {
-          title: "Delete Seller?",
-          desc: `Are you sure you want to delete "${confirmPopup.seller.name}"? This is a soft delete — you can restore them later.`,
-          confirmLabel: "Yes, Delete",
-          confirmClass: "bg-red-500 hover:opacity-90",
-        },
-        restore: {
-          title: "Restore Seller?",
-          desc: `Are you sure you want to restore "${confirmPopup.seller.name}"? They will be moved back to Active sellers.`,
-          confirmLabel: "Yes, Restore",
-          confirmClass: "bg-emerald-500 hover:opacity-90",
-        },
-      }[confirmPopup.type]
+      }
     : null;
 
   return (
     <>
-      {/* ✅ CONFIRM POPUP */}
-      {confirmPopup && popupConfig && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0F1117] p-6 shadow-2xl">
-            <h2 className="text-lg font-semibold text-white">{popupConfig.title}</h2>
-            <p className="mt-3 text-sm text-white/65 leading-relaxed">{popupConfig.desc}</p>
+      {/* ✅ CONFIRM + REASON POPUP (row actions) */}
+      <ModerationReasonModal
+        request={rowModeration}
+        onClose={() => {
+          setConfirmPopup(null);
+          setActionError(null);
+        }}
+      />
 
-            {actionError && (
-              <div className="mt-3 text-xs text-red-400">{actionError}</div>
-            )}
-
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={() => { setConfirmPopup(null); setActionError(null); }}
-                className="flex-1 h-11 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.07] text-sm text-white/80"
-                disabled={actionLoading}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  if (confirmPopup.type === "block" || confirmPopup.type === "unblock") {
-                    handleBlockToggle(confirmPopup.seller);
-                  } else {
-                    handleDeleteToggle(confirmPopup.seller);
-                  }
-                }}
-                className={`flex-1 h-11 rounded-xl text-sm font-medium text-white ${popupConfig.confirmClass} disabled:opacity-60`}
-                disabled={actionLoading}
-              >
-                {actionLoading ? "Please wait…" : popupConfig.confirmLabel}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Reason sheet for the seller-profile suspend button */}
+      <ModerationReasonModal request={moderation} onClose={() => setModeration(null)} />
 
       {/* Header */}
       <div className="mt-2 md:mt-0">
@@ -18476,23 +19431,21 @@ setSelectedSeller({
             />
           </div>
 
-          {/* ✅ Tabs — All / Active / Blocked / Deleted */}
+          {/* ✅ Tabs — All / Active / Blocked */}
           <div className="overflow-x-auto">
             <div className="h-11 p-1 rounded-xl border border-white/10 bg-white/[0.03] flex items-center gap-1 w-max">
-              {(["all", "active", "blocked", "deleted"] as const).map((t) => (
+              {(["all", "active", "blocked"] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}
                   className={[
                     "h-9 px-4 rounded-lg text-sm capitalize whitespace-nowrap",
                     tab === t
-                      ? t === "deleted"
-                        ? "bg-red-500/20 text-red-200 border border-red-500/25"
-                        : "bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] text-white"
+                      ? "bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] text-white"
                       : "text-white/70 hover:text-white",
                   ].join(" ")}
                 >
-                  {t === "all" ? "All Sellers" : t === "deleted" ? "🗑 Deleted" : t.charAt(0).toUpperCase() + t.slice(1)}
+                  {t === "all" ? "All Sellers" : t.charAt(0).toUpperCase() + t.slice(1)}
                 </button>
               ))}
             </div>
@@ -18562,39 +19515,22 @@ setSelectedSeller({
                   </div>
                 </div>
 
+                {/* Block / Unblock. The Delete / Restore button that sat
+                    beside this is gone with the delete action. */}
                 <div className="mt-4 flex gap-2">
-                  {/* Block / Unblock */}
-                  {!r.isDeleted && (
-                    <button
-                      onClick={() => setConfirmPopup({
-                        type: r.status === "Active" ? "block" : "unblock",
-                        seller: r,
-                      })}
-                      className={[
-                        "flex-1 h-10 rounded-xl border text-xs font-medium",
-                        r.status === "Active"
-                          ? "border-red-500/25 bg-red-500/10 text-red-300 hover:bg-red-500/15"
-                          : "border-sky-500/25 bg-sky-500/10 text-sky-200 hover:bg-sky-500/15",
-                      ].join(" ")}
-                    >
-                      {r.status === "Active" ? "🚫 Block" : "✅ Unblock"}
-                    </button>
-                  )}
-
-                  {/* Delete / Restore */}
                   <button
                     onClick={() => setConfirmPopup({
-                      type: r.isDeleted ? "restore" : "delete",
+                      type: r.status === "Active" ? "block" : "unblock",
                       seller: r,
                     })}
                     className={[
                       "flex-1 h-10 rounded-xl border text-xs font-medium",
-                      r.isDeleted
-                        ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/15"
-                        : "border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/[0.06]",
+                      r.status === "Active"
+                        ? "border-red-500/25 bg-red-500/10 text-red-300 hover:bg-red-500/15"
+                        : "border-sky-500/25 bg-sky-500/10 text-sky-200 hover:bg-sky-500/15",
                     ].join(" ")}
                   >
-                    {r.isDeleted ? "↩ Restore" : "🗑 Delete"}
+                    {r.status === "Active" ? "🚫 Block" : "✅ Unblock"}
                   </button>
                 </div>
               </div>
@@ -18707,39 +19643,22 @@ setSelectedSeller({
                         </span>
                       </div>
 
+                      {/* Block / Unblock is the only moderation action left
+                          here — Delete / Restore went with the delete flow. */}
                       <div className="col-span-1 flex justify-end items-center gap-3">
-                        {/* Block / Unblock */}
-                        {!r.isDeleted && (
-                          <button
-                            onClick={() => setConfirmPopup({
-                              type: r.status === "Active" ? "block" : "unblock",
-                              seller: r,
-                            })}
-                            className={[
-                              "text-xs font-medium",
-                              r.status === "Active"
-                                ? "text-red-400 hover:text-red-300"
-                                : "text-sky-400 hover:text-sky-300",
-                            ].join(" ")}
-                          >
-                            {r.status === "Active" ? "Block" : "Unblock"}
-                          </button>
-                        )}
-
-                        {/* Delete / Restore */}
                         <button
                           onClick={() => setConfirmPopup({
-                            type: r.isDeleted ? "restore" : "delete",
+                            type: r.status === "Active" ? "block" : "unblock",
                             seller: r,
                           })}
                           className={[
                             "text-xs font-medium",
-                            r.isDeleted
-                              ? "text-emerald-400 hover:text-emerald-300"
-                              : "text-white/50 hover:text-white/80",
+                            r.status === "Active"
+                              ? "text-red-400 hover:text-red-300"
+                              : "text-sky-400 hover:text-sky-300",
                           ].join(" ")}
                         >
-                          {r.isDeleted ? "Restore" : "🗑"}
+                          {r.status === "Active" ? "Block" : "Unblock"}
                         </button>
                       </div>
                     </div>
@@ -18825,6 +19744,83 @@ const ProductsView = () => {
   // ✅ PAGINATION STATE
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
+
+  /* Listing moderation from this page. Flag and suspend were only reachable
+     from a report and had no inverse, so an admin who acted on a bad report
+     couldn't put the listing back. All four actions live here now. */
+  const [productModeration, setProductModeration] = useState<ModerationRequest | null>(null);
+  const [moderatingId, setModeratingId] = useState<string | null>(null);
+
+  const moderateProduct = (
+    product: PromptProduct,
+    action: "flag" | "unflag" | "suspend" | "restore"
+  ) => {
+    const restrictive = action === "flag" || action === "suspend";
+
+    setProductModeration({
+      title: {
+        flag: `Flag "${product.title}"?`,
+        unflag: `Remove the flag on "${product.title}"?`,
+        suspend: `Suspend "${product.title}"?`,
+        restore: `Restore "${product.title}"?`,
+      }[action],
+      description: {
+        flag: "It's hidden from the marketplace straight away. Reversible — you can unflag it later.",
+        unflag: "It goes back on the marketplace and buyers can find it again.",
+        suspend:
+          "It's taken down from the marketplace. Buyers who already purchased it keep their access.",
+        restore: "It goes back on the marketplace, fully live, with the flag cleared.",
+      }[action],
+      confirmLabel: {
+        flag: "Flag listing",
+        unflag: "Remove flag",
+        suspend: "Suspend listing",
+        restore: "Restore listing",
+      }[action],
+      presets: restrictive ? LISTING_ACTION_PRESETS : [],
+      destructive: restrictive,
+      requireReason: restrictive,
+      onConfirm: async (reason) => {
+        try {
+          setModeratingId(product.id);
+          const token = getToken();
+          const res = await fetch(`${PROMPTS_BASE}/admin/${product.id}/moderation`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            credentials: "include",
+            body: JSON.stringify({ action, reason }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data?.success) {
+            throw new Error(data?.message || data?.error || "Action failed");
+          }
+
+          const nextStatus: PromptProduct["status"] =
+            action === "suspend" ? "Suspended" : action === "flag" ? "Flagged" : "Published";
+          setProducts((prev) =>
+            prev.map((x) => (x.id === product.id ? { ...x, status: nextStatus } : x))
+          );
+
+          toast({
+            title: {
+              flag: "Listing flagged",
+              unflag: "Flag removed",
+              suspend: "Listing suspended",
+              restore: "Listing restored",
+            }[action],
+            description: restrictive
+              ? `The seller has been notified with the reason you gave.`
+              : `"${product.title}" is back on the marketplace and the seller has been told.`,
+          });
+        } finally {
+          setModeratingId(null);
+        }
+      },
+    });
+  };
 
   // ... openSellerProfile, closeSellerProfile same rahega ...
 
@@ -19016,43 +20012,62 @@ const closeSellerProfile = () => {
 
 const [profileSuspendLoading, setProfileSuspendLoading] = useState(false);
 const [profileSuspendError, setProfileSuspendError] = useState<string | null>(null);
+// Reason sheet for the seller profile reached from the Products page.
+const [moderation, setModeration] = useState<ModerationRequest | null>(null);
 
-const handleProfileSuspendToggle = async () => {
+const handleProfileSuspendToggle = () => {
   if (!selectedSeller) return;
-  const action = selectedSeller.status === "SUSPENDED" ? "unblock" : "block";
-  const confirmMsg =
-    action === "block"
-      ? `Suspend "${selectedSeller.name}"? They won't be able to sell on the platform.`
-      : `Reactivate "${selectedSeller.name}"? They will regain access to sell.`;
-  if (!window.confirm(confirmMsg)) return;
+  const suspending = selectedSeller.status !== "SUSPENDED";
+  const action = suspending ? "block" : "unblock";
 
-  try {
-    setProfileSuspendLoading(true);
-    setProfileSuspendError(null);
-    const token = getToken();
-    const res = await fetch(`${SELLERS_BASE}/${selectedSeller.id}/block`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      credentials: "include",
-      body: JSON.stringify({ action }),
-    });
-    const data = await res.json();
-    if (!res.ok || !data?.success) throw new Error(data?.error || "Failed");
+  setModeration({
+    title: suspending ? `Suspend ${selectedSeller.name}?` : `Reactivate ${selectedSeller.name}?`,
+    description: suspending
+      ? "They'll be signed out and their listings stop selling until you reactivate them."
+      : "They regain access to sell on the platform.",
+    confirmLabel: suspending ? "Suspend seller" : "Reactivate seller",
+    presets: suspending ? ACCOUNT_SUSPEND_PRESETS : [],
+    destructive: suspending,
+    requireReason: suspending,
+    onConfirm: async (reason) => {
+      try {
+        setProfileSuspendLoading(true);
+        setProfileSuspendError(null);
+        const token = getToken();
+        const res = await fetch(`${SELLERS_BASE}/${selectedSeller.id}/block`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          credentials: "include",
+          body: JSON.stringify({ action, reason }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data?.success) throw new Error(data?.error || "Failed");
 
-    const newProfileStatus = action === "block" ? "SUSPENDED" : "ACTIVE";
-    setSelectedSeller((prev) => (prev ? { ...prev, status: newProfileStatus } : prev));
-  } catch (e: any) {
-    setProfileSuspendError(e?.message || "Action failed");
-  } finally {
-    setProfileSuspendLoading(false);
-  }
+        const newProfileStatus = suspending ? "SUSPENDED" : "ACTIVE";
+        setSelectedSeller((prev) => (prev ? { ...prev, status: newProfileStatus } : prev));
+        toast({
+          title: suspending ? "Seller suspended" : "Seller reactivated",
+          description: suspending
+            ? `${selectedSeller.name} has been notified with the reason you gave.`
+            : `${selectedSeller.name} can sell again.`,
+        });
+      } catch (e: any) {
+        setProfileSuspendError(e?.message || "Action failed");
+        throw e;
+      } finally {
+        setProfileSuspendLoading(false);
+      }
+    },
+  });
 };
 
   if (selectedSeller) {
     return (
+      <>
+      <ModerationReasonModal request={moderation} onClose={() => setModeration(null)} />
       <SellerProfileView
         seller={selectedSeller}
         products={sellerProducts}
@@ -19063,11 +20078,17 @@ const handleProfileSuspendToggle = async () => {
         suspendLoading={profileSuspendLoading}
         suspendError={profileSuspendError}
       />
+      </>
     );
   }
 
   return (
     <>
+      <ModerationReasonModal
+        request={productModeration}
+        onClose={() => setProductModeration(null)}
+      />
+
       {/* Header — same rahega */}
       <div className="mt-2 md:mt-0">
         <div className="flex flex-col md:grid md:grid-cols-3 items-center gap-4 md:gap-6">
@@ -19084,26 +20105,57 @@ const handleProfileSuspendToggle = async () => {
         </div>
       </div>
 
-      {/* KPI — same rahega */}
-      <section className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <div className={`${kpiCardBase} p-6`}>
-          <div className="text-xs tracking-[0.2em] text-white/60">TOTAL LISTING</div>
+      {/* KPI. Flagged and Suspended are separate cards because they are
+          separate outcomes of a report: flagging hides a listing and can be
+          undone, suspending takes it down. Each one clicks through to its own
+          filtered view — this is the "where did the thing I just actioned go?"
+          answer. (A "LIVE ON MARKETPLACE" tile sat here and was removed.) */}
+      <section className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-5">
+        <button
+          onClick={() => setStatusFilter("all")}
+          className={`${kpiCardBase} p-6 text-left transition ${
+            statusFilter === "all" ? "ring-1 ring-white/25" : "hover:bg-white/[0.05]"
+          }`}
+        >
+          <div className="text-xs tracking-[0.2em] text-white/60">TOTAL LISTINGS</div>
           <div className="mt-4 text-3xl font-semibold">{products.length}</div>
           <div className="mt-3 flex items-center gap-2 text-sm text-emerald-400">
             <TrendingUp className="h-4 w-4" />
-            Live from marketplace
+            Everything uploaded
           </div>
-        </div>
-        <div className={`${kpiCardBase} p-6`}>
-          <div className="text-xs tracking-[0.2em] text-white/60">FLAGGED PRODUCT</div>
-          <div className="mt-4 text-3xl font-semibold">
+        </button>
+
+        <button
+          onClick={() => setStatusFilter("Flagged")}
+          className={`${kpiCardBase} p-6 text-left transition ${
+            statusFilter === "Flagged" ? "ring-1 ring-white/25" : "hover:bg-white/[0.05]"
+          }`}
+        >
+          <div className="text-xs tracking-[0.2em] text-white/60">FLAGGED</div>
+          <div className="mt-4 text-3xl font-semibold text-[#FABC4E]">
             {products.filter((p) => p.status === "Flagged").length}
           </div>
-          <div className="mt-3 flex items-center gap-2 text-sm text-red-400">
+          <div className="mt-3 flex items-center gap-2 text-sm text-[#FABC4E]">
             <TriangleAlert className="h-4 w-4" />
-            High Priority
+            Hidden, reversible
           </div>
-        </div>
+        </button>
+
+        <button
+          onClick={() => setStatusFilter("Suspended")}
+          className={`${kpiCardBase} p-6 text-left transition ${
+            statusFilter === "Suspended" ? "ring-1 ring-white/25" : "hover:bg-white/[0.05]"
+          }`}
+        >
+          <div className="text-xs tracking-[0.2em] text-white/60">SUSPENDED</div>
+          <div className="mt-4 text-3xl font-semibold text-red-400">
+            {products.filter((p) => p.status === "Suspended").length}
+          </div>
+          <div className="mt-3 flex items-center gap-2 text-sm text-red-400">
+            <Ban className="h-4 w-4" />
+            Taken down for good
+          </div>
+        </button>
       </section>
 
       {/* Search + Filters — same rahega */}
@@ -19155,6 +20207,8 @@ const handleProfileSuspendToggle = async () => {
                 <SelectItem value="Published">Published</SelectItem>
                 <SelectItem value="Draft">Draft</SelectItem>
                 <SelectItem value="Flagged">Flagged</SelectItem>
+                <SelectItem value="Suspended">Suspended</SelectItem>
+                <SelectItem value="Removed by seller">Removed by seller</SelectItem>
               </SelectContent>
             </Select>
 
@@ -19229,7 +20283,22 @@ const handleProfileSuspendToggle = async () => {
   </div>
 )}
 
-                    <span className="absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-medium bg-sky-500/15 text-sky-200 border border-sky-500/25">
+                    {/* Every badge was sky-blue regardless of state, so a
+                        taken-down listing looked identical to a live one. */}
+                    <span
+                      className={[
+                        "absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-medium border",
+                        p.status === "Suspended"
+                          ? "bg-red-500/20 text-red-200 border-red-500/30"
+                          : p.status === "Removed by seller"
+                          ? "bg-white/[0.06] text-white/50 border-white/15"
+                          : p.status === "Flagged"
+                          ? "bg-[#FABC4E]/20 text-[#FFDFA3] border-[#FABC4E]/30"
+                          : p.status === "Draft"
+                          ? "bg-white/10 text-white/70 border-white/20"
+                          : "bg-emerald-500/15 text-emerald-200 border-emerald-500/25",
+                      ].join(" ")}
+                    >
                       {p.status}
                     </span>
 
@@ -19266,6 +20335,62 @@ const handleProfileSuspendToggle = async () => {
                         ID: {p.id.slice(-6)}
                       </div>
                     </div>
+
+                    {/* Moderation. Which buttons show depends on where the
+                        listing already is — offering "Flag" on a suspended
+                        listing, or "Restore" on a live one, is how an admin
+                        ends up clicking something that does nothing.
+
+                        "Removed by seller" gets none: the seller took it down
+                        themselves, and an admin overriding that would put a
+                        listing back that its owner chose to withdraw. */}
+                    {p.status !== "Removed by seller" && (
+                      <div className="mt-3 flex items-center gap-2 border-t border-white/[0.07] pt-3">
+                        {p.status === "Suspended" ? (
+                          <button
+                            disabled={moderatingId === p.id}
+                            onClick={() => moderateProduct(p, "restore")}
+                            className="flex-1 h-9 rounded-lg border border-emerald-500/25 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/15 text-xs font-medium disabled:opacity-50"
+                          >
+                            {moderatingId === p.id ? "Working…" : "↩ Restore"}
+                          </button>
+                        ) : p.status === "Flagged" ? (
+                          <>
+                            <button
+                              disabled={moderatingId === p.id}
+                              onClick={() => moderateProduct(p, "unflag")}
+                              className="flex-1 h-9 rounded-lg border border-emerald-500/25 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/15 text-xs font-medium disabled:opacity-50"
+                            >
+                              Remove flag
+                            </button>
+                            <button
+                              disabled={moderatingId === p.id}
+                              onClick={() => moderateProduct(p, "suspend")}
+                              className="flex-1 h-9 rounded-lg border border-red-500/25 bg-red-500/10 text-red-300 hover:bg-red-500/15 text-xs font-medium disabled:opacity-50"
+                            >
+                              Suspend
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              disabled={moderatingId === p.id}
+                              onClick={() => moderateProduct(p, "flag")}
+                              className="flex-1 h-9 rounded-lg border border-[#FABC4E]/25 bg-[#FABC4E]/10 text-[#FFDFA3] hover:bg-[#FABC4E]/15 text-xs font-medium disabled:opacity-50"
+                            >
+                              Flag
+                            </button>
+                            <button
+                              disabled={moderatingId === p.id}
+                              onClick={() => moderateProduct(p, "suspend")}
+                              className="flex-1 h-9 rounded-lg border border-red-500/25 bg-red-500/10 text-red-300 hover:bg-red-500/15 text-xs font-medium disabled:opacity-50"
+                            >
+                              Suspend
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -19382,6 +20507,17 @@ const SellerProfileView = ({
 
 
     const [messageOpen, setMessageOpen] = useState(false);
+
+  /* The products table below shows the first four. Its two "View All" buttons
+     used to open the all-sellers modal — the wrong list entirely, and on the
+     header button, nothing at all. They expand this table instead. */
+  const [showAllSellerProducts, setShowAllSellerProducts] = useState(false);
+  const PRODUCT_PREVIEW_COUNT = 4;
+  const visibleProducts = showAllSellerProducts
+    ? products
+    : products.slice(0, PRODUCT_PREVIEW_COUNT);
+  const hasMoreProducts = products.length > PRODUCT_PREVIEW_COUNT;
+
   return (
     <>
       {/* Title */}
@@ -19500,7 +20636,14 @@ const SellerProfileView = ({
       <div className={`${kpiCardBase} mt-6 p-6`}>
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">All Products ({products.length})</h2>
-          <button className="text-sm text-[#3A7CFF] hover:underline">View All</button>
+          {hasMoreProducts && (
+            <button
+              onClick={() => setShowAllSellerProducts((v) => !v)}
+              className="text-sm text-[#3A7CFF] hover:underline"
+            >
+              {showAllSellerProducts ? "Show less" : `View All (${products.length})`}
+            </button>
+          )}
         </div>
 
         {loading && <div className="mt-6 text-white/70 text-sm">Loading seller data…</div>}
@@ -19516,7 +20659,12 @@ const SellerProfileView = ({
             </div>
 
             <div className="divide-y divide-white/10">
-              {products.slice(0, 4).map((p) => (
+              {visibleProducts.length === 0 && (
+                <div className="px-5 py-8 text-center text-sm text-white/50">
+                  This seller hasn't uploaded any products yet.
+                </div>
+              )}
+              {visibleProducts.map((p) => (
                 <div key={p.id} className="grid grid-cols-12 gap-3 px-5 py-4 items-center bg-white/[0.02]">
                   <div className="col-span-5">
                     <div className="text-sm font-medium text-white/90">{p.title}</div>
@@ -19531,16 +20679,18 @@ const SellerProfileView = ({
               ))}
             </div>
 
-            <div className="p-5 flex justify-center">
-             <button
-  onClick={() => setShowAllSellers(true)}
-  className="text-sm text-[#3A7CFF] hover:underline"
->
-  View All
-</button>
-
-
-            </div>
+            {hasMoreProducts && (
+              <div className="p-5 flex justify-center">
+                <button
+                  onClick={() => setShowAllSellerProducts((v) => !v)}
+                  className="text-sm text-[#3A7CFF] hover:underline"
+                >
+                  {showAllSellerProducts
+                    ? "Show less"
+                    : `View all ${products.length} products`}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -19791,6 +20941,7 @@ const UserProfileView = ({
       <AdminSellerMessageModal
         open={messageOpen}
         seller={{ id: user.id, name: user.name, email: user.email, avatar: user.avatar, verified: user.verified }}
+        subjectRole={userTypeLabel === "Organization" ? "Org owner" : userTypeLabel}
         onClose={() => setMessageOpen(false)}
       />
     </>
@@ -19992,10 +21143,14 @@ const OrgProfileView = ({
         )}
       </div>
 
-      {/* Chat targets the org owner (the modal messages a User account) */}
+      {/* Chat targets the org owner (the modal messages a User account), so the
+          window is titled with the owner's name and says which org they own —
+          it used to read "Message Seller" for someone who has never sold. */}
       <AdminSellerMessageModal
         open={messageOpen}
         seller={{ id: org.ownerId, name: org.ownerName, email: org.ownerEmail, avatar: org.ownerAvatar || undefined }}
+        subjectRole="Org owner"
+        subjectContext={org.name}
         onClose={() => setMessageOpen(false)}
       />
     </>
@@ -21263,6 +22418,10 @@ const WithdrawalsView = () => {
         real padding the content sat flush against the nav. */}
 <main className="flex-1 min-w-0 py-8 px-5 sm:px-6 lg:px-8 pb-24 md:pb-10">
 
+   {/* Reason sheet for the user / org / seller suspend buttons on this page.
+       Fixed-position, so it renders correctly from anywhere in the tree. */}
+   <ModerationReasonModal request={moderation} onClose={() => setModeration(null)} />
+
    <div className={active === "reports" ? "w-full" : "mx-auto max-w-[1320px]"}>
 
 
@@ -21357,8 +22516,12 @@ const WithdrawalsView = () => {
 <div className="text-2xl font-semibold whitespace-nowrap">
   {platformRevenueLoading ? "…" : `₹${platformRevenue.totalRevenue.toLocaleString()}`}
 </div>
+          {/* Was "₹X available" — availableBalance only differed from
+              totalRevenue because withdrawals decremented it, and there are no
+              withdrawals any more, so the two numbers are now always the same.
+              GST is the figure that genuinely isn't in the total. */}
           <div className="text-sm text-white/50 font-medium whitespace-nowrap">
-            ₹{platformRevenue.availableBalance.toLocaleString()} available
+            +₹{platformRevenue.gstCollected.toLocaleString()} GST
           </div>
         </div>
       </div>
@@ -21395,11 +22558,11 @@ const WithdrawalsView = () => {
           DIGITAL PRODUCTS
         </div>
         <div className="mt-4 flex items-end justify-between">
+          {/* The sub-label said "Live count", which stopped being true when
+              this page moved to the admin catalogue feed: products.length now
+              counts drafts, flagged and suspended listings too. */}
           <div className="text-3xl font-semibold">
             {products.length || 0}
-          </div>
-          <div className="text-sm text-emerald-400 font-medium">
-            Live count
           </div>
         </div>
       </div>
@@ -21422,19 +22585,21 @@ const WithdrawalsView = () => {
           <h2 className="text-lg font-semibold">Tokun Platform Revenue</h2>
           <p className="mt-1 text-sm text-white/55">
             3% buyer platform fee on every sale, plus 10% seller commission on services and
-            hire deals. Earnings only — GST is tracked separately and is not yours to withdraw.
+            hire deals. This money settles into Tokun's Razorpay account directly — there is
+            nothing for an admin to transfer or record. GST is tracked separately.
           </p>
         </div>
+        {/* "Withdrawn so far" and the Mark as Withdrawn button used to sit here.
+            Both described a manual bank transfer that doesn't happen: commission
+            arrives in Razorpay on its own, so the button only ever moved a number
+            out of the balance and made the ledger disagree with the bank. */}
         <div className="flex flex-wrap items-center gap-4 sm:gap-6 w-full lg:w-auto">
           <div>
-            <div className="text-xs text-white/50">Available</div>
-            <div className="text-2xl font-semibold">₹{platformRevenue.availableBalance.toLocaleString()}</div>
+            <div className="text-xs text-white/50">Lifetime revenue</div>
+            <div className="text-2xl font-semibold">₹{platformRevenue.totalRevenue.toLocaleString()}</div>
+            <div className="text-[11px] text-white/35">commission earned, all time</div>
           </div>
-          <div>
-            <div className="text-xs text-white/50">Withdrawn so far</div>
-            <div className="text-2xl font-semibold text-white/70">₹{platformRevenue.totalWithdrawn.toLocaleString()}</div>
-          </div>
-          {/* Deliberately not folded into the numbers beside it — this is a
+          {/* Deliberately not folded into the number beside it — this is a
               liability, and an admin reading it as profit would over-report. */}
           <div>
             <div className="text-xs text-white/50">GST collected</div>
@@ -21443,14 +22608,6 @@ const WithdrawalsView = () => {
             </div>
             <div className="text-[11px] text-white/35">payable, not earnings</div>
           </div>
-          <button
-            onClick={() => { setWithdrawAmount(""); setWithdrawNote(""); setWithdrawModalOpen(true); }}
-            disabled={platformRevenue.availableBalance <= 0}
-            className="w-full sm:w-auto sm:ml-auto whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ background: "linear-gradient(270deg,#7c3aed,#2563eb)" }}
-          >
-            Mark as Withdrawn
-          </button>
         </div>
       </div>
 
@@ -21481,62 +22638,6 @@ const WithdrawalsView = () => {
         </div>
       )}
     </section>
-
-    {withdrawModalOpen && (
-      <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/70 px-4" onClick={() => setWithdrawModalOpen(false)}>
-        <div
-          className="w-full max-w-[420px] rounded-2xl bg-[#141416] border border-white/10 p-6"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <h3 className="text-lg font-semibold text-white">Mark as Withdrawn</h3>
-          <p className="mt-1 text-sm text-white/55">
-            Record that this amount was manually transferred to Tokun's bank account. Available: ₹{platformRevenue.availableBalance.toLocaleString()}
-          </p>
-
-          <label className="mt-4 block text-sm text-white/70">Amount (₹)</label>
-          <input
-            type="number"
-            min={0}
-            max={platformRevenue.availableBalance}
-            value={withdrawAmount}
-            onChange={(e) => setWithdrawAmount(e.target.value)}
-            className="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-white/10"
-            placeholder="0.00"
-          />
-
-          <label className="mt-3 block text-sm text-white/70">Note (optional)</label>
-          <input
-            type="text"
-            value={withdrawNote}
-            onChange={(e) => setWithdrawNote(e.target.value)}
-            className="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-white/10"
-            placeholder="e.g. Transferred to HDFC a/c ending 4321"
-          />
-
-          <div className="mt-5 flex justify-end gap-3">
-            <button
-              onClick={() => setWithdrawModalOpen(false)}
-              className="rounded-lg px-4 py-2 text-sm text-white/70 hover:text-white"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleMarkWithdrawn}
-              disabled={
-                withdrawSubmitting ||
-                !Number(withdrawAmount) ||
-                Number(withdrawAmount) <= 0 ||
-                Number(withdrawAmount) > platformRevenue.availableBalance
-              }
-              className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ background: "linear-gradient(270deg,#7c3aed,#2563eb)" }}
-            >
-              {withdrawSubmitting ? "Saving…" : "Confirm"}
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
 
     {/* Chart + Activities */}
     <section className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -21727,8 +22828,11 @@ const WithdrawalsView = () => {
       </p>
     </div>
 
+    {/* setShowAllSellers only ever set a flag nothing read, so this button was
+        inert. Seller Management is the real "all sellers" view — search,
+        filters, pagination — so it goes there. */}
     <button
-      onClick={() => setShowAllSellers(true)}
+      onClick={() => setActive("sellers")}
       className="text-sm text-[#3A7CFF] hover:underline"
     >
       View All
@@ -21817,19 +22921,18 @@ const WithdrawalsView = () => {
       </span>
     </div>
 
-    {/* Actions */}
+    {/* Actions — block/unblock only; the trash button went with the delete
+        flow, which no longer exists on the server either. */}
     <div className="md:col-span-1 flex items-center justify-end gap-2">
       <button
-        className="text-xs text-red-400 hover:text-red-300"
-        onClick={() => console.log("block", r.id)}
+        className={
+          r.status === "Active"
+            ? "text-xs text-red-400 hover:text-red-300"
+            : "text-xs text-sky-300 hover:text-sky-200"
+        }
+        onClick={() => handleSellerRowAction(r)}
       >
-        Block
-      </button>
-      <button
-        className="text-white/50 hover:text-white/80"
-        onClick={() => console.log("delete", r.id)}
-      >
-        🗑
+        {r.status === "Active" ? "Block" : "Unblock"}
       </button>
     </div>
   </div>
@@ -21850,7 +22953,7 @@ const WithdrawalsView = () => {
       </div>
 
       <button
-        onClick={() => setShowAllSellers(true)}
+        onClick={() => setActive("sellers")}
         className="h-9 px-3 rounded-lg border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] text-sm text-white/80"
       >
         View All
@@ -21939,46 +23042,24 @@ const WithdrawalsView = () => {
 
 
 
-    {/* KPI Cards */}
-    <section className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-     <div className={`${kpiCardBase} p-6`}>
-  <div className="text-xs tracking-[0.2em] text-white/60">
-    TOTAL USERS
-  </div>
-
-  <div className="mt-4 flex items-end justify-between">
-    <div className="text-3xl font-semibold">
-      {userTotal.toLocaleString()}
-    </div>
-
-    <div className="text-sm text-emerald-400 font-medium">
-      +12%
-    </div>
-  </div>
-</div>
-
-
+    {/* KPI Cards.
+        ACTIVE USERS and PENDING APPROVALS used to sit here and were dropped:
+        "active" counted only rows on the current page that had logged in since
+        midnight, so it read 0 on any page an admin actually looked at, and
+        approvals are a seller-side queue that has never applied to users. Two
+        cards that are always wrong are worse than two cards fewer. The "+12%"
+        delta went with them — it was a hardcoded string, not a measurement. */}
+    <section className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-5">
       <div className={`${kpiCardBase} p-6`}>
         <div className="text-xs tracking-[0.2em] text-white/60">
-          ACTIVE USERS
+          TOTAL USERS
         </div>
         <div className="mt-4 flex items-end justify-between">
-        <div className="text-3xl font-semibold">{activeUsersCount}</div>
-
-          <div className="text-sm text-emerald-400 font-medium">
-            +5%
+          <div className="text-3xl font-semibold">
+            {userTotal.toLocaleString()}
           </div>
-        </div>
-      </div>
-
-      <div className={`${kpiCardBase} p-6`}>
-        <div className="text-xs tracking-[0.2em] text-white/60">
-          PENDING APPROVALS
-        </div>
-        <div className="mt-4 flex items-end justify-between">
-     <div className="text-3xl font-semibold">{pendingUsersCount}</div>
-          <div className="text-sm text-fuchsia-300 font-medium">
-            New submissions
+          <div className="text-sm text-white/50 font-medium">
+            all registered accounts
           </div>
         </div>
       </div>
@@ -21988,11 +23069,11 @@ const WithdrawalsView = () => {
           DIGITAL PRODUCTS
         </div>
         <div className="mt-4 flex items-end justify-between">
+          {/* The sub-label said "Live count", which stopped being true when
+              this page moved to the admin catalogue feed: products.length now
+              counts drafts, flagged and suspended listings too. */}
           <div className="text-3xl font-semibold">
             {products.length || 0}
-          </div>
-          <div className="text-sm text-emerald-400 font-medium">
-            Live count
           </div>
         </div>
       </div>
@@ -22117,9 +23198,16 @@ const WithdrawalsView = () => {
     <div>
       <h2 className="text-lg font-semibold">Users Prompt Counts</h2>
     </div>
+    {/* setShowAllUsers set a flag nothing read. There's no separate users page
+        to send an admin to, so this widens the page instead — the same thing
+        the "Show" selector below does, one click away. */}
     <button
-      onClick={() => setShowAllUsers(true)}
-      className="shrink-0 text-sm text-[#3A7CFF] hover:underline"
+      onClick={() => {
+        setUserPageSize(100);
+        setUserPage(1);
+      }}
+      disabled={userPageSize >= 100 && userPage === 1}
+      className="shrink-0 text-sm text-[#3A7CFF] hover:underline disabled:text-white/30 disabled:no-underline disabled:cursor-default"
     >
       View All
     </button>
@@ -22235,7 +23323,12 @@ const WithdrawalsView = () => {
         <div className="text-sm text-white/60 shrink-0">Show</div>
         <select
           value={userPageSize}
-          onChange={(e) => setUserPageSize(Number(e.target.value))}
+          onChange={(e) => {
+            setUserPageSize(Number(e.target.value));
+            // Page 4 of a 10-per-page list doesn't exist at 100 per page; the
+            // fetch would come back empty and the table would look broken.
+            setUserPage(1);
+          }}
           className="h-11 min-w-[90px] px-3 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none"
         >
           {[10, 20, 50, 100].map((n) => (
@@ -22246,6 +23339,38 @@ const WithdrawalsView = () => {
         </select>
       </div>
     </div>
+
+    {/* Page navigation. userPage/userTotalPages were already driving the fetch,
+        but nothing on screen could change the page — so everything past the
+        first page was unreachable however wide you made it. */}
+    {!userLoading && !userError && userTotal > 0 && (
+      <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-white/10 pt-4">
+        <div className="text-sm text-white/60">
+          Showing {(userPage - 1) * userPageSize + 1} to{" "}
+          {Math.min(userPage * userPageSize, userTotal)} of {userTotal.toLocaleString()} users
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            disabled={userPage <= 1}
+            onClick={() => setUserPage((p) => Math.max(1, p - 1))}
+            className="h-9 px-3 rounded-lg border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed text-sm text-white/80"
+          >
+            Previous
+          </button>
+          <span className="text-xs text-white/60 px-2">
+            Page {userPage} of {userTotalPages}
+          </span>
+          <button
+            disabled={userPage >= userTotalPages}
+            onClick={() => setUserPage((p) => Math.min(userTotalPages, p + 1))}
+            className="h-9 px-3 rounded-lg border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed text-sm text-white/80"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    )}
   </div>
 </section>
   </>
@@ -22669,6 +23794,9 @@ function FeedbackView() {
   const [loading, setLoading] = React.useState(true);
   const [filter, setFilter] = React.useState<"all"|"pending"|"reviewed"|"resolved">("all");
   const [sentFilter, setSentFilter] = React.useState<"all"|"positive"|"neutral"|"negative">("all");
+  /* Delete used to go through window.confirm — an OS box mid-page, and every
+     other outcome on this view was silent either way. */
+  const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(null);
 
   const fetchFeedbacks = async () => {
     setLoading(true);
@@ -22683,27 +23811,47 @@ function FeedbackView() {
   React.useEffect(() => { fetchFeedbacks(); }, []);
 
   const updateStatus = async (id: string, status: string) => {
-    await fetch(`${API_BASE}/api/feedback/${id}/status`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    setFeedbacks(prev => prev.map(f => f._id === id ? { ...f, status } : f));
+    try {
+      const res = await fetch(`${API_BASE}/api/feedback/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error("Status update failed");
+      setFeedbacks(prev => prev.map(f => f._id === id ? { ...f, status } : f));
+      toast({ title: `Marked ${status}` });
+    } catch {
+      toast({ title: "Couldn't update that feedback", description: "Try again." });
+    }
   };
 
   const deleteFeedback = async (id: string) => {
-    if (!window.confirm("Delete this feedback?")) return;
-    await fetch(`${API_BASE}/api/feedback/${id}`, { method: "DELETE" });
-    setFeedbacks(prev => prev.filter(f => f._id !== id));
+    try {
+      const res = await fetch(`${API_BASE}/api/feedback/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+      setFeedbacks(prev => prev.filter(f => f._id !== id));
+      setPendingDeleteId(null);
+      toast({ title: "Feedback deleted" });
+    } catch {
+      toast({ title: "Couldn't delete that feedback", description: "Try again." });
+    }
   };
 
   const toggleTestimonial = async (id: string, showOnLanding: boolean) => {
-    await fetch(`${API_BASE}/api/feedback/${id}/testimonial`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ showOnLanding }),
-    });
-    setFeedbacks(prev => prev.map(f => f._id === id ? { ...f, showOnLanding } : f));
+    try {
+      const res = await fetch(`${API_BASE}/api/feedback/${id}/testimonial`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ showOnLanding }),
+      });
+      if (!res.ok) throw new Error("Update failed");
+      setFeedbacks(prev => prev.map(f => f._id === id ? { ...f, showOnLanding } : f));
+      toast({
+        title: showOnLanding ? "Shown on the landing page" : "Removed from the landing page",
+      });
+    } catch {
+      toast({ title: "Couldn't update that testimonial", description: "Try again." });
+    }
   };
 
   const shown = feedbacks.filter(f => {
@@ -22789,7 +23937,14 @@ function FeedbackView() {
                   <button onClick={() => toggleTestimonial(fb._id, !fb.showOnLanding)} style={{ padding:"6px 14px", fontSize:12, fontWeight:700, borderRadius:8, border:"none", background: fb.showOnLanding ? "rgba(139,92,246,0.25)" : "rgba(139,92,246,0.12)", color:"#c4b5fd", cursor:"pointer" }}>
                     {fb.showOnLanding ? "Remove from Landing" : "Show on Landing"}
                   </button>
-                  <button onClick={() => deleteFeedback(fb._id)} style={{ padding:"6px 14px", fontSize:12, fontWeight:700, borderRadius:8, border:"none", background:"rgba(239,68,68,0.12)", color:"#f87171", cursor:"pointer" }}>Delete</button>
+                  {pendingDeleteId === fb._id ? (
+                    <>
+                      <button onClick={() => deleteFeedback(fb._id)} style={{ padding:"6px 14px", fontSize:12, fontWeight:700, borderRadius:8, border:"none", background:"rgba(239,68,68,0.35)", color:"#fff", cursor:"pointer" }}>Confirm delete</button>
+                      <button onClick={() => setPendingDeleteId(null)} style={{ padding:"6px 14px", fontSize:12, fontWeight:700, borderRadius:8, border:"1px solid rgba(255,255,255,0.12)", background:"transparent", color:"rgba(255,255,255,0.7)", cursor:"pointer" }}>Cancel</button>
+                    </>
+                  ) : (
+                    <button onClick={() => setPendingDeleteId(fb._id)} style={{ padding:"6px 14px", fontSize:12, fontWeight:700, borderRadius:8, border:"none", background:"rgba(239,68,68,0.12)", color:"#f87171", cursor:"pointer" }}>Delete</button>
+                  )}
                 </div>
               </div>
             </div>

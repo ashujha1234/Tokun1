@@ -72,10 +72,20 @@ export default function AdminSellerMessageModal({
   open,
   seller,
   onClose,
+  /* Who the admin is actually talking to. The modal is reused for sellers,
+     plain users, and org owners, but every label in it said "Seller" — so
+     messaging an organisation's owner from the Org tab opened a window titled
+     "Message Seller" about someone who has never sold anything. */
+  subjectRole = "Seller",
+  subjectContext,
 }: {
   open: boolean;
   seller: SellerProfileForChat | null;
   onClose: () => void;
+  /** e.g. "Seller", "User", "Org owner" — used in headings and empty states. */
+  subjectRole?: string;
+  /** Extra line under the name, e.g. the organisation they own. */
+  subjectContext?: string;
 }) {
   const [conversationId, setConversationId] = useState("");
   const [messages, setMessages] = useState<AdminChatMessage[]>([]);
@@ -89,7 +99,7 @@ export default function AdminSellerMessageModal({
   const fileRef = useRef<HTMLInputElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  const titleSeller = seller?.name || "Seller";
+  const titleSeller = seller?.name || subjectRole;
 
   const sortedMessages = useMemo(() => {
     return [...messages].sort(
@@ -276,12 +286,14 @@ export default function AdminSellerMessageModal({
               className="h-11 w-11 rounded-full object-cover border border-white/10"
             />
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h2 className="text-white text-lg font-semibold truncate">Message Seller</h2>
-                <span className="h-2 w-2 rounded-full bg-emerald-400" />
+              <div className="flex items-center gap-2 min-w-0">
+                <h2 className="text-white text-lg font-semibold truncate">
+                  Message {titleSeller}
+                </h2>
+                <span className="h-2 w-2 rounded-full bg-emerald-400 shrink-0" />
               </div>
               <div className="text-xs text-white/50 truncate">
-                {titleSeller} • {seller.email || "Seller"}
+                {[subjectRole, seller.email, subjectContext].filter(Boolean).join(" • ")}
               </div>
             </div>
           </div>
@@ -424,7 +436,7 @@ const mine =
           </div>
 
           <aside className="hidden lg:flex flex-col border-l border-white/10 bg-[#151515] p-6">
-            <h3 className="text-lg font-semibold text-white">Seller Overview</h3>
+            <h3 className="text-lg font-semibold text-white">{subjectRole} Overview</h3>
             <div className="mt-3 h-px bg-white/10" />
 
             <div className="mt-5 grid grid-cols-2 gap-3">
@@ -441,7 +453,7 @@ const mine =
             <div className="mt-7">
               <div className="text-xs uppercase tracking-[0.18em] text-white/45">Recent Activity</div>
               <div className="mt-4 space-y-5">
-                <div className="flex gap-3"><span className="mt-1 h-2 w-2 rounded-full bg-blue-400" /><div><div className="text-sm text-white/75">Seller profile opened</div><div className="text-xs text-white/35">Just now</div></div></div>
+                <div className="flex gap-3"><span className="mt-1 h-2 w-2 rounded-full bg-blue-400" /><div><div className="text-sm text-white/75">{subjectRole} profile opened</div><div className="text-xs text-white/35">Just now</div></div></div>
                 <div className="flex gap-3"><span className="mt-1 h-2 w-2 rounded-full bg-orange-400" /><div><div className="text-sm text-white/75">KYC status checked</div><div className="text-xs text-white/35">{seller.verified ? "Verified" : "Pending"}</div></div></div>
                 <div className="flex gap-3"><span className="mt-1 h-2 w-2 rounded-full bg-emerald-400" /><div><div className="text-sm text-white/75">Message channel ready</div><div className="text-xs text-white/35">Live support</div></div></div>
               </div>

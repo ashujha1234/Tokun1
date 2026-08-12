@@ -1412,6 +1412,11 @@ router.patch("/:sellerId/block", requireAuth, requireAdmin, async (req, res) => 
     const { sellerId } = req.params;
     const { action } = req.body; // "block" | "unblock"
 
+    /* The account holder is told *why* they lost access, so the reason is part
+       of the request, not an admin-only audit note. Blocking without one used
+       to leave the user with a dead account and a generic message. */
+    const reason = String(req.body.reason || "").trim();
+
     if (!mongoose.Types.ObjectId.isValid(sellerId)) {
       return res.status(400).json({
         success: false,
@@ -1423,6 +1428,13 @@ router.patch("/:sellerId/block", requireAuth, requireAdmin, async (req, res) => 
       return res.status(400).json({
         success: false,
         error: "action must be 'block' or 'unblock'",
+      });
+    }
+
+    if (action === "block" && reason.length < 5) {
+      return res.status(400).json({
+        success: false,
+        error: "A reason of at least 5 characters is required to suspend an account",
       });
     }
 
@@ -1441,14 +1453,28 @@ router.patch("/:sellerId/block", requireAuth, requireAdmin, async (req, res) => 
       });
     }
 
+    /* Suspension does NOT sign anyone out — see the login route, which lets a
+       suspended account in on purpose. Only transacting is blocked
+       (blockIfSuspended). So the message says exactly what stopped, what still
+       works, and points at the support chat: an appeal is the whole reason the
+       account keeps its session. `actionUrl` is what the notification UI turns
+       into a button. */
     await Notification.create({
       receiverUserId: updated._id,
       type: newStatus === "SUSPENDED" ? "SELLER_SUSPENDED" : "SELLER_UNSUSPENDED",
       message:
         newStatus === "SUSPENDED"
-          ? "Your account has been suspended by an admin. You've been logged out and can no longer sell on the platform."
-          : "Your account has been reactivated. You can sell on the platform again.",
-      meta: { adminAction: action },
+          ? `Your account has been suspended by an admin. Reason: ${reason} — buying, selling, services, hire deals and withdrawals are paused. You are still signed in and can view your account. If you think this is a mistake, message the admin team directly and ask.`
+          : reason
+          ? `Your account has been reactivated. Note from the admin: ${reason}`
+          : "Your account has been reactivated. You can buy, sell, and withdraw again.",
+      meta: {
+        adminAction: action,
+        reason,
+        ...(newStatus === "SUSPENDED"
+          ? { actionUrl: "/support/admin-chat", actionLabel: "Message the admin team" }
+          : {}),
+      },
     });
 
     let cascade = null;
@@ -1474,86 +1500,16 @@ router.patch("/:sellerId/block", requireAuth, requireAdmin, async (req, res) => 
   }
 });
 
-/**
- * ✅ PATCH /api/seller/:sellerId/soft-delete
- */
-router.patch("/:sellerId/soft-delete", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { sellerId } = req.params;
-    const { action } = req.body; // "delete" | "restore"
+/* PATCH /api/seller/:sellerId/soft-delete was here.
 
-    if (!mongoose.Types.ObjectId.isValid(sellerId)) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid sellerId",
-      });
-    }
+   Removed with the admin-facing delete action. It set isDeleted + SUSPENDED on
+   an account, which is a harsher version of a suspension with no path back for
+   the account holder: a deleted user can't sign in, so they can't reach the
+   support chat to ask why. Suspension covers every case an admin actually
+   needs — it stops all transacting and the person can still log in and appeal.
 
-    if (!["delete", "restore"].includes(action)) {
-      return res.status(400).json({
-        success: false,
-        error: "action must be 'delete' or 'restore'",
-      });
-    }
-
-    const updateFields =
-      action === "delete"
-        ? {
-            isDeleted: true,
-            deletedAt: new Date(),
-            sellerStatus: "SUSPENDED",
-          }
-        : {
-            // Restoring must also lift the suspension that "delete" applied,
-            // otherwise the seller comes back marked SUSPENDED forever.
-            isDeleted: false,
-            deletedAt: null,
-            sellerStatus: "ACTIVE",
-          };
-
-    const updated = await User.findByIdAndUpdate(sellerId, updateFields, {
-      new: true,
-    }).lean();
-
-    if (!updated) {
-      return res.status(404).json({
-        success: false,
-        error: "Seller not found",
-      });
-    }
-
-    await Notification.create({
-      receiverUserId: updated._id,
-      type: action === "delete" ? "SELLER_ACCOUNT_DELETED" : "SELLER_ACCOUNT_RESTORED",
-      message:
-        action === "delete"
-          ? "Your account has been removed by an admin. You've been logged out and your listings are no longer visible."
-          : "Your account has been restored by an admin. You can log in and sell again.",
-      meta: { adminAction: action },
-    });
-
-    let cascade = null;
-    if (action === "delete") {
-      cascade = await cancelUnpaidDealsForSuspendedSeller(sellerId);
-    }
-
-    return res.json({
-      success: true,
-      seller: {
-        _id: String(updated._id),
-        isDeleted: !!updated.isDeleted,
-        status: updated.sellerStatus || "ACTIVE",
-      },
-      cascade,
-    });
-  } catch (err) {
-    console.error("PATCH /api/seller/:sellerId/soft-delete error:", err);
-    return res.status(500).json({
-      success: false,
-      error: "Server error",
-      message: err.message,
-    });
-  }
-});
+   `isDeleted` itself is untouched: it's still set by a user deleting their own
+   account, and still honoured by the login gate and blockIfSuspended. */
 
 module.exports = router;
+

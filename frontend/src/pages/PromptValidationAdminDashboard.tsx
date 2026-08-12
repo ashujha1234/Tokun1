@@ -273,6 +273,13 @@ function PromptDetailModal({ prompt, onClose, onAction, actionLoading }: any) {
 export default function PromptValidationAdminDashboard() {
   const [items, setItems] = useState<any[]>([]);
   const [stats, setStats] = useState<any>({});
+  /* Denominators for the per-status counts below. Without them the cards say
+     "12 flagged" out of an unknown total, which is not a number anyone can act
+     on. totalPrompts is every upload; listedProducts is the live catalogue. */
+  const [totals, setTotals] = useState<{ totalPrompts: number; listedProducts: number }>({
+    totalPrompts: 0,
+    listedProducts: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -306,6 +313,10 @@ export default function PromptValidationAdminDashboard() {
 
       setItems(data.items || []);
       setStats(data.stats || {});
+      setTotals({
+        totalPrompts: Number(data.totalPrompts || 0),
+        listedProducts: Number(data.listedProducts || 0),
+      });
       setTotalPages(data.totalPages || 1);
     } catch (err: any) {
       setError(err?.message || "Failed to fetch queue");
@@ -383,6 +394,32 @@ export default function PromptValidationAdminDashboard() {
           <p style={{ fontSize: 14, color: "#6B7280", margin: 0 }}>
             AI-scored match between uploaded media and prompt text — score is a signal only, you make the final call.
           </p>
+        </div>
+
+        {/* Totals — the denominator the per-status cards below are a slice of. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16, marginBottom: 16 }}>
+          <StatCard
+            icon="📦"
+            label="Total prompts uploaded"
+            value={totals.totalPrompts.toLocaleString()}
+            accent="#A78BFA"
+          />
+          <StatCard
+            icon="🛒"
+            label="Live products on marketplace"
+            value={totals.listedProducts.toLocaleString()}
+            accent="#22D3EE"
+          />
+          <StatCard
+            icon="⏳"
+            label="Awaiting a decision"
+            value={(
+              (stats.pending || 0) +
+              (stats.pending_review || 0) +
+              (stats.flagged || 0)
+            ).toLocaleString()}
+            accent="#F472B6"
+          />
         </div>
 
         {/* Stat cards */}

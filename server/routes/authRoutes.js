@@ -689,8 +689,17 @@ router.post("/login/verify", async (req, res) => {
       return res.status(400).json({ success: false, error: "invalid_otp" });
     }
 
-    if (user.isDeleted || user.sellerStatus === "SUSPENDED") {
-      return res.status(403).json({ success: false, error: "account_suspended" });
+    /* A suspended account can still sign in.
+       It used to be turned away here, which made the suspension unappealable:
+       the one place to ask an admin why is the in-app support chat, and you
+       need a session to reach it. Suspension is enforced where it belongs —
+       blockIfSuspended in utils/auth.js gates buying, selling, services, hire
+       and withdrawals — so signing in grants no ability to transact.
+
+       isDeleted still blocks, because a removed account has nothing to come
+       back to. */
+    if (user.isDeleted) {
+      return res.status(403).json({ success: false, error: "account_deleted" });
     }
 
     // mongoose.connect()-=>{

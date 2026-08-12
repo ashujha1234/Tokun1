@@ -650,6 +650,8 @@ const path = require("path");
 const Prompt = require("../models/Prompt");
 const Purchase = require("../models/Purchase");
 const User = require("../models/User");
+// Sellers are told when an admin flags, suspends or restores their listing.
+const Notification = require("../models/Notification");
 const uploadToAzure = require("../utils/uploadToAzure");
 const Category = require("../models/Category");
 const BankAccount = require("../models/BankAccount");
@@ -1113,6 +1115,161 @@ router.get("/user/:userId", async (req, res) => {
       success: false,
       error: "server_error",
     });
+  }
+});
+
+/* =====================================================================
+   GET /admin/all — every listing, including the ones taken down.
+
+   The admin Product Management page was reading /others, the public
+   marketplace feed — which filters out `flagged` and `deleted` by design. So
+   the moment an admin flagged or suspended a listing from a report, it
+   vanished from the only screen where they could check what they'd done, and
+   the "Flagged" counter there could never be anything but zero.
+
+   This returns the whole catalogue with the moderation state attached, so the
+   admin view can separate Published / Draft / Flagged / Suspended.
+   ===================================================================== */
+router.get("/admin/all", requireAuth, async (req, res) => {
+  try {
+    if (!req.isAdmin) {
+      return res.status(403).json({ success: false, error: "forbidden" });
+    }
+
+    const prompts = await Prompt.find({})
+      .populate("categories", "name")
+      .populate("userId", "name email")
+      .select(
+        "title price tokun_price attachment categories userId flagged deleted deletedAt draft exclusive sold salesCount totalRevenue createdAt mediaValidation.status"
+      )
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.json({ success: true, prompts });
+  } catch (err) {
+    console.error("GET /api/prompt/admin/all error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+/* =====================================================================
+   PATCH /admin/:promptId/moderation   body: { action, reason }
+
+   Flagging and suspending a listing were one-way doors: both are reachable
+   from a report, neither had an inverse, so an admin who acted on a bad report
+   had no way to put the listing back. This is that inverse (and the forward
+   action too, so the Products page doesn't need a report to moderate).
+
+     flag      → hidden from the marketplace, reversible
+     unflag    → un-hides a flagged listing
+     suspend   → taken down (also flagged, so it's distinguishable from a
+                 seller deleting their own listing — see below)
+     restore   → clears BOTH, listing is fully live again
+
+   `deleted` alone is NOT an admin action: DELETE /api/prompt/:id sets it when a
+   seller removes a listing that already has buyers. Admin suspension always
+   sets flagged as well, and that pairing is what tells the two apart.
+   ===================================================================== */
+router.patch("/admin/:promptId/moderation", requireAuth, async (req, res) => {
+  try {
+    if (!req.isAdmin) {
+      return res.status(403).json({ success: false, error: "forbidden" });
+    }
+
+    const { promptId } = req.params;
+    const action = String(req.body?.action || "");
+    const reason = String(req.body?.reason || "").trim();
+
+    const ALLOWED = ["flag", "unflag", "suspend", "restore"];
+    if (!ALLOWED.includes(action)) {
+      return res.status(400).json({
+        success: false,
+        error: `action must be one of ${ALLOWED.join(", ")}`,
+      });
+    }
+
+    // Restrictive actions are explained to the seller, same contract as an
+    // account suspension. Putting something back doesn't need justifying.
+    const restrictive = action === "flag" || action === "suspend";
+    if (restrictive && reason.length < 5) {
+      return res.status(400).json({
+        success: false,
+        error: "A reason of at least 5 characters is required",
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(promptId)) {
+      return res.status(400).json({ success: false, error: "invalid_prompt_id" });
+    }
+
+    const prompt = await Prompt.findById(promptId).select("title userId flagged deleted");
+    if (!prompt) {
+      return res.status(404).json({ success: false, error: "prompt_not_found" });
+    }
+
+    /* Refuse to "unflag" something that is suspended. Clearing flagged alone
+       would leave deleted:true, so the listing would stay invisible while the
+       dashboard showed it as live — restore is the action that means what the
+       admin wants here. */
+    if (action === "unflag" && prompt.deleted) {
+      return res.status(400).json({
+        success: false,
+        error: "suspended_use_restore",
+        message:
+          "This listing is suspended, not just flagged. Use Restore to put it back on the marketplace.",
+      });
+    }
+
+    const update = {
+      flag: { flagged: true },
+      unflag: { flagged: false },
+      suspend: { flagged: true, deleted: true, deletedAt: new Date() },
+      restore: { flagged: false, deleted: false, deletedAt: null },
+    }[action];
+
+    await Prompt.findByIdAndUpdate(promptId, { $set: update });
+
+    const message = {
+      flag: `Your prompt "${prompt.title}" has been flagged by an admin. Reason: ${reason} — it's hidden from the marketplace until this is resolved.`,
+      unflag: `Your prompt "${prompt.title}" is no longer flagged and is back on the marketplace.${
+        reason ? ` Note: ${reason}` : ""
+      }`,
+      suspend: `Your prompt "${prompt.title}" has been suspended by an admin. Reason: ${reason} — it's no longer listed. Buyers who already purchased it keep their access.`,
+      restore: `Your prompt "${prompt.title}" has been restored and is live on the marketplace again.${
+        reason ? ` Note: ${reason}` : ""
+      }`,
+    }[action];
+
+    try {
+      await Notification.create({
+        receiverUserId: prompt.userId,
+        type: "PROMPT_MEDIA_REVIEW",
+        promptId: prompt._id,
+        message,
+        meta: {
+          adminAction: action,
+          reason,
+          ...(restrictive
+            ? { actionUrl: "/support/admin-chat", actionLabel: "Message the admin team" }
+            : {}),
+        },
+      });
+    } catch (e) {
+      // Never fail the moderation because the notification didn't save.
+      console.error("prompt moderation notify failed:", e?.message);
+    }
+
+    return res.json({
+      success: true,
+      prompt: {
+        _id: String(prompt._id),
+        flagged: !!update.flagged,
+        deleted: !!update.deleted,
+      },
+    });
+  } catch (err) {
+    console.error("PATCH /api/prompt/admin/:promptId/moderation error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
   }
 });
 

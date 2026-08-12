@@ -2954,6 +2954,17 @@ const [openServicePopup, setOpenServicePopup] = useState(false);
 // const [selectedService, setSelectedService] = useState<any>(null);
 const [openCreateServicePopup, setOpenCreateServicePopup] = useState(false);
 const isOwnProfile = userId === user?._id;
+
+/* Admin preview mode (`?adminView=1`). The freelancer review dashboard links
+   here to check a profile before approving its intro video, and it opened the
+   full logged-in site chrome around it — the site nav, and an account menu with
+   a Logout item belonging to whatever session the browser had. An admin looking
+   at someone else's profile got a page that looked like it was theirs.
+
+   In this mode the header and footer are replaced by a strip that says whose
+   profile this is and where it came from. */
+const isAdminView = new URLSearchParams(location.search).get("adminView") === "1";
+
 const fileRef = useRef<HTMLInputElement | null>(null);
 const [avatar, setAvatar] = useState<string | null>(null);
 
@@ -3629,7 +3640,28 @@ const sendMessage = () => {
   />
 </div>
 
-{!openHirePopup &&
+{isAdminView ? (
+  /* Admin preview strip — no site nav, no account menu, no Logout. */
+  <div className="fixed top-0 left-0 right-0 z-[999] border-b border-white/10 bg-[#0B0D12]/95 backdrop-blur-xl">
+    <div className="mx-auto max-w-[1280px] px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
+      <div className="flex items-center gap-3 min-w-0">
+        <span className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-semibold tracking-[0.14em] bg-fuchsia-500/15 text-fuchsia-200 border border-fuchsia-500/25">
+          ADMIN PREVIEW
+        </span>
+        <span className="text-sm text-white/70 truncate">
+          Public profile of {userName || "this creator"} — exactly what buyers see.
+        </span>
+      </div>
+      <button
+        onClick={() => window.close()}
+        className="shrink-0 h-9 px-3 rounded-lg border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-sm text-white/80"
+      >
+        Close tab
+      </button>
+    </div>
+  </div>
+) : (
+  !openHirePopup &&
   !openMessagePopup &&
   !openServicePopup &&
   !openBookPopup &&
@@ -3637,10 +3669,17 @@ const sendMessage = () => {
     <div className="fixed top-0 left-0 right-0 z-[999]">
       <Header />
     </div>
-  )}
+  )
+)}
 
 <main className="relative z-10 flex-1">
-        <div className="mx-auto max-w-[1280px] px-4 sm:px-6 pt-24 md:pt-28 lg:pt-36 pb-20">
+        {/* The admin strip is 56px tall against the site header's ~96–144px, so
+            the top padding shrinks to match instead of leaving a dead band. */}
+        <div
+          className={`mx-auto max-w-[1280px] px-4 sm:px-6 pb-20 ${
+            isAdminView ? "pt-20" : "pt-24 md:pt-28 lg:pt-36"
+          }`}
+        >
           
           {/* ═══════════════════════ HERO ═══════════════════════ */}
           <section className="rounded-3xl border border-white/[0.08] bg-white/[0.035] backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)] p-6 sm:p-8 mb-6">
@@ -5097,9 +5136,13 @@ const sendMessage = () => {
       }}
     />
 
-    <div className="relative z-10">
-  <Footer />
-</div>
+    {/* Footer is site chrome too — an admin previewing a profile has no use for
+        the marketing links, and it shouldn't imply they're browsing the site. */}
+    {!isAdminView && (
+      <div className="relative z-10">
+        <Footer />
+      </div>
+    )}
     </div>
   );
 }

@@ -22,7 +22,8 @@ const {
   fetchTransferIdsByAccount,
   transferOnHoldUntil,
 } = require("../utils/routePayouts");
-const Wallet = require("../models/Wallet");
+// Wallet import removed with the payout fallback — all prompt payouts are
+// Razorpay Route transfers now.
 const PlatformWallet = require("../models/PlatformWallet");
 const { route } = require("./authRoutes");
 const { generateInvoicePDF } = require("../services/invoice.service");
@@ -248,14 +249,18 @@ router.post("/checkout", requireAuth, blockIfSuspended, blockOrgTeamMemberPurcha
         return res.status(400).json({ success: false, error: `prompt_already_sold: ${p.title}` });
       }
 
-      // Same gate as the marketplace feed and single-prompt checkout — a
-      // prompt requiring seller verification can't be bought via cart either,
-      // even if it was added before the seller's account status changed.
+      /* Same gate as single-prompt checkout: every seller in the cart needs an
+         activated linked account, not just the ones whose listing carries
+         requiresSellerVerification. That flag defaults to false and is only
+         set on new uploads, so gating on it let a legacy listing through and
+         sent its seller's share to the internal Wallet — a payout path that no
+         longer exists. */
       const linkedAccountId = await getSellerLinkedAccountId(p.userId);
-      if (p.requiresSellerVerification && !linkedAccountId) {
+      if (!linkedAccountId) {
         return res.status(403).json({
           success: false,
           error: `seller_not_verified: ${p.title}`,
+          message: `"${p.title}" can't be bought right now — its seller hasn't finished payout setup. Remove it from your cart to check out.`,
         });
       }
 
@@ -464,16 +469,14 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
                 // Razorpay already moved it at order time — record which
                 // transfer covered this row so a refund reverses the right one.
                 purchase.routeTransferId = routeTransferId;
-              } else {
-                // Seller isn't on Route (or the transfer didn't land) — credit
-                // the Wallet ledger instead.
-                await Wallet.creditSale(p.userId, split.sellerNet, {
-                  purchaseId: purchase._id,
-                  promptId: p._id,
-                  promptTitle: p.title,
-                  session,
-                });
               }
+              /* No `else` any more. It used to credit the internal Wallet, and
+                 that was wrong in both directions: a seller with a linked
+                 account whose transfer id merely failed to resolve got paid
+                 twice, and a seller without one was being paid through a
+                 mechanism that no longer exists. Checkout now requires every
+                 seller in the cart to have an activated linked account (see
+                 the gate at order creation), so Route is the only path. */
 
               // Earnings and tax recorded apart: platformCut includes the GST
               // charged on the fee, and that portion is owed to the government
@@ -512,9 +515,12 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
             // after the loop; the per-seller rows below are the ones that
             // genuinely differ per item.
             if (split.sellerNet > 0) {
-              const paidByRoute = !!purchase.routeTransferId;
+              // Always a Route transfer now. A missing id means we failed to
+              // read it, not that the money didn't move — flagged rather than
+              // reclassified as some other kind of payout.
+              const resolvedTransfer = !!purchase.routeTransferId;
               ledgerRows.push({
-                kind: paidByRoute ? "TRANSFER" : "PAYOUT",
+                kind: "TRANSFER",
                 direction: "OUT",
                 purpose: "PROMPT_PURCHASE",
                 amount: ledger.toPaise(split.sellerNet),
@@ -526,7 +532,11 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
                 counterparty: req.user._id,
                 purchase: purchase._id,
                 prompt: p._id,
-                meta: { via: paidByRoute ? "route" : "wallet", viaCart: true },
+                meta: {
+                  via: "route",
+                  viaCart: true,
+                  ...(resolvedTransfer ? {} : { needsReconciliation: true }),
+                },
               });
             }
           }

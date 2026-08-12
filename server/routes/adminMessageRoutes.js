@@ -6,6 +6,7 @@ const router = express.Router();
 
 const AdminConversation = require("../models/AdminConversation");
 const AdminMessage = require("../models/AdminMessage");
+const AdminUser = require("../models/AdminUser");
 const User = require("../models/User");
 
 // ✅ Normal chat models — admin ka message inko mein mirror karenge
@@ -13,6 +14,7 @@ const Conversation = require("../models/Conversation");
 const Message = require("../models/Message");
 
 const { requireAuth } = require("../utils/auth");
+const { notifyAdmins } = require("../utils/notifyAdmins");
 
 const uploadToAzure = require("../utils/uploadToAzure");
 const upload = require("../utils/chatUpload");
@@ -784,6 +786,71 @@ router.get("/seller/messages/:conversationId", requireAuth, async (req, res) => 
 });
 
 /* =====================================================
+   SELLER/USER: OPEN A CONVERSATION WITH THE ADMIN TEAM
+   POST /api/admin-message/seller/conversation
+
+   Every other route here assumes an admin opened the thread first. That left a
+   suspended account with nowhere to go: the suspension notification tells them
+   to ask an admin why, and there was no way to start asking. This opens (or
+   reuses) their thread.
+
+   Reuses the most recent existing thread if there is one, so a user can't
+   fan out one conversation per admin. Otherwise it attaches to the
+   longest-standing active admin — AdminConversation is keyed on a specific
+   admin, and any of them can answer from the shared admin inbox.
+===================================================== */
+
+router.post("/seller/conversation", requireAuth, async (req, res) => {
+  try {
+    const sellerId = req.user?._id;
+
+    if (!sellerId) {
+      return res.status(401).json({ success: false, error: "Login required" });
+    }
+    // An admin token here would mean an admin messaging themselves.
+    if (req.isAdmin) {
+      return res.status(400).json({ success: false, error: "admins_use_the_admin_route" });
+    }
+
+    let conversation = await AdminConversation.findOne({ sellerId }).sort({ updatedAt: -1 });
+
+    if (!conversation) {
+      const admin = await AdminUser.findOne({ isActive: { $ne: false } }).sort({ createdAt: 1 });
+      if (!admin) {
+        return res.status(503).json({ success: false, error: "no_admin_available" });
+      }
+      conversation = await getOrCreateConversation({
+        adminId: admin._id,
+        sellerUserId: sellerId,
+      });
+    }
+
+    await AdminMessage.updateMany(
+      {
+        conversationId: conversation._id,
+        sender: { $ne: sellerId },
+        readBy: { $ne: sellerId },
+      },
+      { $addToSet: { readBy: sellerId } }
+    );
+
+    const messages = await AdminMessage.find({ conversationId: conversation._id })
+      .populate("sender", "name email avatar avatarUrl role userType")
+      .populate("receiver", "name email avatar avatarUrl role userType")
+      .sort({ createdAt: 1 });
+
+    return res.json({
+      success: true,
+      conversation,
+      messages: messages.map((m) => serializeMessage(m, sellerId)),
+    });
+  } catch (err) {
+    console.error("Seller open admin conversation error:", err);
+    return res.status(500).json({ success: false, error: err?.message || "Server error" });
+  }
+});
+
+/* =====================================================
    SELLER: REPLY TO ADMIN
    POST /api/admin-message/seller/reply
    body: { conversationId, text }
@@ -850,6 +917,28 @@ router.post("/seller/reply", requireAuth, async (req, res) => {
       .populate("receiver", "name email avatar avatarUrl role userType");
 
     emitAdminMessage(req, conversation, message, receiverId);
+
+    /* Put it in the admin notification bell as well as the socket. The socket
+       only reaches an admin who happens to have the dashboard open on that
+       conversation; a suspended user asking why they were suspended can't
+       depend on that timing. Best-effort — a failed notification must not fail
+       the message that was already saved. */
+    try {
+      await notifyAdmins({
+        type: "ADMIN_REVIEW_NEEDED",
+        message: `${req.user?.name || "A user"} sent a message to the admin team: "${String(
+          text
+        ).slice(0, 140)}"`,
+        meta: {
+          kind: "admin_chat_reply",
+          conversationId: String(conversation._id),
+          fromUserId: String(sellerId),
+          fromUserName: req.user?.name || "",
+        },
+      });
+    } catch (e) {
+      console.error("notifyAdmins (admin chat) failed:", e?.message);
+    }
 
     res.json({
       success: true,
