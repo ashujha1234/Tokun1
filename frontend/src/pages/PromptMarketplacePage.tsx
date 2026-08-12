@@ -5789,7 +5789,7 @@ import { useUserTokenUsage } from "@/hooks/useUserTokenUsage";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import Footer from "@/components/Footer";
 import DetailsPrompt from "@/components/DetailsPrompt";
-import VideoReelCard, { authorInitials, buyerPrice } from "@/components/VideoReelCard";
+import VideoReelCard, { authorInitials, cardPrice } from "@/components/VideoReelCard";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import ModalComponent from "@/components/ModalComponent";
@@ -6150,7 +6150,7 @@ const LIB_BANNERS = {
 // which now animate in CSS. Nothing else on the page pulled stock photos.)
 
 const formatCardPrice = (p: Prompt) =>
-  p.isFree || !buyerPrice(p) ? "Free" : `₹${buyerPrice(p).toFixed(2)}`;
+  p.isFree || !cardPrice(p) ? "Free" : `₹${cardPrice(p).toFixed(2)}`;
 
 const LibEyebrow = ({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) => (
   <div className="flex items-center gap-2 text-[12px] font-semibold tracking-wide" style={{ color: "#22D3EE" }}>
@@ -6606,7 +6606,7 @@ const LibOldStyleCard = ({
           ) : (
             <>
               <div className="mp-card__pill mp-card__pill--muted">
-                ₹{buyerPrice(prompt).toFixed(2)}
+                ₹{cardPrice(prompt).toFixed(2)}
               </div>
 
               {/* No cart for team members — checkout is blocked server-side.
@@ -8130,7 +8130,7 @@ const savePromptToCollections = async ({
                         ) : (
                           <>
                             <div className="mp-card__pill mp-card__pill--muted">
-                              ₹{buyerPrice(prompt).toFixed(2)}
+                              ₹{cardPrice(prompt).toFixed(2)}
                             </div>
 
                             {/* No cart for team members — checkout is blocked server-side. */}
@@ -8302,7 +8302,7 @@ const savePromptToCollections = async ({
                 title="Budget-Friendly Prompts"
                 items={[...filteredPrompts].sort(
                   (a, b) =>
-                    (a.isFree ? 0 : buyerPrice(a)) - (b.isFree ? 0 : buyerPrice(b)),
+                    (a.isFree ? 0 : cardPrice(a)) - (b.isFree ? 0 : cardPrice(b)),
                 )}
                 renderCard={renderOldStyleCard}
               />

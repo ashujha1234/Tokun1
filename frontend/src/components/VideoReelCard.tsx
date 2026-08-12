@@ -14,13 +14,22 @@ import { isTeamMember } from "@/lib/orgRoles";
 export const authorInitials = (name?: string) =>
   (name || "U").trim().slice(0, 2).toUpperCase();
 
-// What the buyer will be charged, for any prompt shape (mapped Prompt objects
-// carry `tokunPrice`; raw API docs carry `tokun_price`). Every price on a card
-// goes through here so the number on screen matches the number Razorpay asks
-// for — they used to differ by Tokun's platform fee.
-export const buyerPrice = (p: any): number => {
-  const marked = Number(p?.tokunPrice ?? p?.tokun_price ?? 0);
-  return marked > 0 ? marked : Number(p?.price ?? 0);
+/* The price shown on a listing: what the SELLER set, with no fee added.
+
+   This used to return tokun_price — list price plus Tokun's platform fee — so a
+   prompt the seller listed at ₹300 advertised itself as ₹309. Browsing prices
+   should be the seller's own number; the platform fee belongs at checkout,
+   where the cart already itemises it (Subtotal / Platform fee / Total) and the
+   details panel spells it out as "₹300 + ₹9 platform fee".
+
+   Nothing about what gets CHARGED changes: the amount is computed server-side
+   by splitPromptSale() from the live fee rate, never from this. */
+export const cardPrice = (p: any): number => {
+  const listed = Number(p?.price ?? 0);
+  if (listed > 0) return listed;
+  /* Legacy rows that only ever stored the marked-up figure. Rare, and better
+     than rendering a paid prompt as free. */
+  return Number(p?.listPrice ?? p?.tokunPrice ?? p?.tokun_price ?? 0);
 };
 
 
@@ -141,7 +150,7 @@ export default function VideoReelCard({
           ) : (
             <>
               <div className="mp-card__pill mp-card__pill--muted">
-                ₹{buyerPrice(prompt).toFixed(2)}
+                ₹{cardPrice(prompt).toFixed(2)}
               </div>
 
               {showActions && !teamMember && !comingSoon && (
