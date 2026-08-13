@@ -383,12 +383,21 @@ export default function PromptValidationAdminDashboard() {
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #111827; }
         ::-webkit-scrollbar-thumb { background: #374151; border-radius: 99px; }
+
+        /* This page renders inside the admin dashboard's <main>, which already
+           supplies side padding — so its own 24px was doubled up, costing about
+           a seventh of a phone's width. Media queries can't be expressed in the
+           inline styles the rest of this file uses, hence the two classes. */
+        @media (max-width: 640px) {
+          .pv-shell { padding: 20px 0 !important; }
+          .pv-title { font-size: 22px !important; }
+        }
       `}</style>
 
-      <div style={{ maxWidth: 1320, margin: "0 auto", padding: "28px 24px" }}>
+      <div className="pv-shell" style={{ maxWidth: 1320, margin: "0 auto", padding: "28px 24px" }}>
         {/* Header */}
         <div style={{ marginBottom: 24 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 700, color: "#F9FAFB", margin: "0 0 4px" }}>
+          <h1 className="pv-title" style={{ fontSize: 28, fontWeight: 700, color: "#F9FAFB", margin: "0 0 4px" }}>
             Prompt-Media Match Validation
           </h1>
           <p style={{ fontSize: 14, color: "#6B7280", margin: 0 }}>

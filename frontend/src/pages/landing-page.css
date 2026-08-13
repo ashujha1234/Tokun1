@@ -723,10 +723,20 @@ body.is-loading { overflow: hidden; }
   .hero__stat { padding: 16px 24px; flex: 1 1 40%; }
   .hero__stat-divider { display: none; }
   .hero__stats { gap: 8px; }
-  .hero__ctas { flex-direction: column; width: 100%; align-items: center; gap: 12px; margin-bottom: 40px; }
-  .hero-btn { width: auto; justify-content: center; padding: 10px 18px; font-size: 13px; gap: 8px; }
-  .hero-btn--ghost { padding: 10px 18px; }
-  .hero-btn__icon { width: 20px; height: 20px; }
+  /* The two CTAs stack at this width, and `width: auto` sized each one to its
+     own label — "Try Smartgen" came out visibly narrower than "Prompt
+     Marketplace", so the pair read as two stray pills instead of one stack.
+     Equal width, capped well short of the screen so they stay buttons rather
+     than becoming two full-width bars. The ghost button's padding has to match
+     the primary's or the two end up different heights at the same width. */
+  .hero__ctas { flex-direction: column; width: 100%; align-items: center; gap: 10px; margin-bottom: 40px; }
+  .hero-btn { width: 100%; max-width: 175px; justify-content: center; padding: 9px 12px; font-size: 12.5px; gap: 6px; }
+  .hero-btn--ghost { padding: 9px 12px; }
+  /* The arrow is sized by a `size={16}` prop in the JSX, which would overflow
+     an 18px disc — CSS beats the SVG's width/height attributes, so it's scaled
+     down here rather than by branching the component on viewport width. */
+  .hero-btn__icon { width: 18px; height: 18px; }
+  .hero-btn__icon svg { width: 13px; height: 13px; }
   .hero-btn__motion-lines { display: none; }
   .hero__fab { bottom: 20px; right: 20px; width: 44px; height: 44px; }
 }

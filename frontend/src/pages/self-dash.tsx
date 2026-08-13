@@ -3059,6 +3059,20 @@ const successRateBadge =
   const firstDay = new Date(year, month, 1).getDay();
   const totalDays = new Date(year, month + 1, 0).getDate();
 
+  /* This picker reads a date, it doesn't book one — every figure on the page
+     behind it is something that already happened. Tomorrow was selectable, and
+     picking it just relabelled the header with a date no data could exist for.
+     Midnight local, so "today" itself stays available all day. */
+  const todayStart = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+  // Paging past the current month would land on a grid where every day is
+  // disabled, so the arrow that gets you there is switched off instead.
+  const atCurrentMonth =
+    year === todayStart.getFullYear() && month === todayStart.getMonth();
+
   /* ── Stats data ── */
   const stats = [
   {
@@ -4318,7 +4332,13 @@ const RequestCard = ({ item }: { item: any }) => {
                       <div className="mb-3 flex items-center justify-between">
                         <button type="button" onClick={() => setCalendarMonth((prev) => { const next = new Date(prev); next.setMonth(next.getMonth() - 1); return next; })} className="h-8 w-8 rounded-full bg-white/10 text-white hover:bg-white/15">‹</button>
                         <p className="text-sm font-semibold text-white">{getMonthLabel(calendarMonth)}</p>
-                        <button type="button" onClick={() => setCalendarMonth((prev) => { const next = new Date(prev); next.setMonth(next.getMonth() + 1); return next; })} className="h-8 w-8 rounded-full bg-white/10 text-white hover:bg-white/15">›</button>
+                        <button
+                          type="button"
+                          disabled={atCurrentMonth}
+                          aria-label="Next month"
+                          onClick={() => setCalendarMonth((prev) => { const next = new Date(prev); next.setMonth(next.getMonth() + 1); return next; })}
+                          className="h-8 w-8 rounded-full bg-white/10 text-white transition enabled:hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-30"
+                        >›</button>
                       </div>
                       <div className="mb-2 grid grid-cols-7 gap-1 text-center">
                         {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => (
@@ -4333,8 +4353,26 @@ const RequestCard = ({ item }: { item: any }) => {
                           currentDate.setHours(0, 0, 0, 0);
                           const value = toDateValue(currentDate);
                           const active = selectedDate === value;
+                          const isFuture = currentDate.getTime() > todayStart.getTime();
                           return (
-                            <button key={day} type="button" onClick={() => { setSelectedDate(value); setShowCalendar(false); }} className={`h-8 rounded-full text-xs transition ${active ? "text-white" : "text-white/70 hover:bg-white/10"}`} style={active ? { background: GRADIENT } : {}}>
+                            <button
+                              key={day}
+                              type="button"
+                              disabled={isFuture}
+                              aria-disabled={isFuture}
+                              onClick={() => { setSelectedDate(value); setShowCalendar(false); }}
+                              className={`h-8 rounded-full text-xs transition ${
+                                active
+                                  ? "text-white"
+                                  : isFuture
+                                  /* Dimmed rather than hidden — the row still has
+                                     to read as a month, and a gap where the 29th
+                                     should be reads as a rendering fault. */
+                                  ? "cursor-not-allowed text-white/20"
+                                  : "text-white/70 hover:bg-white/10"
+                              }`}
+                              style={active ? { background: GRADIENT } : {}}
+                            >
                               {day}
                             </button>
                           );

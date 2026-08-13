@@ -14333,6 +14333,24 @@ const fbLabelStyle: React.CSSProperties = {
 }
 
 function FeedbackButton() {
+  /* Two separate things this tab got wrong on a phone.
+     One: it was sized for a desktop edge — 18px of vertical padding around a
+     tracked-out vertical word and a 32px icon tile came to a ~130px slab down
+     the side of a 390px screen.
+     Two: it drifted. `whileHover` moved it 5px left, and a touch device fires
+     hover on tap and never fires the leave, so after one press the tab sat
+     offset from the edge with a gap of page showing through — and did it again,
+     differently, on the next press. Hover is a pointer idiom; below this width
+     the press feedback alone is enough. */
+  const [isCompact, setIsCompact] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px), (hover: none)')
+    const sync = () => setIsCompact(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
+
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<'form' | 'otp'>('form')
   const [rating, setRating] = useState(0)
@@ -14453,8 +14471,9 @@ function FeedbackButton() {
       {/* ── Floating tab button ── */}
       <motion.button
         onClick={() => setOpen(true)}
+        aria-label="Share feedback"
         initial={false}
-        whileHover={{ x: -5, scale: 1.02 }}
+        whileHover={isCompact ? undefined : { x: -5, scale: 1.02 }}
         whileTap={{ scale: 0.95 }}
         style={{
           position: 'fixed',
@@ -14465,16 +14484,18 @@ function FeedbackButton() {
           border: 'none',
           padding: 0,
           background: 'linear-gradient(160deg, #7c3aed 0%, #4f46e5 40%, #2563eb 100%)',
-          borderRadius: '14px 0 0 14px',
+          borderRadius: isCompact ? '11px 0 0 11px' : '14px 0 0 14px',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: 10,
-          paddingTop: 18,
-          paddingBottom: 18,
-          paddingLeft: 11,
-          paddingRight: 11,
-          boxShadow: '-4px 0 32px rgba(124,58,237,0.55), -1px 0 0 rgba(255,255,255,0.08), inset 0 1px 0 rgba(255,255,255,0.15)',
+          gap: isCompact ? 7 : 10,
+          paddingTop: isCompact ? 11 : 18,
+          paddingBottom: isCompact ? 11 : 18,
+          paddingLeft: isCompact ? 7 : 11,
+          paddingRight: isCompact ? 7 : 11,
+          boxShadow: isCompact
+            ? '-2px 0 16px rgba(124,58,237,0.45), inset 0 1px 0 rgba(255,255,255,0.15)'
+            : '-4px 0 32px rgba(124,58,237,0.55), -1px 0 0 rgba(255,255,255,0.08), inset 0 1px 0 rgba(255,255,255,0.15)',
         }}
       >
         {/* Shiny top-left highlight */}
@@ -14482,7 +14503,7 @@ function FeedbackButton() {
           position: 'absolute',
           top: 0, left: 0, right: 0,
           height: '45%',
-          borderRadius: '14px 0 0 0',
+          borderRadius: isCompact ? '11px 0 0 0' : '14px 0 0 0',
           background: 'linear-gradient(180deg, rgba(255,255,255,0.14) 0%, transparent 100%)',
           pointerEvents: 'none',
         }} />
@@ -14491,9 +14512,11 @@ function FeedbackButton() {
           transform: 'rotate(180deg)',
           textOrientation: 'mixed',
           color: '#fff',
-          fontSize: 11.5,
+          fontSize: isCompact ? 9.5 : 11.5,
           fontWeight: 800,
-          letterSpacing: '0.14em',
+          /* The tracking is what actually made this tall — 0.14em over eight
+             letters adds most of a character's height on its own. */
+          letterSpacing: isCompact ? '0.06em' : '0.14em',
           textTransform: 'uppercase',
           lineHeight: 1,
           textShadow: '0 1px 4px rgba(0,0,0,0.3)',
@@ -14501,17 +14524,18 @@ function FeedbackButton() {
           Feedback
         </span>
         <div style={{
-          width: 32,
-          height: 32,
-          borderRadius: 9,
+          width: isCompact ? 24 : 32,
+          height: isCompact ? 24 : 32,
+          borderRadius: isCompact ? 7 : 9,
           background: 'rgba(255,255,255,0.18)',
           backdropFilter: 'blur(4px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          flexShrink: 0,
           boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.2)',
         }}>
-          <MessageSquarePlus size={15} color="#fff" style={{ transform: 'scaleX(-1)' }} />
+          <MessageSquarePlus size={isCompact ? 12 : 15} color="#fff" style={{ transform: 'scaleX(-1)' }} />
         </div>
       </motion.button>
 

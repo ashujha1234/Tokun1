@@ -14104,8 +14104,12 @@ const ModerationReasonModal = ({
 
   return (
     <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-sm flex items-center justify-center px-4 py-6">
-      <div className="w-full max-w-[520px] rounded-2xl border border-white/10 bg-[#0B0D12] shadow-2xl">
-        <div className="p-6">
+      {/* The reason presets are full sentences, so on a phone they wrap to a
+          row each and the sheet grows past the viewport — taller still once the
+          keyboard is up for the textarea. dvh, not vh, so the cap follows the
+          shrinking visual viewport instead of the address-bar-less full height. */}
+      <div className="w-full max-w-[520px] max-h-[calc(100dvh-3rem)] overflow-y-auto rounded-2xl border border-white/10 bg-[#0B0D12] shadow-2xl">
+        <div className="p-5 sm:p-6">
           <div className="flex items-start gap-3">
             <div
               className={[
@@ -14484,6 +14488,30 @@ const planBadgeClass = (label: string) =>
     : label === "Pro"
     ? "bg-amber-500/15 text-amber-200 border-amber-500/25"
     : "bg-white/[0.05] text-white/60 border-white/10";
+
+/* ── RowCell ────────────────────────────────────────────────────────────────
+   One cell of the twelve-column list rows below. On a desktop the column
+   header names the value, so the cell is just the value; on a phone that
+   header is gone — the row collapses to a stack, and a plan pill followed by
+   "0", "1", "₹0", "12 Aug 2025" is a column of numbers with nothing saying
+   which is which. So the label travels with the value and shows up only where
+   the header can't: caption above, value below, one field per half-row. */
+const RowCell = ({
+  label,
+  className = "",
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: React.ReactNode;
+}) => (
+  <div className={`min-w-0 flex flex-col gap-1 md:flex-row md:items-center md:gap-0 ${className}`}>
+    <span className="md:hidden text-[10px] font-semibold uppercase tracking-[0.08em] text-white/35">
+      {label}
+    </span>
+    {children}
+  </div>
+);
 
 const useMediaQuery = (query: string) => {
   const [matches, setMatches] = React.useState(false);
@@ -14905,8 +14933,12 @@ const LedgerPanel = ({ days }: { days: number }) => {
               Ledger entries ({data.count})
               {data.truncated && <span className="text-white/25"> · showing the newest 300</span>}
             </p>
+            {/* min-w on the table, not just overflow-x-auto on the wrapper:
+                a w-full table inside a scroller never overflows, it just
+                crushes eight columns into a phone's width. The min-width is
+                what turns the wrapper's scrollbar on. */}
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[880px] text-sm">
                 <thead>
                   <tr className="text-[10px] uppercase tracking-wider text-white/35 border-b border-white/10">
                     <th className="text-left font-semibold px-4 py-2">Occurred</th>
@@ -15107,7 +15139,7 @@ const WebhooksPanel = () => {
             Webhook deliveries ({events.length})
           </p>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[620px] text-sm">
               <thead>
                 <tr className="text-[10px] uppercase tracking-wider text-white/35 border-b border-white/10">
                   <th className="text-left font-semibold px-4 py-2">Received</th>
@@ -15664,8 +15696,8 @@ const PayoutsPanel = ({ days }: { days: number }) => {
           <div className="px-5 py-3 border-b border-white/[0.07]">
             <h3 className="text-sm font-semibold text-white">Recent transfers</h3>
           </div>
-          <div className="max-h-72 overflow-y-auto">
-            <table className="w-full text-sm">
+          <div className="max-h-72 overflow-y-auto overflow-x-auto">
+            <table className="w-full min-w-[560px] text-sm">
               <thead className="sticky top-0 bg-[#15171E]">
                 <tr className="text-left text-white/40 text-[11px]">
                   <th className="px-5 py-2 font-medium">Linked account</th>
@@ -15828,7 +15860,11 @@ const PaymentsView = () => {
         )}
       </div>
 
-      <div className="flex gap-1 border-b border-white/10 -mt-1">
+      {/* Five tabs whose labels are phrases, not words — they come to well over
+          a phone's width, so the strip scrolls sideways instead of wrapping.
+          Wrapping would put the underline of a second row across the middle of
+          the panel and stop reading as a tab bar. */}
+      <div className="flex gap-1 border-b border-white/10 -mt-1 overflow-x-auto no-scrollbar">
         {(
           [
             ["live", "Razorpay (live)"],
@@ -15841,7 +15877,7 @@ const PaymentsView = () => {
           <button
             key={key}
             onClick={() => setView(key)}
-            className={`px-3 pb-2 text-xs font-medium transition border-b-2 -mb-px ${
+            className={`px-3 pb-2 text-xs font-medium transition border-b-2 -mb-px shrink-0 whitespace-nowrap ${
               view === key
                 ? "border-white text-white"
                 : "border-transparent text-white/40 hover:text-white/70"
@@ -15954,7 +15990,7 @@ const PaymentsView = () => {
               Payments ({data.payments?.length || 0})
             </p>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[720px] text-sm">
                 <thead>
                   <tr className="text-[10px] uppercase tracking-wider text-white/35 border-b border-white/10">
                     <th className="text-left font-semibold px-4 py-2">When</th>
@@ -20411,8 +20447,11 @@ const handleProfileSuspendToggle = () => {
                 Showing {total === 0 ? 0 : startIndex + 1} to {endIndex} of {total} products
               </div>
 
-              {/* Page buttons */}
-              <div className="flex items-center gap-2">
+              {/* Page buttons. The mobile prev/next row below is the phone
+                  version of this same control — without hidden md:flex here,
+                  both rendered at once and the numbered one overflowed a 390px
+                  screen on top of being a duplicate. */}
+              <div className="hidden md:flex items-center gap-2">
                 <button
                   disabled={safePage <= 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
@@ -20651,7 +20690,11 @@ const SellerProfileView = ({
 
         {!loading && !error && (
           <div className="mt-5 overflow-hidden rounded-2xl border border-white/10">
-            <div className="grid grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
+            {/* A twelve-column header means nothing on a phone, where each
+                column would get about 30px. Below md the header is dropped and
+                every row carries its own labels — same data, read down instead
+                of across. */}
+            <div className="hidden md:grid md:grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
               <div className="col-span-5">PRODUCT</div>
               <div className="col-span-3">CATEGORY</div>
               <div className="col-span-2">PRICE</div>
@@ -20665,16 +20708,23 @@ const SellerProfileView = ({
                 </div>
               )}
               {visibleProducts.map((p) => (
-                <div key={p.id} className="grid grid-cols-12 gap-3 px-5 py-4 items-center bg-white/[0.02]">
-                  <div className="col-span-5">
-                    <div className="text-sm font-medium text-white/90">{p.title}</div>
+                <div key={p.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-3 px-4 md:px-5 py-4 md:items-center bg-white/[0.02]">
+                  <div className="md:col-span-5 min-w-0">
+                    <div className="text-sm font-medium text-white/90 break-words">{p.title}</div>
                     <div className="text-xs text-white/50">{p.status}</div>
                   </div>
-                  <div className="col-span-3 text-sm text-white/75">{p.category || "General"}</div>
-                  <div className="col-span-2 text-sm text-white/75">
+                  <div className="md:col-span-3 text-sm text-white/75 min-w-0 break-words">
+                    <span className="md:hidden text-[10px] uppercase tracking-wider text-white/40 mr-2">Category</span>
+                    {p.category || "General"}
+                  </div>
+                  <div className="md:col-span-2 text-sm text-white/75">
+                    <span className="md:hidden text-[10px] uppercase tracking-wider text-white/40 mr-2">Price</span>
                     {p.price > 0 ? `₹${p.price}` : "FREE"}
                   </div>
-                  <div className="col-span-2 text-sm text-white/75">{p.salesCount ?? 0}</div>
+                  <div className="md:col-span-2 text-sm text-white/75">
+                    <span className="md:hidden text-[10px] uppercase tracking-wider text-white/40 mr-2">Sales</span>
+                    {p.salesCount ?? 0}
+                  </div>
                 </div>
               ))}
             </div>
@@ -20867,7 +20917,7 @@ const UserProfileView = ({
         )}
         {bought.length > 0 && (
           <div className="mt-5 overflow-hidden rounded-2xl border border-white/10">
-            <div className="grid grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
+            <div className="hidden md:grid md:grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
               <div className="col-span-6">PROMPT</div>
               <div className="col-span-2">PRICE PAID</div>
               <div className="col-span-2">STATUS</div>
@@ -20875,18 +20925,19 @@ const UserProfileView = ({
             </div>
             <div className="divide-y divide-white/10">
               {bought.map((b) => (
-                <div key={b.id} className="grid grid-cols-12 gap-3 px-5 py-4 items-center bg-white/[0.02]">
-                  <div className="col-span-6">
-                    <div className="text-sm font-medium text-white/90">{b.title}</div>
+                <div key={b.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-3 px-4 md:px-5 py-4 md:items-center bg-white/[0.02]">
+                  <div className="md:col-span-6 min-w-0">
+                    <div className="text-sm font-medium text-white/90 break-words">{b.title}</div>
                     {b.deleted && <div className="text-xs text-white/40">(prompt deleted)</div>}
                   </div>
-                  <div className="col-span-2 text-sm text-white/75">
+                  <div className="md:col-span-2 text-sm text-white/75">
+                    <span className="md:hidden text-[10px] uppercase tracking-wider text-white/40 mr-2">Paid</span>
                     {b.pricePaid > 0 ? `₹${b.pricePaid}` : "FREE"}
                   </div>
-                  <div className="col-span-2 text-sm">
+                  <div className="md:col-span-2 text-sm">
                     <span
                       className={[
-                        "px-2 py-0.5 rounded-full text-xs border",
+                        "inline-block px-2 py-0.5 rounded-full text-xs border",
                         b.refundStatus && b.refundStatus !== "NONE"
                           ? "bg-amber-500/15 text-amber-200 border-amber-500/25"
                           : "bg-emerald-500/15 text-emerald-200 border-emerald-500/25",
@@ -20895,7 +20946,8 @@ const UserProfileView = ({
                       {b.refundStatus && b.refundStatus !== "NONE" ? b.refundStatus : b.paymentStatus}
                     </span>
                   </div>
-                  <div className="col-span-2 text-sm text-white/60">
+                  <div className="md:col-span-2 text-sm text-white/60">
+                    <span className="md:hidden text-[10px] uppercase tracking-wider text-white/40 mr-2">Date</span>
                     {b.purchasedAt ? new Date(b.purchasedAt).toLocaleDateString() : "—"}
                   </div>
                 </div>
@@ -20913,7 +20965,7 @@ const UserProfileView = ({
         )}
         {uploaded.length > 0 && (
           <div className="mt-5 overflow-hidden rounded-2xl border border-white/10">
-            <div className="grid grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
+            <div className="hidden md:grid md:grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
               <div className="col-span-5">PRODUCT</div>
               <div className="col-span-3">CATEGORY</div>
               <div className="col-span-2">PRICE</div>
@@ -20921,16 +20973,23 @@ const UserProfileView = ({
             </div>
             <div className="divide-y divide-white/10">
               {uploaded.map((p) => (
-                <div key={p.id} className="grid grid-cols-12 gap-3 px-5 py-4 items-center bg-white/[0.02]">
-                  <div className="col-span-5">
-                    <div className="text-sm font-medium text-white/90">{p.title}</div>
+                <div key={p.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-3 px-4 md:px-5 py-4 md:items-center bg-white/[0.02]">
+                  <div className="md:col-span-5 min-w-0">
+                    <div className="text-sm font-medium text-white/90 break-words">{p.title}</div>
                     <div className="text-xs text-white/50">{p.status}</div>
                   </div>
-                  <div className="col-span-3 text-sm text-white/75">{p.category || "General"}</div>
-                  <div className="col-span-2 text-sm text-white/75">
+                  <div className="md:col-span-3 text-sm text-white/75 min-w-0 break-words">
+                    <span className="md:hidden text-[10px] uppercase tracking-wider text-white/40 mr-2">Category</span>
+                    {p.category || "General"}
+                  </div>
+                  <div className="md:col-span-2 text-sm text-white/75">
+                    <span className="md:hidden text-[10px] uppercase tracking-wider text-white/40 mr-2">Price</span>
                     {p.price > 0 ? `₹${p.price}` : "FREE"}
                   </div>
-                  <div className="col-span-2 text-sm text-white/75">{p.salesCount ?? 0}</div>
+                  <div className="md:col-span-2 text-sm text-white/75">
+                    <span className="md:hidden text-[10px] uppercase tracking-wider text-white/40 mr-2">Sales</span>
+                    {p.salesCount ?? 0}
+                  </div>
                 </div>
               ))}
             </div>
@@ -21098,7 +21157,7 @@ const OrgProfileView = ({
         )}
         {org.members.length > 0 && (
           <div className="mt-5 overflow-hidden rounded-2xl border border-white/10">
-            <div className="grid grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
+            <div className="hidden md:grid md:grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
               <div className="col-span-5">MEMBER</div>
               <div className="col-span-2">ROLE</div>
               <div className="col-span-3">ASSIGNED CAP</div>
@@ -21106,8 +21165,8 @@ const OrgProfileView = ({
             </div>
             <div className="divide-y divide-white/10">
               {org.members.map((m) => (
-                <div key={m.userId} className="grid grid-cols-12 gap-3 px-5 py-4 items-center bg-white/[0.02]">
-                  <div className="col-span-5 flex items-center gap-3 min-w-0">
+                <div key={m.userId} className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-3 px-4 md:px-5 py-4 md:items-center bg-white/[0.02]">
+                  <div className="md:col-span-5 flex items-center gap-3 min-w-0">
                     <img
                       src={m.avatar || "https://i.pravatar.cc/60?img=15"}
                       alt={m.name}
@@ -21118,10 +21177,10 @@ const OrgProfileView = ({
                       <div className="text-xs text-white/45 truncate">{m.email}</div>
                     </div>
                   </div>
-                  <div className="col-span-2 text-sm">
+                  <div className="md:col-span-2 text-sm">
                     <span
                       className={[
-                        "px-2 py-0.5 rounded-full text-xs border",
+                        "inline-block px-2 py-0.5 rounded-full text-xs border",
                         m.role === "ADMIN"
                           ? "bg-indigo-500/15 text-indigo-200 border-indigo-500/25"
                           : "bg-white/[0.05] text-white/60 border-white/10",
@@ -21130,10 +21189,12 @@ const OrgProfileView = ({
                       {m.role}
                     </span>
                   </div>
-                  <div className="col-span-3 text-sm text-white/75">
+                  <div className="md:col-span-3 text-sm text-white/75">
+                    <span className="md:hidden text-[10px] uppercase tracking-wider text-white/40 mr-2">Assigned cap</span>
                     {(m.assignedCap || 0).toLocaleString()}
                   </div>
-                  <div className="col-span-2 text-sm text-white/75">
+                  <div className="md:col-span-2 text-sm text-white/75">
+                    <span className="md:hidden text-[10px] uppercase tracking-wider text-white/40 mr-2">Used</span>
                     {(m.usedThisPeriod || 0).toLocaleString()}
                   </div>
                 </div>
@@ -22185,7 +22246,11 @@ const WithdrawalsView = () => {
 
 
   return (
-    <div className="min-h-screen w-full bg-[#07080B] text-white font-inter">
+    /* overflow-x-clip, not just w-full: one over-wide child anywhere in ten
+       thousand lines of admin tables used to make the whole page scroll
+       sideways, which on a phone reads as a broken layout rather than as a
+       wide table. Panels that genuinely need width scroll inside themselves. */
+    <div className="min-h-screen w-full overflow-x-clip bg-[#07080B] text-white font-inter">
       {/* Top Nav */}
       <header className="sticky top-0 z-40 border-b border-white/10 bg-[#07080B]/80 backdrop-blur">
         {/* Full width, not a centred 1200px box.
@@ -22194,12 +22259,14 @@ const WithdrawalsView = () => {
             and the whole page scrolled sideways. The nav also has to be allowed
             to shrink (min-w-0) or a flex child refuses to go below its content
             width and pushes the overflow back. */}
-        <div className="w-full px-4 sm:px-6">
-          <div className="h-[74px] flex items-center gap-2">
+        <div className="w-full px-3 sm:px-6">
+          <div className="h-[60px] sm:h-[74px] flex items-center gap-2 min-w-0">
 
-            {/* LEFT: Brand */}
-            <div className="flex items-center shrink-0">
-              <div className="text-white font-semibold tracking-wide whitespace-nowrap">
+            {/* LEFT: Brand. min-w-0 + truncate so the brand is what gives way
+                on a narrow phone — the queue counts and the account menu are
+                the parts an admin actually taps. */}
+            <div className="flex items-center min-w-0">
+              <div className="text-white font-semibold tracking-wide truncate text-[15px] sm:text-base">
                 Tokun Admin
               </div>
             </div>
@@ -22215,14 +22282,14 @@ const WithdrawalsView = () => {
             {/* RIGHT: Actions. shrink-0 so it keeps its size and the nav in the
                 middle gives way instead — the account menu is the one thing
                 here that must never be clipped. */}
-            <div className="flex items-center gap-3 ml-auto shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-3 ml-auto shrink-0">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className="relative h-10 w-10 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] flex items-center justify-center"
+                    className="relative h-9 w-9 sm:h-10 sm:w-10 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] flex items-center justify-center shrink-0"
                     aria-label="Notifications"
                   >
-                    <Bell className="h-5 w-5 text-white/80" />
+                    <Bell className="h-[18px] w-[18px] sm:h-5 sm:w-5 text-white/80" />
                     {adminUnreadCount > 0 && (
                       <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 grid place-items-center rounded-full">
                         {adminUnreadCount > 9 ? "9+" : adminUnreadCount}
@@ -22230,7 +22297,10 @@ const WithdrawalsView = () => {
                     )}
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-[360px] bg-[#0F1117] border border-white/10 text-white p-2">
+                {/* A fixed 360px panel is wider than a 390px phone once the
+                    viewport padding is taken off, so it used to hang off the
+                    right edge. Track the viewport below that, cap at 360. */}
+                <DropdownMenuContent align="end" sideOffset={8} className="w-[calc(100vw-1.5rem)] max-w-[360px] bg-[#0F1117] border border-white/10 text-white p-2">
                   <div className="flex items-center justify-between px-2 py-2">
                     <span className="font-semibold text-sm">Notifications</span>
                     {adminUnreadCount > 0 && (
@@ -22280,17 +22350,23 @@ const WithdrawalsView = () => {
           {/* Both queues carry a count, and go colour when there's something in
               them — amber for refunds, fuchsia for disputes. Two identical grey
               pills told an admin nothing about whether either needed opening. */}
+          {/* Below sm the word is dropped and the icon carries it, because the
+              two labelled pills plus the account menu came to more than a
+              390px viewport and pushed the whole header off-screen. The count
+              badge — the only part that changes — is kept at every width. */}
           <button
             onClick={() => { window.location.href = "/admin/refunds"; }}
-            className={`h-10 px-4 rounded-full border flex items-center gap-2 text-sm transition ${
+            aria-label={`Refunds${queueCounts.refunds > 0 ? ` (${queueCounts.refunds} pending)` : ""}`}
+            className={`h-9 sm:h-10 px-2.5 sm:px-4 rounded-full border flex items-center gap-1.5 sm:gap-2 text-sm transition shrink-0 ${
               queueCounts.refunds > 0
                 ? "border-[#FABC4E]/40 bg-[#FABC4E]/[0.10] text-[#FABC4E] hover:bg-[#FABC4E]/[0.16]"
                 : "border-white/10 bg-white/[0.04] text-white/80 hover:bg-white/[0.06]"
             }`}
           >
-            Refunds
+            <RefreshCcw className="h-4 w-4 sm:hidden" />
+            <span className="hidden sm:inline">Refunds</span>
             {queueCounts.refunds > 0 && (
-              <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#FABC4E] text-[#07080B] text-[11px] font-bold grid place-items-center">
+              <span className="min-w-[18px] sm:min-w-[20px] h-[18px] sm:h-5 px-1 sm:px-1.5 rounded-full bg-[#FABC4E] text-[#07080B] text-[10px] sm:text-[11px] font-bold grid place-items-center">
                 {queueCounts.refunds}
               </span>
             )}
@@ -22302,25 +22378,35 @@ const WithdrawalsView = () => {
               about how much of a job was actually done. */}
           <button
             onClick={() => { window.location.href = "/admin/disputes"; }}
-            className={`h-10 px-4 rounded-full border flex items-center gap-2 text-sm transition ${
+            aria-label={`Disputes${queueCounts.disputes > 0 ? ` (${queueCounts.disputes} open)` : ""}`}
+            className={`h-9 sm:h-10 px-2.5 sm:px-4 rounded-full border flex items-center gap-1.5 sm:gap-2 text-sm transition shrink-0 ${
               queueCounts.disputes > 0
                 ? "border-[#C084FC]/40 bg-[#C084FC]/[0.10] text-[#C084FC] hover:bg-[#C084FC]/[0.16]"
                 : "border-white/10 bg-white/[0.04] text-white/80 hover:bg-white/[0.06]"
             }`}
           >
-            Disputes
+            <TriangleAlert className="h-4 w-4 sm:hidden" />
+            <span className="hidden sm:inline">Disputes</span>
             {queueCounts.disputes > 0 && (
-              <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#C084FC] text-[#07080B] text-[11px] font-bold grid place-items-center">
+              <span className="min-w-[18px] sm:min-w-[20px] h-[18px] sm:h-5 px-1 sm:px-1.5 rounded-full bg-[#C084FC] text-[#07080B] text-[10px] sm:text-[11px] font-bold grid place-items-center">
                 {queueCounts.disputes}
               </span>
             )}
           </button>
 
+          {/* "Hello, {name}" is unbounded — a long admin name alone could push
+              the header off a phone. It becomes an avatar button below sm, and
+              above sm the name is capped and truncated rather than allowed to
+              grow. */}
           <DropdownMenu>
   <DropdownMenuTrigger asChild>
-    <button className="h-10 px-4 rounded-full border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] flex items-center gap-2">
-      <span className="text-sm text-white/80">Hello, {adminName}</span>
-      <ChevronDown className="h-4 w-4 text-white/70" />
+    <button
+      aria-label={`Account menu for ${adminName}`}
+      className="h-9 w-9 sm:h-10 sm:w-auto sm:px-4 rounded-full border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] flex items-center justify-center gap-2 shrink-0"
+    >
+      <UserRound className="h-4 w-4 text-white/80 sm:hidden" />
+      <span className="hidden sm:inline text-sm text-white/80 truncate max-w-[160px]">Hello, {adminName}</span>
+      <ChevronDown className="hidden sm:block h-4 w-4 text-white/70 shrink-0" />
     </button>
   </DropdownMenuTrigger>
 <DropdownMenuContent
@@ -22612,8 +22698,8 @@ const WithdrawalsView = () => {
       </div>
 
       {platformRevenue.transactions.length > 0 && (
-        <div className="mt-5 max-h-56 overflow-y-auto">
-          <table className="w-full text-sm">
+        <div className="mt-5 max-h-56 overflow-y-auto overflow-x-auto">
+          <table className="w-full min-w-[520px] text-sm">
             <thead>
               <tr className="text-left text-white/40 text-xs">
                 <th className="pb-2 font-medium">Date</th>
@@ -22863,9 +22949,12 @@ const WithdrawalsView = () => {
       {!sellersLoading && !sellersError && (
         <>
         {(sellerRows || []).slice(0, 10).map((r) => (
-  <div key={r.id} className="grid grid-cols-1 md:grid-cols-12 gap-4 px-4 md:px-5 py-5 bg-white/[0.02]">
+  /* Two columns on a phone, not one: these fields are a pill and three short
+     numbers, so a single stack of seven left the card tall and mostly empty.
+     Paired up they read Plan/Purchased, Uploaded/Volume, Status/action. */
+  <div key={r.id} className="grid grid-cols-2 md:grid-cols-12 gap-x-3 gap-y-4 md:gap-4 px-4 md:px-5 py-5 bg-white/[0.02]">
     {/* Seller */}
-    <div className="md:col-span-3 flex items-center gap-3 min-w-0">
+    <div className="col-span-2 md:col-span-3 flex items-center gap-3 min-w-0">
       <img
         src={r.avatar || "https://i.pravatar.cc/80?img=12"}
         alt={r.name}
@@ -22883,47 +22972,51 @@ const WithdrawalsView = () => {
     </div>
 
     {/* Plan */}
-    <div className="md:col-span-2 flex items-center">
+    <RowCell label="Plan" className="md:col-span-2">
       <span
         className={[
-          "px-3 py-1 rounded-full text-xs font-medium border",
+          "self-start px-3 py-1 rounded-full text-xs font-medium border",
           planBadgeClass(planLabel(r.userType, r.plan)),
         ].join(" ")}
       >
         {planLabel(r.userType, r.plan)}
       </span>
-    </div>
+    </RowCell>
 
     {/* Purchased */}
-    <div className="md:col-span-1 text-sm text-white/75 flex items-center">
-      {r.buyProducts ?? 0}
-    </div>
+    <RowCell label="Purchased" className="md:col-span-1">
+      <span className="text-sm text-white/75">{r.buyProducts ?? 0}</span>
+    </RowCell>
 
     {/* Uploaded */}
-    <div className="md:col-span-1 text-sm text-white/75 flex items-center">
-      {r.totalProducts ?? 0}
-    </div>
+    <RowCell label="Uploaded" className="md:col-span-1">
+      <span className="text-sm text-white/75">{r.totalProducts ?? 0}</span>
+    </RowCell>
 
     {/* Volume */}
-    <div className="md:col-span-2 text-sm text-white/80 font-medium flex items-center">
-      ₹{Number(r.volume ?? 0).toLocaleString("en-IN")}
-    </div>
+    <RowCell label="Volume" className="md:col-span-2">
+      <span className="text-sm text-white/80 font-medium">
+        ₹{Number(r.volume ?? 0).toLocaleString("en-IN")}
+      </span>
+    </RowCell>
 
     {/* Status */}
-    <div className="md:col-span-2 flex items-center">
+    <RowCell label="Status" className="md:col-span-2">
       <span className={[
-        "px-4 py-1.5 rounded-full text-xs font-medium border inline-flex",
+        "self-start px-4 py-1.5 rounded-full text-xs font-medium border inline-flex",
         r.status === "Active"
           ? "bg-emerald-500/15 text-emerald-200 border-emerald-500/25"
           : "bg-red-500/15 text-red-200 border-red-500/25",
       ].join(" ")}>
         {r.status}
       </span>
-    </div>
+    </RowCell>
 
     {/* Actions — block/unblock only; the trash button went with the delete
-        flow, which no longer exists on the server either. */}
-    <div className="md:col-span-1 flex items-center justify-end gap-2">
+        flow, which no longer exists on the server either. items-end so on a
+        phone the button lines up with the status pill beside it rather than
+        floating level with that pill's caption. */}
+    <div className="md:col-span-1 flex items-end md:items-center justify-end gap-2">
       <button
         className={
           r.status === "Active"
@@ -23240,11 +23333,11 @@ const WithdrawalsView = () => {
     role="button"
     tabIndex={0}
     onKeyDown={(e) => { if (e.key === "Enter") openUserProfile(u.id, u); }}
-    className="grid grid-cols-1 md:grid-cols-12 gap-4 px-4 md:px-5 py-5 bg-white/[0.02] cursor-pointer hover:bg-white/[0.05] transition-colors"
+    className="grid grid-cols-2 md:grid-cols-12 gap-x-3 gap-y-4 md:gap-4 px-4 md:px-5 py-5 bg-white/[0.02] cursor-pointer hover:bg-white/[0.05] transition-colors"
   >
 
     {/* User Name */}
-    <div className="md:col-span-3 flex items-center gap-3 min-w-0">
+    <div className="col-span-2 md:col-span-3 flex items-center gap-3 min-w-0">
       <img
         src={u.avatar || "https://i.pravatar.cc/80?img=12"}
         alt={u.name}
@@ -23257,34 +23350,38 @@ const WithdrawalsView = () => {
     </div>
 
     {/* Plan */}
-    <div className="md:col-span-2 flex items-center">
+    <RowCell label="Plan" className="md:col-span-2">
       <span
         className={[
-          "px-3 py-1 rounded-full text-xs font-medium border",
+          "self-start px-3 py-1 rounded-full text-xs font-medium border",
           planBadgeClass(planLabel(u.userType, u.plan)),
         ].join(" ")}
       >
         {planLabel(u.userType, u.plan)}
       </span>
-    </div>
+    </RowCell>
 
     {/* Purchased Prompt */}
-    <div className="md:col-span-2 text-sm text-white/75 flex items-center">
-      {u.purchasedPrompts ?? u.buyProducts ?? 0}
-    </div>
+    <RowCell label="Purchased" className="md:col-span-2">
+      <span className="text-sm text-white/75">
+        {u.purchasedPrompts ?? u.buyProducts ?? 0}
+      </span>
+    </RowCell>
 
     {/* Uploaded Prompt */}
-    <div className="md:col-span-2 text-sm text-white/75 flex items-center">
-      {u.uploadedPrompts ?? u.saleProducts ?? 0}
-    </div>
+    <RowCell label="Uploaded" className="md:col-span-2">
+      <span className="text-sm text-white/75">
+        {u.uploadedPrompts ?? u.saleProducts ?? 0}
+      </span>
+    </RowCell>
 
     {/* Joined Date */}
-    <div className="md:col-span-2 text-sm text-white/75 flex items-center">
-      {formatDate(u.createdAt)}
-    </div>
+    <RowCell label="Joined" className="md:col-span-2">
+      <span className="text-sm text-white/75">{formatDate(u.createdAt)}</span>
+    </RowCell>
 
     {/* Actions */}
-    <div className="md:col-span-1 flex items-center justify-end gap-3">
+    <div className="col-span-2 md:col-span-1 flex items-center justify-end gap-3">
       <button
         onClick={(e) => e.stopPropagation()}
         className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1"
@@ -23567,9 +23664,9 @@ const WithdrawalsView = () => {
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => { if (e.key === "Enter") openOrgProfile(o.id, o); }}
-                className="grid grid-cols-1 md:grid-cols-12 gap-4 px-4 md:px-5 py-5 bg-white/[0.02] cursor-pointer hover:bg-white/[0.05] transition-colors"
+                className="grid grid-cols-2 md:grid-cols-12 gap-x-3 gap-y-4 md:gap-4 px-4 md:px-5 py-5 bg-white/[0.02] cursor-pointer hover:bg-white/[0.05] transition-colors"
               >
-                <div className="md:col-span-3 flex items-center gap-3 min-w-0">
+                <div className="col-span-2 md:col-span-3 flex items-center gap-3 min-w-0">
                   <div className="h-10 w-10 rounded-xl bg-white/[0.05] border border-white/10 flex items-center justify-center shrink-0">
                     <Building2 className="h-5 w-5 text-white/70" />
                   </div>
@@ -23579,46 +23676,61 @@ const WithdrawalsView = () => {
                   </div>
                 </div>
 
-                <div className="md:col-span-3 min-w-0 flex flex-col justify-center">
+                {/* Owner is a name over an email, so it stays a block rather
+                    than going through RowCell's caption-then-value row. */}
+                <div className="col-span-2 md:col-span-3 min-w-0 flex flex-col md:justify-center">
+                  <span className="md:hidden text-[10px] font-semibold uppercase tracking-[0.08em] text-white/35">
+                    Owner
+                  </span>
                   <div className="text-sm text-white/85 truncate">{o.ownerName}</div>
                   <div className="text-xs text-white/45 truncate">{o.ownerEmail}</div>
                 </div>
 
-                <div className="md:col-span-2 flex items-center gap-2 flex-wrap">
-                  <span className="px-2 py-0.5 rounded-full text-xs border bg-white/[0.05] text-white/70 border-white/10">
-                    {o.plan === "enterprise" ? "Enterprise" : "No Plan"}
-                  </span>
-                  <span
-                    className={[
-                      "px-2 py-0.5 rounded-full text-xs border",
-                      o.subscriptionStatus === "active"
-                        ? "bg-emerald-500/15 text-emerald-200 border-emerald-500/25"
-                        : o.subscriptionStatus === "suspended" || o.subscriptionStatus === "canceled" || o.subscriptionStatus === "past_due"
-                        ? "bg-red-500/15 text-red-200 border-red-500/25"
-                        : "bg-white/[0.05] text-white/55 border-white/10",
-                    ].join(" ")}
-                  >
-                    {o.subscriptionStatus || "none"}
-                  </span>
-                </div>
-
-                <div className="md:col-span-1 text-sm text-white/75 flex items-center">
-                  {seatsUsed}/{o.teamMembersLimit}
-                </div>
-
-                <div className="md:col-span-2 flex items-center gap-2">
-                  <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-[#FF14EF] to-[#1A73E8]"
-                      style={{ width: `${Math.min(100, poolPct)}%` }}
-                    />
+                {/* Two pills, so it keeps the full width on a phone instead of
+                    wrapping one under the other in half a row. */}
+                <RowCell label="Plan / Status" className="col-span-2 md:col-span-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2 py-0.5 rounded-full text-xs border bg-white/[0.05] text-white/70 border-white/10">
+                      {o.plan === "enterprise" ? "Enterprise" : "No Plan"}
+                    </span>
+                    <span
+                      className={[
+                        "px-2 py-0.5 rounded-full text-xs border",
+                        o.subscriptionStatus === "active"
+                          ? "bg-emerald-500/15 text-emerald-200 border-emerald-500/25"
+                          : o.subscriptionStatus === "suspended" || o.subscriptionStatus === "canceled" || o.subscriptionStatus === "past_due"
+                          ? "bg-red-500/15 text-red-200 border-red-500/25"
+                          : "bg-white/[0.05] text-white/55 border-white/10",
+                      ].join(" ")}
+                    >
+                      {o.subscriptionStatus || "none"}
+                    </span>
                   </div>
-                  <span className="text-xs text-white/60 w-9 text-right">{poolPct}%</span>
-                </div>
+                </RowCell>
 
-                <div className="md:col-span-1 text-sm text-white/60 flex items-center md:justify-end">
-                  {formatDate(o.createdAt)}
-                </div>
+                <RowCell label="Seats" className="md:col-span-1">
+                  <span className="text-sm text-white/75">
+                    {seatsUsed}/{o.teamMembersLimit}
+                  </span>
+                </RowCell>
+
+                <RowCell label="Joined" className="md:col-span-1 md:order-last md:justify-end">
+                  <span className="text-sm text-white/60">{formatDate(o.createdAt)}</span>
+                </RowCell>
+
+                {/* Full width on a phone — a progress bar in half a 390px row
+                    is too short to read a percentage off. */}
+                <RowCell label="Pool used" className="col-span-2 md:col-span-2">
+                  <div className="flex w-full items-center gap-2">
+                    <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-[#FF14EF] to-[#1A73E8]"
+                        style={{ width: `${Math.min(100, poolPct)}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-white/60 w-9 text-right">{poolPct}%</span>
+                  </div>
+                </RowCell>
               </div>
             );
           })}
@@ -23927,7 +24039,9 @@ function FeedbackView() {
 
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:12, flexWrap:"wrap", gap:8 }}>
                 <span style={{ fontSize:11, color:"rgba(255,255,255,0.3)" }}>{new Date(fb.createdAt).toLocaleString()}</span>
-                <div style={{ display:"flex", gap:8 }}>
+                {/* Up to four buttons, one of them reading "Remove from Landing"
+                    — well past a phone's width on a single line. */}
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                   {(fb.status||"pending") !== "reviewed" && (
                     <button onClick={() => updateStatus(fb._id,"reviewed")} style={{ padding:"6px 14px", fontSize:12, fontWeight:700, borderRadius:8, border:"none", background:"rgba(96,165,250,0.15)", color:"#60a5fa", cursor:"pointer" }}>Mark Reviewed</button>
                   )}
