@@ -4289,8 +4289,15 @@ const RequestCard = ({ item }: { item: any }) => {
           </aside>
 
           {/* ── Main content ── */}
+          {/* The requests tab is the one panel that manages its own height —
+              header, an internally-scrolling list, then pagination pinned below
+              it. That only works if this section is a flex column, so the panel
+              can take "whatever is left after the payout banners" rather than a
+              flat 100%. */}
           <section
-            className="relative min-w-0 flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8"
+            className={`relative min-w-0 flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 ${
+              activeTab === "requests" ? "flex flex-col" : ""
+            }`}
             style={{
               minHeight: 0,
               paddingTop: activeTab === "requests" ? 20 : 32,
@@ -4384,14 +4391,23 @@ const RequestCard = ({ item }: { item: any }) => {
               </div>
             )}
 
+            {/* ── Payout status, and the org card that replaces it ───────────
+                These all used to carry `mx-4` on top of the section's own
+                `px-4 sm:px-6 lg:px-8`, so they sat 16px further in than the
+                greeting above them and the tab content below — and the gap grew
+                with the breakpoint, since the section padding scales and a flat
+                mx-4 doesn't. They render outside the tab switch, so that
+                mismatch showed on every tab. The section supplies the gutter;
+                these just stack inside it. */}
+
             {/* A team member's org identity and allowance. Renders nothing for
                 anyone else, and takes the place of the seller-payout banners
                 below — which a TM should never see, since payout-status reports
                 canSell:false for them. */}
-            <OrgMembershipCard className="relative z-10 mx-4 mt-4" />
+            <OrgMembershipCard className="relative z-10 mt-4" />
 
             {canSell && hasPayoutSetup === false && !requiresResubmission && (
-              <div className="relative z-10 mx-4 mt-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-200">
+              <div className="relative z-10 mt-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-200">
                 <strong>Action required:</strong> Please set up your bank/linked account so people can buy your prompts.
                 <button
                   type="button"
@@ -4404,7 +4420,7 @@ const RequestCard = ({ item }: { item: any }) => {
             )}
 
             {canSell && hasPayoutSetup === false && requiresResubmission && (
-              <div className="relative z-10 mx-4 mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+              <div className="relative z-10 mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                 <strong>{activationStatus === "REJECTED" ? "Verification failed:" : "Account disabled:"}</strong>{" "}
                 {payoutMessage || "Please resubmit your payout details."}
                 <button
@@ -4418,7 +4434,7 @@ const RequestCard = ({ item }: { item: any }) => {
             )}
 
             {hasPayoutSetup === true && activationStatus === "NEEDS_CLARIFICATION" && (
-              <div className="relative z-10 mx-4 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+              <div className="relative z-10 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
                 <span>Razorpay needs more information to verify your payout account. Your prompts stay hidden from buyers until this is resolved.</span>
                 <button
                   type="button"
@@ -4432,13 +4448,13 @@ const RequestCard = ({ item }: { item: any }) => {
             )}
 
             {hasPayoutSetup === true && (activationStatus === "UNDER_REVIEW" || activationStatus === "CREATED") && (
-              <div className="relative z-10 mx-4 mt-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-200">
+              <div className="relative z-10 mt-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-200">
                 <strong>Under review:</strong> {payoutMessage || "Your payout account is being verified. Your prompts will go live as soon as verification completes."}
               </div>
             )}
 
             {hasPayoutSetup === true && activationStatus === "ACTIVATED" && (
-              <div className="relative z-10 mx-4 mt-4 rounded-lg border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-200">
+              <div className="relative z-10 mt-4 rounded-lg border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-200">
                 <strong>Payout account activated:</strong> Buyers can now see and purchase your prompts.
               </div>
             )}
@@ -4577,7 +4593,21 @@ const RequestCard = ({ item }: { item: any }) => {
               />
             )}
 
-            <div className={activeTab === "requests" ? "relative z-10 h-[calc(100%-0px)]" : "relative z-10 mt-6"}>
+            {/* `h-[calc(100%-0px)]` was a flat `height: 100%` measured against
+                the whole section, so it knew nothing about the payout banners
+                sitting above it — the panel ran a banner's worth of height past
+                the bottom edge, and with no top margin on this branch (only the
+                other tabs get mt-6) "New Requests" was jammed straight up under
+                the banner with no gap at all. flex-1 measures what's actually
+                left; min-h-0 lets the list inside it scroll rather than forcing
+                the column open. */}
+            <div
+              className={
+                activeTab === "requests"
+                  ? "relative z-10 mt-4 min-h-0 flex-1"
+                  : "relative z-10 mt-6"
+              }
+            >
               {activeTab === "dashboard"       && <DashboardContent />}
               {activeTab === "requests"        && <RequestsContent />}
               {activeTab === "serviceBookings" && <ServiceBookingsContent />}

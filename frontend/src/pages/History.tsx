@@ -217,8 +217,11 @@ const setTabAndUrl = (next: TabKey) => {
           </div>
         </div>
 
+        {/* Only while there's already a list on screen. On a first load the
+            centred loader below is showing, and this printed a second
+            "Loading…" up here at the same time. */}
         <div className="text-white/70 text-sm">
-          {loading ? (
+          {loading && items.length > 0 ? (
             <span className="inline-flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading…
             </span>
@@ -230,7 +233,12 @@ const setTabAndUrl = (next: TabKey) => {
 
       {/* List */}
       {loading && items.length === 0 ? (
-        <div className="mx-auto max-w-[1000px] text-white flex items-center gap-2">
+        /* justify-center and py-16, to match the two states that replace this
+           one: `flex items-center` alone left the spinner hard against the left
+           margin, and with no vertical padding it was a thin strip under the
+           toolbar — so the page lurched downward the moment loading finished
+           and the centred empty state or card list took its place. */
+        <div className="flex items-center justify-center gap-2 py-16 text-white">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading…
         </div>
       ) : viewList.length === 0 ? (
@@ -677,12 +685,24 @@ useEffect(() => {
           </div>
         </div>
 
-        <div className="text-white/70 text-sm">{viewList.length} results</div>
+        {/* Matches the optimiser tab: a refetch over an existing list says so
+            here, a first load says it in the centre of the page below. */}
+        <div className="text-white/70 text-sm">
+          {loading && items.length > 0 ? (
+            <span className="inline-flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+            </span>
+          ) : (
+            `${viewList.length} results`
+          )}
+        </div>
       </div>
 
       {/* List */}
       {loading && items.length === 0 ? (
-        <div className="text-white flex items-center gap-2">
+        /* Same as the optimiser tab above — centred, and given the empty
+           state's vertical room so switching tabs doesn't shift the page. */
+        <div className="flex items-center justify-center gap-2 py-16 text-white">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading…
         </div>
       ) : viewList.length === 0 ? (
