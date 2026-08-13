@@ -4435,10 +4435,30 @@ const app = express();
 /* ===============================
    CORS
 ================================ */
+/* FRONTEND_URL accepts a COMMA-SEPARATED list, not a single origin.
+
+   It used to be dropped into this array as one string, so it could only ever
+   whitelist one host — and a site served on both the apex and the www subdomain
+   needs two. Setting it to "a,b" did not work either, because the check below is
+   an exact `includes`, which would have compared against the literal "a,b".
+
+   Trailing slashes are stripped here because a browser's Origin header never
+   has one: an env var set to "https://tokun.world/" would silently match
+   nothing, which looks identical to CORS simply being broken. */
+const envOrigins = String(process.env.FRONTEND_URL || "")
+  .split(",")
+  .map((o) => o.trim().replace(/\/+$/, ""))
+  .filter(Boolean);
+
 const allowedOrigins = [
   "http://localhost:5173",
   "https://gray-pebble-06934421e.6.azurestaticapps.net",
-  process.env.FRONTEND_URL,
+  // The live custom domain, both forms. Hardcoded alongside the Azure hostname
+  // above so the site keeps working even if FRONTEND_URL is unset on a fresh
+  // environment; anything further should go in FRONTEND_URL rather than here.
+  "https://tokun.world",
+  "https://www.tokun.world",
+  ...envOrigins,
 ].filter(Boolean);
 
 const corsOptions = {
@@ -5245,11 +5265,10 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: [
-      "http://localhost:5173",
-      "https://gray-pebble-06934421e.6.azurestaticapps.net",
-      process.env.FRONTEND_URL,
-    ].filter(Boolean),
+    /* The same list the HTTP API uses, not a second copy of it. These two were
+       maintained separately, so adding a domain in one place fixed the REST
+       calls and left chat and notifications silently failing on that host. */
+    origin: allowedOrigins,
     methods: ["GET", "POST"],
     credentials: true,
   },
