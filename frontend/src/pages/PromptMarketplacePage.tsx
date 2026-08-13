@@ -6138,9 +6138,9 @@ const CategoriesScroller: React.FC<{
    filters/grid) is disabled further down via {false && (...)}, not deleted.
    ======================================================================== */
 const LIB_BANNERS = {
-  // Kept as the hero video's poster and as the still fallback — see
-  // LibHeroBanner. Not rendered on its own any more.
-  hero: "/icons/mark1.jpg",
+  // No still for the hero any more. mark1.jpg was the video's poster, but it
+  // was a different picture — so on a slow connection the banner showed one
+  // image and then visibly swapped to the video. See LibHeroBanner.
   heroVideo: "/icons/china.mp4",
   crystal: "/icons/banner-crystal-tower.png",
   brandIdentity: "/icons/banner-logo-identity.png",
@@ -6286,33 +6286,35 @@ const LibHeroBanner = ({
   const reduceMotion = usePrefersReducedMotion();
 
   return (
-  <div className="relative w-full overflow-hidden rounded-[28px]" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
-    {/* Video banner, with the old still as its poster.
-        The poster matters: this file is several MB, and without one the hero is
-        a black rectangle until enough of it has buffered to start.
-        Anyone with "reduce motion" on gets the still instead — an autoplaying
-        full-bleed video is exactly what that setting exists to stop, and CSS
-        can't pause a <video>, so the choice has to happen here. */}
-    {reduceMotion ? (
-      <img
-        src={LIB_BANNERS.hero}
-        alt="Prompt Marketplace"
-        className="absolute inset-0 w-full h-full object-cover"
-      />
-    ) : (
-      <video
-        src={LIB_BANNERS.heroVideo}
-        poster={LIB_BANNERS.hero}
-        autoPlay
-        muted
-        loop
-        playsInline
-        // Decorative: the headline next to it already says what this is, so it
-        // stays out of the accessibility tree rather than being announced.
-        aria-hidden
-        className="absolute inset-0 w-full h-full object-cover"
-      />
-    )}
+  <div
+    className="relative w-full overflow-hidden rounded-[28px]"
+    /* The background is what fills the banner until the video's first frame
+       paints, now that there is no poster image. Dark, so it reads as part of
+       the page rather than as a hole in it. */
+    style={{ border: "1px solid rgba(255,255,255,0.08)", background: "#0B0B10" }}
+  >
+    {/* Video banner — no poster.
+        It used to carry `poster={LIB_BANNERS.hero}`, a different picture
+        altogether, so on a slow connection (i.e. the deployed site) the banner
+        showed that image and then visibly swapped to the video once it had
+        buffered. Without it there is nothing to swap: the container's own dark
+        background holds the space until the first frame paints.
+        Anyone with "reduce motion" on gets the same video paused on its first
+        frame — an autoplaying full-bleed video is exactly what that setting
+        exists to stop, and CSS can't pause a <video>, so the choice has to
+        happen here. */}
+    <video
+      src={LIB_BANNERS.heroVideo}
+      autoPlay={!reduceMotion}
+      muted
+      loop={!reduceMotion}
+      playsInline
+      preload={reduceMotion ? "metadata" : "auto"}
+      // Decorative: the headline next to it already says what this is, so it
+      // stays out of the accessibility tree rather than being announced.
+      aria-hidden
+      className="absolute inset-0 w-full h-full object-cover"
+    />
     {/* Two scrims instead of one flat sheet.
         The old single overlay ran 55% → 94% black across the whole banner —
         tuned for the near-black nebula art that used to sit here, and it

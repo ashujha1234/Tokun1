@@ -2640,7 +2640,12 @@ const setStoredChatBadge = (count: number) => {
   localStorage.setItem(CHAT_BADGE_KEY, String(Math.max(0, count)));
 };
   // const { user, logout } = useAuth();
-  const { user, logout, token } = useAuth() as any;
+  /* isAuthenticated/isReady gate the account menu below. This header renders on
+     public pages too (/prompt-marketplace is open to anyone), and it used to
+     show the signed-in cluster unconditionally — a visitor with no session got
+     an avatar reading "U", the initials fallback for "no name, no email", and a
+     Logout button for a session that did not exist. */
+  const { user, logout, token, isAuthenticated, isReady } = useAuth() as any;
  // Drives the Team button in the action row below.
  const canManageTeamNav = canManageTeam(user);
  const { cart, removeFromCart, fetchCart } = useCart();
@@ -4215,11 +4220,21 @@ useEffect(() => {
       <Plus className="w-4 h-4 text-white" />
     </button>
 
-          {/* Profile dropdown */}
+          {/* Profile dropdown — signed in only.
 
-
-
-
+              While the session is still being restored (isReady === false) we
+              render neither this nor the Log in button, so a returning user
+              never sees "Log in" flash before their own avatar appears. */}
+          {!isReady ? null : !isAuthenticated ? (
+            <button
+              type="button"
+              onClick={() => navigate("/login")}
+              className="inline-flex items-center px-4 h-9 rounded-full text-sm font-medium text-white whitespace-nowrap"
+              style={{ background: "linear-gradient(270deg,#FF14EF 0%,#1A73E8 100%)" }}
+            >
+              Log in
+            </button>
+          ) : (
            <DropdownMenu>
           <DropdownMenuTrigger asChild>
   <button
@@ -4469,6 +4484,7 @@ useEffect(() => {
     </button>
   </DropdownMenuContent>
 </DropdownMenu>
+          )}
 
         </div>
       
