@@ -982,14 +982,10 @@
    ============================================================ */
 .reel-card {
   position: relative;
-  /* Was `aspect-ratio: 9 / 16`, which made a video listing tower over the
-     image cards standing next to it in the same row. It now fills its cell the
-     way .mp-card does, so both card types come out the same size. min-height
-     is the floor for a row that happens to be all video: every child here is
-     absolutely positioned, so the card has no intrinsic height of its own and
-     would otherwise collapse to nothing. */
-  height: 100%;
-  min-height: 420px;
+  /* Back to the original portrait ratio — a video listing is meant to read
+     tall, the way it did before. Every child here is absolutely positioned, so
+     the ratio is the card's only source of height. */
+  aspect-ratio: 9 / 16;
   border-radius: 20px;
   overflow: hidden;
   background: #000;

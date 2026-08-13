@@ -2,3 +2,5 @@ node_modules/
 .env
 .env.*
 backup-prune-*
+backup-prompts-*
+backup-payments-*
