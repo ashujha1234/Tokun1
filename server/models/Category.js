@@ -2,8 +2,8 @@
 //
 // One collection, two independent trees, told apart by `kind`:
 //
-//   kind: "prompt"  — what a PROMPT is about (Coding, Design, Writing, …).
-//                     Flat: prompts have never used sub-categories.
+//   kind: "prompt"  — what a PROMPT is about (Coding → Web Development,
+//                     Design → Logo & Branding, …). Two levels.
 //   kind: "service" — what a freelancer SELLS (Programming & Tech → Web
 //                     Development, Design & Creative → Logo Design, …).
 //                     Two levels.

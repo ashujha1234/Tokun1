@@ -1116,6 +1116,67 @@ export default function DetailsPrompt({
 
    const currentUserId = user?._id || user?.id || null;
 
+  /* ── Save (the circular icon beside the title) ────────────────────────────
+     That icon was a decorative <span aria-hidden> with no handler — it looked
+     like a save button on every listing and did nothing when pressed. It now
+     writes a reference into Saved Collections under the "prompt" section, which
+     is what the Saved page reads for its Prompt Marketplace tab.
+
+     Quick save, and pressing it again removes the save, so the filled state
+     always means "this listing is in your saved list". */
+  const [isSaved, setIsSaved] = useState(false);
+  const [savingPrompt, setSavingPrompt] = useState(false);
+
+  const promptRefId = prompt?.id ? String(prompt.id) : "";
+
+  // Reset when the panel is pointed at a different listing — without this the
+  // filled state would carry over from the last prompt viewed.
+  useEffect(() => {
+    setIsSaved(false);
+  }, [promptRefId]);
+
+  const toggleSavePrompt = async () => {
+    if (savingPrompt || !promptRefId) return;
+
+    if (!currentUserId) {
+      toast({ title: "Sign in to save", description: "Saved prompts are kept on your account." });
+      return;
+    }
+
+    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+    const nextSaved = !isSaved;
+    setSavingPrompt(true);
+    setIsSaved(nextSaved);
+
+    try {
+      const res = nextSaved
+        ? await fetch(`${API_BASE}/api/saved-collections`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            credentials: "include",
+            body: JSON.stringify({ section: "prompt", refId: promptRefId, name: prompt?.title }),
+          })
+        : await fetch(`${API_BASE}/api/saved-collections/prompt/${promptRefId}`, {
+            method: "DELETE",
+            headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            credentials: "include",
+          });
+
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data?.success === false) throw new Error(data?.error || `http_${res.status}`);
+
+      toast({ title: nextSaved ? "Saved" : "Removed from saved" });
+    } catch (err) {
+      setIsSaved(!nextSaved);
+      toast({
+        title: nextSaved ? "Couldn't save" : "Couldn't remove",
+        description: (err as Error)?.message || "Please try again.",
+      });
+    } finally {
+      setSavingPrompt(false);
+    }
+  };
+
 const isOwnPrompt =
   !!currentUserId &&
   !!prompt?.uploaderId &&
@@ -1215,8 +1276,15 @@ const comingSoon = !!prompt?.sellerVerificationPending || sellerHasPayout === fa
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
+        {/* The marketplace pins its header in a `position: fixed; z-index: 999`
+            slot. At the default z-50 this modal rendered underneath it, and on
+            a phone — where the sheet is 85vh tall instead of a centred 620px —
+            its top edge reached up into the header and got covered. 1100 is
+            the same rung SellPromptModal already uses to clear that header. */}
         <DialogContent
+          overlayClassName="z-[1099]"
           className="
+            z-[1100]
             bg-[#17171A] text-white p-0 border-none
             w-[min(92vw,1040px)] max-w-[1040px]
             top-[50%] translate-y-[-50%]
@@ -1373,17 +1441,27 @@ const comingSoon = !!prompt?.sellerVerificationPending || sellerHasPayout === fa
               <h2 className="font-semibold text-[24px] leading-snug tracking-tight">
                 {prompt.title}
               </h2>
-              <span
-                className="flex items-center justify-center rounded-full justify-self-end"
-                style={{ backgroundColor: "#333335", width: 42, height: 42 }}
-                aria-hidden
+              <button
+                type="button"
+                onClick={toggleSavePrompt}
+                disabled={savingPrompt || !promptRefId}
+                title={isSaved ? "Remove from saved" : "Save to your collection"}
+                aria-label={isSaved ? "Remove from saved" : "Save to your collection"}
+                aria-pressed={isSaved}
+                className="flex items-center justify-center rounded-full justify-self-end transition disabled:cursor-default"
+                style={{
+                  backgroundColor: isSaved ? "#7c3aed" : "#333335",
+                  width: 42,
+                  height: 42,
+                  opacity: savingPrompt ? 0.6 : 1,
+                }}
               >
                 <img
                   src="/icons/cop1.png"
                   alt=""
                   className="w-5 h-5 object-contain"
                 />
-              </span>
+              </button>
             </div>
 
             {/* Description */}
@@ -1499,9 +1577,26 @@ const comingSoon = !!prompt?.sellerVerificationPending || sellerHasPayout === fa
 
             {!isOwnPrompt && !owned && !isTeamMember && !comingSoon && Number(prompt.price || 0) > 0 && (
               <button
-                onClick={(e) => {
+                /* Awaits the result before saying anything. It used to fire and
+                   forget, so a refusal (already in the cart, already purchased,
+                   signed out) still produced "Added to Cart" AND closed the
+                   panel — the cart was untouched and nothing said so. The panel
+                   now stays open when the add didn't happen. */
+                onClick={async (e) => {
                   e.stopPropagation();
-                  addToCart(prompt.id);
+                  const result = await addToCart(String(prompt.id));
+
+                  if (!result.ok) {
+                    toast({
+                      title:
+                        result.error === "already_in_cart"
+                          ? "Already in your cart"
+                          : "Couldn't add to cart",
+                      description: result.message,
+                    });
+                    return;
+                  }
+
                   toast({
                     title: "Added to Cart",
                     description: `"${prompt.title}" was added.`,
@@ -1553,12 +1648,64 @@ const comingSoon = !!prompt?.sellerVerificationPending || sellerHasPayout === fa
                   Request to buy
                 </button>
               ) : !(prompt.exclusive && prompt.sold) ? (
-                <button
-                  onClick={() => onPurchase?.(prompt)}
-                  className="w-full h-12 flex items-center justify-center rounded-[10px] font-semibold text-white text-[15px] transition-all bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] hover:opacity-90"
-                >
-                  Buy Now
-                </button>
+                <>
+                  {/* What you are about to be charged, itemised, before you
+                      commit to it. The price shown further up is the total, so
+                      the platform fee inside it was invisible until Razorpay's
+                      sheet opened with a larger number than the one the buyer
+                      had agreed to — the classic moment a purchase is abandoned.
+                      Only rendered when there is actually a fee to break out;
+                      for a fee-free listing a one-line "total" restating the
+                      price above would be noise. */}
+                  {chargedPrice > 0 && platformFee > 0 && (
+                    <div className="rounded-[10px] border border-white/10 bg-white/[0.03] p-3 space-y-1.5">
+                      <div className="flex items-center justify-between text-[12px] text-white/55">
+                        <span>Prompt price</span>
+                        <span>₹{listPrice.toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-[12px] text-white/55">
+                        <span>Platform fee</span>
+                        <span>₹{platformFee.toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center justify-between pt-1.5 border-t border-white/10 text-[13px] font-semibold text-white">
+                        <span>You pay</span>
+                        <span>₹{chargedPrice.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => onPurchase?.(prompt)}
+                    className="w-full h-12 flex items-center justify-center rounded-[10px] font-semibold text-white text-[15px] transition-all bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] hover:opacity-90"
+                  >
+                    Buy Now
+                  </button>
+
+                  {/* Standard purchase consent line. Both documents open in a
+                      new tab so a half-finished purchase isn't thrown away to
+                      go and read them. */}
+                  <p className="text-[11px] text-white/40 text-center leading-relaxed">
+                    By buying, you agree to our{" "}
+                    <a
+                      href="/terms"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline underline-offset-2 hover:text-white/70"
+                    >
+                      Terms &amp; Conditions
+                    </a>{" "}
+                    and{" "}
+                    <a
+                      href="/refund-policy"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline underline-offset-2 hover:text-white/70"
+                    >
+                      Refund Policy
+                    </a>
+                    .
+                  </p>
+                </>
               ) : null
             )}
 

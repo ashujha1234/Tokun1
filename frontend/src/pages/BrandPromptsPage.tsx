@@ -1,8 +1,40 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sparkles, Check, Copy, CheckCheck } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import DetailsPrompt from "@/components/DetailsPrompt";
 import { toast } from "@/components/ui/use-toast";
+import { mediaUrl } from "@/lib/mediaUrl";
+
+const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+
+/* The one category this page lists.
+   It is the "Logo & Branding" child of Design, so the listing endpoint has to
+   match it against a prompt's `subCategories` — which is why GET /api/prompt/others
+   now checks both fields rather than `categories` alone. */
+const LOGO_CATEGORY = "Logo & Branding";
+
+/* Shaped to satisfy DetailsPrompt's MarketplacePrompt as well as this page's
+   own cards, so opening a listing here doesn't need a second fetch. */
+type LogoPrompt = {
+  id: string;
+  title: string;
+  description: string;
+  price: number;
+  /** List price plus Tokun's fee — what the buyer is actually charged. */
+  tokunPrice: number;
+  isFree: boolean;
+  imageUrl?: string;
+  videoUrl?: string;
+  category: string;
+  rating: number;
+  downloads: number;
+  uploaderId?: string;
+  exclusive?: boolean;
+  sold?: boolean;
+  sellerVerificationPending?: boolean;
+};
 
 const GRADIENT = "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)";
 
@@ -249,6 +281,80 @@ const LogoPromptCard = ({ logo }: { logo: BrandLogo }) => {
 };
 
 const BrandPromptsPage = () => {
+  const navigate = useNavigate();
+
+  /* Real listings, not the hardcoded BRAND_LOGOS set this page used to show.
+     Those ten were mock concepts with SVG marks drawn in this file — nothing a
+     buyer could open or purchase, and nothing a seller could get listed on. */
+  const [logoPrompts, setLogoPrompts] = useState<LogoPrompt[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  /* Opening a card used to navigate to /prompt-marketplace?prompt=<id> and let
+     that page open the panel — so looking at one logo prompt cost a full page
+     load and dumped you on a different screen, with the whole marketplace
+     behind the modal. The panel is a component; it opens here. */
+  const [detailsPrompt, setDetailsPrompt] = useState<LogoPrompt | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setLoading(true);
+        setLoadError(null);
+
+        const res = await fetch(
+          `${API_BASE}/api/prompt/others?category=${encodeURIComponent(LOGO_CATEGORY)}`,
+          { credentials: "include" }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+
+        if (!res.ok || !data?.success) {
+          throw new Error(data?.error || "Couldn't load logo prompts.");
+        }
+
+        setLogoPrompts(
+          (data.prompts || []).map((doc: any) => {
+            const att = doc?.attachment || null;
+            const media = att?.path ? mediaUrl(att.path) : undefined;
+            return {
+              id: String(doc._id),
+              title: doc.title || "Untitled",
+              description: doc.description || "",
+              /* The card shows what the buyer pays, but the details panel
+                 breaks the fee out and needs both figures — it was reading the
+                 fee-inclusive number as the list price and showing the fee
+                 twice. */
+              price: Number(doc.price ?? 0),
+              tokunPrice: Number(doc.tokun_price ?? doc.price ?? 0),
+              isFree: !!doc.free,
+              imageUrl: att?.type === "image" ? media : undefined,
+              videoUrl: att?.type === "video" ? media : undefined,
+              category: doc.categories?.[0]?.name || LOGO_CATEGORY,
+              rating: Number(doc.averageRating ?? 0),
+              downloads: Number(doc.downloads ?? 0),
+              uploaderId: doc?.userId?._id ? String(doc.userId._id) : undefined,
+              exclusive: !!doc.exclusive,
+              sold: !!doc.sold,
+              sellerVerificationPending: !!doc.sellerVerificationPending,
+            };
+          })
+        );
+      } catch (err: any) {
+        if (!cancelled) setLoadError(err?.message || "Couldn't load logo prompts.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const checklist = [
     "Vector-ready minimalist aesthetics",
     "High-contrast tech branding logic",
@@ -300,16 +406,84 @@ const BrandPromptsPage = () => {
         <div className="flex items-center gap-2 mb-6">
           <Sparkles className="h-4 w-4" style={{ color: "#22D3EE" }} />
           <span className="text-[12px] font-semibold tracking-wide" style={{ color: "#22D3EE" }}>
-            10 TOKUN BRAND CONCEPTS — LOGO + PROMPT
+            {loading
+              ? "LOADING LOGO PROMPTS…"
+              : `${logoPrompts.length} LOGO ${logoPrompts.length === 1 ? "PROMPT" : "PROMPTS"} ON THE MARKETPLACE`}
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-          {BRAND_LOGOS.map((logo) => (
-            <LogoPromptCard key={logo.name} logo={logo} />
-          ))}
-        </div>
+        {loading && <p className="text-white/50 text-sm py-10 text-center">Loading…</p>}
+
+        {!loading && loadError && (
+          <p className="text-red-400 text-sm py-10 text-center">{loadError}</p>
+        )}
+
+        {/* Empty is a real state here, and the old copy explained only half of
+            it: picking "{LOGO_CATEGORY}" during upload is necessary but not
+            sufficient. Every new listing also waits on the prompt-media check
+            before the marketplace — and therefore this page — will show it, so
+            a seller who had just uploaded read "tag it while uploading" as
+            "your tag didn't save". */}
+        {!loading && !loadError && logoPrompts.length === 0 && (
+          <div className="py-16 text-center">
+            <p className="text-white/70 text-sm">No logo prompts listed yet.</p>
+            <p className="text-white/40 text-xs mt-2 max-w-md mx-auto leading-relaxed">
+              A prompt shows up here once its seller files it under Design →
+              "{LOGO_CATEGORY}" and it clears the media review every new listing
+              goes through. Just uploaded one? It appears as soon as that review
+              passes.
+            </p>
+          </div>
+        )}
+
+        {!loading && !loadError && logoPrompts.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            {logoPrompts.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => {
+                  setDetailsPrompt(p);
+                  setDetailsOpen(true);
+                }}
+                className="text-left rounded-2xl overflow-hidden border border-white/10 bg-white/[0.03] hover:border-white/25 transition-colors"
+              >
+                <div className="relative h-[180px] bg-black/40">
+                  {p.imageUrl ? (
+                    <img src={p.imageUrl} alt={p.title} className="absolute inset-0 w-full h-full object-cover" />
+                  ) : p.videoUrl ? (
+                    <video src={p.videoUrl} muted playsInline className="absolute inset-0 w-full h-full object-cover" />
+                  ) : (
+                    <div className="absolute inset-0 grid place-items-center text-white/25 text-xs">
+                      No preview
+                    </div>
+                  )}
+                </div>
+                <div className="p-4">
+                  <p className="text-sm font-semibold text-white truncate">{p.title}</p>
+                  {p.description && (
+                    <p className="mt-1 text-xs text-white/50 line-clamp-2">{p.description}</p>
+                  )}
+                  <p className="mt-3 text-sm font-semibold text-white">
+                    {p.isFree ? "Free" : `₹${p.price.toLocaleString()}`}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Same panel the marketplace opens, so a listing looks and behaves
+          identically wherever it was found. Add to cart works from here (the
+          panel talks to the cart context itself); Buy Now hands off to the
+          marketplace, which owns the Razorpay checkout — that flow is not
+          duplicated per page. */}
+      <DetailsPrompt
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+        prompt={detailsPrompt}
+        onPurchase={(p) => navigate(`/prompt-marketplace?prompt=${p.id}`)}
+      />
 
       <div className="relative z-10 mt-4">
         <Footer />

@@ -4791,11 +4791,18 @@ class LLMService {
     }
   }
 
+  /**
+   * `id` is the created Smartgen document's _id. The server has always sent it
+   * back as `item.id`; this used to drop it on the floor and return a bare
+   * `{ success: true }`, which meant the Save (bookmark) button on the SmartGen
+   * output had no refId to hand to /api/saved-collections and so could only
+   * ever colour itself in.
+   */
   async saveSmartgen(payload: {
     inputPrompt: string;
     detailedPrompt: string;
     tokensUsed: number;
-  }): Promise<{ success: boolean; error?: string; message?: string }> {
+  }): Promise<{ success: boolean; id?: string; error?: string; message?: string }> {
     try {
       const token = getToken();
       const res = await fetch(`${API_BASE}/api/smartgen`, {
@@ -4813,7 +4820,7 @@ class LLMService {
         // caller prefers it over mapping the bare code itself.
         return { success: false, error: data?.error || `http_${res.status}`, message: data?.message };
       }
-      return { success: true };
+      return { success: true, id: data?.item?.id ? String(data.item.id) : undefined };
     } catch (err) {
       return { success: false, error: (err as Error)?.message || "network_error" };
     }

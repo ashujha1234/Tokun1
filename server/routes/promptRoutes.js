@@ -684,10 +684,20 @@ async function watermarkImage(buffer) {
     .toBuffer();
 }
 
+/* Category names are dropped into a regex to match them case-insensitively, and
+   several contain characters a regex reads as syntax: "X (Twitter)" has a
+   capturing group, "UI/UX" a slash, "Debugging & Fixes" an ampersand. Unescaped,
+   "X (Twitter)" would match the text "X Twitter" and never the real name, so a
+   valid pick would come back as invalid_categories. */
+const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 // --- Multer setup (memory storage → Azure) ---
+// Must match MAX_ATTACHMENT_MB in frontend/src/components/SellPromptModal.tsx.
+// Note this is memoryStorage: an upload is held in the process's RAM in full
+// before it goes to Azure, so this ceiling is also the per-request memory cost.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
 });
 
 /* =====================================================================
@@ -711,6 +721,7 @@ router.post(
         price,
         tags,
         categories,
+        subCategories,
         exclusive,
       } = req.body;
 
@@ -832,6 +843,14 @@ router.post(
       }
 
       /* ================= CATEGORIES ================= */
+      /* Scoped to the top level of the PROMPT tree.
+         This match was unscoped — any row whose name matched, in either tree, at
+         either level. That was survivable while the prompt tree was flat and the
+         service tree had different names, but "Business" exists in both trees,
+         so a single name could return two rows and fail the length check below,
+         rejecting a perfectly valid upload. With 117 prompt sub-categories now
+         in the same collection, an unscoped match would also let a child be
+         saved as if it were a top-level category. */
       let categoryIds = [];
       if (categories) {
         const names = categories
@@ -840,8 +859,10 @@ router.post(
           .filter(Boolean);
 
         const found = await Category.find({
+          kind: "prompt",
+          parent: null,
           $or: names.map((n) => ({
-            name: { $regex: `^${n}$`, $options: "i" },
+            name: { $regex: `^${escapeRegex(n)}$`, $options: "i" },
           })),
         });
 
@@ -855,6 +876,39 @@ router.post(
         categoryIds = found.map((c) => c._id);
       }
 
+      /* ================= SUB-CATEGORIES ================= */
+      /* Must be children of the categories chosen above — that `parent: $in`
+         is what stops "Coding / Nutrition" being saved, which the form can't
+         produce but a direct API call can. Silently ignored rather than
+         rejected when no category was chosen, since there is then nothing for a
+         child to belong to. */
+      let subCategoryIds = [];
+      if (subCategories && categoryIds.length) {
+        const subNames = String(subCategories)
+          .split(",")
+          .map((c) => c.trim())
+          .filter(Boolean);
+
+        if (subNames.length) {
+          const foundSubs = await Category.find({
+            kind: "prompt",
+            parent: { $in: categoryIds },
+            $or: subNames.map((n) => ({
+              name: { $regex: `^${escapeRegex(n)}$`, $options: "i" },
+            })),
+          });
+
+          if (foundSubs.length !== subNames.length) {
+            return res.status(400).json({
+              success: false,
+              error: "invalid_subcategories",
+            });
+          }
+
+          subCategoryIds = foundSubs.map((c) => c._id);
+        }
+      }
+
       /* ================= SAVE PROMPT ================= */
       const prompt = await Prompt.create({
         userId: req.user._id,
@@ -866,6 +920,7 @@ router.post(
         tags: tags ? tags.split(",") : [],
         exclusive: exclusive === "true",
         categories: categoryIds,
+        subCategories: subCategoryIds,
         attachment,
         uploadCode,
         promptHash,
@@ -1297,17 +1352,35 @@ router.get("/others", async (req, res) => {
       filter["attachment.type"] = type;
     }
 
-    // Filter by category (optional)
+    /* Filter by category (optional). Scoped to the prompt tree and escaped:
+       unscoped, "Business" also matches the service tree and findOne returns
+       whichever comes first; unescaped, a name like "X (Twitter)" is read as
+       regex syntax and matches the wrong row. */
     if (category) {
-      const cat = await Category.findOne({
-        name: { $regex: `^${category}$`, $options: "i" },
-      });
-      if (!cat) {
+      /* find, not findOne: a name is unique per (tree, parent), NOT per tree,
+         so two parents may each own a child of the same name. findOne picked
+         whichever the index returned first and quietly filtered by the wrong
+         node — every prompt under the other one vanished with no error. */
+      const cats = await Category.find({
+        kind: "prompt",
+        name: { $regex: `^${escapeRegex(category)}$`, $options: "i" },
+      }).select("_id");
+
+      if (!cats.length) {
         return res
           .status(400)
           .json({ success: false, error: "invalid_category" });
       }
-      filter.categories = cat._id;
+
+      const catIds = cats.map((c) => c._id);
+      /* EITHER field. A top-level pick lands in `categories`, but a
+         sub-category ("Logo & Branding") is stored in `subCategories`, so
+         keying only off `categories` returned nothing for every child — which
+         is exactly what the brand-prompts page asks for. */
+      filter.$or = [
+        { categories: { $in: catIds } },
+        { subCategories: { $in: catIds } },
+      ];
     }
 
     // Prompts uploaded after the Route-onboarding-first flow shipped
@@ -1348,8 +1421,14 @@ router.get("/others", async (req, res) => {
       },
     ];
 
+    /* subCategories is populated, not just matched on. The marketplace filters
+       the fetched list again on the client (its rails and search run over one
+       load), and with only the parent names in the payload a card filed under
+       "Design / Logo & Branding" was indistinguishable from any other Design
+       card — so picking a child narrowed nothing. */
     const prompts = await Prompt.find(filter)
       .populate("categories", "name")
+      .populate("subCategories", "name")
       .populate("userId", "name")
       .sort({ createdAt: -1 })
       .lean();
@@ -1407,6 +1486,9 @@ router.get("/public/:id", async (req, res) => {
     })
       .select("-promptText")
       .populate("categories", "name")
+      // Same shape the feed sends, so a prompt opened from a shared link
+      // carries its sub-category too.
+      .populate("subCategories", "name")
       .populate("userId", "name sellerStatus isDeleted");
 
     if (!prompt) {

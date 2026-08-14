@@ -1016,7 +1016,9 @@ const PromptMarketplacePage = () => {
         <div className="space-y-16 mt-16">
           <CategoriesRow categories={categories} selected={selectedCategory} onSelect={setSelectedCategory} />
 
-          <CreateAppBanner />
+          {/* Same "Create an AI app using prompts" banner as the marketplace
+              had — removed from both, so re-enabling this page (it's currently
+              hidden from the nav) doesn't bring it back on its own. */}
 
           {loading && <p className="text-white/60 text-sm">Loading prompts…</p>}
 

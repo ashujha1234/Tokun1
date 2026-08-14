@@ -1,6 +1,10 @@
-
-
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
+/* Same move as landing-page.css: this render-blocking @import (which also
+   re-downloaded the self-hosted Inter from a third party) is now a <link> in
+   index.html, so the request starts with the page instead of waiting for this
+   file to be fetched and parsed first. The only thing on this page using
+   --mp-mono is the decorative background text, at the default weight — the
+   head requests 500/600, and a browser synthesises 400 from those, which is
+   invisible at 16% opacity behind the grid. */
 
 .marketplace {
   --mp-bg: #06040f;

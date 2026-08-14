@@ -135,7 +135,19 @@ router.get("/", async (req, res) => {
       .toFixed(2);
     const commissionTxns = ledgerTxns;
 
-    const razorpayCharges = r(totals.razorpayFee + totals.razorpayTax);
+    /* razorpayFee ALONE — not fee + tax.
+
+       Razorpay documents `fee` as "Fee (including GST) charged by Razorpay" and
+       `tax` as "GST charged for the payment", i.e. tax is the GST component
+       already contained in fee. Adding them counted the GST twice: on a ₹2,060
+       card payment, fee is ₹48.62 (₹41.20 at 2% plus ₹7.42 GST) and this
+       returned ₹56.04.
+
+       This is not just a display figure — `net` below subtracts it from
+       commission, so the overstatement was making Tokun's kept revenue look
+       lower than it is by the whole GST amount on every payment. razorpayTax
+       stays in the response on its own for input-credit reporting. */
+    const razorpayCharges = r(totals.razorpayFee);
 
     const byMethod = {};
     for (const p of captured) {

@@ -75,13 +75,37 @@ type CartItem = {
   exclusive?: boolean;   // 👈 add this
 };
 
+/* What happened, so the caller can say so.
+   addToCart used to return void and swallow every failure into console.error —
+   the server refuses for real reasons (already in the cart, already purchased,
+   one-time prompt already sold, signed out) and the UI answered every one of
+   them with "Added to Cart". */
+export type AddToCartResult = {
+  ok: boolean;
+  error?: string;
+  message?: string;
+};
+
 type CartContextType = {
   cart: CartItem[];
   loading: boolean;
   fetchCart: () => Promise<void>;
-  addToCart: (promptId: string) => Promise<void>;
+  addToCart: (promptId: string) => Promise<AddToCartResult>;
   removeFromCart: (promptId: string) => Promise<void>;
   clearCart: () => void;
+};
+
+/* The server's error codes, in the buyer's words. Anything unmapped falls back
+   to the server's own `message` and then to a generic line, so a new code can
+   never surface as a bare identifier. */
+const ADD_ERROR_MESSAGES: Record<string, string> = {
+  not_signed_in: "Sign in to add prompts to your cart.",
+  already_in_cart: "This prompt is already in your cart.",
+  already_purchased: "You already own this prompt — it's in your purchase history.",
+  prompt_already_sold: "This one-time prompt has already been sold.",
+  prompt_deleted: "This prompt is no longer available.",
+  prompt_not_found: "This prompt is no longer available.",
+  seller_not_verified: "This seller is still being verified — the prompt isn't buyable yet.",
 };
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -138,22 +162,37 @@ videoUrl: i.prompt.attachment?.type === "video"
   };
 
   /** 🔹 Add prompt to cart */
-  const addToCart = async (promptId: string) => {
-    if (!token) return;
+  const addToCart = async (promptId: string): Promise<AddToCartResult> => {
+    // Was a bare `return` — a signed-out click did nothing at all and still got
+    // a success toast from the caller.
+    if (!token) {
+      return { ok: false, error: "not_signed_in", message: ADD_ERROR_MESSAGES.not_signed_in };
+    }
+
+    const fail = (error: string, serverMessage?: string): AddToCartResult => ({
+      ok: false,
+      error,
+      message: ADD_ERROR_MESSAGES[error] || serverMessage || "Couldn't add this prompt to your cart.",
+    });
+
     try {
       const res = await fetch(`${API_BASE}/api/cart/add/${promptId}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         credentials: "include",
       });
-      const data = await res.json();
-      if (data?.success) {
-        await fetchCart(); // refresh
-      } else {
-        console.error("Add to cart error:", data.error);
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data?.success) {
+        console.error("Add to cart error:", data?.error);
+        return fail(data?.error || `http_${res.status}`, data?.message);
       }
+
+      await fetchCart(); // refresh
+      return { ok: true };
     } catch (err) {
       console.error("Add to cart error:", err);
+      return fail("network_error");
     }
   };
 

@@ -296,6 +296,50 @@
   scrollbar-width: none;  /* Firefox */
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   SmartGen ideas strip (components/SmarterPrompt.tsx)
+
+   Four example prompts. On a desktop they are four equal columns; on a phone
+   four columns of a 1000px row is ~90px each, so the text wrapped to shreds
+   and the strip was clipped — `overflow: hidden` on the row meant the two that
+   didn't fit could not be reached at all.
+
+   Below 768px it becomes a swipeable rail instead: each card takes most of the
+   width, snaps into place, and the row scrolls by finger. The rules live here
+   rather than inline in the component because inline styles can't carry a
+   media query, and this strip needs one to change layout at all.
+   ───────────────────────────────────────────────────────────────────────── */
+.smartgen-ideas {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  overflow: hidden;
+}
+
+@media (max-width: 767px) {
+  .smartgen-ideas {
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    /* The rail is the scroll surface; a visible bar inside a card this small
+       eats a row of text. */
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .smartgen-ideas::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 78% leaves the next card peeking, which is what tells you the row moves —
+     four cards each at 100% look like a single static card. */
+  .smartgen-ideas > button {
+    flex: 0 0 78%;
+    scroll-snap-align: start;
+  }
+}
+
 @font-face {
   font-family: 'Inter';
   src: url('/Fonts/inter/Inter-Regular.woff2') format('woff2');

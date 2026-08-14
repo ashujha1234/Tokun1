@@ -48,6 +48,13 @@ const PromptSchema = new mongoose.Schema(
     price: { type: Number, default: 0 },
     tags: [String],
     categories: [{ type: mongoose.Schema.Types.ObjectId, ref: "Category" }],
+    /* The narrower bucket under one of `categories` — Coding → "Web
+       Development". Optional, and separate from the array above rather than
+       mixed into it: a child stored alongside its parent would make every
+       "prompts in Coding" filter also match a prompt whose only link to Coding
+       is that it sits under one of its children, which is a different question.
+       Prompts uploaded before sub-categories existed simply have none. */
+    subCategories: [{ type: mongoose.Schema.Types.ObjectId, ref: "Category" }],
     attachment: { type: AttachmentSchema, required: true}, // only one
       
 

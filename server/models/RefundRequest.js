@@ -28,6 +28,13 @@ const RefundRequestSchema = new mongoose.Schema(
       trim: true,
       maxlength: 1000,
     },
+    /* Absolute Blob URLs of whatever the buyer attached — usually a screenshot
+       of the output they got. A written reason alone made "the output quality is
+       poor" impossible for an admin to check without buying the prompt
+       themselves; a picture of what they actually received settles it.
+       Optional, and never required: a refund must not be blocked because an
+       image upload failed. */
+    attachments: [{ type: String }],
     status: {
       type: String,
       enum: ["PENDING", "APPROVED", "REJECTED"],

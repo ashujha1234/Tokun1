@@ -301,7 +301,7 @@ const LINK_GROUPS: { heading: string; links: { label: string; href: string }[] }
   {
     heading: "Product",
     links: [
-      { label: "Prompt Marketplace", href: "/prompt-marketplace" },
+      { label: "Prompt Verse", href: "/prompt-marketplace" },
       { label: "Prompt Library", href: "/prompt-library" },
       { label: "SmartGen", href: "/smartgen" },
       { label: "Prompt Optimizer", href: "/prompt-optimization" },
@@ -400,12 +400,14 @@ export default function Footer() {
               to="/"
               className="inline-block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF14EF]/60 rounded"
             >
-              <span
-                className="text-[26px] sm:text-[30px] font-bold uppercase tracking-tight text-white"
-                style={{ fontFamily: "Inter, sans-serif", lineHeight: 1 }}
-              >
-                TOKUN.WORLD
-              </span>
+              {/* Was the wordmark set in Inter. The real logo carries the mark
+                  the header uses, so the two ends of the page match. The alt
+                  text keeps the name for anyone not seeing the image. */}
+              <img
+                src="/icons/Tokun.png"
+                alt="Tokun.world"
+                className="h-16 sm:h-20 w-auto max-w-none object-contain"
+              />
             </Link>
 
             <p className="mt-4 text-sm leading-relaxed text-white/55">

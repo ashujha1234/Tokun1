@@ -1397,13 +1397,21 @@ const getAuthToken = () =>
   sessionStorage.getItem("token") ||
   "";
 
-/* ===== Helper: build the preview card text from the optimized text (FIXED VERSION) ===== */
+/* ===== Helper: build the preview card text from the optimized text =====
+   The tidy-up used to end with `.replace(/\s+/g, ' ')`, and \s matches \n — so
+   every line break in the model's answer became a space. A prompt that came
+   back as phases with numbered steps was shown, saved and copied as one
+   unbroken paragraph, which is not what the optimiser produced and not usable
+   as a prompt. Whitespace is now normalised WITHIN each line, and the line
+   structure is left exactly as the model wrote it. */
 const generateOptimizedVersion = (originalText: string, optimizedText: string) => {
-  // ✅ FIX: Use the FULL optimized text, don't truncate it
-  // Only clean up formatting but preserve all content
   const cleanOptimizedText = optimizedText
-    .replace(/\n\s*\n/g, '\n') // Reduce multiple newlines to single
-    .replace(/\s+/g, ' ')      // Normalize spaces
+    // Runs of blank lines collapse to one — a paragraph break, not a gap.
+    .replace(/\n{3,}/g, "\n\n")
+    .split("\n")
+    // Horizontal whitespace only: [^\S\n] is "space-like but not a newline".
+    .map((line) => line.replace(/[^\S\n]+/g, " ").trimEnd())
+    .join("\n")
     .trim();
 
   const originalWords = originalText.split(/\s+/).filter(Boolean);
@@ -1928,8 +1936,15 @@ const handleConfirmEndSession = () => {
 
   /** POST to /api/promptoptimizer with Authorization: Bearer <token> */
   const saveOptimization = async (outputText: string, fallbackTokens: number) => {
-    const cfg = llmService.getConfig();
-    const llmProviderName = providerLabel(cfg.provider);
+    /* The engine that actually ran, not the one picked in the selector.
+       llmService.optimizePrompt() sends every optimisation to Tokun's own
+       /api/optimize, which is OpenAI — the Perplexity/Anthropic/Google paths in
+       that service are unreachable from here. Labelling the history row with
+       the selected provider meant a user who had picked Claude got a row
+       reading "Anthropic Claude" over text GPT wrote, which is the one thing
+       history exists to get right. The selector still drives which model site
+       the "open in" buttons hand the prompt to. */
+    const llmProviderName = providerLabel("openai");
 
     const tokensUsed =
       typeof lastUsage?.total === "number" && lastUsage.total > 0

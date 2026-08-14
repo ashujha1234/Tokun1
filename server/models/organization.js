@@ -43,7 +43,9 @@ const OrganizationSchema = new mongoose.Schema(
     pendingInvites: { type: Number, default: 0, min: 0 },
 
     // Org subscription state (when plan === "enterprise")
-subscriptionStatus: { type: String, enum: ["active","past_due","grace","suspended","canceled", null], default: null }, // <- NEW
+// No "grace" — see the matching note on User.subscriptionStatus. past_due is
+// the grace window; a separate status was charted but never written.
+subscriptionStatus: { type: String, enum: ["active","past_due","suspended","canceled", null], default: null }, // <- NEW
 billingAnchor: { type: Date, default: null },     // first start                   <- NEW
 graceDays: { type: Number, default: 7 },          // configurable                  <- NEW
 lastInvoiceDueAt: { type: Date, default: null },  // optional reporting             <- NEW

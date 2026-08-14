@@ -127,10 +127,14 @@ router.get("/summary", requireAuth, requireAdmin, async (req, res) => {
       poolUsed: 0,
     };
 
+    /* No `grace` bucket. It was charted as a sixth state but nothing in the
+       codebase has ever written that value — subscriptionStatusCron only ever
+       assigns past_due for the whole pre-suspension window — so the bar sat at
+       zero permanently and read as "no org is in grace" rather than the truth,
+       "this state is not implemented". past_due IS the grace period. */
     const statusCounts = {
       active: 0,
       past_due: 0,
-      grace: 0,
       suspended: 0,
       canceled: 0,
       none: 0,
@@ -174,7 +178,6 @@ router.get("/summary", requireAuth, requireAdmin, async (req, res) => {
     const statusBreakdown = [
       { name: "Active", count: statusCounts.active },
       { name: "Past Due", count: statusCounts.past_due },
-      { name: "Grace", count: statusCounts.grace },
       { name: "Suspended", count: statusCounts.suspended },
       { name: "Canceled", count: statusCounts.canceled },
       { name: "No Plan", count: statusCounts.none },

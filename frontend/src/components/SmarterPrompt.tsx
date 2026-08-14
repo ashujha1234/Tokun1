@@ -487,6 +487,13 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
   const [isEditing,     setIsEditing]     = useState(false);
   const [editable,      setEditable]      = useState("");
   const [isBookmarked,  setIsBookmarked]  = useState(false);
+  /* The _id of the Smartgen row this output was written to. Every generation
+     already persists one (that's how the quota spend is recorded), so saving to
+     a collection is a reference to a document that exists rather than a second
+     copy of the text. Null until that write comes back — the bookmark button
+     stays disabled while it is. */
+  const [smartgenDocId, setSmartgenDocId] = useState<string|null>(null);
+  const [savingBookmark, setSavingBookmark] = useState(false);
   const [tokensUsed,    setTokensUsed]    = useState<number|null>(null);
 
   // PDF attachment → convert to prompt
@@ -660,6 +667,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
       // otherwise the widget refetches before the spend lands and looks stale.
       const saveRes = await llmService.saveSmartgen({inputPrompt:prompt.trim(),detailedPrompt:result,tokensUsed:outputTokens});
       warnIfQuotaSaveFailed(saveRes);
+      setSmartgenDocId(saveRes.id ?? null);
       onPromptGenerated?.(result);
 
     } catch(err) {
@@ -673,6 +681,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
         setTokensUsed(outputTokens);
         const saveRes = await llmService.saveSmartgen({inputPrompt:prompt.trim(),detailedPrompt:clean,tokensUsed:outputTokens});
         warnIfQuotaSaveFailed(saveRes);
+        setSmartgenDocId(saveRes.id ?? null);
         onPromptGenerated?.(clean);
       } catch(fe) {
         toast({title:"Generation failed",description:(fe as Error).message});
@@ -737,6 +746,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
         tokensUsed: outputTokens,
       });
       warnIfQuotaSaveFailed(saveRes);
+      setSmartgenDocId(saveRes.id ?? null);
       onPromptGenerated?.(data.prompt);
     } catch (err) {
       toast({ title: "PDF conversion failed", description: (err as Error).message });
@@ -761,6 +771,62 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
     }
     doGenerate();
   }, [prompt, isGenerating, deepMode, showDeepModal, openDeepModal, doGenerate, attachedPdf, doGenerateFromPdf]);
+
+  /* ── Save (bookmark) ─────────────────────────────────────────────────────
+     Writes a reference into the user's Saved Collections under the "smartgen"
+     section, which is what the Saved page (the bookmark icon in the header)
+     reads for its Smartgen tab. This button used to be a pure `setIsBookmarked`
+     toggle — it filled in purple and saved nothing, so the icon claimed a
+     save had happened that no page could ever show.
+
+     Quick save: straight into the section's directItems, no folder. Clicking a
+     filled bookmark removes it again via the DELETE route, so the filled state
+     always means "this is in your saved list". */
+  const toggleBookmark = useCallback(async () => {
+    if (savingBookmark) return;
+
+    if (!smartgenDocId) {
+      // Only reachable if the generation succeeded but its own save failed —
+      // warnIfQuotaSaveFailed has already explained why.
+      toast({ title: "Can't save yet", description: "This prompt wasn't recorded, so it can't be added to your saved list. Try regenerating." });
+      return;
+    }
+
+    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+    const nextSaved = !isBookmarked;
+    setSavingBookmark(true);
+    // Optimistic, so the icon responds on the tap rather than after a round
+    // trip; rolled back below if the request fails.
+    setIsBookmarked(nextSaved);
+
+    try {
+      const res = nextSaved
+        ? await fetch(`${API_BASE}/api/saved-collections`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            credentials: "include",
+            body: JSON.stringify({ section: "smartgen", refId: smartgenDocId }),
+          })
+        : await fetch(`${API_BASE}/api/saved-collections/smartgen/${smartgenDocId}`, {
+            method: "DELETE",
+            headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            credentials: "include",
+          });
+
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data?.success === false) throw new Error(data?.error || `http_${res.status}`);
+
+      toast({ title: nextSaved ? "Saved" : "Removed from saved" });
+    } catch (err) {
+      setIsBookmarked(!nextSaved);
+      toast({
+        title: nextSaved ? "Couldn't save" : "Couldn't remove",
+        description: (err as Error)?.message || "Please try again.",
+      });
+    } finally {
+      setSavingBookmark(false);
+    }
+  }, [savingBookmark, smartgenDocId, isBookmarked]);
 
   const handlePdfSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -792,7 +858,10 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
     <div style={{width:"100%",maxWidth:1000,margin:"0 auto",fontFamily:"Inter, ui-sans-serif, system-ui"}}>
 
       {/* ── Ideas Strip ──────────────────────────────────────────────────── */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",background:inputBg,borderRadius:20,border:cardBorder,overflow:"hidden",marginBottom:16}}>
+      {/* Layout (4 columns on desktop, swipeable rail on a phone) is in
+          index.css under .smartgen-ideas — a media query can't be expressed in
+          the inline styles the rest of this component uses. */}
+      <div className="smartgen-ideas" style={{background:inputBg,borderRadius:20,border:cardBorder,marginBottom:16}}>
         {EXAMPLE_IDEAS.map(({Icon,title,text},idx) => (
           <button key={idx} onClick={()=>{setPrompt(text);setActiveIdea(idx);setDetection(null);setManualDomainId(null);setSelectedSubcat(null);}}
             style={{display:"flex",alignItems:"center",gap:14,padding:"18px 20px",textAlign:"left",background:activeIdea===idx?"rgba(255,255,255,0.04)":"transparent",border:"none",borderLeft:idx>0?"1px solid #282829":"none",cursor:"pointer",transition:"background 0.15s"}}
@@ -896,7 +965,9 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
             {(prompt || generated || streamedText || attachedPdf) && (
               <button onClick={()=>{
                 setPrompt("");setActiveIdea(null);setDetection(null);setManualDomainId(null);setSelectedSubcat(null);setDeepAnswers({});
-                setGenerated("");setStreamedText("");setIsEditing(false);setEditable("");setIsBookmarked(false);
+                // smartgenDocId goes with it — leaving the old id behind would
+                // point the next Save at the previous generation's row.
+                setGenerated("");setStreamedText("");setIsEditing(false);setEditable("");setIsBookmarked(false);setSmartgenDocId(null);
                 setAttachedPdf(null);setTokensUsed(null);
               }}
                 style={{...btnDark,display:"flex",alignItems:"center",gap:6,height:36,padding:"0 14px",borderRadius:100,fontSize:13,cursor:"pointer"}}>
@@ -987,8 +1058,17 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
                   <Pencil size={14}/> {isEditing?"Done":"Edit"}
                 </button>
                 <LlmButtons text={displayText} onToast={msg=>toast({title:msg})}/>
-                <button onClick={()=>setIsBookmarked(v=>!v)} style={{width:38,height:38,borderRadius:"50%",border:"1px solid rgba(255,255,255,0.12)",background:"#1a1a1b",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <Bookmark size={15} fill={isBookmarked?"#8b5cf6":"none"} color={isBookmarked?"#8b5cf6":"rgba(255,255,255,0.55)"}/>
+                <button
+                  onClick={toggleBookmark}
+                  disabled={savingBookmark}
+                  title={isBookmarked ? "Remove from saved" : "Save to your collection"}
+                  aria-label={isBookmarked ? "Remove from saved" : "Save to your collection"}
+                  aria-pressed={isBookmarked}
+                  style={{width:38,height:38,borderRadius:"50%",border:"1px solid rgba(255,255,255,0.12)",background:"#1a1a1b",cursor:savingBookmark?"default":"pointer",opacity:savingBookmark?0.6:1,display:"flex",alignItems:"center",justifyContent:"center"}}
+                >
+                  {savingBookmark
+                    ? <Loader2 size={15} className="animate-spin" color="rgba(255,255,255,0.55)"/>
+                    : <Bookmark size={15} fill={isBookmarked?"#8b5cf6":"none"} color={isBookmarked?"#8b5cf6":"rgba(255,255,255,0.55)"}/>}
                 </button>
                 {tokensUsed != null && (
                   <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,height:38,padding:"0 16px",borderRadius:100,background:"rgba(124,58,237,0.12)",border:"1px solid rgba(124,58,237,0.25)",color:"#c4b5fd",fontSize:13,fontWeight:600}}>

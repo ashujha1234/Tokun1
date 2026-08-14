@@ -1,7 +1,7 @@
 // routes/categoryRoutes.js
 //
 // One collection, two trees — see models/Category.js. `kind` picks the tree:
-//   "prompt"  (default) — what a prompt is about. Flat.
+//   "prompt"  (default) — what a prompt is about. Two levels.
 //   "service"           — what a freelancer sells. Two levels.
 //
 // GET / RETURNS ONE KIND, TOP LEVEL ONLY, AND DEFAULTS TO "prompt". Prompt
@@ -13,33 +13,45 @@ const express = require("express");
 const mongoose = require("mongoose");
 const router = express.Router();
 const Category = require("../models/Category");
-const Service = require("../models/Service");
 const { SERVICE_CATEGORIES } = require("../constants/serviceCategories");
 
-// Prompt categories. Flat by design: nothing in the prompt flow asks for a
-// sub-category, and adding one would put a field on the prompt upload form that
-// nothing reads.
+/* The prompt tree, now two levels like the service tree.
+ *
+ * It was a flat list of strings — the model even said so ("Flat: prompts have
+ * never used sub-categories") — which meant a marketplace with 23 top-level
+ * buckets and no way to narrow "Coding" down to what you actually wanted.
+ *
+ * Names are matched exactly on upsert, so the lowercase `devotion` and
+ * `apparel` below are deliberate: those rows already exist in the database
+ * spelled that way, and capitalising them here would create a second, empty
+ * copy of each rather than attaching children to the real one. `Anime` is here
+ * for the same reason — all three were added directly to the database and were
+ * never in this list.
+ */
 const DEFAULT_CATEGORIES = [
-  "Coding",
-  "Design",
-  "UI/UX",
-  "Writing",
-  "Marketing",
-  "Content",
-  "Social Media",
-  "Business",
-  "Creative",
-  "Education",
-  "Finance",
-  "Productivity",
-  "Health",
-  "Sales",
-  "HR",
-  "Travel",
-  "Research",
-  "Data",
-  "Support",
-  "Enterprise",
+  { name: "Coding", children: ["Web Development", "Mobile Apps", "Debugging & Fixes", "Code Review", "APIs & Backend", "DevOps & Scripts"] },
+  { name: "Design", children: ["Logo & Branding", "Illustration", "Product Mockups", "Presentations", "Print & Packaging"] },
+  { name: "UI/UX", children: ["Wireframes", "Design Systems", "User Flows", "Landing Pages", "Mobile UI"] },
+  { name: "Writing", children: ["Blog Posts", "Copywriting", "Storytelling", "Scripts", "Editing & Proofreading", "Technical Writing"] },
+  { name: "Marketing", children: ["Ad Copy", "SEO", "Email Campaigns", "Product Launches", "Brand Strategy"] },
+  { name: "Content", children: ["Video Scripts", "Podcasts", "Newsletters", "Captions", "Content Calendars"] },
+  { name: "Social Media", children: ["Instagram", "LinkedIn", "X (Twitter)", "YouTube", "Reels & Shorts"] },
+  { name: "Business", children: ["Business Plans", "Pitch Decks", "Market Research", "Operations", "Legal & Contracts"] },
+  { name: "Creative", children: ["Art Concepts", "Music & Audio", "Photography", "Character Design", "World Building"] },
+  { name: "Education", children: ["Lesson Plans", "Study Guides", "Quizzes & Tests", "Explainers", "Course Outlines"] },
+  { name: "Finance", children: ["Budgeting", "Investing", "Accounting", "Financial Models", "Taxes"] },
+  { name: "Productivity", children: ["Task Management", "Meeting Notes", "Automation", "Planning", "Summarisation"] },
+  { name: "Health", children: ["Fitness Plans", "Nutrition", "Mental Wellness", "Medical Explainers", "Habit Building"] },
+  { name: "Sales", children: ["Cold Outreach", "Sales Scripts", "Follow-ups", "Proposals", "Negotiation"] },
+  { name: "HR", children: ["Job Descriptions", "Interview Questions", "Onboarding", "Performance Reviews", "Policies"] },
+  { name: "Travel", children: ["Itineraries", "Destination Guides", "Budget Travel", "Packing Lists", "Local Food"] },
+  { name: "Research", children: ["Literature Review", "Data Analysis", "Surveys", "Citations", "Hypothesis Generation"] },
+  { name: "Data", children: ["SQL Queries", "Data Cleaning", "Visualisation", "Reporting", "Machine Learning"] },
+  { name: "Support", children: ["Help Articles", "Chat Replies", "Troubleshooting", "FAQs", "Escalation"] },
+  { name: "Enterprise", children: ["Internal Comms", "Compliance", "Training Material", "Process Docs", "Vendor Management"] },
+  { name: "devotion", children: ["Prayers", "Devotional Poetry", "Festival Content", "Scripture Explainers", "Meditation"] },
+  { name: "apparel", children: ["Product Descriptions", "Fashion Design", "Size & Fit Guides", "Lookbooks", "Trend Reports"] },
+  { name: "Anime", children: ["Character Art", "Manga Panels", "Fan Fiction", "Anime Backgrounds", "Cosplay"] },
 ];
 
 /**
@@ -150,8 +162,9 @@ async function dropLegacyNameIndex() {
 /**
  * POST /api/category/seed-defaults
  *
- * Idempotent. Seeds the prompt tree (flat) and the service tree (two levels),
- * and never deletes anything a Service actually references.
+ * Idempotent. Seeds both trees, each two levels deep, using upserts only —
+ * re-running never duplicates a row, never overwrites a hand-edited name, and
+ * (since the stray-child sweep was removed) never deletes anything.
  */
 router.post("/seed-defaults", async (req, res) => {
   try {
@@ -168,13 +181,28 @@ router.post("/seed-defaults", async (req, res) => {
       { $set: { kind: "prompt" } }
     );
 
-    /* ── prompt tree ── */
-    for (const name of DEFAULT_CATEGORIES) {
+    /* ── prompt tree ──
+       Two levels now. Upserts throughout, so re-running this never duplicates a
+       row and never overwrites a category someone renamed or edited by hand. */
+    let promptSubCount = 0;
+    for (const { name, children } of DEFAULT_CATEGORIES) {
       await Category.updateOne(
         { kind: "prompt", parent: null, name },
         { $setOnInsert: { name, kind: "prompt", parent: null } },
         { upsert: true }
       );
+
+      const parentRow = await Category.findOne({ kind: "prompt", parent: null, name }).select("_id");
+      if (!parentRow) continue;
+
+      for (const childName of children || []) {
+        await Category.updateOne(
+          { kind: "prompt", parent: parentRow._id, name: childName },
+          { $setOnInsert: { name: childName, kind: "prompt", parent: parentRow._id } },
+          { upsert: true }
+        );
+        promptSubCount += 1;
+      }
     }
 
     /* ── service tree ── */
@@ -199,33 +227,16 @@ router.post("/seed-defaults", async (req, res) => {
       }
     }
 
-    /* ── clean up the short-lived service-ish children seeded under PROMPT
-          categories (Coding → "Web Development", Content → "Video Editing", …).
-          They were the wrong shape: prompts have no sub-categories, and services
-          now have their own tree. Only rows nothing references are removed — a
-          service created while they existed keeps working. ── */
-    const promptParents = await Category.find({ kind: "prompt", parent: null }).select("_id").lean();
-    const strayChildren = await Category.find({
-      kind: "prompt",
-      parent: { $in: promptParents.map((p) => p._id) },
-    })
-      .select("_id")
-      .lean();
+    /* A block here used to DELETE every child under a prompt category.
+       It was written when prompts were deliberately flat — an earlier seed had
+       put service-shaped children ("Web Development" under Coding) into the
+       prompt tree by mistake, and this swept them out on every run.
 
-    let removedStrays = 0;
-    if (strayChildren.length) {
-      const strayIds = strayChildren.map((c) => c._id);
-      const referenced = await Service.find({ subCategory: { $in: strayIds } })
-        .select("subCategory")
-        .lean();
-      const inUse = new Set(referenced.map((s) => String(s.subCategory)));
-
-      const deletable = strayIds.filter((id) => !inUse.has(String(id)));
-      if (deletable.length) {
-        const result = await Category.deleteMany({ _id: { $in: deletable } });
-        removedStrays = result.deletedCount || 0;
-      }
-    }
+       Prompts now have their own two-level tree on purpose, so that sweep would
+       delete the sub-categories seeded thirty lines above it — the whole feature
+       would appear to do nothing, which is exactly why the prompt tree had zero
+       children in the database. Removed rather than narrowed: there is no longer
+       any such thing as a stray child of a prompt category. */
 
     const [promptCategories, serviceCategories] = await Promise.all([
       Category.find({ kind: "prompt", parent: null }).sort({ name: 1 }),
@@ -241,7 +252,7 @@ router.post("/seed-defaults", async (req, res) => {
       promptCategories: promptCategories.length,
       serviceCategories: serviceCategories.length,
       serviceSubCategories: serviceSubCount,
-      removedStrayPromptSubCategories: removedStrays,
+      promptSubCategories: promptSubCount,
     });
   } catch (err) {
     console.error(err);

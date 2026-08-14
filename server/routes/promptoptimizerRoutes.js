@@ -229,6 +229,7 @@
 
 
 const express = require("express");
+const mongoose = require("mongoose");
 const router = express.Router();
 const PromptOptimizer = require("../models/PromptOptimizer");
 const LLMProvider = require("../models/LLMProvider");
@@ -433,7 +434,23 @@ router.get("/", requireAuth, async (req, res) => {
 router.delete("/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const deleted = await PromptOptimizer.findByIdAndDelete(id);
+
+    // A malformed id is a 404, not the 500 a CastError out of the driver would
+    // otherwise produce.
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ success: false, error: "prompt_not_found" });
+    }
+
+    /* Scoped to the caller's own rows. findByIdAndDelete on a bare id let any
+       signed-in user delete any other user's optimisation by guessing or
+       reading an id — the GET above is already filtered by createdBy, so this
+       was the one hole in an otherwise per-user collection. A row belonging to
+       someone else now answers 404, the same as one that doesn't exist: an
+       attacker learns nothing either way. */
+    const deleted = await PromptOptimizer.findOneAndDelete({
+      _id: id,
+      createdBy: req.user._id,
+    });
     if (!deleted) return res.status(404).json({ success: false, error: "prompt_not_found" });
 
     res.json({ success: true, deleted });

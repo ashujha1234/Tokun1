@@ -162,30 +162,36 @@ export function useFreelancerMenu(): FreelancerMenuState {
   const meta = useMemo(() => {
     if (!eligible) {
       return {
-        label: "Freelancing via your org",
+        label: "Creator work via your org",
         hint: "Your organization handles client work",
         icon: <AlertCircle size={16} />,
         tint: "rgba(255,255,255,0.45)",
       };
     }
+    /* "Creator", not "freelancer" — the profile page says Creator on the badge
+       and the button, and this is the same profile seen from the account menu.
+       All three states are renamed together: a menu that offers "Become a
+       Creator" and then reports "Finish freelancer profile" reads as two
+       different features. Only the wording changes; the state machine, the
+       API and the field names underneath are untouched. */
     switch (status) {
       case "ACTIVE":
         return {
-          label: "My freelancer profile",
+          label: "My creator profile",
           hint: "Live",
           icon: <BadgeCheck size={16} />,
           tint: "#19E66C",
         };
       case "DRAFT":
         return {
-          label: "Finish freelancer profile",
+          label: "Finish creator profile",
           hint: "Draft saved",
           icon: <Briefcase size={16} />,
           tint: "#FF14EF",
         };
       default:
         return {
-          label: "Become a Freelancer",
+          label: "Become a Creator",
           hint: "Get hired for custom work",
           icon: <Briefcase size={16} />,
           tint: "#FF14EF",

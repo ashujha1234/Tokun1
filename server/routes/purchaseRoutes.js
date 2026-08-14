@@ -399,6 +399,8 @@ const fs = require("fs");
 const { embedWatermark, extractWatermark } = require("../utils/nvisibleWatermark");
 const { generateInvoicePDF } = require("../services/invoice.service");
 const { sendInvoiceEmail } = require("../services/email.service");
+const multer = require("multer");
+const uploadToAzure = require("../utils/uploadToAzure");
 const RefundRequest = require("../models/RefundRequest");
 const Notification = require("../models/Notification");
 const { notifyAdmins } = require("../utils/notifyAdmins");
@@ -1017,7 +1019,16 @@ router.get("/admin/user/:userId", requireAuth, requireAdmin, async (req, res) =>
 // POST /api/purchase/:purchaseId/refund-request
 // Buyer files a refund request with a reason, within REFUND_WINDOW_HOURS of
 // the purchase. Admin reviews it separately (server/routes/adminRefunds.js).
-router.post("/:purchaseId/refund-request", requireAuth, async (req, res) => {
+/* Evidence the buyer attaches to a refund request — normally a screenshot of
+   the output they actually got. Memory storage because the file goes straight
+   to Azure Blob and is never written to this box's disk; capped at 5 files of
+   5 MB so a refund form can't be used to push large uploads. */
+const refundUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 5 },
+});
+
+router.post("/:purchaseId/refund-request", requireAuth, refundUpload.array("attachments", 5), async (req, res) => {
   try {
     const { purchaseId } = req.params;
     const reason = String(req.body?.reason || "").trim();
@@ -1049,12 +1060,31 @@ router.post("/:purchaseId/refund-request", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: "seller_missing" });
     }
 
+    /* Uploaded after every validation above has passed, so a request that was
+       going to be rejected anyway (wrong buyer, window expired, already
+       requested) never costs a Blob write.
+
+       Failures here are swallowed deliberately: the refund request itself is
+       what the buyer came to file, and losing it because a screenshot upload
+       failed would be a far worse outcome than recording it without images. */
+    let attachments = [];
+    if (req.files?.length) {
+      try {
+        attachments = await Promise.all(
+          req.files.map((f) => uploadToAzure(f.buffer, f.originalname, "refund-attachments"))
+        );
+      } catch (uploadErr) {
+        console.error("Refund attachment upload failed:", uploadErr?.message);
+      }
+    }
+
     const refundRequest = await RefundRequest.create({
       purchase: purchase._id,
       buyer: req.user._id,
       seller: purchase.prompt.userId,
       prompt: purchase.prompt._id,
       reason,
+      attachments,
       refundAmount: purchase.pricePaid,
     });
 
@@ -1065,7 +1095,13 @@ router.post("/:purchaseId/refund-request", requireAuth, async (req, res) => {
       type: "ADMIN_REFUND_REQUESTED",
       promptId: purchase.prompt._id,
       message: `Refund requested for "${purchase.prompt.title}" by ${req.user.name || req.user.email}: ${reason}`,
-      meta: { refundRequestId: refundRequest._id, purchaseId: purchase._id },
+      // attachmentCount, so an admin can tell from the notification alone that
+      // there is evidence to open — the URLs themselves live on the request.
+      meta: {
+        refundRequestId: refundRequest._id,
+        purchaseId: purchase._id,
+        attachmentCount: attachments.length,
+      },
     });
 
     return res.json({ success: true, refundRequest });

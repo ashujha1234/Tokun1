@@ -17,6 +17,18 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@tokun_app" />
     <meta name="twitter:image" content="https://tokun.app/opengraph-image.png" />
+
+    <!-- JetBrains Mono, the one family this app doesn't self-host (Inter lives
+         in /Fonts/inter). Moved out of an @import in landing-page.css, where it
+         could only start after that stylesheet had been fetched and parsed —
+         a request chain the page waited on. The preconnects open the two
+         connections in parallel with it. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&display=swap"
+    />
   </head>
 
   <body>

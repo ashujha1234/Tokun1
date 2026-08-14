@@ -175,7 +175,10 @@ kycVerifiedAt: { type: Date, default: null },
     purchasedPrompts: [{ type: mongoose.Schema.Types.ObjectId, ref: "Purchase" }],
 
 // IND subscription state (used only when userType === "IND" and plan !== null)
-subscriptionStatus: { type: String, enum: ["active","past_due","grace","suspended","canceled", null], default: null }, // <- NEW
+// No "grace": past_due covers the entire graceDays window below, and nothing
+// ever assigned a separate grace value. Dropped from the enum so it can't be
+// reintroduced as a state the cron and the admin charts don't understand.
+subscriptionStatus: { type: String, enum: ["active","past_due","suspended","canceled", null], default: null }, // <- NEW
 billingAnchor: { type: Date, default: null },     // first start (for alignment)  <- NEW
 graceDays: { type: Number, default: 7 },          // configurable                 <- NEW
 lastInvoiceDueAt: { type: Date, default: null },  // optional reporting     

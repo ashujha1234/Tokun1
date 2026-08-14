@@ -12017,14 +12017,42 @@ const ROUTES = {
    Shared motion variant
    ============================================================ */
 
+/* Scroll reveal.
+ *
+ * Every section of this page starts invisible and animates in when it reaches
+ * the viewport, and the old numbers made that read as the page still loading:
+ * a card waited until it was 60px INSIDE the view (see REVEAL_VIEWPORT below),
+ * then waited out a stagger of up to 0.6s, then took another 0.65s to fade —
+ * so at a normal scroll speed you arrived at blank space and watched it fill in
+ * behind you.
+ *
+ * Same effect, retimed to finish before you get there: it starts well above the
+ * fold, the per-card stagger is short and capped, and the fade is quick. The
+ * travel is smaller too, since a 36px slide is what makes a late reveal read as
+ * "jumping into place".
+ */
 const fadeUp = {
-  hidden: { opacity: 0, y: 36 },
+  hidden: { opacity: 0, y: 18 },
   visible: (i = 0) => ({
     opacity: 1,
     y: 0,
-    transition: { duration: 0.65, delay: i * 0.1, ease: [0.22, 1, 0.36, 1] },
+    transition: {
+      duration: 0.38,
+      // Capped: a six-card grid used to spend 0.6s on the stagger alone, so the
+      // last card in a row appeared long after the first.
+      delay: Math.min(i, 3) * 0.05,
+      ease: [0.22, 1, 0.36, 1],
+    },
   }),
 }
+
+/* Positive rootMargin — the reveal is armed 260px BEFORE the element scrolls
+   into view, which is roughly a scroll-wheel notch of lead time. The values
+   here were negative ('-40px' … '-80px'), which does the opposite: it shrinks
+   the trigger box so the element has to be well inside the screen first. That
+   single sign is most of what made the page feel like it was loading as you
+   went down it. */
+const REVEAL_VIEWPORT = { once: true, margin: '260px 0px 260px 0px' }
 
 /* ============================================================
    Hooks
@@ -12177,7 +12205,11 @@ function HeroAccountMenu() {
             },
           },
         ]),
-    { label: 'My Wallet', icon: Wallet, onClick: () => go('/wallet') },
+    /* "My Wallet" was here too — this menu is a second copy of the Header's
+       account menu, so it has to be kept in step or the same dropdown shows
+       different items depending on which page you opened it from. Hidden for
+       the same reason: payments settle through Razorpay and seller earnings go
+       to a linked account, so there is no balance to manage day to day. */
     { label: 'Dashboard', icon: LayoutDashboard, onClick: () => go('/self-dash') },
   ]
 
@@ -12695,7 +12727,11 @@ function parseStatValue(value) {
 
 function AnimatedCounter({ value, duration = 2 }) {
   const ref = useRef(null)
-  const isInView = useInView(ref, { once: true, margin: '-50px' })
+  /* Positive margin, for the same reason as REVEAL_VIEWPORT: at '-50px' the
+     count only started once the number was already on screen, so a 2s count-up
+     was still running long after the reader had passed it — the stat read as
+     stuck on 0 while the rest of the row had settled. */
+  const isInView = useInView(ref, { once: true, margin: '260px' })
   const parsed = parseStatValue(value)
   const motionValue = useMotionValue(0)
   const spring = useSpring(motionValue, { duration: duration * 1000, bounce: 0 })
@@ -13325,7 +13361,7 @@ function WhatWeOffer() {
           className="what-we-offer__header"
           initial="hidden"
           whileInView="visible"
-          viewport={{ once: true, margin: '-80px' }}
+          viewport={REVEAL_VIEWPORT}
           variants={fadeUp}
         >
           <span className="what-we-offer__eyebrow">Capabilities</span>
@@ -13344,7 +13380,7 @@ function WhatWeOffer() {
               style={{ '--card-accent': offer.accent }}
               initial="hidden"
               whileInView="visible"
-              viewport={{ once: true, margin: '-60px' }}
+              viewport={REVEAL_VIEWPORT}
               variants={fadeUp}
               custom={i + 1}
               whileHover={{ y: -6 }}
@@ -13501,7 +13537,7 @@ function HowItWorks() {
           className="how-it-works__header"
           initial="hidden"
           whileInView="visible"
-          viewport={{ once: true, margin: '-60px' }}
+          viewport={REVEAL_VIEWPORT}
           variants={fadeUp}
         >
           <span className="how-it-works__badge">Process</span>
@@ -13516,7 +13552,7 @@ function HowItWorks() {
               style={{ '--step-accent': step.accent }}
               initial="hidden"
               whileInView="visible"
-              viewport={{ once: true, margin: '-40px' }}
+              viewport={REVEAL_VIEWPORT}
               variants={fadeUp}
               custom={i + 1}
               whileHover={{ y: -4 }}
@@ -13538,7 +13574,7 @@ function HowItWorks() {
           className="how-it-works__demo"
           initial="hidden"
           whileInView="visible"
-          viewport={{ once: true, margin: '-80px' }}
+          viewport={REVEAL_VIEWPORT}
           variants={fadeUp}
           custom={6}
         >
@@ -13564,7 +13600,7 @@ function CtaSection() {
           className="cta-section__header"
           initial="hidden"
           whileInView="visible"
-          viewport={{ once: true, margin: '-60px' }}
+          viewport={REVEAL_VIEWPORT}
           variants={fadeUp}
         >
           <span className="cta-section__badge">Reach out any time</span>
@@ -13579,7 +13615,7 @@ function CtaSection() {
           className="cta-section__action"
           initial="hidden"
           whileInView="visible"
-          viewport={{ once: true, margin: '-40px' }}
+          viewport={REVEAL_VIEWPORT}
           variants={fadeUp}
           custom={2}
         >
@@ -13723,7 +13759,7 @@ function Testimonials() {
           className="testimonials__header"
           initial="hidden"
           whileInView="visible"
-          viewport={{ once: true, margin: '-60px' }}
+          viewport={REVEAL_VIEWPORT}
           variants={fadeUp}
         >
           <span className="testimonials__badge">Wall of Love</span>
@@ -13735,7 +13771,7 @@ function Testimonials() {
           className="testimonials__marquee"
           initial="hidden"
           whileInView="visible"
-          viewport={{ once: true, margin: '-40px' }}
+          viewport={REVEAL_VIEWPORT}
           variants={fadeUp}
           custom={2}
         >
@@ -13916,6 +13952,35 @@ function GlobeSection() {
   // usually already there by the time the section is on screen.
   const canvasHostRef = useRef(null)
   const globeNear = useInView(canvasHostRef, { once: true, margin: '300px' })
+
+  /* Fetch and parse the 3D chunk during idle time, long before the reader gets
+     here — the render itself still waits for `globeNear`, so no WebGL context
+     is created early.
+     300px of margin is a fraction of a second at scrolling speed, and this
+     chunk is the largest on the site (three.js). Starting it at that point
+     meant the download AND the parse landed while the section was sliding into
+     view, and parsing blocks the main thread — that was a real stall in the
+     middle of the scroll, not just a late reveal. Idle time is free: the
+     reader is looking at the hero.
+     Skipped on Save-Data, where a megabyte of optional 3D is the wrong call. */
+  useEffect(() => {
+    if (navigator.connection?.saveData) return
+
+    const warm = () => {
+      import('./LandingGlobeCanvas').catch(() => {
+        // A failed prefetch is not an error worth surfacing — the Suspense
+        // boundary will request it again when the section is actually reached.
+      })
+    }
+
+    if (typeof window.requestIdleCallback === 'function') {
+      const id = window.requestIdleCallback(warm, { timeout: 3000 })
+      return () => window.cancelIdleCallback?.(id)
+    }
+
+    const timer = window.setTimeout(warm, 1500)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   useEffect(() => {
     const sync = () => setIsMobile(window.innerWidth <= 640)

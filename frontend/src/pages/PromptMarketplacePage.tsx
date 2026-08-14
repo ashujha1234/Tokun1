@@ -5776,8 +5776,14 @@ import {
   SlidersHorizontal, Check, X,
   Database, Building2, HeartPulse, Zap, Tag, Share2, Layers,
   TrendingUp, ShieldCheck, ArrowRight, ArrowUpRight, Wallet, Rocket, Play,
+  // For the three categories that only ever existed in the database and so
+  // were never given an icon here: devotion, apparel, Anime.
+  HandHeart, Shirt, Clapperboard,
 } from "lucide-react";
 import { User } from "lucide-react";
+// Category logos are stored as upload paths; mediaUrl resolves them against the
+// API and passes absolute Blob URLs through unchanged.
+import { mediaUrl } from "@/lib/mediaUrl";
 
 import { toast } from "@/components/ui/use-toast";
 import Header from "@/components/Header";
@@ -5795,6 +5801,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import ModalComponent from "@/components/ModalComponent";
 import { ShoppingCart, Clock, Info, Lock } from "lucide-react";
 import KycGateModal from "@/components/KycGateModal";
+import PurchaseConfirmModal from "@/components/PurchaseConfirmModal";
 import { useCart } from "@/contexts/CartContext";
 import SellPromptModal from "@/components/SellPromptModal";
 import SellerLinkedAccountForm from "@/components/SellerLinkedAccountForm";
@@ -5810,7 +5817,15 @@ type Prompt = {
   id: string;
   title: string;
   description: string;
+  /** Display label: the prompt's first top-level category. */
   category: string;
+  /**
+   * Everything this prompt is filed under — top-level categories AND
+   * sub-categories — which is what the category filter matches against. A card
+   * under "Design / Logo & Branding" carries both, so picking either narrows
+   * the list correctly.
+   */
+  categoryNames?: string[];
   /** The seller's list price — what they earn from, NOT what the buyer pays. */
   price?: number;
   /**
@@ -6353,21 +6368,32 @@ const LibHeroBanner = ({
     <div className="relative z-10 px-6 sm:px-10 py-16 sm:py-24 flex flex-col items-center text-center">
       {/* Now that the image shows through, the copy can't rely on the scrim
           alone — a shadow keeps it legible if it lands on a bright patch. */}
+      {/* The product is named "Prompt Verse"; "Ultimate Prompt Marketplace" is
+          the tagline under it, so the old name still tells a first-time visitor
+          what the page is. The gradient stays on the second word, matching the
+          treatment this heading already had. */}
       <h1
         className="mt-4 text-white text-[32px] sm:text-[44px] md:text-[52px] font-semibold leading-[1.05]"
         style={{ fontFamily: "Inter", textShadow: "0 2px 24px rgba(0,0,0,0.55)" }}
       >
         Prompt{" "}
         <span style={{ background: GRADIENT_90, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-          Marketplace
+          Verse
         </span>
       </h1>
+
+      <p
+        className="mt-3 text-white/70 text-[13px] sm:text-[14px] font-medium uppercase"
+        style={{ letterSpacing: "0.18em", textShadow: "0 1px 12px rgba(0,0,0,0.6)" }}
+      >
+        Ultimate Prompt Marketplace
+      </p>
 
       <p
         className="mt-4 text-white/85 max-w-[560px] text-[14px] sm:text-[15px] leading-relaxed"
         style={{ textShadow: "0 1px 12px rgba(0,0,0,0.6)" }}
       >
-        Access 310k+ high-quality AI prompts for art, logic, architecture, and business optimization.
+        Access high-quality prompts for art, logic, architecture, and business optimization.
       </p>
 
       <form
@@ -6378,18 +6404,23 @@ const LibHeroBanner = ({
           onBrowse();
         }}
       >
-        <Search className="h-5 w-5 text-white/40 ml-2" />
+        <Search className="h-5 w-5 shrink-0 text-white/40 ml-2" />
+        {/* min-w-0 so the input can actually shrink: without it the input's
+            intrinsic width won the flex fight on a phone and squeezed the
+            submit button down to a sliver of its gradient. */}
         <input
           name="q"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search prompts for 'Hyper-realistic architecture'..."
-          className="ml-3 flex-1 bg-transparent outline-none text-white placeholder:text-white/40 text-sm"
+          className="ml-2 sm:ml-3 flex-1 min-w-0 bg-transparent outline-none text-white placeholder:text-white/40 text-[13px] sm:text-sm"
         />
+        {/* Width lives in classes, not the inline style, so the mobile size
+            isn't overridden by a hardcoded 90px. shrink-0 keeps it whole. */}
         <button
           type="submit"
-          className="text-white font-medium text-sm"
-          style={{ width: "90px", height: "36px", borderRadius: "200px", background: GRADIENT_90 }}
+          className="shrink-0 grid place-items-center rounded-full text-white font-medium text-[13px] sm:text-sm w-[74px] sm:w-[90px] h-[34px] sm:h-[36px]"
+          style={{ background: GRADIENT_90 }}
         >
           Search
         </button>
@@ -7014,12 +7045,50 @@ const LibSellHireSection = ({ onSell, onHire }: { onSell: () => void; onHire: ()
   </div>
 );
 
+/* One mark per category, at module scope.
+   These lived inside the page component, which put them out of reach of
+   LibCategoriesRow below — a module-level component defined before it. They are
+   plain constants with no dependency on state, so hoisting them is what lets
+   the category rail draw a logo at all. */
+const CATEGORY_ICONS: Record<string, React.ComponentType<any>> = {
+  Business: Briefcase,
+  Coding: Code2,
+  Content: ImageIcon,
+  Creative: Star,
+  Data: Database,
+  Design: Palette,
+  Education: GraduationCap,
+  Enterprise: Building2,
+  Finance: BadgeDollarSign,
+  HR: Users,
+  Health: HeartPulse,
+  Marketing: BarChart3,
+  Productivity: Zap,
+  Research: FlaskConical,
+  Sales: Tag,
+  "Social Media": Share2,
+  Support: LifeBuoy,
+  Travel: Plane,
+  "UI/UX": SlidersHorizontal,
+  Writing: FileText,
+  /* Lowercase keys are deliberate — these three rows were created directly in
+     the database with this exact spelling, and the lookup is an exact match, so
+     "Devotion" here would never hit. Without them all three fell back to the
+     generic Layers icon. */
+  devotion: HandHeart,
+  apparel: Shirt,
+  Anime: Clapperboard,
+};
+const DEFAULT_CATEGORY_ICON = Layers;
+
 const LibCategoriesRow = ({
   categories,
   selected,
   onSelect,
 }: {
-  categories: string[];
+  // Objects now, not names: the sub-category endpoint keys off the id, and the
+  // pill needs previewImage to show a category's own uploaded logo.
+  categories: { _id?: string; name: string; previewImage?: string }[];
   selected: string;
   onSelect: (c: string) => void;
 }) => {
@@ -7027,8 +7096,38 @@ const LibCategoriesRow = ({
   const scroll = (dir: "left" | "right") =>
     railRef.current?.scrollBy({ left: dir === "left" ? -280 : 280, behavior: "smooth" });
 
+  const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
+  /* Fetched per category the first time it's hovered and kept for the life of
+     the page. 23 categories × ~5 children is small, and the alternative — one
+     request every time the pointer crosses a pill — would fire dozens of times
+     just scanning the rail. A category with no children caches as [] so it is
+     never asked for twice. */
+  const [subsByCategory, setSubsByCategory] = useState<Record<string, { _id?: string; name: string }[]>>({});
+
+  const handleCategoryHover = (name: string) => {
+    setHoveredCategory(name);
+    if (name === "All" || subsByCategory[name]) return;
+
+    const cat = categories.find((c) => c.name === name);
+    if (!cat?._id) return;
+
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/category/${cat._id}/subcategories`, {
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data?.success) {
+          setSubsByCategory((prev) => ({ ...prev, [name]: data.subCategories || [] }));
+        }
+      } catch {
+        // Hover decoration — a failure just means no panel, never an error.
+      }
+    })();
+  };
+
   if (categories.length === 0) return null;
-  const pills = ["All", ...categories];
+  const pills = ["All", ...categories.map((c) => c.name)];
 
   return (
     <section>
@@ -7036,22 +7135,107 @@ const LibCategoriesRow = ({
         <LibEyebrow icon={<Sparkles className="h-4 w-4" />}>BROWSE BY CATEGORY</LibEyebrow>
         <LibArrowNav onLeft={() => scroll("left")} onRight={() => scroll("right")} />
       </div>
-      <div ref={railRef} className="flex gap-3 overflow-x-auto scroll-smooth pb-2 no-scrollbar">
+      {/* overflow-x-auto would clip the hover panel, so the rail only scrolls
+          when nothing is open. Hidden behind a pointer check: on a touch screen
+          hover fires on tap and sticks, which would leave a panel covering the
+          grid with no way to dismiss it. */}
+      <div
+        ref={railRef}
+        className={`flex gap-3 scroll-smooth pb-2 no-scrollbar ${
+          hoveredCategory ? "overflow-x-visible" : "overflow-x-auto"
+        }`}
+      >
         {pills.map((c) => {
-          const isActive = c === selected;
+          const subs = subsByCategory[c];
+          /* The parent lights up for its own name AND for any of its children,
+             so choosing "Logo & Branding" doesn't leave the rail looking as if
+             nothing is selected — the chosen child is named under the pill. */
+          const activeSub = subs?.find((s) => s.name === selected)?.name;
+          const isActive = c === selected || !!activeSub;
+          const showPanel = hoveredCategory === c && !!subs?.length;
+
+          /* A category's own uploaded logo wins over the built-in icon. The
+             icon map is keyed by name, so anything added to the database later
+             has no entry — that is what DEFAULT_CATEGORY_ICON is for, and why
+             a new category still gets a mark rather than a bare word. */
+          const logoUrl = categories.find((x) => x.name === c)?.previewImage;
+          const Icon = c === "All" ? Sparkles : CATEGORY_ICONS[c] || DEFAULT_CATEGORY_ICON;
+
           return (
-            <button
+            <div
               key={c}
-              onClick={() => onSelect(c)}
-              className="shrink-0 px-4 py-2 rounded-full text-[13px] font-medium text-white transition-colors"
-              style={
-                isActive
-                  ? { background: GRADIENT }
-                  : { background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.12)" }
-              }
+              className="relative shrink-0"
+              onMouseEnter={() => handleCategoryHover(c)}
+              onMouseLeave={() => setHoveredCategory(null)}
             >
-              {c}
-            </button>
+              <button
+                onClick={() => onSelect(c)}
+                className="flex items-center gap-2 px-4 py-2 rounded-full text-[13px] font-medium text-white transition-colors whitespace-nowrap"
+                style={
+                  isActive
+                    ? { background: GRADIENT }
+                    : { background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.12)" }
+                }
+              >
+                {logoUrl ? (
+                  <img
+                    src={mediaUrl(logoUrl)}
+                    alt=""
+                    className="h-4 w-4 rounded-sm object-cover shrink-0"
+                    /* A broken logo URL would otherwise leave the browser's
+                       torn-image placeholder sitting inside the pill. */
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <Icon className="h-4 w-4 shrink-0" />
+                )}
+                {c}
+                {/* Which child is filtering, on the pill itself. Without it the
+                    only thing on screen saying "Logo & Branding" was the hover
+                    panel, which is gone the moment you move the pointer. */}
+                {activeSub && (
+                  <span className="text-[11px] text-white/75 border-l border-white/25 pl-2">
+                    {activeSub}
+                  </span>
+                )}
+              </button>
+
+              {showPanel && (
+                <div
+                  className="absolute left-0 top-full pt-2 z-30 min-w-[220px]"
+                  /* The pt-2 above is inside the hoverable area on purpose —
+                     as a margin it would be a dead gap that closes the panel
+                     while the pointer travels down to it. */
+                >
+                  <div className="rounded-xl border border-white/10 bg-[#131419] shadow-[0_16px_48px_rgba(0,0,0,0.6)] p-1.5">
+                    {/* First row is the parent itself. Every child used to call
+                        onSelect(c) — the PARENT — so clicking "Logo & Branding"
+                        silently filtered by "Design" and the whole category came
+                        back. Children now select themselves, and "All of Design"
+                        is the explicit way to ask for the parent. */}
+                    <button
+                      onClick={() => onSelect(c)}
+                      className="w-full text-left px-3 py-2 rounded-lg text-[13px] text-white/90 hover:bg-white/[0.07] transition-colors"
+                    >
+                      All of {c}
+                    </button>
+                    <div className="my-1 h-px bg-white/10" />
+                    {subs.map((sub) => (
+                      <button
+                        key={sub._id || sub.name}
+                        onClick={() => onSelect(sub.name)}
+                        className="w-full text-left px-3 py-2 rounded-lg text-[13px] transition-colors hover:bg-white/[0.07] hover:text-white"
+                        style={{ color: sub.name === selected ? "#fff" : "rgba(255,255,255,0.75)" }}
+                      >
+                        {sub.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
@@ -7081,6 +7265,17 @@ const mapPromptDoc = (doc: any): Prompt => {
       (doc.categories?.[0]?.name as string) ||
       (Array.isArray(doc.categories) ? doc.categories.join(", ") : "") ||
       "General",
+
+    /* Every category name this prompt answers to — its parents AND its
+       sub-categories. `category` above is the display label (one name, the
+       parent), which is why filtering off it made "Logo & Branding" behave
+       exactly like "Design": the child's name was nowhere in the payload. */
+    categoryNames: [
+      ...(Array.isArray(doc.categories) ? doc.categories : []),
+      ...(Array.isArray(doc.subCategories) ? doc.subCategories : []),
+    ]
+      .map((c: any) => (typeof c === "string" ? c : c?.name))
+      .filter(Boolean),
 
     price: typeof doc.price === "number" ? doc.price : 0,
     // Falls back to the list price rather than 0 — a prompt saved before the
@@ -7135,12 +7330,16 @@ const PromptMarketplacePage = () => {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [showTopBg, setShowTopBg] = useState(true);
     const [kycOpen, setKycOpen] = useState(false);
+/* The prompt sitting in the review sheet, and whether its order is being
+   created. Buy Now opens this; Razorpay only opens once it's confirmed. */
+const [confirmPrompt, setConfirmPrompt] = useState<Prompt | null>(null);
+const [confirmBusy, setConfirmBusy] = useState(false);
 const [pendingPurchasePrompt, setPendingPurchasePrompt] = useState<Prompt | null>(null);
 const [retryPrompt, setRetryPrompt] = useState<Prompt | null>(null);
   // NEW: dropdown filters
   const [fileType, setFileType] = useState<FileType>("all");
   const [licenseType, setLicenseType] = useState<LicenseType>("all");
-const [apiCategories, setApiCategories] = useState<{ name: string; previewImage?: string; previewVideo?: string }[]>([]);
+const [apiCategories, setApiCategories] = useState<{ _id?: string; name: string; previewImage?: string; previewVideo?: string }[]>([]);
   const [playingVideo, setPlayingVideo] = useState<string | number | null>(null);
 
   const [prompts, setPrompts] = useState<Prompt[]>([]);
@@ -7182,29 +7381,6 @@ const [draftCategories, setDraftCategories] = useState<string[]>([]);
 
 // One distinct icon per category — a name → icon lookup, with a generic
 // fallback for anything not in this list (e.g. a custom "Other" category).
-const CATEGORY_ICONS: Record<string, React.ComponentType<any>> = {
-  Business: Briefcase,
-  Coding: Code2,
-  Content: ImageIcon,
-  Creative: Star,
-  Data: Database,
-  Design: Palette,
-  Education: GraduationCap,
-  Enterprise: Building2,
-  Finance: BadgeDollarSign,
-  HR: Users,
-  Health: HeartPulse,
-  Marketing: BarChart3,
-  Productivity: Zap,
-  Research: FlaskConical,
-  Sales: Tag,
-  "Social Media": Share2,
-  Support: LifeBuoy,
-  Travel: Plane,
-  "UI/UX": SlidersHorizontal,
-  Writing: FileText,
-};
-const DEFAULT_CATEGORY_ICON = Layers;
 
 const categoriesData = [
   { id: "All", icon: Sparkles, previewImage: "", previewVideo: "" },
@@ -7323,7 +7499,11 @@ const [buyerName, setBuyerName] = useState<string>("");
       const data = await res.json();
 
       if (res.ok && data?.success) {
+        // _id is carried through so the category rail can ask for a category's
+        // sub-categories on hover — that endpoint keys off the id, and the rail
+        // previously only ever received names.
         setApiCategories(data.categories.map((c: any) => ({
+          _id: String(c._id || ""),
           name: c.name,
           previewImage: c.previewImage || "",
           previewVideo: c.previewVideo || "",
@@ -7511,6 +7691,16 @@ const mapped: Prompt[] = (data.prompts || []).map((doc: any) => mapPromptDoc(doc
 
   /* ---------- Derived: local search + filter ---------- */
 const filteredPrompts = prompts.filter((p) => {
+  /* Already bought → out of the listing entirely. There is nothing left to do
+     with it here: every action on a marketplace card (add to cart, buy, unlock)
+     is a no-op once it's owned, so it was just taking a slot from something the
+     buyer could actually act on. Owned prompts stay reachable through Orders /
+     Purchase History, which is where someone looks for them.
+
+     String() on both sides because purchasedPrompts holds ids as strings while
+     Prompt.id is `number | string`, and 12 !== "12". */
+  if (purchasedPrompts.includes(String(p.id))) return false;
+
   if (searchQuery.trim()) {
     const q = searchQuery.toLowerCase();
     if (
@@ -7530,12 +7720,19 @@ const filteredPrompts = prompts.filter((p) => {
   if (fileType === "code" && p.category.toLowerCase() !== "code") return false;
 
   if (effectiveCategoryFilter.length > 0) {
-    const promptCategories = String(p.category || "")
-      .split(",")
-      .map((item) => item.trim());
+    /* Matches on the full set — parents and sub-categories — so "Logo &
+       Branding" keeps only the prompts actually filed under it, instead of
+       falling back to every Design prompt. categoryNames is absent on nothing
+       the server sends today; the `category` split is the fallback for a
+       prompt object built before this field existed (shared-link path). */
+    const promptCategories = (
+      p.categoryNames?.length
+        ? p.categoryNames
+        : String(p.category || "").split(",")
+    ).map((item) => item.trim().toLowerCase());
 
     const hasCategoryMatch = effectiveCategoryFilter.some((cat) =>
-      promptCategories.includes(cat)
+      promptCategories.includes(cat.trim().toLowerCase())
     );
 
     if (!hasCategoryMatch) return false;
@@ -7571,19 +7768,43 @@ const filteredPrompts = prompts.filter((p) => {
 };
 
   /** PURCHASE FLOW — integrates CREATE ORDER (+ verify) with detailed consoles */
- // Single gate for every "add to cart" on this page. Cart checkout is blocked
- // server-side for team members, so letting them fill a cart they can never pay
- // for just moves the dead end one screen later. Returns false when it blocked,
- // so callers skip their own "Added to Cart" confirmation.
- const guardedAddToCart = (id: string | number): boolean => {
+ /* Single gate for every "add to cart" on this page, and the one place the
+    result is reported.
+    It used to fire addToCart() without awaiting it and return true straight
+    away, so every caller announced "Added to Cart" before the request had even
+    left — and kept announcing it when the server refused (already in the cart,
+    already purchased, one-time prompt sold, signed out). The cart was
+    unchanged; only the toast said otherwise. Callers no longer toast at all:
+    they await this, and it says what actually happened. */
+ const addToCartWithFeedback = async (id: string | number, title?: string) => {
    if (teamMember) {
      toast(TEAM_MEMBER_PURCHASE_TOAST);
      return false;
    }
-   addToCart(String(id));
+
+   const result = await addToCart(String(id));
+
+   if (!result.ok) {
+     toast({
+       title: result.error === "already_in_cart" ? "Already in your cart" : "Couldn't add to cart",
+       description: result.message,
+     });
+     return false;
+   }
+
+   toast({
+     title: "Added to Cart",
+     description: title ? `"${title}" was added.` : "Prompt was added.",
+   });
    return true;
  };
 
+ /* Buy Now → review → payment.
+    Every entry point still calls handlePurchase; it now runs the guards and
+    opens the review sheet, and startPayment carries on from where this
+    function used to go straight to Razorpay. Splitting it here means the KYC
+    retry below can resume at the payment step without asking someone to
+    approve the same purchase twice. */
  const handlePurchase = async (prompt: Prompt) => {
   // Team members never pay. Sending them to the request modal here means every
   // Buy Now on the page lands somewhere useful, including any button whose
@@ -7608,12 +7829,17 @@ const filteredPrompts = prompts.filter((p) => {
     });
     return;
   }
-    
+
     if (!rzpReady) {
       toast({ title: "Loading payment…", description: "Razorpay is still initializing." });
       return;
     }
 
+    setConfirmPrompt(prompt);
+ };
+
+ const startPayment = async (prompt: Prompt) => {
+    setConfirmBusy(true);
     try {
       // [API #1] CREATE ORDER
       const res = await fetch(`${PURCHASE_BASE}/create-order/${prompt.id}`, {
@@ -7626,6 +7852,8 @@ const filteredPrompts = prompts.filter((p) => {
       });
       const data = await res.json();
       if (res.status === 403 && (data?.error === "KYC_REQUIRED" || data?.code === "KYC_REQUIRED")) {
+  // The review sheet has to get out of the way of the KYC one.
+  setConfirmPrompt(null);
   setPendingPurchasePrompt(prompt);
   setKycOpen(true);
   return;
@@ -7633,6 +7861,7 @@ const filteredPrompts = prompts.filter((p) => {
 
      
         if (res.status === 403 && data?.error === "KYC_REQUIRED") {
+    setConfirmPrompt(null);
     setRetryPrompt(prompt);
     setKycOpen(true);
     return;
@@ -7661,6 +7890,22 @@ const filteredPrompts = prompts.filter((p) => {
         order_id: order.id,
         notes: { promptId: prompt.id },
         theme: { color: "#1A73E8" },
+        /* There was no prefill here at all, so Checkout fell back to whatever
+           contact it had remembered in this browser from a previous payment —
+           which is how a buyer signed in as one account was shown a completely
+           different person's email and phone ("Using as +91 …"). Sending the
+           signed-in account's own email pins the identity to whoever is
+           actually logged in.
+
+           No contact: we hold no phone number for a buyer (User has no such
+           field), and a placeholder would be worse than an empty box. Note that
+           this alone does not clear a phone number Razorpay has already
+           remembered on the device — only a real value we could pass would
+           override that. */
+        prefill: {
+          ...(user?.name ? { name: String(user.name) } : {}),
+          ...(user?.email ? { email: String(user.email) } : {}),
+        },
         handler: async (response: any) => {
           try {
             // [API #2] VERIFY PAYMENT
@@ -7716,10 +7961,18 @@ const filteredPrompts = prompts.filter((p) => {
       rzp.on("payment.failed", function () {
         toast({ title: "Payment Failed", description: "Please try again." });
       });
+
+      // Closed only once Razorpay is actually up, so the buyer is never looking
+      // at a bare page while the sheet loads.
+      setConfirmPrompt(null);
       rzp.open();
     } catch (err: any) {
       console.error("Purchase flow error", err);
       toast({ title: "Purchase Error", description: err?.message || "Something went wrong." });
+      // Left open on failure: the reason is in the toast and the buyer can read
+      // it against what they were about to pay for, then retry or cancel.
+    } finally {
+      setConfirmBusy(false);
     }
   };
 
@@ -7875,10 +8128,7 @@ const savePromptToCollections = async ({
       isPlaying={playingVideo === p.id}
       hasPayoutSetup={sellerPayoutMap[p.id]}
       onVideoPlay={handleVideoPlay}
-      onAddToCart={(id) => {
-        if (!guardedAddToCart(id)) return;
-        toast({ title: "Added to Cart", description: `"${p.title}" was added.` });
-      }}
+      onAddToCart={(id) => addToCartWithFeedback(id, p.title)}
       onBuyNow={(prompt) => handlePurchase(prompt)}
       onOpenDetails={(prompt) => { setDetailsPrompt(prompt); setDetailsOpen(true); }}
       onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
@@ -8007,10 +8257,7 @@ const savePromptToCollections = async ({
                       isPlaying={playingVideo === prompt.id}
                       hasPayoutSetup={sellerPayoutMap[prompt.id]}
                       onVideoPlay={handleVideoPlay}
-                      onAddToCart={(id) => {
-                        if (!guardedAddToCart(id)) return;
-                        toast({ title: "Added to Cart", description: `"${prompt.title}" was added.` });
-                      }}
+                      onAddToCart={(id) => addToCartWithFeedback(id, prompt.title)}
                       onBuyNow={(p) => handlePurchase(p as Prompt)}
                       onOpenDetails={(p) => { setDetailsPrompt(p); setDetailsOpen(true); }}
                       onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
@@ -8141,11 +8388,7 @@ const savePromptToCollections = async ({
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  if (!guardedAddToCart(prompt.id)) return;
-                                  toast({
-                                    title: "Added to Cart",
-                                    description: `"${prompt.title}" was added.`,
-                                  });
+                                  addToCartWithFeedback(prompt.id, prompt.title);
                                 }}
                                 className="mp-card__pill mp-card__pill--cart"
                               >
@@ -8263,7 +8506,7 @@ const savePromptToCollections = async ({
           </div>
 
           <LibCategoriesRow
-            categories={categoriesData.map((c) => c.id).filter((id) => id !== "All")}
+            categories={apiCategories.filter((c) => c.name)}
             selected={selectedCategory}
             onSelect={(category) => {
               setSelectedCategories([]);
@@ -8271,10 +8514,46 @@ const savePromptToCollections = async ({
             }}
           />
 
-          <LibCreateAppBanner />
+          {/* The "Create an AI app using prompts" banner sat here. Removed on
+              request — it promised a product that isn't one (the button only
+              went to /smartgen), so it read as an ad for a feature that doesn't
+              exist. The LibCreateAppBanner component is left defined below in
+              case it's wanted back. */}
 
           {loading && <p className="text-white/60 text-sm">Loading prompts…</p>}
           {!!loadError && !loading && <p className="text-red-400 text-sm">{loadError}</p>}
+
+          {/* Every row below hides itself when it has nothing to show, so a
+              filter that matches none of the loaded prompts used to leave the
+              page silently blank between the category rail and the footer —
+              indistinguishable from a failed load. */}
+          {!loading && !loadError && filteredPrompts.length === 0 && (
+            <div className="py-14 text-center">
+              <p className="text-white/70 text-sm">
+                No prompts in{" "}
+                <span className="text-white font-medium">
+                  {effectiveCategoryFilter.length
+                    ? effectiveCategoryFilter.join(", ")
+                    : "this selection"}
+                </span>
+                {searchQuery.trim() ? ` matching “${searchQuery.trim()}”` : ""}.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCategory("All");
+                  setSelectedCategories([]);
+                  setFileType("all");
+                  setLicenseType("all");
+                  setSearchQuery("");
+                }}
+                className="mt-4 inline-flex items-center h-9 px-5 rounded-full text-[13px] font-medium text-white"
+                style={{ background: GRADIENT }}
+              >
+                Clear filters
+              </button>
+            </div>
+          )}
 
           {!loading && !loadError && (
             <>
@@ -8312,10 +8591,7 @@ const savePromptToCollections = async ({
               <LibFeaturedSection
                 prompts={filteredPrompts.slice(0, 4)}
                 onOpenDetails={(p) => { setDetailsPrompt(p); setDetailsOpen(true); }}
-                onAddToCart={(id) => {
-                  if (!guardedAddToCart(id)) return;
-                  toast({ title: "Added to Cart", description: "Prompt was added." });
-                }}
+                onAddToCart={(id) => addToCartWithFeedback(id)}
                 onBuyNow={(p) => handlePurchase(p)}
                 onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
                 isOwn={isOwnPrompt}
@@ -8504,11 +8780,28 @@ const savePromptToCollections = async ({
             if (pendingPurchasePrompt) {
               const p = pendingPurchasePrompt;
               setPendingPurchasePrompt(null);
-              handlePurchase(p);
+              /* Straight to payment, not back through the review sheet: this
+                 purchase was already reviewed and agreed to before KYC
+                 interrupted it, and asking for the same consent twice reads as
+                 the first one not having registered. */
+              startPayment(p);
             }
           }}
         />
       )}
+
+      {/* Review step for Buy Now — what's being bought, what the money is made
+          of, and the terms — before any payment sheet opens. */}
+      <PurchaseConfirmModal
+        open={!!confirmPrompt}
+        prompt={confirmPrompt}
+        busy={confirmBusy}
+        onClose={() => {
+          if (confirmBusy) return;
+          setConfirmPrompt(null);
+        }}
+        onConfirm={() => confirmPrompt && startPayment(confirmPrompt)}
+      />
 
 
       {categoriesModalOpen && (

@@ -45,11 +45,25 @@ router.get("/", async (req, res) => {
     const { status } = req.query;
     const filter = status ? { status } : {};
 
+    /* The product being refunded has to travel with the request, not just the
+       buyer's reason for wanting the money back. `attachment` carries the
+       preview the buyer actually saw on the listing, and price/free say what it
+       was sold as — an admin judging "this wasn't worth it" needs both.
+
+       promptSnapshot comes along because a prompt can be deleted (by its seller
+       or by us) while a refund on it is still open, and then the populate above
+       resolves to null and the row loses every trace of what was bought. The
+       snapshot is written at purchase time and outlives the prompt. Only the
+       title and attachment are selected: promptSnapshot also holds promptText,
+       the paid content itself, which has no business being in a list response. */
     const refundRequests = await RefundRequest.find(filter)
       .populate("buyer", "name email")
       .populate("seller", "name email")
-      .populate("prompt", "title attachment")
-      .populate("purchase", "pricePaid razorpayPaymentId routeTransferId purchasedAt")
+      .populate("prompt", "title description attachment price free")
+      .populate(
+        "purchase",
+        "pricePaid razorpayPaymentId routeTransferId purchasedAt promptSnapshot.title promptSnapshot.description promptSnapshot.attachment"
+      )
       .sort({ createdAt: -1 })
       .limit(200);
 

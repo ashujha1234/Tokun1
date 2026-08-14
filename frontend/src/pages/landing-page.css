@@ -1,6 +1,16 @@
-
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap');
+/* The Google Fonts request that was here has moved to index.html.
+ *
+ * As a CSS `@import` it was a serial, render-blocking waterfall: the browser
+ * had to download this stylesheet, parse it, discover the import, fetch
+ * Google's stylesheet, and only then start on the font files — with the page
+ * held back the whole time. As a <link> in the document head it starts
+ * immediately, alongside everything else.
+ *
+ * It also asked for Inter, which this app self-hosts in /Fonts/inter (see the
+ * @font-face block in index.css) — so every visitor downloaded Inter twice,
+ * once from a third-party origin. Only JetBrains Mono is fetched now, which is
+ * the one family here that isn't local.
+ */
 
 :root {
   /* fonts */

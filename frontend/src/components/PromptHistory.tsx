@@ -17,6 +17,12 @@ import DetailsPrompt, { MarketplacePrompt } from "./historyDetail";
 import { useAuth } from "@/contexts/AuthContext";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+// Shared with the second refund dialog in pages/self-dash.tsx — see that module.
+import {
+  REFUND_REASON_PRESETS,
+  composeRefundReason,
+  hasRefundReason,
+} from "@/lib/refundReasons";
 
 // type Prompt = {
 //   id: number | string;
@@ -1405,28 +1411,79 @@ const totalEarningsINR = uploadHistory.reduce((sum, p) => {
 
   // ---- REQUEST REFUND (buyer) ----
   const [refundTarget, setRefundTarget] = useState<Prompt | null>(null);
+  /* Free-text box. It is no longer the only way to give a reason — the tick
+     list below covers the cases that actually recur, and this is for whatever
+     it doesn't. Kept as its own field so a preset and a note can be sent
+     together rather than one replacing the other. */
   const [refundReason, setRefundReason] = useState("");
+  const [refundReasonTicks, setRefundReasonTicks] = useState<string[]>([]);
+  /* Screenshots of what the buyer actually received. Capped at 5 to match the
+     multer limit on POST /:purchaseId/refund-request — rejecting the 6th here
+     gives a clear message instead of a failed upload. */
+  const [refundFiles, setRefundFiles] = useState<File[]>([]);
   const [refundSubmitting, setRefundSubmitting] = useState(false);
+
+  const MAX_REFUND_FILES = 5;
+  const MAX_REFUND_FILE_MB = 5;
+
+  const addRefundFiles = (picked: FileList | null) => {
+    if (!picked?.length) return;
+    const incoming = Array.from(picked);
+
+    const tooBig = incoming.find((f) => f.size > MAX_REFUND_FILE_MB * 1024 * 1024);
+    if (tooBig) {
+      toast({ title: "Image too large", description: `Each image must be under ${MAX_REFUND_FILE_MB}MB.` });
+      return;
+    }
+
+    setRefundFiles((prev) => {
+      const room = MAX_REFUND_FILES - prev.length;
+      if (room <= 0) {
+        toast({ title: "Limit reached", description: `You can attach up to ${MAX_REFUND_FILES} images.` });
+        return prev;
+      }
+      return [...prev, ...incoming.slice(0, room)];
+    });
+  };
+
+  const removeRefundFile = (index: number) =>
+    setRefundFiles((prev) => prev.filter((_, i) => i !== index));
+
+  const toggleRefundReason = (reason: string) =>
+    setRefundReasonTicks((prev) =>
+      prev.includes(reason) ? prev.filter((r) => r !== reason) : [...prev, reason]
+    );
+
+  const refundReasonGiven = hasRefundReason(refundReasonTicks, refundReason);
 
   const openRefundModal = (p: Prompt) => {
     setRefundReason("");
+    setRefundReasonTicks([]);
+    setRefundFiles([]);
     setRefundTarget(p);
   };
 
   const submitRefundRequest = async () => {
-    if (!refundTarget?.purchaseId || !refundReason.trim()) return;
+    if (!refundTarget?.purchaseId || !refundReasonGiven) return;
     try {
       setRefundSubmitting(true);
+
+      /* FormData, not JSON, because the request can now carry screenshots.
+         Note there is deliberately no Content-Type header below: the browser
+         has to set it itself so it can include the multipart boundary, and
+         hardcoding "application/json" (as this used to) makes the server parse
+         nothing and reject the request as reason_required. */
+      const form = new FormData();
+      form.append("reason", composeRefundReason(refundReasonTicks, refundReason));
+      refundFiles.forEach((file) => form.append("attachments", file));
+
       const res = await fetch(
         `${PURCHASE_BASE}/${encodeURIComponent(refundTarget.purchaseId)}/refund-request`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
+          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           credentials: "include",
-          body: JSON.stringify({ reason: refundReason.trim() }),
+          body: form,
         }
       );
       const data = await res.json().catch(() => ({}));
@@ -1695,18 +1752,104 @@ useEffect(() => {
       Tell us why "{refundTarget?.title}" isn't what you expected. An admin will review this
       before any refund is processed.
     </p>
-    <Textarea
-      value={refundReason}
-      onChange={(e) => setRefundReason(e.target.value)}
-      placeholder="What went wrong with this prompt?"
-      className="bg-black/30 border-white/10 text-white min-h-[100px]"
-      maxLength={1000}
-    />
+
+    {/* Tick list first, free text second. Asking for a written reason and
+        nothing else meant every request arrived phrased differently, so the
+        common cases could not be counted or triaged — and a buyer who just
+        wanted their money back typed one word and hoped. These are the cases
+        that actually recur; anything else goes in the box below. */}
+    <div className="space-y-2 max-h-[240px] overflow-y-auto pr-1">
+      {REFUND_REASON_PRESETS.map((preset) => {
+        const checked = refundReasonTicks.includes(preset);
+        return (
+          <label
+            key={preset}
+            className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${
+              checked
+                ? "border-white/25 bg-white/[0.07]"
+                : "border-white/10 bg-white/[0.02] hover:bg-white/[0.05]"
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={() => toggleRefundReason(preset)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-[#FF14EF]"
+            />
+            <span className="text-sm text-white/85 leading-snug">{preset}</span>
+          </label>
+        );
+      })}
+    </div>
+
+    <div>
+      <label className="block text-xs uppercase tracking-wider text-white/45 mb-2">
+        Anything else? (optional)
+      </label>
+      <Textarea
+        value={refundReason}
+        onChange={(e) => setRefundReason(e.target.value)}
+        placeholder="Add your own reason or any detail that helps us review this."
+        className="bg-black/30 border-white/10 text-white min-h-[90px]"
+        maxLength={1000}
+      />
+    </div>
+
+    {/* Screenshots. "The output quality is poor" is unverifiable on its own —
+        an admin would have to buy the prompt to judge it. A picture of what the
+        buyer actually got settles the request in one look. */}
+    <div>
+      <label className="block text-xs uppercase tracking-wider text-white/45 mb-2">
+        Attach screenshots (optional)
+      </label>
+      <input
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={(e) => {
+          addRefundFiles(e.target.files);
+          e.target.value = "";
+        }}
+        className="block w-full text-xs text-white/60 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-white/10 file:text-white hover:file:bg-white/15 file:cursor-pointer"
+      />
+      <p className="mt-1.5 text-[11px] text-white/35">
+        Up to {MAX_REFUND_FILES} images, {MAX_REFUND_FILE_MB}MB each.
+      </p>
+
+      {refundFiles.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {refundFiles.map((file, i) => (
+            <div key={`${file.name}-${i}`} className="relative">
+              {/* Object URLs are revoked on img load — holding them for the
+                  dialog's lifetime leaks a blob per pick/remove cycle. */}
+              <img
+                src={URL.createObjectURL(file)}
+                alt={file.name}
+                onLoad={(e) => URL.revokeObjectURL((e.target as HTMLImageElement).src)}
+                className="h-16 w-16 object-cover rounded-lg border border-white/15"
+              />
+              <button
+                type="button"
+                onClick={() => removeRefundFile(i)}
+                aria-label={`Remove ${file.name}`}
+                className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-black/80 border border-white/20 text-white text-[11px] leading-none grid place-items-center hover:bg-black"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+
     <DialogFooter>
       <Button variant="ghost" onClick={() => setRefundTarget(null)} disabled={refundSubmitting}>
         Cancel
       </Button>
-      <Button onClick={submitRefundRequest} disabled={!refundReason.trim() || refundSubmitting}>
+      {/* Enabled by a tick OR a note — either on its own is a complete reason,
+          so requiring the textarea (as this used to) forced people to retype
+          something they had just ticked. */}
+      <Button onClick={submitRefundRequest} disabled={!refundReasonGiven || refundSubmitting}>
         {refundSubmitting ? "Submitting…" : "Submit Request"}
       </Button>
     </DialogFooter>

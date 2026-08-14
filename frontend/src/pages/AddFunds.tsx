@@ -11154,9 +11154,6 @@ const TXN_PER_PAGE = 5;
       }
 
       const cleanEmail = String(user?.email || "").trim();
-      const cleanContact = String(user?.phone || user?.mobile || "")
-        .replace(/\D/g, "")
-        .slice(-10);
       const cleanName = String(user?.name || "").trim();
 
       const prefill: Record<string, string> = {};
@@ -11167,9 +11164,11 @@ const TXN_PER_PAGE = 5;
         prefill.email = cleanEmail;
       }
 
-      if (/^[6-9]\d{9}$/.test(cleanContact)) {
-        prefill.contact = cleanContact;
-      }
+      /* No prefill.contact. It read `user?.phone || user?.mobile`, and User has
+         neither field — so this was already dead code that resolved to "" and
+         failed its own /^[6-9]\d{9}$/ check every time. Removed rather than left
+         in place, so that adding a phone to User later doesn't silently switch
+         phone prefilling back on as a side effect. The payer types it. */
 
       if (selectedMethod === "upi" && upiId.trim() && upiStatus === "valid") {
         prefill.vpa = upiId.trim();

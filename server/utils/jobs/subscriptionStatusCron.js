@@ -22,11 +22,14 @@ async function updateSubscriptionStatuses() {
       continue;
     }
 
-    // due reached/passed
+    // due reached/passed. past_due covers the whole grace window — there is no
+    // separate "grace" status. The `!== "grace"` guard and a `// or "grace" if
+    // you prefer` note used to sit here, which is why the admin orgs chart grew
+    // a Grace bar that could never be anything but zero.
     const graceEnds = due.add(u.graceDays || 7, "day");
     if (now.isBefore(graceEnds)) {
-      if (u.subscriptionStatus !== "past_due" && u.subscriptionStatus !== "grace") {
-        u.subscriptionStatus = "past_due"; // or "grace" if you prefer
+      if (u.subscriptionStatus !== "past_due") {
+        u.subscriptionStatus = "past_due";
         u.lastInvoiceDueAt = due.toDate();
         await u.save();
       }
@@ -52,9 +55,10 @@ async function updateSubscriptionStatuses() {
       continue;
     }
 
+    // As above: past_due IS the grace window.
     const graceEnds = due.add(o.graceDays || 7, "day");
     if (now.isBefore(graceEnds)) {
-      if (o.subscriptionStatus !== "past_due" && o.subscriptionStatus !== "grace") {
+      if (o.subscriptionStatus !== "past_due") {
         o.subscriptionStatus = "past_due";
         o.lastInvoiceDueAt = due.toDate();
         await o.save();

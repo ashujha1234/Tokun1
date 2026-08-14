@@ -15001,8 +15001,18 @@ const LedgerPanel = ({ days }: { days: number }) => {
                         {e.direction === "IN" ? "" : "−"}
                         {fmtINR(e.amount)}
                       </td>
-                      <td className="px-4 py-2 text-right text-[#FABC4E] text-xs whitespace-nowrap">
-                        {e.fee ? fmtINR(e.fee + e.tax) : "—"}
+                      {/* `fee`, not `fee + tax`. Razorpay documents `fee` as
+                          "Fee (including GST) charged by Razorpay" and `tax` as
+                          the GST portion of it — tax is INSIDE fee, so adding
+                          them charged the GST twice. On a ₹2,060 card payment
+                          that read ₹56.04 against a real fee of ₹48.62
+                          (₹41.20 at 2% + ₹7.42 GST), and disagreed with the
+                          totals card above, which sums the same field alone. */}
+                      <td
+                        className="px-4 py-2 text-right text-[#FABC4E] text-xs whitespace-nowrap"
+                        title={e.tax ? `Includes ${fmtINR(e.tax)} GST` : undefined}
+                      >
+                        {e.fee ? fmtINR(e.fee) : "—"}
                       </td>
                       <td className="px-4 py-2">
                         <span
@@ -16022,8 +16032,13 @@ const PaymentsView = () => {
                       <td className="px-4 py-2 text-right font-medium whitespace-nowrap">
                         {inr(p.amount)}
                       </td>
-                      <td className="px-4 py-2 text-right text-[#FABC4E] text-xs whitespace-nowrap">
-                        {p.fee ? inr(p.fee + p.tax) : "—"}
+                      {/* Same double-count as the ledger table: Razorpay's
+                          `fee` already includes the GST that `tax` reports. */}
+                      <td
+                        className="px-4 py-2 text-right text-[#FABC4E] text-xs whitespace-nowrap"
+                        title={p.tax ? `Includes ${inr(p.tax)} GST` : undefined}
+                      >
+                        {p.fee ? inr(p.fee) : "—"}
                       </td>
                       <td className="px-4 py-2 text-right text-xs whitespace-nowrap">
                         {p.refunded ? (
@@ -16185,6 +16200,34 @@ const [userSearch, setUserSearch] = useState("");
      });
    } catch (err) {
      console.error("Mark admin notification read failed:", err);
+   }
+ };
+
+ /* Where each kind of admin notification leads.
+    Refunds and disputes are separate routed pages; the rest are tabs on this
+    dashboard, so those switch `active` instead of navigating and losing the
+    page's loaded state. Anything unrecognised falls through to just marking the
+    row read, which is what every type did before this existed. */
+ const openAdminNotification = (n: any) => {
+   if (!n?.read) markAdminNotificationRead(n._id);
+
+   switch (n?.type) {
+     case "ADMIN_REFUND_REQUESTED":
+       window.location.href = "/admin/refunds";
+       return;
+     case "ADMIN_PROMPT_REPORTED":
+       setActive("reports");
+       return;
+     case "ADMIN_PROMPT_REVIEW":
+     case "ADMIN_REVIEW_NEEDED":
+       // The prompt-media validation queue.
+       setActive("analytics");
+       return;
+     case "ADMIN_FREELANCER_VIDEO_REVIEW_NEEDED":
+       setActive("freelancers");
+       return;
+     default:
+       return;
    }
  };
 
@@ -17124,6 +17167,33 @@ useEffect(() => {
     setSellerMainProducts([]);
     setSellerMainError(null);
   };
+
+  /* Deep-link into a person's admin profile: /admin/dashboard?view=user&id=…
+     (or view=seller). These profiles are component state, not routes, so there
+     was no way to send someone straight to one — the refunds queue could only
+     link out to the PUBLIC /profile page, which shows a seller's shopfront
+     rather than the admin view with their purchases, uploads and the suspend
+     control on it.
+
+     Runs once. The URL is cleared with replaceState afterwards so that closing
+     the profile and then reloading doesn't silently reopen it, and so the
+     address bar doesn't keep a stale id around. */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get("view");
+    const id = params.get("id");
+    if (!id || (view !== "user" && view !== "seller" && view !== "org")) return;
+
+    setActive("dashboard");
+    setCurrentView(view);
+
+    if (view === "user") openUserProfile(id);
+    else if (view === "seller") openSellerMainProfile(id);
+    else openOrgProfile(id);
+
+    window.history.replaceState({}, "", window.location.pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSellerMainSuspendToggle = () => {
     if (!selectedSellerMain) return;
@@ -22320,8 +22390,13 @@ const WithdrawalsView = () => {
                       adminNotifications.slice(0, 15).map((n) => (
                         <button
                           key={n._id}
-                          onClick={() => !n.read && markAdminNotificationRead(n._id)}
-                          className="w-full flex items-start gap-3 px-2 py-3 rounded-md hover:bg-white/5 text-left"
+                          /* Clicking used to only mark the row read, leaving the
+                             admin to work out for themselves which tab the thing
+                             was on — a refund notification told you a refund had
+                             been requested and then went nowhere. It now opens
+                             the queue that notification belongs to. */
+                          onClick={() => openAdminNotification(n)}
+                          className="w-full flex items-start gap-3 px-2 py-3 rounded-md hover:bg-white/5 text-left cursor-pointer"
                         >
                           <span className={`mt-1 h-2 w-2 rounded-full shrink-0 ${!n.read ? "bg-blue-500" : "bg-transparent"}`} />
                           <div className="min-w-0 flex-1">

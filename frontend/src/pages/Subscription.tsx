@@ -758,10 +758,16 @@ export default function Subscription() {
         order_id: order.id,
         name: "Tokun.world",
         description: "Subscription Payment",
+        /* No contact here, deliberately. This block used to be three hardcoded
+           placeholders — "Static User" / user@example.com / 9999999999 — which
+           went out on every real subscription payment and landed on the
+           Razorpay payment record. Name and email come from the signed-in
+           account; the phone number is left for the payer to type, because we
+           don't hold one (there is no phone field on User) and inventing one is
+           worse than asking. */
         prefill: {
-          name: "Static User",
-          email: "user@example.com",
-          contact: "9999999999",
+          ...(user?.name ? { name: user.name } : {}),
+          ...(user?.email ? { email: user.email } : {}),
         },
         notes: order.notes || {},
         handler: (response: any) => {

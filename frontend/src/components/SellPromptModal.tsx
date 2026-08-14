@@ -1979,12 +1979,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Plus, X, Upload, Image, Video, FileX, Check } from "lucide-react";
+import { Upload, Image, Video, FileX, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { getPromptCategories, clearPromptCategories } from "@/lib/sellerPrefetch";
+import TagPicker from "@/components/TagPicker";
 
 interface SellPromptModalProps {
   onPromptSubmitted?: (prompt?: any) => void;
@@ -1996,6 +1996,14 @@ type Category = { _id: string; name: string; description?: string };
 
 const GRAD = "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)";
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+
+/* Attachment ceiling for a prompt listing. Named once because the number
+   appeared in three places — the check, the rejection toast and the hint under
+   the drop zone — and they have to agree, or the UI promises one limit and
+   enforces another. Must match `limits.fileSize` on the multer instance in
+   server/routes/promptRoutes.js. */
+const MAX_ATTACHMENT_MB = 100;
+const MAX_ATTACHMENT_BYTES = MAX_ATTACHMENT_MB * 1024 * 1024;
 
 export default function SellPromptModal({
   onPromptSubmitted,
@@ -2012,10 +2020,15 @@ export default function SellPromptModal({
   const [promptText, setPromptText] = useState("");
   const [category, setCategory] = useState("");
   const [customCategory, setCustomCategory] = useState("");
+  /* The narrower bucket under the chosen category. Loaded on demand rather than
+     up front: there are 117 of them across 23 categories, and all but one
+     category's worth is irrelevant the moment a category is picked. */
+  const [subCategory, setSubCategory] = useState("");
+  const [subCategories, setSubCategories] = useState<Category[]>([]);
+  const [subCatsLoading, setSubCatsLoading] = useState(false);
   const [price, setPrice] = useState("");
   const [isFree, setIsFree] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
-  const [newTag, setNewTag] = useState("");
   const [attachments, setAttachments] = useState<File[]>([]);
 
   const [codeFile, setCodeFile] = useState<File | null>(null);
@@ -2045,8 +2058,6 @@ export default function SellPromptModal({
     color: "#fff",
     boxShadow: "0 12px 80px rgba(0,0,0,0.65)",
   };
-
-  const canAddTag = useMemo(() => tags.length < 5, [tags]);
 
   const isCodingCategory = useMemo(
     () => (category || "").trim().toLowerCase() === "coding",
@@ -2104,20 +2115,57 @@ export default function SellPromptModal({
     }
   };
 
+  /* Sub-categories for whichever category is selected.
+     Keyed off the category NAME because that is what this form holds, so the id
+     is looked up from the already-loaded list. Resets the current pick on every
+     change — leaving "Web Development" selected after switching from Coding to
+     Finance would submit a child that isn't under the chosen parent, which the
+     server rejects as invalid_subcategories. */
+  useEffect(() => {
+    let cancelled = false;
+
+    setSubCategory("");
+    setSubCategories([]);
+
+    // "Other…" creates a brand-new category, which by definition has no
+    // children yet, so there is nothing to ask for.
+    if (!category || category === "__other__") return;
+
+    const parent = categories.find((c) => c.name === category);
+    if (!parent?._id) return;
+
+    (async () => {
+      try {
+        setSubCatsLoading(true);
+        const res = await fetch(`${API_BASE}/api/category/${parent._id}/subcategories`, {
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled && data?.success) {
+          setSubCategories(data.subCategories || []);
+        }
+      } catch {
+        // Non-fatal: the field is optional, so a failed load just means it
+        // doesn't appear. Blocking the upload over it would be worse.
+      } finally {
+        if (!cancelled) setSubCatsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [category, categories]);
+
   useEffect(() => {
     if (!open) return;
     loadCategories();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const handleAddTag = () => {
-    const t = newTag.trim();
-    if (!t || !canAddTag || tags.includes(t)) return;
-    setTags((p) => [...p, t]);
-    setNewTag("");
-  };
-
-  const handleRemoveTag = (tag: string) => setTags((p) => p.filter((t) => t !== tag));
+  /* handleAddTag / handleRemoveTag lived here for the old text-box tag field.
+     TagPicker owns adding, de-duplicating and removing now, so the form only
+     holds the array. */
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return "0 Bytes";
@@ -2131,13 +2179,16 @@ export default function SellPromptModal({
     const files = Array.from(e.target.files || []);
     const valid = files.filter((file) => {
       const okType = file.type.startsWith("image/") || file.type.startsWith("video/");
-      const okSize = file.size <= 50 * 1024 * 1024;
+      // Keep this in step with the multer limit in server/routes/promptRoutes.js
+      // — if the client allows more than the server does, the upload dies with a
+      // generic network error after the whole file has been sent.
+      const okSize = file.size <= MAX_ATTACHMENT_BYTES;
       if (!okType) {
         toast({ title: "Invalid file type", description: "Only image and video files are allowed" });
         return false;
       }
       if (!okSize) {
-        toast({ title: "File too large", description: "Files must be under 50MB" });
+        toast({ title: "File too large", description: `Files must be under ${MAX_ATTACHMENT_MB}MB` });
         return false;
       }
       return true;
@@ -2202,6 +2253,9 @@ export default function SellPromptModal({
       if (!isFree) fd.append("price", String(Number(price)));
       if (tags.length) fd.append("tags", tags.join(","));
       fd.append("categories", finalCategory);
+      // Only when one was picked — an empty value would be split into [""] and
+      // fail the server's name lookup.
+      if (subCategory) fd.append("subCategories", subCategory);
       if (oneTimeSale) fd.append("exclusive", "true");
       fd.append("attachment", attachments[0]);
       if (codeFile) fd.append("uploadCode", codeFile);
@@ -2251,6 +2305,9 @@ export default function SellPromptModal({
       setPromptText("");
       setCategory("");
       setCustomCategory("");
+      // The effect above clears this whenever `category` changes, but resetting
+      // it explicitly keeps the reset readable as a complete list of fields.
+      setSubCategory("");
       setPrice("");
       setIsFree(true);
       setTags([]);
@@ -2365,6 +2422,36 @@ export default function SellPromptModal({
                 className={`${fieldBase} mt-2`}
               />
             )}
+
+            {/* Only appears once a category is chosen and that category actually
+                has children — an empty "Sub-category" dropdown would look like
+                something failed to load. Optional on purpose: it narrows the
+                listing, it doesn't gate the upload. */}
+            {subCategories.length > 0 && (
+              <div className="space-y-2 pt-3">
+                <Label className="text-sm text-white/80">
+                  Sub-category <span className="text-white/40 text-xs">(optional)</span>
+                </Label>
+                <Select value={subCategory} onValueChange={setSubCategory} disabled={subCatsLoading}>
+                  <SelectTrigger className={fieldBase}>
+                    <SelectValue
+                      placeholder={subCatsLoading ? "Loading…" : `Narrow down within ${category}`}
+                    />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[240px] z-[1200] bg-[#131419] border border-white/10 text-white">
+                    {subCategories.map((sub) => (
+                      <SelectItem
+                        key={sub._id}
+                        value={sub.name}
+                        className="text-white focus:bg-white/10 focus:text-white"
+                      >
+                        {sub.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             {catsError && (
               <p className="text-xs text-red-400">
                 Couldn't load categories.{" "}
@@ -2445,48 +2532,15 @@ export default function SellPromptModal({
             )}
           </div>
 
+          {/* Tags used to be a plain text box plus five hardcoded suggestions,
+              all of them design words — so a seller listing an SEO or a coding
+              prompt typed their own spelling and the tag matched nothing else
+              on the marketplace. Now it searches the whole catalog as you type,
+              the same way the skills field on a freelancer profile does, and
+              still takes anything you insist on through the "Add …" row. */}
           <div className="space-y-2">
             <Label className="text-sm text-white/80">Tags (max 5)</Label>
-            <div className="flex flex-wrap items-center gap-2">
-              {tags.map((tag) => (
-                <Badge key={tag} variant="secondary" className="flex items-center gap-1 bg-white/5 text-white">
-                  {tag}
-                  <X className="h-3.5 w-3.5 cursor-pointer" onClick={() => handleRemoveTag(tag)} />
-                </Badge>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <Input
-                value={newTag}
-                onChange={(e) => setNewTag(e.target.value)}
-                placeholder="Add a tag..."
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddTag(); } }}
-                disabled={!canAddTag}
-                className={fieldBase}
-              />
-              <Button type="button" onClick={handleAddTag} disabled={!canAddTag || !newTag.trim()} className="rounded-lg px-3">
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="mt-2">
-              <div className="text-sm text-white/70 mb-2">Suggested Tags</div>
-              <div className="flex flex-wrap gap-2">
-                {["Design", "UI/UX", "Graphic", "UI Design", "UX"].map((t) => {
-                  const disabled = !canAddTag || tags.includes(t);
-                  return (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => { if (!disabled) setTags((p) => [...p, t]); }}
-                      className="rounded-full px-3 py-1 text-sm border border-white/15 text-white hover:bg-white/5 disabled:opacity-50"
-                      disabled={disabled}
-                    >
-                      {t}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            <TagPicker tags={tags} onChange={setTags} max={5} inputClassName={fieldBase} />
           </div>
 
           <div className="space-y-2">
@@ -2499,7 +2553,7 @@ export default function SellPromptModal({
               <p className="text-sm text-white/70">Click to upload</p>
               <input ref={attachRef} type="file" accept="image/*,video/*" onChange={handleFileUpload} className="hidden" />
             </div>
-            <p className="text-xs text-white/50">Upload exactly one image or video (max 50MB).</p>
+            <p className="text-xs text-white/50">Upload exactly one image or video (max {MAX_ATTACHMENT_MB}MB).</p>
 
             {attachments.length > 0 && (
               <div className="space-y-2">

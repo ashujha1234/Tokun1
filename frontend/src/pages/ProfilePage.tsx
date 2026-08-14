@@ -3765,7 +3765,7 @@ const sendMessage = () => {
                           style={{ background: GRADIENT }}
                         >
                           <LuBadgeCheck className="w-3 h-3" />
-                          FREELANCER
+                          CREATOR
                         </span>
                       )}
                     </div>
@@ -3792,8 +3792,11 @@ const sendMessage = () => {
                 <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-5">
                   <div>
                     <span className="text-white font-semibold text-lg">{prompts.length}</span>
+                    {/* "Product", not "Prompt" — what a creator lists is a
+                        product. The `prompts` state name is left alone; only
+                        the user-facing wording changes. */}
                     <span className="text-white/45 text-xs ml-1.5">
-                      Prompt{prompts.length === 1 ? "" : "s"}
+                      Product{prompts.length === 1 ? "" : "s"}
                     </span>
                   </div>
                   <div>
@@ -3925,7 +3928,7 @@ const sendMessage = () => {
                         style={{ background: GRADIENT }}
                       >
                         <Briefcase className="w-4 h-4" />
-                        Become a Freelancer
+                        Become a Creator
                       </button>
                     )
                   )}
@@ -4044,7 +4047,7 @@ const sendMessage = () => {
                     "Liked Prompt" used to sit here with no content behind them. */}
                 <div className="flex items-center gap-2 mb-5">
                   {[
-                    { key: "work", label: `Prompts (${prompts.length})` },
+                    { key: "work", label: `Products (${prompts.length})` },
                     {
                       key: "services",
                       label: servicesLoading ? "Services" : `Services (${services.length})`,
@@ -4066,12 +4069,12 @@ const sendMessage = () => {
 
                 {activeProfileTab === "work" &&
                   (loading ? (
-                    <p className="text-white/50 text-sm py-6">Loading prompts…</p>
+                    <p className="text-white/50 text-sm py-6">Loading products…</p>
                   ) : prompts.length === 0 ? (
                     <p className="text-white/45 text-sm py-6">
                       {isOwnProfile
-                        ? "You haven't uploaded any prompts yet."
-                        : "No prompts uploaded yet."}
+                        ? "You haven't uploaded any products yet."
+                        : "No products uploaded yet."}
                     </p>
                   ) : (
                     <>
@@ -4090,12 +4093,25 @@ const sendMessage = () => {
                             onVideoPlay={(id) =>
                               setPlayingVideo((prev) => (prev === id ? null : id))
                             }
-                            onAddToCart={(id) => {
-                              addToCart(String(id));
-                              toast({
-                                title: "Added to Cart",
-                                description: `"${prompt.title}" was added.`,
-                              });
+                            /* Awaited, so the confirmation reflects what the
+                               server did rather than that a request was sent.
+                               Same fix as the marketplace cards. */
+                            onAddToCart={async (id) => {
+                              const result = await addToCart(String(id));
+                              toast(
+                                result.ok
+                                  ? {
+                                      title: "Added to Cart",
+                                      description: `"${prompt.title}" was added.`,
+                                    }
+                                  : {
+                                      title:
+                                        result.error === "already_in_cart"
+                                          ? "Already in your cart"
+                                          : "Couldn't add to cart",
+                                      description: result.message,
+                                    },
+                              );
                             }}
                             // Checkout lives on the marketplace; it opens with
                             // this prompt's panel already up.

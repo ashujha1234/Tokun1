@@ -182,7 +182,8 @@ function PersonCard({
               style={{ background: GRADIENT }}
             >
               <Briefcase className="w-3 h-3" />
-              FREELANCER
+              {/* `isFreelancer` is the data flag; CREATOR is what we call it. */}
+              CREATOR
             </span>
           )}
           {person.isSeller && (
@@ -697,35 +698,27 @@ const FindCreatorsPage = () => {
                 WebkitTextFillColor: "transparent",
               }}
             >
-              {tab === "people" ? "Creators" : "Services"}
+              Creators
             </span>
           </h1>
           <p className="text-white/50 text-sm sm:text-base">
-            {tab === "people"
-              ? "Freelancers and prompt creators on Tokun. Open a profile to hire, message or book them."
-              : "Fixed-scope work you can book right now, offered by Tokun freelancers."}
+            Creators on Tokun. Open a profile to hire, message or book them.
           </p>
 
-          {/* Tabs */}
-          <div className="mt-7 inline-flex items-center gap-1 p-1 rounded-full bg-white/[0.05] border border-white/10 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-            {([
-              { id: "people", label: "Freelancers" },
-              { id: "services", label: "Services" },
-            ] as { id: Tab; label: string }[]).map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className="px-5 h-9 rounded-full text-sm font-medium transition-all"
-                style={
-                  tab === t.id
-                    ? { background: GRADIENT, color: "#fff" }
-                    : { color: "rgba(255,255,255,0.6)" }
-                }
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+          {/* The Services tab used to sit here, next to a "Freelancers" tab.
+              Both are gone:
+
+              - Services duplicated what a creator's own profile already lists,
+                so the same offering was browsable in two places and only one of
+                them could show it in the context of who is selling it.
+              - With Services removed, a tab strip holding a single "Freelancers"
+                tab is just a label that cannot be switched, so the strip goes
+                too. The word itself is "Creators" everywhere now.
+
+              The `tab` state and the services fetch/render below are left in
+              place rather than deleted — `tab` stays pinned to "people", so
+              those branches simply never run, and putting this strip back is all
+              it takes to restore the old behaviour. */}
 
           <div className="relative mt-6 max-w-md mx-auto">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
@@ -748,7 +741,9 @@ const FindCreatorsPage = () => {
               {(
                 [
                   { id: "all", label: "Everyone" },
-                  { id: "freelancers", label: "Freelancers" },
+                  // Labels only — the `id`s stay as they are, PeopleRole and
+                  // the ranking logic key off them.
+                  { id: "freelancers", label: "Creators" },
                   { id: "sellers", label: "Prompt sellers" },
                 ] as { id: PeopleRole; label: string }[]
               ).map((r) => {

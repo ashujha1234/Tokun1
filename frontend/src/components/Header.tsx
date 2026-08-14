@@ -4381,7 +4381,12 @@ useEffect(() => {
         ? []
         : [{ label: freelancerMenu.label, icon: Briefcase, onClick: freelancerMenu.open }]),
 
-      { label: "My Wallet",      icon: Wallet,          onClick: goToWallet },
+      /* "My Wallet" sat here. Hidden for now, not deleted: money moves through
+         Razorpay directly — a buyer pays on the checkout sheet and a seller's
+         share is transferred to their linked account — so the wallet was a
+         balance most people never needed to look at. `goToWallet` and the
+         /wallet route are left intact, so restoring this is one line.
+         See the note in Landing.tsx, which carries a second copy of this menu. */
       { label: "Dashboard",      icon: LayoutDashboard, onClick: () => navigate("/self-dash") },
       { label: "My Feedback",    icon: MessageCircle,   onClick: () => navigate("/my-feedback") },
       // Sits next to My Feedback because it's the same kind of thing: a list of
