@@ -6,7 +6,7 @@ const SECTIONS = [
     title: "1. Information We Collect",
     body: [
       "Account information you provide when signing up — name, email address, and organization details.",
-      "Content you create or upload — prompts, optimizations, uploaded files, and marketplace listings.",
+      "Content you create or upload — products, optimizations, uploaded files, and marketplace listings.",
       "Payment and billing information processed through our payment partner (Razorpay) — we do not store your full card details on our servers.",
       "Usage data such as token consumption, feature usage, and device/browser information used to operate and improve the service.",
     ],
@@ -14,7 +14,7 @@ const SECTIONS = [
   {
     title: "2. How We Use Your Information",
     body: [
-      "To provide, operate, and maintain the Tokun platform, including Smartgen, Prompt Optimizer, the Prompt Marketplace, and Hire.",
+      "To provide, operate, and maintain the Tokun platform, including Smartgen, Product Optimizer, the Product Marketplace, and Hire.",
       "To process payments, subscriptions, wallet top-ups, and withdrawals.",
       "To communicate with you about your account, transactions, and service updates.",
       "To detect, prevent, and address fraud, abuse, or security issues.",
@@ -31,7 +31,7 @@ const SECTIONS = [
   {
     title: "4. Your Content",
     body: [
-      "You retain ownership of prompts and content you create or upload. By listing a prompt on the Marketplace, you grant buyers a license to use that prompt as described at the time of purchase.",
+      "You retain ownership of products and content you create or upload. By listing a product on the Marketplace, you grant buyers a license to use that product as described at the time of purchase.",
       "You are responsible for ensuring you have the right to upload and sell any content you list.",
     ],
   },

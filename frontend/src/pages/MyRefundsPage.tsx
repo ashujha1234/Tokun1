@@ -174,7 +174,7 @@ export default function MyRefundsPage() {
       <main className="relative z-10 container mx-auto px-4 sm:px-6 pt-24 sm:pt-28 pb-24 max-w-3xl">
         <h1 className="text-3xl sm:text-4xl font-bold">My Refunds</h1>
         <p className="mt-3 text-white/60 text-sm leading-relaxed">
-          Prompt refunds you've requested and hire deals that were refunded to
+          Product refunds you've requested and hire deals that were refunded to
           you, in one place. Refunds always go back to the payment method you
           originally used.
         </p>
@@ -191,7 +191,7 @@ export default function MyRefundsPage() {
           <div className="mt-10 rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center">
             <p className="text-white/70 text-sm">No refunds yet.</p>
             <p className="mt-2 text-white/40 text-xs leading-relaxed">
-              You can request a refund on a purchased prompt from your history,
+              You can request a refund on a purchased product from your history,
               within 24 hours of buying it. Refunds on hire deals are issued by
               our support team — contact them if you need one.
             </p>

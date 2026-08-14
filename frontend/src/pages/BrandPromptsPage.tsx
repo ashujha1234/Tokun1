@@ -235,7 +235,7 @@ const LogoPromptCard = ({ logo }: { logo: BrandLogo }) => {
     try {
       await navigator.clipboard.writeText(logo.prompt);
       setCopied(true);
-      toast({ title: "Prompt copied", description: `Ready to paste into Smartgen.` });
+      toast({ title: "Product copied", description: `Ready to paste into Smartgen.` });
       setTimeout(() => setCopied(false), 2000);
     } catch {
       toast({ title: "Could not copy" });
@@ -273,7 +273,7 @@ const LogoPromptCard = ({ logo }: { logo: BrandLogo }) => {
           style={{ background: copied ? "rgba(25,230,108,0.12)" : "rgba(255,255,255,0.06)", border: `1px solid ${copied ? "rgba(25,230,108,0.3)" : "rgba(255,255,255,0.1)"}`, color: copied ? "#19E66C" : undefined }}
         >
           {copied ? <CheckCheck className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-          {copied ? "Copied" : "Copy Prompt"}
+          {copied ? "Copied" : "Copy Product"}
         </button>
       </div>
     </div>
@@ -387,7 +387,7 @@ const BrandPromptsPage = () => {
           </h1>
 
           <p className="text-white/60 text-sm sm:text-base leading-relaxed">
-            Elevate your branding workflow with prompts specifically designed for vector-style logos,
+            Elevate your branding workflow with products specifically designed for vector-style logos,
             consistent brand assets, and crystalline geometric designs.
           </p>
 
@@ -426,9 +426,9 @@ const BrandPromptsPage = () => {
             "your tag didn't save". */}
         {!loading && !loadError && logoPrompts.length === 0 && (
           <div className="py-16 text-center">
-            <p className="text-white/70 text-sm">No logo prompts listed yet.</p>
+            <p className="text-white/70 text-sm">No logo products listed yet.</p>
             <p className="text-white/40 text-xs mt-2 max-w-md mx-auto leading-relaxed">
-              A prompt shows up here once its seller files it under Design →
+              A product shows up here once its Creator files it under Design →
               "{LOGO_CATEGORY}" and it clears the media review every new listing
               goes through. Just uploaded one? It appears as soon as that review
               passes.

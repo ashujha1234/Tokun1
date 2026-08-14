@@ -448,7 +448,7 @@ const PromptLibrary = ({ onSelectPrompt }: PromptLibraryProps) => {
     navigator.clipboard.writeText(text);
     toast({
       title: "Copied to clipboard",
-      description: "Prompt has been copied to your clipboard"
+      description: "Product has been copied to your clipboard"
     });
   };
 
@@ -456,8 +456,8 @@ const PromptLibrary = ({ onSelectPrompt }: PromptLibraryProps) => {
     if (onSelectPrompt) {
       onSelectPrompt(text);
       toast({
-        title: "Prompt selected",
-        description: "The prompt has been loaded into the optimizer"
+        title: "Product selected",
+        description: "The product has been loaded into the optimizer"
       });
     }
   };
@@ -465,8 +465,8 @@ const PromptLibrary = ({ onSelectPrompt }: PromptLibraryProps) => {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h2 className="text-2xl font-bold text-tokun mb-2">Prompt Library</h2>
-        <p className="text-muted-foreground">Curated collection of high-quality prompts for various use cases</p>
+        <h2 className="text-2xl font-bold text-tokun mb-2">Product Library</h2>
+        <p className="text-muted-foreground">Curated collection of high-quality products for various use cases</p>
       </div>
 
       {/* Category Filter */}

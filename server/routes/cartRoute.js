@@ -62,7 +62,7 @@ router.post("/add/:promptId", requireAuth, async (req, res) => {
       return res.status(400).json({
         success: false,
         error: "already_purchased",
-        message: "You already own this prompt — find it in your purchase history.",
+        message: "You already own this product — find it in your purchase history.",
       });
     }
 
@@ -260,7 +260,7 @@ router.post("/checkout", requireAuth, blockIfSuspended, blockOrgTeamMemberPurcha
         return res.status(403).json({
           success: false,
           error: `seller_not_verified: ${p.title}`,
-          message: `"${p.title}" can't be bought right now — its seller hasn't finished payout setup. Remove it from your cart to check out.`,
+          message: `"${p.title}" can't be bought right now — its Creator hasn't finished payout setup. Remove it from your cart to check out.`,
         });
       }
 

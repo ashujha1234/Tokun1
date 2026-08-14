@@ -97,7 +97,7 @@ const TokenCircle = ({ originalTokens, optimizedTokens, optimizedWords = 0 }: To
         <div className="text-center mb-3"> {/* ↓ was mb-6 */}
           <h3 className="text-white/95 text-lg font-semibold">Tokun Reduction</h3> {/* ↓ was text-xl */}
           <p className="text-white/60 text-xs mt-1"> {/* ↓ was text-sm */}
-            Optimize your prompt to see tokun reduction statistics
+            Optimize your product to see tokun reduction statistics
           </p>
         </div>
 

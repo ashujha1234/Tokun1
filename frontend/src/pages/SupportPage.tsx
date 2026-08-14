@@ -28,7 +28,7 @@ const supportCards = [
     icon: HelpCircle,
     title: "Product Guidance",
     description:
-      "Learn how to use Smartgen, optimization workflows, prompt management, and marketplace tools more effectively.",
+      "Learn how to use Smartgen, optimization workflows, product management, and marketplace tools more effectively.",
   },
 ];
 

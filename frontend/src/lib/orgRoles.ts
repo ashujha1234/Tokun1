@@ -47,5 +47,5 @@ export const TEAM_MEMBER_PURCHASE_TOAST = {
 export const TEAM_MEMBER_SELL_TOAST = {
   title: "Your organization sells for you",
   description:
-    "Team members can't list prompts or set up a payout account. Ask your org owner to publish it from the organization account.",
+    "Team members can't list products or set up a payout account. Ask your org owner to publish it from the organization account.",
 };

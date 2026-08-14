@@ -19,16 +19,16 @@ const SECTIONS = [
   {
     title: "1. What you can report",
     body: [
-      "Any prompt listed on the Tokun Marketplace or Prompt Library can be reported.",
-      "Report a listing if it infringes your copyright or trademark, contains someone else's work passed off as the seller's own, is misleading about what it does, contains illegal or harmful content, is spam or a duplicate of another listing, or was sold to you broken or unusable.",
+      "Any product listed on the Tokun Marketplace or Product Library can be reported.",
+      "Report a listing if it infringes your copyright or trademark, contains someone else's work passed off as the Creator's own, is misleading about what it does, contains illegal or harmful content, is spam or a duplicate of another listing, or was sold to you broken or unusable.",
       "Reporting is for problems with the listing itself. If you simply want your money back, use the refund process instead — the two are separate, and filing a report does not start a refund.",
     ],
   },
   {
     title: "2. Who can report",
     body: [
-      "Any signed-in Tokun user can report a prompt. You do not need to have purchased it.",
-      "You can report a listing anonymously as far as the seller is concerned — sellers are told a report was made and what action followed, but not who filed it.",
+      "Any signed-in Tokun user can report a product. You do not need to have purchased it.",
+      "You can report a listing anonymously as far as the Creator is concerned — Creators are told a report was made and what action followed, but not who filed it.",
       "Tokun's admin team can see who filed each report.",
     ],
   },
@@ -53,9 +53,9 @@ const SECTIONS = [
     title: "5. Possible outcomes",
     body: [
       "Rejected — the report is not upheld and the listing stays exactly as it is. This happens when the claim isn't substantiated or describes a preference rather than a violation.",
-      "Flagged — the listing is hidden from the marketplace while the issue is looked into further. The seller is notified that their prompt was flagged.",
-      "Suspended — for serious violations the listing is removed from the marketplace entirely and the seller is notified. Buyers who already purchased that prompt keep their access, because they paid for it.",
-      "Separately from any of these, a seller who repeatedly violates the rules may have their whole seller account suspended, which removes all of their listings from the marketplace.",
+      "Flagged — the listing is hidden from the marketplace while the issue is looked into further. The Creator is notified that their product was flagged.",
+      "Suspended — for serious violations the listing is removed from the marketplace entirely and the Creator is notified. Buyers who already purchased that product keep their access, because they paid for it.",
+      "Separately from any of these, a Creator who repeatedly violates the rules may have their whole Creator account suspended, which removes all of their listings from the marketplace.",
     ],
   },
   {
@@ -67,7 +67,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "7. If your prompt is reported",
+    title: "7. If your product is reported",
     body: [
       "You are notified in-app if your listing is flagged or suspended, along with any note the reviewing admin left.",
       "You are not notified about reports that are reviewed and rejected — an unsubstantiated report has no effect on you.",
@@ -78,7 +78,7 @@ const SECTIONS = [
   {
     title: "8. Misuse of reporting",
     body: [
-      "Do not file reports to damage a competitor, to pressure a seller, or in volume without grounds.",
+      "Do not file reports to damage a competitor, to pressure a Creator, or in volume without grounds.",
       "Knowingly false reports — especially false copyright claims — are a breach of the Terms & Conditions and may result in your account being suspended.",
     ],
   },
@@ -117,7 +117,7 @@ export default function ReportPolicyPage() {
           </h1>
           <p className="mt-4 text-white/60 text-sm">Last updated: 2026</p>
           <p className="mt-6 text-white/75 max-w-2xl mx-auto leading-relaxed">
-            How to report a prompt on Tokun, how reports are reviewed, and what
+            How to report a product on Tokun, how reports are reviewed, and what
             can happen to a listing as a result.
           </p>
         </section>

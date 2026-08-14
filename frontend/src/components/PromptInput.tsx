@@ -1809,7 +1809,7 @@ const handleConfirmEndSession = () => {
 
   const handleOptimize = async () => {
     if (!text.trim()) {
-      toast({ title: "Empty prompt", description: "Please enter text to optimize" });
+      toast({ title: "Empty product", description: "Please enter text to optimize" });
       return;
     }
 
@@ -1891,7 +1891,7 @@ const handleConfirmEndSession = () => {
       }
 
     } catch (error) {
-      console.error("Error optimizing prompt:", error);
+      console.error("Error optimizing product:", error);
       toast({
         title: "Optimization failed",
         description:
@@ -2022,7 +2022,7 @@ const handleConfirmEndSession = () => {
   const selectOption = async (option: OptimizationOption) => {
     try {
       await navigator.clipboard.writeText(option.text);
-      showCenterToast("Optimized prompt copied", "It's on your clipboard and ready to use.");
+      showCenterToast("Optimized product copied", "It's on your clipboard and ready to use.");
 
       // reset parent & UI
       onOptimize("", 0, 0, [], undefined);
@@ -2064,7 +2064,7 @@ const handleConfirmEndSession = () => {
   const handleSaveFromDropdown = async (payload?: { title?: string; category?: string; quick?: boolean }) => {
     const textToSave = optimizationOption?.text || text;
     if (!textToSave.trim()) {
-      toast({ title: "Nothing to save", description: "Generate or enter a prompt first." });
+      toast({ title: "Nothing to save", description: "Generate or enter a product first." });
       return;
     }
 
@@ -2208,7 +2208,7 @@ const startCollaboration = async (): Promise<string | null> => {
       <div className={PANEL_CLS}>
         <div className={`${BOX_CLS} ${BOX_PAD} relative`}>
         <textarea
-  placeholder="Enter your prompt here..."
+  placeholder="Enter your product here..."
   className="min-h-[180px] w-full bg-transparent resize-none border-0 outline-none focus:ring-0 pr-10 text-white placeholder:text-white/40 text-sm p-2"
   value={text}
   onChange={handleTextChange}
@@ -2236,7 +2236,7 @@ const startCollaboration = async (): Promise<string | null> => {
           <div className="flex items-center gap-2">
             <Lightbulb className="h-4 w-4 text-amber-400" />
             <span className={SUBTLE_TEXT}>
-              Optimizing your prompt can significantly reduce token usage.
+              Optimizing your product can significantly reduce token usage.
             </span>
           </div>
 
@@ -2288,7 +2288,7 @@ const startCollaboration = async (): Promise<string | null> => {
       }}
       className="rounded-2xl w-[180px] h-[40px] text-white border-0 transition-all duration-300 inline-flex items-center justify-center gap-2"
       style={{ backgroundImage: GRADIENT_BG }}
-      title="Invite someone to collaborate on this prompt in real time"
+      title="Invite someone to collaborate on this product in real time"
     >
       <UserPlus className="h-4 w-4" />
       <span className={BTN_TEXT_CLS}>Invite Collaborator</span>
@@ -2410,7 +2410,7 @@ const startCollaboration = async (): Promise<string | null> => {
                   className="w-10 h-10 rounded-full bg-[#252525] flex items-center justify-center hover:opacity-90 border border-[#333335]"
                   onClick={() =>
                     navigator.clipboard.writeText(optimizationOption.text).then(() =>
-                      toast({ title: "Copied", description: "Optimized prompt copied to clipboard" })
+                      toast({ title: "Copied", description: "Optimized product copied to clipboard" })
                     )
                   }
                   title="Copy"
@@ -2424,7 +2424,7 @@ const startCollaboration = async (): Promise<string | null> => {
             <div className="mt-4 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <Lightbulb className="h-4 w-4 text-amber-400" />
-                <span className={SUBTLE_TEXT}>Optimizing your prompt can significantly reduce token usage.</span>
+                <span className={SUBTLE_TEXT}>Optimizing your product can significantly reduce token usage.</span>
               </div>
               <Button
                 onClick={() => selectOption(optimizationOption)}

@@ -146,7 +146,7 @@ const SuggestionsPanel = ({ suggestions }: SuggestionsPanelProps) => {
                     AI-Powered Suggestions
                   </h3>
                   <p className="text-sm text-white/60">
-                    Smart recommendations to optimize your prompts and reduce token usage
+                    Smart recommendations to optimize your products and reduce token usage
                   </p>
                 </div>
               </div>
@@ -170,7 +170,7 @@ const SuggestionsPanel = ({ suggestions }: SuggestionsPanelProps) => {
                     <button
                       onClick={async () => {
                         await navigator.clipboard.writeText(suggestion);
-                        showCenterToast("Copied", "This prompt has been copied to clipboard");
+                        showCenterToast("Copied", "This product has been copied to clipboard");
                       }}
                       className="opacity-0 group-hover:opacity-100 transition-opacity absolute top-3 right-3 w-9 h-9 rounded-full border border-white/10 flex items-center justify-center bg-black/30 hover:bg-black/50"
                       title="Copy"
@@ -203,12 +203,12 @@ const SuggestionsPanel = ({ suggestions }: SuggestionsPanelProps) => {
                 AI-Powered Suggestions
               </h3>
               <p className="text-white/70 text-base mb-8">
-                Smart recommendations to optimize your prompts and reduce token usage
+                Smart recommendations to optimize your products and reduce token usage
               </p>
 
               <h4 className="text-white text-lg font-medium mb-2">Ready to Optimize</h4>
               <p className="text-white/60 text-sm leading-relaxed px-6">
-                Enter your prompt and click optimize to receive personalized suggestions
+                Enter your product and click optimize to receive personalized suggestions
                 for improving efficiency and reducing token usage.
               </p>
             </div>

@@ -6,6 +6,9 @@ import { toast } from "@/hooks/use-toast";
 // Attachments are stored as absolute Blob URLs; mediaUrl passes those through
 // untouched and still resolves any older API-relative path.
 import { mediaUrl } from "@/lib/mediaUrl";
+// Separates what the buyer ticked from what they typed, including on older
+// requests where both were stored in one field.
+import { splitRefundReason } from "@/lib/refundReasons";
 
 const API_BASE = `${(import.meta.env.VITE_API_URL || "http://localhost:5002").replace(
   /\/$/,
@@ -61,7 +64,11 @@ function PartyLink({
 type RefundRequest = {
   _id: string;
   status: "PENDING" | "APPROVED" | "REJECTED";
+  /* What the buyer TICKED, one reason per line. */
   reason: string;
+  /* What the buyer typed in their own words. Optional: absent on requests filed
+     before this was split out of `reason`, and on tick-only requests. */
+  description?: string;
   /* Screenshots the buyer attached when filing. Absolute Blob URLs. Optional —
      requests filed before attachments existed have no such field. */
   attachments?: string[];
@@ -232,7 +239,7 @@ function ProductModal({
               </p>
             </div>
             <div>
-              <p className="text-white/40">Seller</p>
+              <p className="text-white/40">Creator</p>
               <p className="text-white/85 mt-0.5 truncate">
                 {request.seller?.name || request.seller?.email || "Unknown"}
               </p>
@@ -241,14 +248,41 @@ function ProductModal({
 
           {/* The buyer's own words and evidence, beside the thing they bought —
               the comparison the decision actually turns on. */}
-          <div>
-            <p className="text-[11px] uppercase tracking-wider text-white/40 mb-1.5">
-              Buyer's reason
-            </p>
-            <p className="text-sm text-white/75 bg-black/25 rounded-lg p-3 whitespace-pre-line">
-              {request.reason}
-            </p>
-          </div>
+          {/* Two blocks, because they are two different kinds of evidence: the
+              reason is one of a fixed set the buyer picked from, the description
+              is whatever they typed. splitRefundReason also rescues the older
+              requests, where both were packed into `reason` with the note on an
+              "Other: …" line — those used to render that label verbatim inside
+              the reason box. Each block is skipped when empty, so a note-only
+              request doesn't show an empty "Reason selected". */}
+          {(() => {
+            const parts = splitRefundReason(request.reason, request.description);
+            return (
+              <>
+                {!!parts.reason && (
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wider text-white/40 mb-1.5">
+                      Reason selected
+                    </p>
+                    <p className="text-sm text-white/75 bg-black/25 rounded-lg p-3 whitespace-pre-line">
+                      {parts.reason}
+                    </p>
+                  </div>
+                )}
+
+                {!!parts.description && (
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wider text-white/40 mb-1.5">
+                      Buyer's description
+                    </p>
+                    <p className="text-sm text-white/75 bg-black/25 rounded-lg p-3 whitespace-pre-line">
+                      {parts.description}
+                    </p>
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {!!request.attachments?.length && (
             <div>
@@ -452,7 +486,7 @@ export default function AdminRefundsPage() {
           </button>
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Refund Requests</h1>
-            <p className="text-xs text-white/40 mt-0.5">Review buyer refund requests for prompt purchases</p>
+            <p className="text-xs text-white/40 mt-0.5">Review buyer refund requests for product purchases</p>
           </div>
           <button
             onClick={() => fetchRequests(tab)}
@@ -511,19 +545,47 @@ export default function AdminRefundsPage() {
                   <p className="text-xs text-white/40 mt-2">
                     Buyer:{" "}
                     <PartyLink party={r.buyer} view="user" />
-                    {" · "}Seller:{" "}
+                    {/* "Creator", not "Seller" — same wording as the rest of
+                        the product. `view="seller"` stays: that is the
+                        dashboard's internal view name, not a label. */}
+                    {" · "}Creator:{" "}
                     <PartyLink party={r.seller} view="seller" />
                   </p>
                 </div>
                 <span className="text-sm font-bold text-white/90 shrink-0">₹{r.refundAmount}</span>
               </div>
 
-              {/* whitespace-pre-line: the reason arrives as a bulleted list
-                  when the buyer ticked more than one box, and without this it
-                  collapses onto a single unreadable line. */}
-              <p className="text-sm text-white/70 bg-black/20 rounded-lg p-3 mb-3 whitespace-pre-line">
-                {r.reason}
-              </p>
+              {/* Same split as the popup, so the row and the popup can never
+                  describe the same request differently. Both blocks carry their
+                  label here as well: with only the description labelled, the
+                  unlabelled block above it read as the buyer's own words rather
+                  than as the reason they picked from a list.
+
+                  whitespace-pre-line because a multi-tick reason is several
+                  lines, and without it they collapse onto one unreadable row. */}
+              {(() => {
+                const parts = splitRefundReason(r.reason, r.description);
+                return (
+                  <>
+                    {!!parts.reason && (
+                      <p className="text-sm text-white/70 bg-black/20 rounded-lg p-3 mb-3 whitespace-pre-line">
+                        <span className="uppercase tracking-wider text-white/35 text-[10px] block mb-1">
+                          Reason selected
+                        </span>
+                        {parts.reason}
+                      </p>
+                    )}
+                    {!!parts.description && (
+                      <p className="text-xs text-white/50 bg-black/10 border border-white/5 rounded-lg p-3 mb-3 whitespace-pre-line">
+                        <span className="uppercase tracking-wider text-white/35 text-[10px] block mb-1">
+                          Description
+                        </span>
+                        {parts.description}
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
 
               {/* What the buyer attached. This is the difference between taking
                   "the output was unusable" on trust and being able to see it. */}

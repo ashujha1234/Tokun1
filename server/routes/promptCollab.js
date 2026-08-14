@@ -736,7 +736,7 @@ router.post("/org/share/:promptId", requireAuth, async (req, res) => {
       receiverUserId: id,
       type: "ORG_SHARE",
       promptId,
-      message: `Organization shared prompt "${prompt.title}" with you.`,
+      message: `Organization shared product "${prompt.title}" with you.`,
     }));
     if (notifs.length) await Notification.insertMany(notifs);
 
@@ -1111,7 +1111,7 @@ const finalMessage = `${senderName} invited you to collaborate on a prompt in To
 
       await sendEmail({
         to: email,
-        subject: "Invitation to collaborate on a prompt on Tokun.World",
+        subject: "Invitation to collaborate on a product on Tokun.World",
         html,
       });
     } catch (mailErr) {

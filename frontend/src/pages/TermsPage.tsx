@@ -5,7 +5,7 @@ const SECTIONS = [
   {
     title: "1. Acceptance of Terms",
     body: [
-      "By creating an account or using Tokun (Smartgen, Prompt Optimizer, Prompt Marketplace, Prompt Library, Hire, and Wallet), you agree to these Terms & Conditions.",
+      "By creating an account or using Tokun (Smartgen, Product Optimizer, Product Marketplace, Product Library, Hire, and Wallet), you agree to these Terms & Conditions.",
       "If you are using Tokun on behalf of an organization, you confirm you have the authority to bind that organization to these terms.",
     ],
   },
@@ -19,17 +19,17 @@ const SECTIONS = [
   {
     title: "3. Subscriptions & Token Usage",
     body: [
-      "Free, Pro, and Enterprise plans include a monthly token allowance used across Smartgen and Prompt Optimizer.",
+      "Free, Pro, and Enterprise plans include a monthly token allowance used across Smartgen and Product Optimizer.",
       "Unused tokens do not roll over between billing periods unless explicitly stated for your plan.",
       "Subscription fees are billed in advance and are non-refundable except where required by law.",
     ],
   },
   {
-    title: "4. Marketplace & Selling Prompts",
+    title: "4. Marketplace & Selling Products",
     body: [
-      "Sellers may list prompts for sale on the Marketplace and set their own price.",
-      "Tokun charges a commission on each sale, deducted from the seller's payout; the current commission rate is disclosed in your seller dashboard.",
-      "Sellers must not upload content that infringes on third-party intellectual property or violates applicable law.",
+      "Creators may list products for sale on the Marketplace and set their own price.",
+      "Tokun charges a commission on each sale, deducted from the Creator's payout; the current commission rate is disclosed in your Creator dashboard.",
+      "Creators must not upload content that infringes on third-party intellectual property or violates applicable law.",
       "Tokun may remove listings that violate these terms without prior notice.",
     ],
   },
@@ -59,7 +59,7 @@ const SECTIONS = [
     title: "7. Payouts & Withdrawals",
     body: [
       "Earnings from Services and Projects are paid to the creator's verified payout account by our payment provider once the funds are released, on that account's own settlement schedule.",
-      "Earnings from prompt sales are credited to your in-app Wallet. Withdrawals require a linked bank account or UPI ID and are subject to a minimum withdrawal amount and service fee, shown at the time of the request.",
+      "Earnings from product sales are credited to your in-app Wallet. Withdrawals require a linked bank account or UPI ID and are subject to a minimum withdrawal amount and service fee, shown at the time of the request.",
       "Tokun reserves the right to review withdrawal requests for fraud prevention before processing.",
     ],
   },
@@ -110,8 +110,8 @@ export default function TermsPage() {
           </h1>
           <p className="mt-4 text-white/60 text-sm">Last updated: 2026</p>
           <p className="mt-6 text-white/75 max-w-2xl mx-auto leading-relaxed">
-            These terms govern your use of Tokun, including Smartgen, Prompt Optimizer,
-            the Prompt Marketplace, Hire, and Wallet.
+            These terms govern your use of Tokun, including Smartgen, Product Optimizer,
+            the Product Marketplace, Hire, and Wallet.
           </p>
         </section>
 

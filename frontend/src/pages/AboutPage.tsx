@@ -441,7 +441,7 @@ import Header from "@/components/Header";
 const features = [
   {
     icon: Zap,
-    title: "Prompt Optimization",
+    title: "Product Optimization",
     description:
       "Reduce token usage while keeping the meaning, clarity, and output quality strong across leading LLM platforms.",
   },
@@ -449,24 +449,24 @@ const features = [
     icon: Sparkles,
     title: "Smartgen Creation",
     description:
-      "Turn rough ideas into structured, high-performing prompts in seconds with AI-assisted prompt generation.",
+      "Turn rough ideas into structured, high-performing products in seconds with AI-assisted product generation.",
   },
   {
     icon: TrendingUp,
     title: "Marketplace Growth",
     description:
-      "Create, publish, and monetize your best prompts through a marketplace designed for creators and teams.",
+      "Create, publish, and monetize your best products through a marketplace designed for creators and teams.",
   },
   {
     icon: ShieldCheck,
     title: "Reliable Workflows",
     description:
-      "Build prompt systems that are consistent, reusable, and easier to manage at individual and team scale.",
+      "Build product systems that are consistent, reusable, and easier to manage at individual and team scale.",
   },
 ];
 
 const stats = [
-  { value: "50k+", label: "Prompts Optimized" },
+  { value: "50k+", label: "Products Optimized" },
   { value: "60%", label: "Average Token Reduction" },
   { value: "4.9/5", label: "User Satisfaction" },
   { value: "24/7", label: "Support" },
@@ -513,7 +513,7 @@ export default function AboutPage() {
             </div>
 
             <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-tight">
-              We help teams create better prompts,
+              We help teams create better products,
               <span
                 className="block bg-clip-text text-transparent"
                 style={{
@@ -527,8 +527,8 @@ export default function AboutPage() {
 
             <p className="mt-6 text-white/75 text-base sm:text-lg leading-relaxed max-w-3xl mx-auto">
               TOKUN is built for creators, teams, and businesses that want
-              better AI outcomes. From prompt optimization to generation and
-              marketplace publishing, we bring the entire prompt workflow into
+              better AI outcomes. From product optimization to generation and
+              marketplace publishing, we bring the entire product workflow into
               one focused platform.
             </p>
 
@@ -588,19 +588,19 @@ export default function AboutPage() {
               </h2>
 
               <p className="text-white/75 leading-relaxed mb-4">
-                AI is powerful, but great outputs still depend on great prompts.
+                AI is powerful, but great outputs still depend on great products.
                 Most users waste time rewriting instructions, testing variants,
                 and fixing poor structure.
               </p>
 
               <p className="text-white/75 leading-relaxed mb-4">
                 TOKUN was created to simplify that process. We help users write
-                cleaner prompts, improve consistency, reduce token waste, and
+                cleaner products, improve consistency, reduce token waste, and
                 unlock better performance from the models they already use.
               </p>
 
               <p className="text-white/75 leading-relaxed">
-                Our goal is simple: make prompt workflows easier, more powerful,
+                Our goal is simple: make product workflows easier, more powerful,
                 and more valuable.
               </p>
             </div>
@@ -620,7 +620,7 @@ export default function AboutPage() {
 
                 <ul className="space-y-4 text-white/80">
                   <li>
-                    Build a complete home for prompt creation, optimization,
+                    Build a complete home for product creation, optimization,
                     and growth.
                   </li>
                   <li>
@@ -628,11 +628,11 @@ export default function AboutPage() {
                     output quality.
                   </li>
                   <li>
-                    Create better economic opportunities for prompt creators
+                    Create better economic opportunities for product creators
                     worldwide.
                   </li>
                   <li>
-                    Make advanced prompt workflows simple, accessible, and
+                    Make advanced product workflows simple, accessible, and
                     scalable.
                   </li>
                 </ul>
@@ -648,7 +648,7 @@ export default function AboutPage() {
             </h2>
 
             <p className="mt-4 text-white/70 max-w-2xl mx-auto">
-              A focused workflow for building better prompts, reducing effort,
+              A focused workflow for building better products, reducing effort,
               and creating value.
             </p>
           </div>

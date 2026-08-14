@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Bell, BellOff, CheckCircle2, Flag, ShieldAlert, AlertTriangle } from "lucide-react";
+// Shared with the dashboard's bell, so both open the same screen for a given
+// notification type.
+import { adminNotificationHref } from "@/lib/adminNotificationRoutes";
 
 const API_BASE = `${(import.meta.env.VITE_API_URL || "http://localhost:5002").replace(
   /\/$/,
@@ -34,7 +37,7 @@ type AdminNotif = {
 };
 
 const typeConfig: Record<string, { icon: ReactNode; accent: string; label: string }> = {
-  ADMIN_PROMPT_REPORTED: { icon: <Flag size={18} />, accent: "#f59e0b", label: "Prompt Reported" },
+  ADMIN_PROMPT_REPORTED: { icon: <Flag size={18} />, accent: "#f59e0b", label: "Product Reported" },
   ADMIN_PROMPT_FLAGGED: { icon: <ShieldAlert size={18} />, accent: "#ef4444", label: "Auto-Flagged" },
   ADMIN_REVIEW_NEEDED: { icon: <AlertTriangle size={18} />, accent: "#eab308", label: "Review Needed" },
   DEFAULT: { icon: <Bell size={18} />, accent: "#6b7280", label: "Notification" },
@@ -132,11 +135,20 @@ export default function AdminNotificationsPage() {
         ? "Manual review needed"
         : "Notification";
 
+    /* Every card now goes somewhere. It used to only mark itself read, so a
+       notification about a refund or a flagged upload was a dead end — the
+       admin still had to go and find the queue it was talking about. */
+    const href = adminNotificationHref(n);
+
     return (
       <button
         key={n._id}
-        onClick={() => !n.read && markRead(n._id)}
-        className="w-full text-left"
+        onClick={() => {
+          if (!n.read) markRead(n._id);
+          if (href) navigate(href);
+        }}
+        title={href ? "Open" : undefined}
+        className={`w-full text-left${href ? " cursor-pointer" : " cursor-default"}`}
         style={{
           background: !n.read ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.025)",
           border: `1px solid ${!n.read ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.07)"}`,

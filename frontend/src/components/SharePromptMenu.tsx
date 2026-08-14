@@ -52,7 +52,7 @@ const SharePromptMenu = ({ url, title, className = "", align = "right" }: Props)
     };
   }, [open]);
 
-  const shareText = title ? `${title} — on Tokun` : "Check out this prompt on Tokun";
+  const shareText = title ? `${title} — on Tokun` : "Check out this product on Tokun";
   const encodedUrl = encodeURIComponent(url);
   const encodedText = encodeURIComponent(shareText);
 
@@ -140,7 +140,7 @@ const SharePromptMenu = ({ url, title, className = "", align = "right" }: Props)
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        title="Share this prompt"
+        title="Share this product"
         className={
           className ||
           "h-9 px-4 rounded-[8px] border border-white/10 bg-[#1C1C1E] flex items-center justify-center gap-1.5 text-white text-[13px] hover:bg-[#2A2A2D] transition-all whitespace-nowrap"
@@ -153,7 +153,7 @@ const SharePromptMenu = ({ url, title, className = "", align = "right" }: Props)
       {open && (
         <div
           role="menu"
-          aria-label="Share this prompt"
+          aria-label="Share this product"
           className={`absolute z-50 mt-2 w-[268px] rounded-[12px] border border-white/10 bg-[#17171A] p-3 shadow-[0_18px_44px_rgba(0,0,0,0.55)] ${
             align === "right" ? "right-0" : "left-0"
           }`}

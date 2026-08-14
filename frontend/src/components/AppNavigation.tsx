@@ -254,10 +254,10 @@ const AppNavigation = ({ activeSection, onSectionChange }: AppNavigationProps) =
 
   const navItems = [
     { id: "smartgen", label: "Smartgen", ext: "svg" },
-    { id: "prompt-optimization", label: "Prompt Optimiser", ext: "svg" },
+    { id: "prompt-optimization", label: "Product Optimiser", ext: "svg" },
     // Label only — the id, route and icon filename stay "prompt-marketplace",
     // because pathToId and the /prompt-marketplace route key off them.
-    { id: "prompt-marketplace", label: "Prompt Verse", badge: "NEW", ext: "png" },
+    { id: "prompt-marketplace", label: "Product Verse", badge: "NEW", ext: "png" },
     { id: "find-creators", label: "Find Creators", ext: "svg" },
     // Prompt Library — hidden from nav for now, per explicit request. Not
     // deleted so it can come back easily; routing/pathToId logic below is

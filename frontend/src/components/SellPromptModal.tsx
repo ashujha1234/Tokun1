@@ -2292,9 +2292,9 @@ export default function SellPromptModal({
       }
 
       toast({
-        title: "Prompt uploaded!",
+        title: "Product uploaded!",
         description: data.prompt?.free
-          ? "Your prompt is listed as FREE."
+          ? "Your product is listed as FREE."
           : `Your prompt is listed for ₹${data.prompt?.price} (Tokun price: ₹${data.prompt?.tokun_price}).`,
       });
 
@@ -2351,7 +2351,7 @@ export default function SellPromptModal({
         <DialogHeader className="px-6 pt-5 pb-0">
           <div className="flex items-center justify-between gap-3">
             <DialogTitle className="text-lg md:text-xl font-semibold leading-tight">
-              Upload Your Prompt to Marketplace
+              Upload Your Product to Marketplace
             </DialogTitle>
           </div>
         </DialogHeader>
@@ -2364,7 +2364,7 @@ export default function SellPromptModal({
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g., Advanced Code Review Prompt"
+              placeholder="e.g., Advanced Code Review Product"
               className={fieldBase}
               required
             />
@@ -2376,7 +2376,7 @@ export default function SellPromptModal({
               rows={4}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Describe what your prompt does and what makes it valuable..."
+              placeholder="Describe what your product does and what makes it valuable..."
               className={`${textareaBase} min-h-[120px]`}
               required
             />
@@ -2474,16 +2474,16 @@ export default function SellPromptModal({
               rows={5}
               value={promptText}
               onChange={(e) => setPromptText(e.target.value)}
-              placeholder="Enter your complete prompt here..."
+              placeholder="Enter your complete product here..."
               className={`${textareaBase} min-h-[160px]`}
               required
             />
-            <p className="text-xs text-white/50">This will be the full prompt that buyers receive</p>
+            <p className="text-xs text-white/50">This will be the full product that buyers receive</p>
           </div>
 
           <div className="space-y-4">
             <div className="flex items-center justify-between text-sm">
-              <Label htmlFor="free-toggle" className="text-white">Set this prompt as paid</Label>
+              <Label htmlFor="free-toggle" className="text-white">Set this product as paid</Label>
               <Switch
                 id="free-toggle"
                 checked={isPaid}

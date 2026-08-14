@@ -32,7 +32,7 @@ const GEN_BG     = "linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)";
 const EXAMPLE_IDEAS = [
   { Icon: Video,  title: "AI Video",     text: "Generate AI video content with Runway for my brand..." },
   { Icon: Code2,  title: "Code & Dev",   text: "Build a REST API in Node.js and document every endpoint..." },
-  { Icon: Image,  title: "AI Images",    text: "Create a Midjourney prompt system for product photos.." },
+  { Icon: Image,  title: "AI Images",    text: "Create a Midjourney product system for product photos.." },
   { Icon: Share2, title: "Social Media", text: "Create a detailed 30-day social media content calendar" },
 ];
 
@@ -68,7 +68,7 @@ const SKILL_LABELS: Record<string, string> = {
   saas_product:"SaaS Product Advisor",             uiux_design:"UI/UX Design Expert",
   backend_architecture:"Backend Architecture Expert", ai_image_generation:"AI Image Generation Expert",
   ai_video_generation:"AI Video Generation Expert",video_creation:"Video & YouTube Strategist",
-  ecommerce_business:"E-Commerce Growth Strategist",general_expert:"Expert Prompt Engineer",
+  ecommerce_business:"E-Commerce Growth Strategist",general_expert:"Expert Product Engineer",
 };
 
 interface CategoryEntry { id: string; label: string; subcategories: SubcategoryChip[] }
@@ -83,14 +83,14 @@ const ALL_CATEGORIES: CategoryEntry[] = [
   { id:"finance_investment",   label:"⚖️ Finance & Investment",      subcategories:[{id:"financial_planning",label:"Financial Planning"},{id:"investment_thesis",label:"Investment Thesis"},{id:"financial_modelling",label:"Financial Modelling"},{id:"tax_compliance",label:"Tax & Compliance"}]},
   { id:"health_wellness",      label:"❤️ Health & Wellness",         subcategories:[{id:"fitness_plan",label:"Fitness Plan"},{id:"nutrition_guide",label:"Nutrition Guide"},{id:"mental_wellness",label:"Mental Wellness"},{id:"lifestyle_habits",label:"Lifestyle Habits"}]},
   { id:"hr_people",            label:"👥 HR & People",               subcategories:[{id:"hiring_process",label:"Hiring Process"},{id:"onboarding",label:"Onboarding"},{id:"performance_mgmt",label:"Performance Mgmt"},{id:"team_culture",label:"Team Culture"}]},
-  { id:"ai_automation",        label:"🤖 AI & Automation",           subcategories:[{id:"prompt_engineering",label:"Prompt Engineering"},{id:"workflow_automation",label:"Workflow Automation"},{id:"chatbot_design",label:"Chatbot Design"},{id:"data_pipeline",label:"Data Pipeline"}]},
+  { id:"ai_automation",        label:"🤖 AI & Automation",           subcategories:[{id:"prompt_engineering",label:"Product Engineering"},{id:"workflow_automation",label:"Workflow Automation"},{id:"chatbot_design",label:"Chatbot Design"},{id:"data_pipeline",label:"Data Pipeline"}]},
   { id:"saas_product",         label:"🚀 SaaS & Product",            subcategories:[{id:"saas_launch",label:"SaaS Launch"},{id:"pricing_saas",label:"SaaS Pricing"},{id:"growth_saas",label:"Growth Strategy"},{id:"churn_retention",label:"Churn & Retention"}]},
   { id:"uiux_design",          label:"🎨 UI/UX Design",              subcategories:[{id:"user_research",label:"User Research"},{id:"wireframing",label:"Wireframing"},{id:"design_system",label:"Design System"},{id:"usability_testing",label:"Usability Testing"}]},
   { id:"video_creation",       label:"🎬 Video & YouTube",           subcategories:[{id:"channel_strategy",label:"Channel Strategy"},{id:"video_scripting",label:"Video Scripting"},{id:"seo_youtube",label:"YouTube SEO"},{id:"monetization_yt",label:"Monetization"}]},
   { id:"cloud_devops",         label:"☁️ Cloud & DevOps",            subcategories:[{id:"cloud_arch",label:"Cloud Architecture"},{id:"cicd_pipeline",label:"CI/CD Pipeline"},{id:"container_k8s",label:"Docker & Kubernetes"},{id:"cloud_security",label:"Cloud Security"}]},
   { id:"mobile_app_development",label:"📲 Mobile App Dev",           subcategories:[{id:"app_architecture",label:"App Architecture"},{id:"ui_mobile",label:"Mobile UI/UX"},{id:"app_launch",label:"App Store Launch"},{id:"app_monetization",label:"App Monetization"}]},
   { id:"cybersecurity",        label:"🔐 Cybersecurity",             subcategories:[{id:"pentest",label:"Penetration Testing"},{id:"security_audit",label:"Security Audit"},{id:"compliance_sec",label:"Compliance"},{id:"incident_response",label:"Incident Response"}]},
-  { id:"ai_image_generation",  label:"🖼️ AI Image Generation",       subcategories:[{id:"prompt_engineering_img",label:"Prompt Engineering"},{id:"stable_diffusion_wf",label:"Stable Diffusion & ComfyUI"},{id:"lora_finetune",label:"LoRA & Fine-Tuning"},{id:"commercial_workflow",label:"Commercial Workflow"}]},
+  { id:"ai_image_generation",  label:"🖼️ AI Image Generation",       subcategories:[{id:"prompt_engineering_img",label:"Product Engineering"},{id:"stable_diffusion_wf",label:"Stable Diffusion & ComfyUI"},{id:"lora_finetune",label:"LoRA & Fine-Tuning"},{id:"commercial_workflow",label:"Commercial Workflow"}]},
   { id:"ai_video_generation",  label:"🎬 AI Video Generation",       subcategories:[{id:"text_to_video",label:"Text-to-Video"},{id:"ai_avatar_video",label:"AI Avatar & Presenter"},{id:"video_workflow",label:"Production Workflow"},{id:"ai_video_monetize",label:"Monetization"}]},
   { id:"ecommerce_business",   label:"🛒 E-Commerce Business",       subcategories:[{id:"shopify_store",label:"Shopify Store"},{id:"amazon_fba",label:"Amazon FBA"},{id:"conversion_opt",label:"Conversion Optimisation"},{id:"ecommerce_ads",label:"Paid Ads & Retention"}]},
   { id:"data_science_ai",      label:"📡 Data Science & AI",         subcategories:[{id:"ml_model",label:"ML Model Building"},{id:"data_analysis",label:"Data Analysis"},{id:"data_pipeline_ds",label:"Data Pipeline"},{id:"nlp_project",label:"NLP Project"}]},
@@ -601,7 +601,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
   /* ── Core generate function ── */
   const doGenerate = useCallback(async (answersOverride?: Record<string,string>) => {
     if (!user) { navigate("/login"); return; }
-    if (!prompt.trim()) { toast({title:"Enter a prompt first"}); return; }
+    if (!prompt.trim()) { toast({title:"Enter a product first"}); return; }
     // Token limit reached → block generation and prompt to subscribe.
     if (isOutOfTokens(user)) { toast(TOKEN_LIMIT_TOAST); return; }
     if (isGenerating) { abortRef.current?.abort(); return; }
@@ -736,7 +736,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
       setTokensUsed(outputTokens);
       setAttachedPdf(null);
       if (data.truncated) {
-        toast({ title: "PDF was very long", description: "Only the first part of the document was used to build the prompt." });
+        toast({ title: "PDF was very long", description: "Only the first part of the document was used to build the product." });
       }
       // Deduct quota BEFORE notifying the parent (which refreshes the quota widget) —
       // otherwise the widget refetches before the spend lands and looks stale.
@@ -788,7 +788,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
     if (!smartgenDocId) {
       // Only reachable if the generation succeeded but its own save failed —
       // warnIfQuotaSaveFailed has already explained why.
-      toast({ title: "Can't save yet", description: "This prompt wasn't recorded, so it can't be added to your saved list. Try regenerating." });
+      toast({ title: "Can't save yet", description: "This product wasn't recorded, so it can't be added to your saved list. Try regenerating." });
       return;
     }
 
@@ -884,7 +884,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
         {/* Textarea */}
         <div style={{padding:"20px 20px 8px"}}>
           <textarea value={prompt} onChange={e=>{setPrompt(e.target.value);setDetection(null);setManualDomainId(null);setSelectedSubcat(null);}}
-            placeholder="Describe your goal and SmartGen will craft the perfect expert prompt…"
+            placeholder="Describe your goal and SmartGen will craft the perfect expert product…"
             style={{width:"100%",minHeight:130,resize:"none",background:"transparent",border:"none",outline:"none",color:"#fff",fontSize:14,lineHeight:1.6,fontFamily:"inherit",caretColor:"#8b5cf6"}}
             onKeyDown={e=>{if(e.key==="Enter"&&(e.metaKey||e.ctrlKey))handleGenerateClick();}}/>
         </div>
@@ -894,7 +894,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
           <div style={{margin:"0 16px 10px",display:"flex",alignItems:"flex-start",gap:8,padding:"10px 14px",borderRadius:12,background:"rgba(251,191,36,0.06)",border:"1px solid rgba(251,191,36,0.18)"}}>
             <AlertTriangle size={14} style={{color:"rgba(251,191,36,0.7)",marginTop:1,flexShrink:0}}/>
             <p style={{margin:0,fontSize:12,color:"rgba(251,191,36,0.7)",lineHeight:1.4}}>
-              <strong style={{color:"rgba(251,191,36,0.9)"}}>Add more detail</strong> — short prompts produce generic outputs. Try adding your goal, audience, tool or budget.
+              <strong style={{color:"rgba(251,191,36,0.9)"}}>Add more detail</strong> — short products produce generic outputs. Try adding your goal, audience, tool or budget.
             </p>
           </div>
         )}
@@ -987,7 +987,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
                 </button>
               </div>
             ) : (
-              <button type="button" onClick={()=>pdfInputRef.current?.click()} title="Attach a PDF to convert into a prompt"
+              <button type="button" onClick={()=>pdfInputRef.current?.click()} title="Attach a PDF to convert into a product"
                 style={{...btnDark,display:"flex",alignItems:"center",gap:6,height:36,padding:"0 14px",borderRadius:100,fontSize:13,cursor:"pointer"}}>
                 <Paperclip size={14}/> Attach PDF
               </button>
@@ -1017,12 +1017,12 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
       {(isGenerating || hasOutput) && (
         <div>
           <div style={{textAlign:"center",marginBottom:16}}>
-            <h2 style={{margin:0,fontSize:28,fontWeight:700,color:"#fff",letterSpacing:"-0.02em"}}>Detailed Prompt</h2>
+            <h2 style={{margin:0,fontSize:28,fontWeight:700,color:"#fff",letterSpacing:"-0.02em"}}>Detailed Product</h2>
             <div style={{marginTop:6,display:"flex",alignItems:"center",justifyContent:"center",gap:6,color:"rgba(255,255,255,0.4)",fontSize:13}}>
               <span style={{fontSize:15}}>⊞</span>
               {detection||manualDomainId
                 ? <><span>{stripEmoji(effectiveDomainLabel)}</span>{effectiveSubcatLabel&&<><span>·</span><span>{effectiveSubcatLabel}</span></>}</>
-                : <span>General · Prompt Engineering</span>
+                : <span>General · Product Engineering</span>
               }
             </div>
           </div>
@@ -1046,7 +1046,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
             {hasOutput && !isGenerating && (
               <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:8,padding:"14px 20px",borderTop:"1px solid #1e1e1f"}}>
                 <button onClick={handleCopy} style={{display:"flex",alignItems:"center",gap:7,height:38,padding:"0 18px",borderRadius:100,border:"none",background:"#7c3aed",color:"#fff",fontWeight:600,fontSize:13,cursor:"pointer"}}>
-                  <Copy size={14}/> Copy Prompt
+                  <Copy size={14}/> Copy Product
                 </button>
                 <button onClick={()=>onUseInOptimizer?.(displayText)} style={{display:"flex",alignItems:"center",gap:7,height:38,padding:"0 18px",borderRadius:100,border:"none",background:PILL_BG,color:"#fff",fontWeight:600,fontSize:13,cursor:"pointer"}}>
                   <Sparkles size={14}/> Optimise

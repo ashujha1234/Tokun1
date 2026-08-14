@@ -149,7 +149,7 @@ export default function PurchaseConfirmModal({
 
           <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-2.5">
             <div className="flex items-center justify-between text-[13px]">
-              <span className="text-white/60">Prompt price</span>
+              <span className="text-white/60">Product price</span>
               <span className="text-white/90">{inr(listPrice)}</span>
             </div>
             <div className="flex items-center justify-between text-[13px]">
@@ -166,7 +166,7 @@ export default function PurchaseConfirmModal({
           <ul className="mt-4 space-y-2 text-[12px] text-white/55">
             <li className="flex gap-2">
               <Lock className="w-3.5 h-3.5 mt-[2px] shrink-0 text-white/35" />
-              The full prompt unlocks as soon as the payment succeeds, and stays in
+              The full product unlocks as soon as the payment succeeds, and stays in
               your purchase history.
             </li>
             <li className="flex gap-2">

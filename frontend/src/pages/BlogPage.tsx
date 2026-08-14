@@ -6,19 +6,19 @@ import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 
 const featuredPost = {
-  title: "How to Write Better AI Prompts for Consistent Results",
+  title: "How to Write Better AI Products for Consistent Results",
   description:
-    "Learn the structure, clarity patterns, and optimization methods that help prompts perform better across LLM workflows.",
-  category: "Prompt Engineering",
+    "Learn the structure, clarity patterns, and optimization methods that help products perform better across LLM workflows.",
+  category: "Product Engineering",
   date: "Jan 12, 2026",
   readTime: "6 min read",
 };
 
 const posts = [
   {
-    title: "7 Mistakes That Make Your Prompts Weak",
+    title: "7 Mistakes That Make Your Products Weak",
     description:
-      "Common prompt writing mistakes that reduce quality, create ambiguity, and waste tokens.",
+      "Common product writing mistakes that reduce quality, create ambiguity, and waste tokens.",
     category: "Guides",
     date: "Jan 08, 2026",
     readTime: "4 min read",
@@ -26,21 +26,21 @@ const posts = [
   {
     title: "How Token Reduction Improves Cost and Speed",
     description:
-      "See how prompt optimization can reduce unnecessary tokens without losing meaning or output quality.",
+      "See how product optimization can reduce unnecessary tokens without losing meaning or output quality.",
     category: "Optimization",
     date: "Jan 05, 2026",
     readTime: "5 min read",
   },
   {
-    title: "Building a Prompt Workflow for Teams",
+    title: "Building a Product Workflow for Teams",
     description:
-      "A practical guide to organizing, testing, and scaling prompt systems inside modern teams.",
+      "A practical guide to organizing, testing, and scaling product systems inside modern teams.",
     category: "Teams",
     date: "Dec 29, 2025",
     readTime: "7 min read",
   },
   {
-    title: "What Makes a Prompt Marketplace Valuable",
+    title: "What Makes a Product Marketplace Valuable",
     description:
       "From discovery to monetization, here is what creators and buyers need from a strong marketplace experience.",
     category: "Marketplace",
@@ -48,17 +48,17 @@ const posts = [
     readTime: "5 min read",
   },
   {
-    title: "Prompt Templates vs Custom Prompts",
+    title: "Product Templates vs Custom Products",
     description:
       "When should you use templates, and when should you build from scratch for better AI performance?",
-    category: "Prompt Strategy",
+    category: "Product Strategy",
     date: "Dec 18, 2025",
     readTime: "4 min read",
   },
   {
     title: "Smartgen Workflows That Save Time",
     description:
-      "Discover faster ways to move from rough ideas to clean, reusable prompts with AI-assisted generation.",
+      "Discover faster ways to move from rough ideas to clean, reusable products with AI-assisted generation.",
     category: "Productivity",
     date: "Dec 14, 2025",
     readTime: "6 min read",
@@ -67,7 +67,7 @@ const posts = [
 
 const categories = [
   "All",
-  "Prompt Engineering",
+  "Product Engineering",
   "Optimization",
   "Marketplace",
   "Teams",
@@ -126,7 +126,7 @@ export default function BlogPage() {
             </h1>
 
             <p className="mt-6 text-white/75 text-base sm:text-lg leading-relaxed max-w-3xl mx-auto">
-              Explore prompt engineering tips, workflow improvements, product
+              Explore product engineering tips, workflow improvements, product
               ideas, and practical strategies to get better outcomes from AI
               systems.
             </p>
@@ -213,7 +213,7 @@ export default function BlogPage() {
                       </div>
 
                       <p className="mt-3 text-white/60 text-sm sm:text-base">
-                        Prompt thinking for modern AI workflows
+                        Product thinking for modern AI workflows
                       </p>
                     </div>
                   </div>
@@ -228,7 +228,7 @@ export default function BlogPage() {
             <h2 className="text-3xl sm:text-4xl font-bold">Latest posts</h2>
 
             <p className="mt-3 text-white/70 max-w-2xl">
-              Fresh articles designed to help users create stronger prompts and
+              Fresh articles designed to help users create stronger products and
               better AI systems.
             </p>
           </div>
@@ -294,7 +294,7 @@ export default function BlogPage() {
               </h2>
 
               <p className="mt-4 text-white/70 max-w-2xl mx-auto">
-                Get product news, workflow tips, and prompt strategy updates
+                Get product news, workflow tips, and product strategy updates
                 delivered to your inbox.
               </p>
 

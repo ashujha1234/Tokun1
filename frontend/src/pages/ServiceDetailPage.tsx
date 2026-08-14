@@ -445,7 +445,7 @@ export default function ServiceDetailPage() {
       const conversationId = convData?.conversation?._id;
 
       if (!convRes.ok || !conversationId) {
-        throw new Error("Couldn't open a conversation with this seller.");
+        throw new Error("Couldn't open a conversation with this Creator.");
       }
 
       const res = await fetch(`${API_BASE}/api/services/${data.service._id}/book`, {
@@ -610,7 +610,7 @@ export default function ServiceDetailPage() {
               </span>
               <span className="block text-white/40 text-[12px] truncate">
                 {seller.professionalTitle ||
-                  (seller.isFreelancer ? "Freelancer" : "Prompt creator")}
+                  (seller.isFreelancer ? "Freelancer" : "Product creator")}
                 {seller.freelancerLocation ? ` · ${seller.freelancerLocation}` : ""}
               </span>
             </div>

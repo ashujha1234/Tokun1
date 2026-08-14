@@ -22,9 +22,25 @@ const RefundRequestSchema = new mongoose.Schema(
       ref: "Prompt",
       required: true,
     },
+    /* The reasons the buyer TICKED, one per line.
+       Kept apart from `description` below so an admin can see at a glance which
+       of the standard problems was reported, and so these can be counted across
+       requests — impossible while the buyer's own sentence was concatenated into
+       the same field. */
     reason: {
       type: String,
       required: true,
+      trim: true,
+      maxlength: 1000,
+    },
+    /* Whatever the buyer wrote in their own words. Optional: a ticked reason is
+       a complete request on its own.
+       Requests filed before this split have everything in `reason` and nothing
+       here, which is why the admin UI treats an empty description as "nothing to
+       show" rather than as missing data. */
+    description: {
+      type: String,
+      default: "",
       trim: true,
       maxlength: 1000,
     },

@@ -1031,9 +1031,18 @@ const refundUpload = multer({
 router.post("/:purchaseId/refund-request", requireAuth, refundUpload.array("attachments", 5), async (req, res) => {
   try {
     const { purchaseId } = req.params;
+    /* Two separate fields now: `reason` is what the buyer ticked, `description`
+       is what they typed. They used to arrive concatenated, which meant the
+       admin queue could not tell a standard complaint from a free-text note and
+       nothing could be counted per reason. */
     const reason = String(req.body?.reason || "").trim();
+    const description = String(req.body?.description || "").trim();
 
-    if (!reason) {
+    /* Either one alone is a complete request — a buyer who only writes a
+       sentence has still given a reason, so `description` is promoted rather
+       than rejected. Without this, a note-only request would 400. */
+    const effectiveReason = reason || description;
+    if (!effectiveReason) {
       return res.status(400).json({ success: false, error: "reason_required" });
     }
 
@@ -1083,7 +1092,11 @@ router.post("/:purchaseId/refund-request", requireAuth, refundUpload.array("atta
       buyer: req.user._id,
       seller: purchase.prompt.userId,
       prompt: purchase.prompt._id,
-      reason,
+      // effectiveReason, not reason: a note-only request stores that note here
+      // too, so `reason` is never empty and the admin row always has something
+      // to show even when nothing was ticked.
+      reason: effectiveReason,
+      description,
       attachments,
       refundAmount: purchase.pricePaid,
     });
@@ -1094,7 +1107,7 @@ router.post("/:purchaseId/refund-request", requireAuth, refundUpload.array("atta
     await notifyAdmins({
       type: "ADMIN_REFUND_REQUESTED",
       promptId: purchase.prompt._id,
-      message: `Refund requested for "${purchase.prompt.title}" by ${req.user.name || req.user.email}: ${reason}`,
+      message: `Refund requested for "${purchase.prompt.title}" by ${req.user.name || req.user.email}: ${effectiveReason}`,
       // attachmentCount, so an admin can tell from the notification alone that
       // there is evidence to open — the URLs themselves live on the request.
       meta: {

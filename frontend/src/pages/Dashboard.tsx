@@ -14010,8 +14010,14 @@ import {
 import PromptValidationAdminDashboard from "./PromptValidationAdminDashboard";
 import FreelancerReviewAdminDashboard from "./FreelancerReviewAdminDashboard";
 import AdminSellerMessageModal from "@/components/AdminSellerMessageModal";
+// The full listing behind a products-grid card — description, prompt text,
+// tags — which is what a moderation decision is actually made on.
+import AdminProductDetailModal from "@/components/AdminProductDetailModal";
 // Resolves API-relative upload paths against the API origin — see lib/mediaUrl.
 import { mediaUrl } from "@/lib/mediaUrl";
+// One table of "which screen does this notification belong to", shared with
+// /admin/notifications so the bell and the page always agree.
+import { adminNotificationHref } from "@/lib/adminNotificationRoutes";
 /* Every admin action on this page used to end silently: a fetch resolved, some
    local state flipped, and nothing told the admin it had worked or why it
    hadn't. window.confirm/alert covered a few of them, which blocks the tab and
@@ -14221,7 +14227,7 @@ const ORG_SUSPEND_PRESETS = [
 const LISTING_ACTION_PRESETS = [
   "Content violates marketplace policy",
   "Copyright or trademark infringement",
-  "Preview does not match the delivered prompt",
+  "Preview does not match the delivered product",
   "Misleading title or description",
   "Explicit or unsafe content",
 ];
@@ -14241,13 +14247,13 @@ type PromptProduct = {
      (taken down). Both used to collapse into "Flagged" because `deleted` was
      never read.
 
-     "Removed by seller" is the fourth, and it matters: DELETE /api/prompt/:id
+     "Removed by Creator" is the fourth, and it matters: DELETE /api/prompt/:id
      ALSO sets deleted:true when a seller removes a listing that already has
      buyers. Reading `deleted` alone counted those as admin suspensions and
      inflated the Suspended tile with listings no admin ever touched. Admin
      suspension always sets `flagged` too — that pairing is what tells them
      apart. */
-  status: "Published" | "Draft" | "Flagged" | "Suspended" | "Removed by seller";
+  status: "Published" | "Draft" | "Flagged" | "Suspended" | "Removed by Creator";
   imageUrl?: string;
   videoUrl?: string;
   category?: string;
@@ -14257,6 +14263,18 @@ type PromptProduct = {
   totalRevenue?: number;
   /** When the listing was suspended, for the moderation views. */
   deletedAt?: string | null;
+
+  /* Everything a moderation decision needs but a card can't show. Rendered by
+     AdminProductDetailModal; the grid still shows only the summary. */
+  description?: string;
+  /** The paid content. Comes from the admin-only /admin/all. */
+  promptText?: string;
+  tags?: string[];
+  categories?: string[];
+  isFree?: boolean;
+  uploaderEmail?: string;
+  createdAt?: string;
+  mediaStatus?: string;
 };
 
 type Category = { _id: string; name: string; description?: string };
@@ -14322,6 +14340,23 @@ type ReportItem = {
 
   productTitle?: string;
   sellerName?: string;
+
+  /* The listing under review. A report is a claim ABOUT a product, so ruling on
+     it means reading the product — the panel used to show a thumbnail, a
+     hardcoded "2.45 ETH" and nothing else. */
+  productDescription?: string;
+  /** The paid content itself. Admin-only, and the only way to check a claim
+      about what the prompt does or where it came from. */
+  productPromptText?: string;
+  productPrice?: number;
+  productIsFree?: boolean;
+  productExclusive?: boolean;
+  productTags?: string[];
+  productCategories?: string[];
+  productCreatedAt?: string;
+  productMediaStatus?: string;
+  sellerEmail?: string;
+  sellerStatus?: string;
 
   previewImageUrl?: string;
   previewVideoUrl?: string;
@@ -15249,7 +15284,7 @@ const CHART_GRID = "rgba(255,255,255,0.06)";
    series. Every series is labelled as well as coloured. */
 const SOURCE_COLORS: Record<string, string> = {
   Subscriptions: CHART_SERIES.violet,
-  "Prompt sales": CHART_SERIES.teal,
+  "Product sales": CHART_SERIES.teal,
   "Services & hire": CHART_SERIES.amber,
 };
 
@@ -15260,9 +15295,9 @@ const SOURCE_COLORS: Record<string, string> = {
    revenue look like a cut of some far larger number. The other two really are
    cuts. Spelled out per card so nobody has to guess which is which. */
 const SOURCE_BASIS: Record<string, string> = {
-  Subscriptions: "Full plan payment — no seller to split with, so all of it is ours.",
-  "Prompt sales": "Our cut only: 3% buyer fee + 10% seller commission, net of GST.",
-  "Services & hire": "Our cut only: 3% buyer fee + 10% seller commission, net of GST.",
+  Subscriptions: "Full plan payment — no Creator to split with, so all of it is ours.",
+  "Product sales": "Our cut only: 3% buyer fee + 10% Creator commission, net of GST.",
+  "Services & hire": "Our cut only: 3% buyer fee + 10% Creator commission, net of GST.",
 };
 
 const RevenueSourcesPanel = ({ days }: { days: number }) => {
@@ -15847,8 +15882,8 @@ const PaymentsView = () => {
               : view === "webhooks"
               ? "Every webhook Razorpay has sent us, and what we did with it."
               : view === "sources"
-              ? "Which part of the product earned the money — subscriptions, prompt sales, or paid work. Read the note on each card: subscriptions are the whole payment, the other two are only our cut."
-              : "Money leaving the platform — what sellers, creators and freelancers were actually paid, and what went back to buyers."}
+              ? "Which part of the product earned the money — subscriptions, product sales, or paid work. Read the note on each card: subscriptions are the whole payment, the other two are only our cut."
+              : "Money leaving the platform — what Creators, creators and freelancers were actually paid, and what went back to buyers."}
           </p>
         </div>
         {/* The date range only applies to the two money views; the delivery log
@@ -16211,24 +16246,26 @@ const [userSearch, setUserSearch] = useState("");
  const openAdminNotification = (n: any) => {
    if (!n?.read) markAdminNotificationRead(n._id);
 
-   switch (n?.type) {
-     case "ADMIN_REFUND_REQUESTED":
-       window.location.href = "/admin/refunds";
-       return;
-     case "ADMIN_PROMPT_REPORTED":
-       setActive("reports");
-       return;
-     case "ADMIN_PROMPT_REVIEW":
-     case "ADMIN_REVIEW_NEEDED":
-       // The prompt-media validation queue.
-       setActive("analytics");
-       return;
-     case "ADMIN_FREELANCER_VIDEO_REVIEW_NEEDED":
-       setActive("freelancers");
-       return;
-     default:
-       return;
+   /* The destination comes from the shared table now, not a switch that knew
+      four of the types and silently swallowed the rest — a flagged upload, an
+      escalated dispute and an escrow deadline all did nothing when clicked.
+      Anything without a destination still just gets marked read. */
+   const href = adminNotificationHref(n);
+   if (!href) return;
+
+   /* A dashboard tab is switched in place; a routed page is navigated to.
+      Reloading the whole dashboard to move between its own tabs would throw
+      away everything this screen has loaded. */
+   const [path, query] = href.split("?");
+   if (path === "/admin/dashboard") {
+     const tab = new URLSearchParams(query || "").get("tab");
+     if (tab) setActive(tab as NavKey);
+     return;
    }
+
+   // A hard navigation, matching what this handler already did for refunds —
+   // these are separate routed pages, not tabs of this one.
+   window.location.href = href;
  };
 
  const markAllAdminNotificationsRead = async () => {
@@ -16465,7 +16502,7 @@ const [chartData, setChartData] = useState<ChartDatum[]>(defaultChartData);
     const sellerStats = await fetchSellerStatsMap(headers);
     Object.values(sellerStats).forEach((stat) => putStat(map, stat));
 
-    console.log("✅ dashboard prompt count stats", map);
+    console.log("✅ dashboard product count stats", map);
     return map;
   };
 
@@ -16841,7 +16878,7 @@ useEffect(() => {
           const status: PromptProduct["status"] = doc?.deleted
             ? doc?.flagged
               ? "Suspended"
-              : "Removed by seller"
+              : "Removed by Creator"
             : doc?.flagged
             ? "Flagged"
             : doc?.draft
@@ -17178,6 +17215,33 @@ useEffect(() => {
      Runs once. The URL is cleared with replaceState afterwards so that closing
      the profile and then reloading doesn't silently reopen it, and so the
      address bar doesn't keep a stale id around. */
+  /* `?tab=` opens this dashboard on a given section.
+     /admin/notifications links here for anything that lives in a tab rather
+     than on its own route (reports, the validation queue, freelancers) — it is
+     a different page, so it can't call setActive itself. Cleared from the URL
+     afterwards for the same reason the profile params below are. */
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    const KNOWN_TABS: NavKey[] = [
+      "dashboard",
+      "sellers",
+      "products",
+      "reports",
+      "analytics",
+      "account",
+      "payments",
+      "feedback",
+      "freelancers",
+    ];
+    if (!tab || !KNOWN_TABS.includes(tab as NavKey)) return;
+
+    setActive(tab as NavKey);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("tab");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get("view");
@@ -17207,7 +17271,7 @@ useEffect(() => {
       description: suspending
         ? "They'll be signed out and their listings stop selling until you reactivate them."
         : "They regain access to sell on the platform.",
-      confirmLabel: suspending ? "Suspend seller" : "Reactivate seller",
+      confirmLabel: suspending ? "Suspend Creator" : "Reactivate Creator",
       presets: suspending ? ACCOUNT_SUSPEND_PRESETS : [],
       destructive: suspending,
       requireReason: suspending,
@@ -17233,7 +17297,7 @@ useEffect(() => {
             )
           );
           toast({
-            title: suspending ? "Seller suspended" : "Seller reactivated",
+            title: suspending ? "Creator suspended" : "Creator reactivated",
             description: suspending
               ? `${selectedSellerMain.name} has been notified with the reason you gave.${
                   data?.cascade?.cancelledCount
@@ -17263,7 +17327,7 @@ useEffect(() => {
       description: suspending
         ? "Buying, selling, services, hire deals and withdrawals stop immediately. They stay signed in and can message you to appeal."
         : "They regain full access to buy, sell, and withdraw.",
-      confirmLabel: suspending ? "Block seller" : "Unblock seller",
+      confirmLabel: suspending ? "Block Creator" : "Unblock Creator",
       presets: suspending ? ACCOUNT_SUSPEND_PRESETS : [],
       destructive: suspending,
       requireReason: suspending,
@@ -17283,7 +17347,7 @@ useEffect(() => {
           )
         );
         toast({
-          title: suspending ? "Seller blocked" : "Seller unblocked",
+          title: suspending ? "Creator blocked" : "Creator unblocked",
           description: suspending
             ? `${row.name} has been notified with the reason you gave.`
             : `${row.name} has access again.`,
@@ -17423,7 +17487,7 @@ useEffect(() => {
       const data = await res.json();
       if (res.ok && data?.success) setSellerTrendsData(data.data || []);
     } catch (err) {
-      console.error("Seller trends analytics error:", err);
+      console.error("Creator trends analytics error:", err);
     } finally {
       setSellerTrendsLoading(false);
     }
@@ -17858,6 +17922,20 @@ useEffect(() => {
             salesCount: Number(doc?.salesCount || 0),
             totalRevenue: Number(doc?.totalRevenue || 0),
             deletedAt: doc?.deletedAt || null,
+
+            description: doc?.description || "",
+            promptText: doc?.promptText || "",
+            tags: Array.isArray(doc?.tags) ? doc.tags.filter(Boolean) : [],
+            categories: [
+              ...(Array.isArray(doc?.categories) ? doc.categories : []),
+              ...(Array.isArray(doc?.subCategories) ? doc.subCategories : []),
+            ]
+              .map((c: any) => (typeof c === "string" ? c : c?.name))
+              .filter(Boolean),
+            isFree: !!doc?.free,
+            uploaderEmail: doc?.userId?.email,
+            createdAt: doc?.createdAt,
+            mediaStatus: doc?.mediaValidation?.status,
           };
         });
 
@@ -18191,9 +18269,9 @@ const ADMIN_NAV_SECTIONS: Array<{
   {
     title: "Marketplace",
     items: [
-      { id: "sellers", label: "Sellers", icon: <Store className="h-[17px] w-[17px]" /> },
+      { id: "sellers", label: "Creators", icon: <Store className="h-[17px] w-[17px]" /> },
       { id: "products", label: "Products", icon: <Package className="h-[17px] w-[17px]" /> },
-      { id: "analytics", label: "Prompt Validation", icon: <ShieldCheck className="h-[17px] w-[17px]" /> },
+      { id: "analytics", label: "Product Validation", icon: <ShieldCheck className="h-[17px] w-[17px]" /> },
       { id: "freelancers", label: "Freelancers", icon: <Briefcase className="h-[17px] w-[17px]" /> },
     ],
   },
@@ -18213,7 +18291,7 @@ const ADMIN_NAV_SECTIONS: Array<{
 ];
 
 const MOBILE_NAV_MORE_ITEMS: { id: NavKey; label: string; icon: React.ReactNode }[] = [
-  { id: "analytics", label: "Prompt Validation", icon: <ShieldCheck className="h-4 w-4" /> },
+  { id: "analytics", label: "Product Validation", icon: <ShieldCheck className="h-4 w-4" /> },
   { id: "freelancers", label: "Freelancers", icon: <Briefcase className="h-4 w-4" /> },
   { id: "payments", label: "Payments", icon: <Wallet className="h-4 w-4" /> },
   { id: "feedback", label: "Feedback", icon: <MessageSquare className="h-4 w-4" /> },
@@ -18254,7 +18332,7 @@ const MobileBottomNav = () => {
       <div className="mx-auto max-w-[520px] px-3">
         <div className="flex items-center">
           <Item id="dashboard" label="Home" icon={<LayoutDashboard className="h-5 w-5" />} />
-          <Item id="sellers" label="Sellers" icon={<Store className="h-5 w-5" />} />
+          <Item id="sellers" label="Creators" icon={<Store className="h-5 w-5" />} />
           <Item id="products" label="Products" icon={<Package className="h-5 w-5" />} />
           <Item id="reports" label="Reports" icon={<ShieldAlert className="h-5 w-5" />} />
           <Item id="account" label="Account" icon={<UserRound className="h-5 w-5" />} />
@@ -18430,6 +18508,23 @@ useEffect(() => {
           productTitle: prompt.title,
           sellerName: prompt.userId?.name,
 
+          productDescription: prompt.description || "",
+          productPromptText: prompt.promptText || "",
+          productPrice: typeof prompt.price === "number" ? prompt.price : undefined,
+          productIsFree: !!prompt.free,
+          productExclusive: !!prompt.exclusive,
+          productTags: Array.isArray(prompt.tags) ? prompt.tags.filter(Boolean) : [],
+          productCategories: [
+            ...(Array.isArray(prompt.categories) ? prompt.categories : []),
+            ...(Array.isArray(prompt.subCategories) ? prompt.subCategories : []),
+          ]
+            .map((c: any) => (typeof c === "string" ? c : c?.name))
+            .filter(Boolean),
+          productCreatedAt: prompt.createdAt,
+          productMediaStatus: prompt.mediaValidation?.status,
+          sellerEmail: prompt.userId?.email,
+          sellerStatus: prompt.userId?.sellerStatus,
+
           previewImageUrl: previewImageUrl
             ? previewImageUrl.startsWith("http")
               ? previewImageUrl
@@ -18595,13 +18690,27 @@ useEffect(() => {
         {/* LEFT listing card (bigger) */}
         <div className="lg:col-span-3 space-y-5">
           <div className={`${kpiCardBase} overflow-hidden`}>
-            {/* Preview */}
+            {/* Preview.
+                Only the image branch existed, so every reported VIDEO listing —
+                which is most of them — rendered "No Preview", and an admin was
+                asked to rule on a report about content they couldn't see. The
+                mapper has always set previewVideoUrl; nothing read it.
+                Controls, because judging "the video isn't what was advertised"
+                means watching it, not looking at a poster frame. */}
             <div className="h-[360px] bg-black/40 relative">
               {report.previewImageUrl ? (
                 <img
                   src={report.previewImageUrl}
                   className="absolute inset-0 w-full h-full object-cover"
                   alt="preview"
+                />
+              ) : report.previewVideoUrl ? (
+                <video
+                  src={report.previewVideoUrl}
+                  className="absolute inset-0 w-full h-full object-contain bg-black"
+                  controls
+                  playsInline
+                  preload="metadata"
                 />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center text-white/60">
@@ -18610,32 +18719,109 @@ useEffect(() => {
               )}
             </div>
 
-            {/* Listing info */}
+            {/* Listing info.
+                Was: the title, a hardcoded "2.45 ETH", the REPORTER's
+                complaint text presented as the listing's description, a
+                pravatar stock photo and an invented "Member since Jan 2022 ·
+                4.9 Rating". None of it came from the listing, so nothing here
+                helped judge the listing. It is all real now. */}
             <div className="p-6">
-              <div className="flex items-center justify-between">
-                <div className="text-xl font-semibold">
+              <div className="flex items-start justify-between gap-4">
+                <div className="text-xl font-semibold min-w-0 break-words">
                   {report.productTitle || report.title}
                 </div>
-                <div className="text-sm text-white/60">2.45 ETH</div>
+                <div className="text-sm text-white/80 shrink-0">
+                  {report.productIsFree
+                    ? "Free"
+                    : typeof report.productPrice === "number"
+                    ? `₹${report.productPrice.toLocaleString("en-IN")}`
+                    : "—"}
+                </div>
               </div>
 
-              <div className="mt-3 text-sm text-white/65 leading-relaxed">
-                {report.details || "—"}
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                {(report.productCategories || []).map((c) => (
+                  <span
+                    key={c}
+                    className="px-2 py-0.5 rounded-full bg-white/[0.07] border border-white/10 text-white/70"
+                  >
+                    {c}
+                  </span>
+                ))}
+                {report.productExclusive && (
+                  <span className="px-2 py-0.5 rounded-full text-[#FBBF24]" style={{ background: "#3A2A08" }}>
+                    ONE-TIME
+                  </span>
+                )}
+                {report.productMediaStatus && (
+                  /* The automatic media check's verdict. A listing already
+                     flagged by it is a different judgement call from one that
+                     passed and was then reported by a person. */
+                  <span className="px-2 py-0.5 rounded-full bg-white/[0.05] border border-white/10 text-white/50">
+                    media: {report.productMediaStatus}
+                  </span>
+                )}
               </div>
 
-              <div className="mt-5 flex items-center gap-3">
-                <img
-                  src="https://i.pravatar.cc/60?img=15"
-                  className="h-11 w-11 rounded-full border border-white/10 object-cover"
-                  alt="seller"
-                />
+              {report.productDescription && (
+                <div className="mt-4">
+                  <div className="text-xs text-white/50 uppercase tracking-wide">
+                    Listing description
+                  </div>
+                  <div className="mt-1.5 text-sm text-white/70 leading-relaxed whitespace-pre-line">
+                    {report.productDescription}
+                  </div>
+                </div>
+              )}
+
+              {/* The product itself. Every report is ultimately a claim about
+                  these words — that they don't work, that they're someone
+                  else's, that they're not what the preview advertises — and
+                  until now the one screen for settling that never showed them. */}
+              <div className="mt-4">
+                <div className="text-xs text-white/50 uppercase tracking-wide">
+                  Full prompt text
+                </div>
+                <pre
+                  className="mt-1.5 max-h-[280px] overflow-auto rounded-xl border border-white/10 bg-black/30 p-3 text-[12px] leading-relaxed text-white/80 whitespace-pre-wrap break-words"
+                  style={{ fontFamily: "ui-monospace, SFMono-Regular, monospace" }}
+                >
+                  {report.productPromptText || "— not available —"}
+                </pre>
+              </div>
+
+              {(report.productTags || []).length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {report.productTags!.map((t) => (
+                    <span key={t} className="px-2 py-0.5 rounded-md bg-white/[0.05] text-[11px] text-white/55">
+                      #{t}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-5 pt-4 border-t border-white/10 grid grid-cols-2 gap-3 text-[12px]">
                 <div>
-                  <div className="text-sm text-white/85">
-                    Seller: @{(report.sellerName || "Seller").replace(/\s+/g, "")}
+                  <div className="text-white/40">Creator</div>
+                  <div className="text-white/85 mt-0.5 truncate">
+                    {report.sellerName || "Unknown"}
                   </div>
-                  <div className="text-xs text-white/50">
-                    Member since Jan 2022 · 4.9 Rating
+                  {report.sellerEmail && (
+                    <div className="text-white/40 truncate">{report.sellerEmail}</div>
+                  )}
+                  {report.sellerStatus && report.sellerStatus !== "ACTIVE" && (
+                    <div className="text-red-400 mt-0.5">{report.sellerStatus}</div>
+                  )}
+                </div>
+                <div>
+                  <div className="text-white/40">Listed</div>
+                  <div className="text-white/85 mt-0.5">
+                    {report.productCreatedAt
+                      ? new Date(report.productCreatedAt).toLocaleDateString("en-IN")
+                      : "—"}
                   </div>
+                  <div className="text-white/40 mt-1">Listing ID</div>
+                  <div className="text-white/60 truncate">{report.listingId || "—"}</div>
                 </div>
               </div>
             </div>
@@ -18868,7 +19054,7 @@ useEffect(() => {
       setReportModeration({
         title: "Dismiss this report?",
         description:
-          "No action is taken against the listing. The report is closed and the seller is not notified.",
+          "No action is taken against the listing. The report is closed and the Creator is not notified.",
         confirmLabel: "Dismiss report",
         presets: [
           "No policy violation found",
@@ -18893,7 +19079,7 @@ useEffect(() => {
       setReportModeration({
         title: "Flag this product?",
         description:
-          "It's hidden from the marketplace immediately and the seller is notified with your reason.",
+          "It's hidden from the marketplace immediately and the Creator is notified with your reason.",
         confirmLabel: "Flag product",
         presets: LISTING_ACTION_PRESETS,
         destructive: true,
@@ -18907,7 +19093,7 @@ useEffect(() => {
           );
           toast({
             title: "Product flagged",
-            description: `"${report?.productTitle || report?.title || "The listing"}" is hidden from the marketplace and the seller has been told why.`,
+            description: `"${report?.productTitle || report?.title || "The listing"}" is hidden from the marketplace and the Creator has been told why.`,
           });
         },
       });
@@ -18918,7 +19104,7 @@ useEffect(() => {
       setReportModeration({
         title: "Suspend this listing?",
         description:
-          "It's taken down for good — buyers who already paid keep their access. The seller is notified with your reason.",
+          "It's taken down for good — buyers who already paid keep their access. The Creator is notified with your reason.",
         confirmLabel: "Suspend listing",
         presets: LISTING_ACTION_PRESETS,
         destructive: true,
@@ -18932,7 +19118,7 @@ useEffect(() => {
           );
           toast({
             title: "Listing suspended",
-            description: `"${report?.productTitle || report?.title || "The listing"}" has been removed from the marketplace and the seller has been told why.`,
+            description: `"${report?.productTitle || report?.title || "The listing"}" has been removed from the marketplace and the Creator has been told why.`,
           });
         },
       });
@@ -18972,7 +19158,7 @@ useEffect(() => {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 className="w-full h-11 pl-10 pr-3 rounded-xl bg-black/30 border border-white/10 text-sm text-white placeholder:text-white/35 focus:outline-none focus:border-white/20"
-                placeholder="Search by report title, listing ID, seller, reason..."
+                placeholder="Search by report title, listing ID, Creator, reason..."
               />
             </div>
 
@@ -19249,7 +19435,7 @@ const SellersView = () => {
       description: suspending
         ? "They'll be signed out and their listings stop selling until you reactivate them."
         : "They regain access to sell on the platform.",
-      confirmLabel: suspending ? "Suspend seller" : "Reactivate seller",
+      confirmLabel: suspending ? "Suspend Creator" : "Reactivate Creator",
       presets: suspending ? ACCOUNT_SUSPEND_PRESETS : [],
       destructive: suspending,
       requireReason: suspending,
@@ -19280,7 +19466,7 @@ const SellersView = () => {
             )
           );
           toast({
-            title: suspending ? "Seller suspended" : "Seller reactivated",
+            title: suspending ? "Creator suspended" : "Creator reactivated",
             description: suspending
               ? `${selectedSeller.name} has been notified with the reason you gave.`
               : `${selectedSeller.name} can sell again.`,
@@ -19467,7 +19653,7 @@ setSelectedSeller({
             title: `Block ${confirmPopup.seller.name}?`,
             description:
               "Buying, selling, services, hire deals and withdrawals stop immediately. They stay signed in and can message you to appeal.",
-            confirmLabel: "Block seller",
+            confirmLabel: "Block Creator",
             presets: ACCOUNT_SUSPEND_PRESETS,
             destructive: true,
             requireReason: true,
@@ -19475,7 +19661,7 @@ setSelectedSeller({
           unblock: {
             title: `Unblock ${confirmPopup.seller.name}?`,
             description: "They regain full access to buy, sell, and withdraw.",
-            confirmLabel: "Unblock seller",
+            confirmLabel: "Unblock Creator",
             presets: [] as string[],
             destructive: false,
             requireReason: false,
@@ -19509,7 +19695,7 @@ setSelectedSeller({
               Seller Management
             </h1>
             <p className="mt-1 text-white/60 text-sm text-center md:text-left">
-              Manage and monitor digital product sellers on the platform
+              Manage and monitor digital product Creators on the platform
             </p>
             <div className="flex gap-3 mt-4 justify-center md:justify-start">
               <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-500/15 text-blue-200 border border-blue-500/25">
@@ -19533,7 +19719,7 @@ setSelectedSeller({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="w-full h-11 pl-10 pr-3 rounded-xl bg-black/30 border border-white/10 text-sm text-white placeholder:text-white/35 focus:outline-none focus:border-white/20"
-              placeholder="Search sellers by name or email..."
+              placeholder="Search Creators by name or email..."
             />
           </div>
 
@@ -19561,7 +19747,7 @@ setSelectedSeller({
 
       {/* ✅ MOBILE: Cards */}
       <div className="md:hidden mt-6">
-        {sellersLoading && <div className="text-white/70 text-sm">Loading sellers…</div>}
+        {sellersLoading && <div className="text-white/70 text-sm">Loading Creators…</div>}
         {!!sellersError && !sellersLoading && <div className="text-red-400 text-sm">{sellersError}</div>}
         {!sellersLoading && !sellersError && (
           <div className="space-y-5">
@@ -19642,7 +19828,7 @@ setSelectedSeller({
               </div>
             ))}
             {pageRows.length === 0 && (
-              <div className="text-white/60 text-sm text-center py-8">No sellers found.</div>
+              <div className="text-white/60 text-sm text-center py-8">No Creators found.</div>
             )}
           </div>
         )}
@@ -19670,14 +19856,14 @@ setSelectedSeller({
       {/* ✅ DESKTOP: Table */}
       <div className="hidden md:block">
         <section className={`${kpiCardBase} mt-6 p-6`}>
-          {sellersLoading && <div className="p-6 text-white/70 text-sm">Loading sellers…</div>}
+          {sellersLoading && <div className="p-6 text-white/70 text-sm">Loading Creators…</div>}
           {!!sellersError && !sellersLoading && <div className="p-6 text-red-400 text-sm">{sellersError}</div>}
 
           {!sellersLoading && !sellersError && (
             <>
               <div className="overflow-hidden rounded-2xl border border-white/10">
                 <div className="grid grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
-                  <div className="col-span-3">Seller Name</div>
+                  <div className="col-span-3">Creator Name</div>
                   <div className="col-span-2">Plan</div>
                   <div className="col-span-1">Purchased</div>
                   <div className="col-span-1">Uploaded</div>
@@ -19771,7 +19957,7 @@ setSelectedSeller({
                   ))}
 
                   {pageRows.length === 0 && (
-                    <div className="p-6 text-white/60 text-sm">No sellers found.</div>
+                    <div className="p-6 text-white/60 text-sm">No Creators found.</div>
                   )}
                 </div>
               </div>
@@ -19856,6 +20042,9 @@ const ProductsView = () => {
      couldn't put the listing back. All four actions live here now. */
   const [productModeration, setProductModeration] = useState<ModerationRequest | null>(null);
   const [moderatingId, setModeratingId] = useState<string | null>(null);
+  // The listing whose full detail sheet is open. Holds the product, not an id,
+  // so a refresh that drops the row can't leave an empty sheet behind.
+  const [detailProduct, setDetailProduct] = useState<PromptProduct | null>(null);
 
   const moderateProduct = (
     product: PromptProduct,
@@ -20131,7 +20320,7 @@ const handleProfileSuspendToggle = () => {
     description: suspending
       ? "They'll be signed out and their listings stop selling until you reactivate them."
       : "They regain access to sell on the platform.",
-    confirmLabel: suspending ? "Suspend seller" : "Reactivate seller",
+    confirmLabel: suspending ? "Suspend Creator" : "Reactivate Creator",
     presets: suspending ? ACCOUNT_SUSPEND_PRESETS : [],
     destructive: suspending,
     requireReason: suspending,
@@ -20155,7 +20344,7 @@ const handleProfileSuspendToggle = () => {
         const newProfileStatus = suspending ? "SUSPENDED" : "ACTIVE";
         setSelectedSeller((prev) => (prev ? { ...prev, status: newProfileStatus } : prev));
         toast({
-          title: suspending ? "Seller suspended" : "Seller reactivated",
+          title: suspending ? "Creator suspended" : "Creator reactivated",
           description: suspending
             ? `${selectedSeller.name} has been notified with the reason you gave.`
             : `${selectedSeller.name} can sell again.`,
@@ -20273,7 +20462,7 @@ const handleProfileSuspendToggle = () => {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="w-full h-11 pl-10 pr-3 rounded-xl bg-black/30 border border-white/10 text-sm text-white placeholder:text-white/35 focus:outline-none focus:border-white/20"
-              placeholder="Search products by name, seller, category..."
+              placeholder="Search products by name, Creator, category..."
             />
           </div>
           <div className="flex flex-wrap gap-3 justify-start lg:justify-end">
@@ -20314,7 +20503,7 @@ const handleProfileSuspendToggle = () => {
                 <SelectItem value="Draft">Draft</SelectItem>
                 <SelectItem value="Flagged">Flagged</SelectItem>
                 <SelectItem value="Suspended">Suspended</SelectItem>
-                <SelectItem value="Removed by seller">Removed by seller</SelectItem>
+                <SelectItem value="Removed by Creator">Removed by Creator</SelectItem>
               </SelectContent>
             </Select>
 
@@ -20396,7 +20585,7 @@ const handleProfileSuspendToggle = () => {
                         "absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-medium border",
                         p.status === "Suspended"
                           ? "bg-red-500/20 text-red-200 border-red-500/30"
-                          : p.status === "Removed by seller"
+                          : p.status === "Removed by Creator"
                           ? "bg-white/[0.06] text-white/50 border-white/15"
                           : p.status === "Flagged"
                           ? "bg-[#FABC4E]/20 text-[#FFDFA3] border-[#FABC4E]/30"
@@ -20442,15 +20631,26 @@ const handleProfileSuspendToggle = () => {
                       </div>
                     </div>
 
+                    {/* Opens the listing itself — description, prompt text,
+                        tags, sales. Moderating from a thumbnail and a title was
+                        guessing; this is the thing being judged. */}
+                    <button
+                      type="button"
+                      onClick={() => setDetailProduct(p)}
+                      className="mt-3 w-full h-9 rounded-lg border border-white/12 bg-white/[0.04] hover:bg-white/[0.09] text-xs font-medium text-white/80 transition-colors"
+                    >
+                      View details
+                    </button>
+
                     {/* Moderation. Which buttons show depends on where the
                         listing already is — offering "Flag" on a suspended
                         listing, or "Restore" on a live one, is how an admin
                         ends up clicking something that does nothing.
 
-                        "Removed by seller" gets none: the seller took it down
+                        "Removed by Creator" gets none: the creator took it down
                         themselves, and an admin overriding that would put a
                         listing back that its owner chose to withdraw. */}
-                    {p.status !== "Removed by seller" && (
+                    {p.status !== "Removed by Creator" && (
                       <div className="mt-3 flex items-center gap-2 border-t border-white/[0.07] pt-3">
                         {p.status === "Suspended" ? (
                           <button
@@ -20581,6 +20781,35 @@ const handleProfileSuspendToggle = () => {
           )}
         </>
       )}
+
+      <AdminProductDetailModal
+        product={
+          detailProduct
+            ? {
+                id: detailProduct.id,
+                title: detailProduct.title,
+                description: detailProduct.description,
+                promptText: detailProduct.promptText,
+                price: detailProduct.price,
+                isFree: detailProduct.isFree,
+                status: detailProduct.status,
+                imageUrl: detailProduct.imageUrl,
+                videoUrl: detailProduct.videoUrl,
+                categories: detailProduct.categories,
+                tags: detailProduct.tags,
+                uploaderName: detailProduct.uploaderName,
+                uploaderEmail: detailProduct.uploaderEmail,
+                createdAt: detailProduct.createdAt,
+                mediaStatus: detailProduct.mediaStatus,
+                exclusive: detailProduct.exclusive,
+                sold: detailProduct.sold,
+                salesCount: detailProduct.salesCount,
+                totalRevenue: detailProduct.totalRevenue,
+              }
+            : null
+        }
+        onClose={() => setDetailProduct(null)}
+      />
     </>
   );
 };
@@ -20716,13 +20945,13 @@ const SellerProfileView = ({
         <div className={`${kpiCardBase} p-6`}>
           <div className="text-xs tracking-[0.2em] text-white/60">PURCHASED</div>
           <div className="mt-4 text-2xl font-semibold">{seller.buyProducts ?? 0}</div>
-          <div className="mt-3 text-sm text-white/50">prompts bought</div>
+          <div className="mt-3 text-sm text-white/50">products bought</div>
         </div>
 
         <div className={`${kpiCardBase} p-6`}>
           <div className="text-xs tracking-[0.2em] text-white/60">UPLOADED</div>
           <div className="mt-4 text-2xl font-semibold">{seller.totalUploadedPrompts ?? 0}</div>
-          <div className="mt-3 text-sm text-white/50">prompts uploaded</div>
+          <div className="mt-3 text-sm text-white/50">products uploaded</div>
         </div>
 
         <div className={`${kpiCardBase} p-6`}>
@@ -20755,7 +20984,7 @@ const SellerProfileView = ({
           )}
         </div>
 
-        {loading && <div className="mt-6 text-white/70 text-sm">Loading seller data…</div>}
+        {loading && <div className="mt-6 text-white/70 text-sm">Loading Creator data…</div>}
         {!!error && !loading && <div className="mt-6 text-red-400 text-sm">{error}</div>}
 
         {!loading && !error && (
@@ -20774,7 +21003,7 @@ const SellerProfileView = ({
             <div className="divide-y divide-white/10">
               {visibleProducts.length === 0 && (
                 <div className="px-5 py-8 text-center text-sm text-white/50">
-                  This seller hasn't uploaded any products yet.
+                  This Creator hasn't uploaded any products yet.
                 </div>
               )}
               {visibleProducts.map((p) => (
@@ -20954,7 +21183,7 @@ const UserProfileView = ({
         <div className={`${kpiCardBase} p-6`}>
           <div className="text-xs tracking-[0.2em] text-white/60">PURCHASED</div>
           <div className="mt-4 text-3xl font-semibold">{user.buyProducts}</div>
-          <div className="mt-3 text-sm text-white/50">prompts bought</div>
+          <div className="mt-3 text-sm text-white/50">products bought</div>
         </div>
         <div className={`${kpiCardBase} p-6`}>
           <div className="text-xs tracking-[0.2em] text-white/60">TOTAL SPENT</div>
@@ -20973,7 +21202,7 @@ const UserProfileView = ({
           <div className="mt-4 text-3xl font-semibold">
             ₹{Number(user.totalEarnings || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </div>
-          <div className="mt-3 text-sm text-emerald-400">as a seller</div>
+          <div className="mt-3 text-sm text-emerald-400">as a Creator</div>
         </div>
       </section>
 
@@ -20983,7 +21212,7 @@ const UserProfileView = ({
       <div className={`${kpiCardBase} mt-6 p-6`}>
         <h2 className="text-lg font-semibold">Purchased Prompts ({bought.length})</h2>
         {!loading && bought.length === 0 && (
-          <div className="mt-5 text-white/55 text-sm">This user hasn't bought any prompts.</div>
+          <div className="mt-5 text-white/55 text-sm">This user hasn't bought any products.</div>
         )}
         {bought.length > 0 && (
           <div className="mt-5 overflow-hidden rounded-2xl border border-white/10">
@@ -21031,7 +21260,7 @@ const UserProfileView = ({
       <div className={`${kpiCardBase} mt-6 p-6`}>
         <h2 className="text-lg font-semibold">Uploaded Prompts ({uploaded.length})</h2>
         {!loading && uploaded.length === 0 && (
-          <div className="mt-5 text-white/55 text-sm">This user hasn't uploaded any prompts.</div>
+          <div className="mt-5 text-white/55 text-sm">This user hasn't uploaded any products.</div>
         )}
         {uploaded.length > 0 && (
           <div className="mt-5 overflow-hidden rounded-2xl border border-white/10">
@@ -22629,7 +22858,7 @@ const WithdrawalsView = () => {
           ].join(" ")}
         >
           <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-          Seller
+          Creator
         </button>
 
         <button
@@ -22689,7 +22918,7 @@ const WithdrawalsView = () => {
 
       <div className={`${kpiCardBase} p-6`}>
         <div className="text-xs tracking-[0.2em] text-white/60">
-          ACTIVE SELLERS
+          ACTIVE CREATORS
         </div>
         <div className="mt-4 flex items-end justify-between">
           {/* ACTIVE SELLERS (now total sellers) */}
@@ -22805,7 +23034,7 @@ const WithdrawalsView = () => {
       {/* Seller Trends — real seller signal, two single-metric charts (not one dual-scale chart) */}
       <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div className={`${kpiCardBase} p-6`}>
-          <h2 className="text-base font-semibold">Seller Earnings</h2>
+          <h2 className="text-base font-semibold">Creator Earnings</h2>
           <p className="mt-1 text-xs text-white/55">Monthly payout to sellers (₹), last 6 months</p>
           <div className="mt-4 h-[260px] w-full">
             {sellerTrendsLoading ? (
@@ -22823,11 +23052,11 @@ const WithdrawalsView = () => {
                   <XAxis dataKey="month" tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 11 }} axisLine={{ stroke: "rgba(255,255,255,0.12)" }} tickLine={false} />
                   <YAxis tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }} axisLine={false} tickLine={false} />
                   <Tooltip
-                    formatter={(v: any) => [`₹${Number(v).toLocaleString("en-IN")}`, "Seller Earnings"]}
+                    formatter={(v: any) => [`₹${Number(v).toLocaleString("en-IN")}`, "Creator Earnings"]}
                     contentStyle={{ background: "rgba(10,12,16,0.95)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, color: "white" }}
                     labelStyle={{ color: "rgba(255,255,255,0.75)" }}
                   />
-                  <Area type="monotone" dataKey="sellerEarnings" name="Seller Earnings" stroke="#3987e5" strokeWidth={2} fill="url(#sellerEarningsFill)" dot={false} activeDot={{ r: 4 }} />
+                  <Area type="monotone" dataKey="sellerEarnings" name="Creator Earnings" stroke="#3987e5" strokeWidth={2} fill="url(#sellerEarningsFill)" dot={false} activeDot={{ r: 4 }} />
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -22835,8 +23064,8 @@ const WithdrawalsView = () => {
         </div>
 
         <div className={`${kpiCardBase} p-6`}>
-          <h2 className="text-base font-semibold">Active Sellers</h2>
-          <p className="mt-1 text-xs text-white/55">Distinct sellers with a sale that month</p>
+          <h2 className="text-base font-semibold">Active Creators</h2>
+          <p className="mt-1 text-xs text-white/55">Distinct Creators with a sale that month</p>
           <div className="mt-4 h-[260px] w-full">
             {sellerTrendsLoading ? (
               <div className="h-full flex items-center justify-center text-sm text-white/50">Loading…</div>
@@ -22847,12 +23076,12 @@ const WithdrawalsView = () => {
                   <XAxis dataKey="month" tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 11 }} axisLine={{ stroke: "rgba(255,255,255,0.12)" }} tickLine={false} />
                   <YAxis tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip
-                    formatter={(v: any) => [v, "Active Sellers"]}
+                    formatter={(v: any) => [v, "Active Creators"]}
                     cursor={{ fill: "rgba(255,255,255,0.04)" }}
                     contentStyle={{ background: "rgba(10,12,16,0.95)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, color: "white" }}
                     labelStyle={{ color: "rgba(255,255,255,0.75)" }}
                   />
-                  <Bar dataKey="activeSellers" name="Active Sellers" fill="#199e70" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="activeSellers" name="Active Creators" fill="#199e70" radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -22983,7 +23212,7 @@ const WithdrawalsView = () => {
 <section className={`${kpiCardBase} mt-6 p-6`}>
   <div className="flex items-center justify-between">
     <div>
-      <h2 className="text-lg font-semibold">Sellers List</h2>
+      <h2 className="text-lg font-semibold">Creators List</h2>
       <p className="mt-1 text-sm text-white/55">
         A quick snapshot of sellers (same table styling as Seller Management)
       </p>
@@ -23003,7 +23232,7 @@ const WithdrawalsView = () => {
   <div className="mt-6 overflow-hidden rounded-2xl border border-white/10">
     {/* Desktop header only */}
     <div className="hidden md:grid md:grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
-  <div className="md:col-span-3">Seller</div>
+  <div className="md:col-span-3">Creator</div>
   <div className="md:col-span-2">Plan</div>
   <div className="md:col-span-1">Purchased</div>
   <div className="md:col-span-1">Uploaded</div>
@@ -23014,7 +23243,7 @@ const WithdrawalsView = () => {
 
     <div className="divide-y divide-white/10">
       {sellersLoading && (
-        <div className="p-6 text-white/70 text-sm">Loading sellers…</div>
+        <div className="p-6 text-white/70 text-sm">Loading Creators…</div>
       )}
 
       {!!sellersError && !sellersLoading && (
@@ -23107,7 +23336,7 @@ const WithdrawalsView = () => {
 ))}
 
           {(sellerRows || []).length === 0 && (
-            <div className="p-6 text-white/60 text-sm">No sellers found.</div>
+            <div className="p-6 text-white/60 text-sm">No Creators found.</div>
           )}
         </>
       )}
@@ -23175,7 +23404,7 @@ const WithdrawalsView = () => {
           ].join(" ")}
         >
           <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-          Seller
+          Creator
         </button>
 
         <button
@@ -23364,7 +23593,7 @@ const WithdrawalsView = () => {
 <section className={`${kpiCardBase} mt-6 p-6`}>
   <div className="flex items-center justify-between gap-3">
     <div>
-      <h2 className="text-lg font-semibold">Users Prompt Counts</h2>
+      <h2 className="text-lg font-semibold">Users Product Counts</h2>
     </div>
     {/* setShowAllUsers set a flag nothing read. There's no separate users page
         to send an admin to, so this widens the page instead — the same thing
@@ -23386,8 +23615,8 @@ const WithdrawalsView = () => {
    <div className="hidden md:grid md:grid-cols-12 gap-3 px-5 py-3 text-xs text-white/55 bg-white/[0.03]">
   <div className="md:col-span-3">User Name</div>
   <div className="md:col-span-2">Plan</div>
-  <div className="md:col-span-2">Purchased Prompt</div>
-  <div className="md:col-span-2">Uploaded Prompt</div>
+  <div className="md:col-span-2">Purchased Product</div>
+  <div className="md:col-span-2">Uploaded Product</div>
   <div className="md:col-span-2">Joined Date</div>
   <div className="md:col-span-1 text-right">Actions</div>
 </div>
@@ -23579,7 +23808,7 @@ const WithdrawalsView = () => {
               className="h-9 sm:h-10 px-4 sm:px-6 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-1.5 sm:gap-2 bg-white/[0.06] text-white/70 border border-white/10 hover:bg-white/[0.08]"
             >
               <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              Seller
+              Creator
             </button>
             <button
               onClick={() => setCurrentView("user")}

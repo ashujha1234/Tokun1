@@ -181,7 +181,7 @@ export default function TagPicker({
           placeholder={
             full
               ? `${max} tags is the maximum — remove one to add another`
-              : "Start typing — “logo”, “seo”, “midjourney”, “resume”…"
+              : "Start typing — “logo”, “seo”, “portrait”, “resume”…"
           }
           className={`${inputClassName} pl-9`}
           role="combobox"

@@ -870,7 +870,7 @@ const handleResendInvite = async (memberId: string) => {
                 the org's own spend, all of it the owner's. */}
             <MetricCard label="Org Spend" value={`₹${teamPurchases.totalSpent.toLocaleString()}`} icon={<span>🛍️</span>} />
             <MetricCard label="Open Requests" value={String(teamRequests.count)} icon={<span>🙋</span>} />
-            <MetricCard label="Prompts Shared" value={sharedPrompts.count} icon={<span>🔗</span>} />
+            <MetricCard label="Products Shared" value={sharedPrompts.count} icon={<span>🔗</span>} />
           </div>
         </div>
 
@@ -1081,7 +1081,7 @@ const handleResendInvite = async (memberId: string) => {
           <div className="mt-3 rounded-2xl overflow-hidden border border-white/10">
             {teamRequests.recent.length === 0 ? (
               <div className="px-5 py-6 text-sm text-white/40">
-                No requests yet. When a member asks for a prompt they can't buy
+                No requests yet. When a member asks for a product they can't buy
                 themselves, it shows up here.
               </div>
             ) : (

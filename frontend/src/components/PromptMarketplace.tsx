@@ -71,13 +71,13 @@ const PromptMarketplace = () => {
   const handlePreview = (prompt: any) => {
     if (purchasedPrompts.includes(prompt.id)) {
       toast({
-        title: "Full Prompt Access",
+        title: "Full Product Access",
         description: `You have full access to "${prompt.title}"`
       });
     } else {
       toast({
         title: "Preview Mode",
-        description: `Showing preview for "${prompt.title}". Purchase to see full prompt.`
+        description: `Showing preview for "${prompt.title}". Purchase to see full product.`
       });
     }
   };
@@ -91,7 +91,7 @@ const handlePurchaseComplete = (promptId: number) => {
   setPurchasedPrompts(prev => [...prev, promptId]);
   toast({
     title: "Purchase Successful!",
-    description: "You now have full access to this prompt."
+    description: "You now have full access to this product."
   });
 };
 
@@ -99,8 +99,8 @@ const handlePurchaseComplete = (promptId: number) => {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h2 className="text-2xl font-bold text-tokun mb-2">Prompt Marketplace</h2>
-        <p className="text-muted-foreground">Discover and purchase premium prompts created by experts</p>
+        <h2 className="text-2xl font-bold text-tokun mb-2">Product Marketplace</h2>
+        <p className="text-muted-foreground">Discover and purchase premium products created by experts</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -163,7 +163,7 @@ const handlePurchaseComplete = (promptId: number) => {
                     <div className="absolute inset-0 bg-gradient-to-t from-secondary/80 to-transparent flex items-end justify-center pb-2">
                       <div className="flex items-center gap-1 text-xs text-muted-foreground bg-secondary/90 px-2 py-1 rounded">
                         <Lock className="h-3 w-3" />
-                        Purchase to unlock full prompt
+                        Purchase to unlock full product
                       </div>
                     </div>
                   </>

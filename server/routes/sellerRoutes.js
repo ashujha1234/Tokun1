@@ -874,7 +874,7 @@ async function cancelUnpaidDealsForSuspendedSeller(sellerId) {
       receiverUserId: deal.clientId,
       type: "HIRE_DEAL_CANCELLED_SUSPENSION",
       hireDealId: deal._id,
-      message: "A hire deal was cancelled because the seller's account was suspended.",
+      message: "A hire deal was cancelled because the Creator's account was suspended.",
       meta: { dealId: deal._id, reason: "seller_suspended" },
     });
   }
@@ -887,7 +887,7 @@ async function cancelUnpaidDealsForSuspendedSeller(sellerId) {
   if (fundedDeals.length) {
     await notifyAdmins({
       type: "ADMIN_REVIEW_NEEDED",
-      message: `${fundedDeals.length} funded hire deal(s) need manual refund review — seller was just suspended.`,
+      message: `${fundedDeals.length} funded hire deal(s) need manual refund review — Creator was just suspended.`,
       meta: { sellerId, dealIds: fundedDeals.map((d) => String(d._id)) },
     });
   }

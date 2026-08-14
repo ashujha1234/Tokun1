@@ -161,7 +161,7 @@ router.post("/:promptId/reject", async (req, res) => {
       receiverUserId: prompt.userId,
       type: "PROMPT_MEDIA_REVIEW",
       promptId: prompt._id,
-      message: `Your prompt "${prompt.title}" was rejected after review${note ? `: ${note}` : "."}`,
+      message: `Your product "${prompt.title}" was rejected after review${note ? `: ${note}` : "."}`,
       meta: { adminAction: "rejected", note: note || "" },
     });
 
@@ -183,7 +183,7 @@ router.post("/:promptId/request-edit", async (req, res) => {
       return res.status(400).json({
         success: false,
         error: "note_required",
-        message: "Explain what the seller needs to change.",
+        message: "Explain what the Creator needs to change.",
       });
     }
 
@@ -205,7 +205,7 @@ router.post("/:promptId/request-edit", async (req, res) => {
       receiverUserId: prompt.userId,
       type: "PROMPT_MEDIA_REVIEW",
       promptId: prompt._id,
-      message: `Your prompt "${prompt.title}" needs changes before it can go live: ${String(note).trim()}`,
+      message: `Your product "${prompt.title}" needs changes before it can go live: ${String(note).trim()}`,
       meta: { adminAction: "edit_requested", note: String(note).trim() },
     });
 

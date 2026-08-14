@@ -513,7 +513,7 @@ function PurchasedStatsBar({
       {/* Cards (same look as Uploaded) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="w-full rounded-2xl p-5" style={{ background: "#1C1C1C" }}>
-          <p className="text-white/85 text-sm">Total purchased Prompt</p>
+          <p className="text-white/85 text-sm">Total purchased Product</p>
           <div className="mt-1 text-[22px] font-semibold text-white">{totalCount}</div>
         </div>
 
@@ -558,7 +558,7 @@ function PurchasedStatsBar({
           >
             <option>All membership</option>
             <option>Membership</option>
-            <option>Prompts</option>
+            <option>Products</option>
           </select>
         </div>
 
@@ -584,7 +584,7 @@ function PurchasedStatsBar({
 function EmptyStateCard({
   title,
   description,
-  buttonLabel = "Purchase Prompt",
+  buttonLabel = "Purchase Product",
   icon = "cart",
   onClick,
 }: {
@@ -793,7 +793,7 @@ function HistoryGridCard({
               }}
               className="flex items-center justify-center"
               style={{ minWidth: 48, height: 40, borderRadius: 50, padding: "0 14px", background: "#333335" }}
-              aria-label="Delete prompt"
+              aria-label="Delete product"
               title="Delete"
             >
               <Trash className="h-4 w-4 text-white/90" />
@@ -876,7 +876,7 @@ function UploadedStatsBar({
       {/* Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="w-full rounded-2xl p-5" style={{ background: "#1C1C1C" }}>
-          <p className="text-white/85 text-sm">Total upload Prompt</p>
+          <p className="text-white/85 text-sm">Total upload Product</p>
           <div className="mt-1 text-[22px] font-semibold text-white">{totalUploads}</div>
         </div>
 
@@ -1379,7 +1379,7 @@ const totalEarningsINR = uploadHistory.reduce((sum, p) => {
   // ---- DELETE uploaded prompt ----
   const handleDeletePrompt = async (p: Prompt) => {
     const id = String(p.id);
-    const ok = window.confirm("Delete this prompt permanently?");
+    const ok = window.confirm("Delete this product permanently?");
     if (!ok) return;
 
     try {
@@ -1400,7 +1400,7 @@ const totalEarningsINR = uploadHistory.reduce((sum, p) => {
       if (detailsOpen && detailsPrompt && String((detailsPrompt as any).id) === id) {
         setDetailsOpen(false);
       }
-      toast({ title: "Deleted", description: "Prompt removed from your uploads." });
+      toast({ title: "Deleted", description: "Product removed from your uploads." });
     } catch (err: any) {
       toast({
         title: "Delete failed",
@@ -1474,7 +1474,11 @@ const totalEarningsINR = uploadHistory.reduce((sum, p) => {
          hardcoding "application/json" (as this used to) makes the server parse
          nothing and reject the request as reason_required. */
       const form = new FormData();
-      form.append("reason", composeRefundReason(refundReasonTicks, refundReason));
+      /* Two fields, deliberately separate: `reason` is what the buyer ticked,
+         `description` is what they typed. The admin queue labels and counts them
+         differently, which it cannot do if they arrive concatenated. */
+      form.append("reason", composeRefundReason(refundReasonTicks));
+      if (refundReason.trim()) form.append("description", refundReason.trim());
       refundFiles.forEach((file) => form.append("attachments", file));
 
       const res = await fetch(
@@ -1552,10 +1556,10 @@ useEffect(() => {
     }
     subtitle={
       tab === "purchased"
-        ? "A record of all the prompts you’ve bought in one place."
+        ? "A record of all the products you’ve bought in one place."
         : tab === "subscriptions"
         ? "Manage your plan, billing, and upgrades here."
-        : "Track all the prompts you’ve uploaded in one place."
+        : "Track all the products you’ve uploaded in one place."
     }
   />
 
@@ -1636,9 +1640,9 @@ useEffect(() => {
               ) : purchaseHistory.length === 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-8">
                   <EmptyStateCard
-  title="No prompts purchased yet."
-  description="Visit the marketplace to explore and purchase prompts."
-  buttonLabel="Purchase Prompt"
+  title="No products purchased yet."
+  description="Visit the marketplace to explore and purchase products."
+  buttonLabel="Purchase Product"
   icon="cart"
   onClick={() => navigate("/prompt-marketplace")}
 />
@@ -1683,13 +1687,13 @@ useEffect(() => {
               ) : uploadHistory.length === 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-8">
                   <EmptyStateCard
-  title="No uploaded prompts yet."
-  description="Upload your first prompt from the marketplace screen."
-  buttonLabel="Upload Prompt"
+  title="No uploaded products yet."
+  description="Upload your first product from the marketplace screen."
+  buttonLabel="Upload Product"
   icon="upload"
   onClick={() =>
     toast({
-      title: "Upload Prompt",
+      title: "Upload Product",
       description: "Upload flow will be added later.",
     })
   }

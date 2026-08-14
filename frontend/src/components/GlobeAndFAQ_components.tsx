@@ -19,9 +19,9 @@
 
 // // // // const TICKER_ITEMS = [
 // // // //   "SmartGen AI",
-// // // //   "Prompt Optimization",
+// // // //   "Product Optimization",
 // // // //   "Token Reduction",
-// // // //   "Prompt Marketplace",
+// // // //   "Product Marketplace",
 // // // //   "LLM Compatible",
 // // // //   "GPT-4 · Claude · Gemini",
 // // // //   "Earn from Prompts",
@@ -653,9 +653,9 @@
 
 // // // const TICKER_ITEMS = [
 // // //   "SmartGen AI",
-// // //   "Prompt Optimization",
+// // //   "Product Optimization",
 // // //   "Token Reduction",
-// // //   "Prompt Marketplace",
+// // //   "Product Marketplace",
 // // //   "LLM Compatible",
 // // //   "GPT-4 · Claude · Gemini",
 // // //   "Earn from Prompts",
@@ -1165,9 +1165,9 @@
 
 // // // const TICKER_ITEMS = [
 // // //   "SmartGen AI",
-// // //   "Prompt Optimization",
+// // //   "Product Optimization",
 // // //   "Token Reduction",
-// // //   "Prompt Marketplace",
+// // //   "Product Marketplace",
 // // //   "LLM Compatible",
 // // //   "GPT-4 · Claude · Gemini",
 // // //   "Earn from Prompts",
@@ -1776,9 +1776,9 @@
 
 // // const TICKER_ITEMS = [
 // //   "SmartGen AI",
-// //   "Prompt Optimization",
+// //   "Product Optimization",
 // //   "Token Reduction",
-// //   "Prompt Marketplace",
+// //   "Product Marketplace",
 // //   "LLM Compatible",
 // //   "GPT-4 · Claude · Gemini",
 // //   "Earn from Prompts",
@@ -2646,9 +2646,9 @@
 
 // const TICKER_ITEMS = [
 //   "SmartGen AI",
-//   "Prompt Optimization",
+//   "Product Optimization",
 //   "Token Reduction",
-//   "Prompt Marketplace",
+//   "Product Marketplace",
 //   "LLM Compatible",
 //   "GPT-4 · Claude · Gemini",
 //   "Earn from Prompts",
@@ -3483,12 +3483,12 @@ import * as THREE from "three";
 
 const TICKER_ITEMS = [
   "SmartGen AI",
-  "Prompt Optimization",
+  "Product Optimization",
   "Token Reduction",
-  "Prompt Marketplace",
+  "Product Marketplace",
   "LLM Compatible",
   "GPT-4 · Claude · Gemini",
-  "Earn from Prompts",
+  "Earn from Products",
   "AI-Powered Library",
   "24/7 Support",
 ];
@@ -3562,20 +3562,20 @@ export function TickerSection() {
 const GLOBE_USERS = [
   { lat: 35.6, lon: 139.7, flag: "🇯🇵", name: "Yuki Tanaka", city: "Tokyo, Japan", msg: "I love SmartGen! Saves me hours every day ✨" },
   { lat: 51.5, lon: -0.1, flag: "🇬🇧", name: "James Harper", city: "London, UK", msg: "Cut my GPT-4 costs by 58% with Tokun!" },
-  { lat: 37.7, lon: -122.4, flag: "🇺🇸", name: "Sarah Chen", city: "San Francisco, USA", msg: "Best prompt tool on the market 🔥" },
+  { lat: 37.7, lon: -122.4, flag: "🇺🇸", name: "Sarah Chen", city: "San Francisco, USA", msg: "Best product tool on the market 🔥" },
   { lat: 48.8, lon: 2.3, flag: "🇫🇷", name: "Léa Moreau", city: "Paris, France", msg: "Tokun marketplace made me ₹800 this month! 💰" },
   { lat: 28.6, lon: 77.2, flag: "🇮🇳", name: "Arjun Sharma", city: "New Delhi, India", msg: "SmartGen is a total game changer for AI devs!" },
-  { lat: -23.5, lon: -46.6, flag: "🇧🇷", name: "Lucas Oliveira", city: "São Paulo, Brazil", msg: "Melhor ferramenta de prompts! 🚀" },
+  { lat: -23.5, lon: -46.6, flag: "🇧🇷", name: "Lucas Oliveira", city: "São Paulo, Brazil", msg: "Melhor ferramenta de products! 🚀" },
   { lat: 1.4, lon: 103.8, flag: "🇸🇬", name: "Wei Liang", city: "Singapore", msg: "Our whole team switched to Tokun. No regrets!" },
   { lat: 55.7, lon: 37.6, flag: "🇷🇺", name: "Dmitri Volkov", city: "Moscow, Russia", msg: "Token optimization is genuinely impressive 👏" },
-  { lat: -33.8, lon: 151.2, flag: "🇦🇺", name: "Emma Wilson", city: "Sydney, Australia", msg: "Love the prompt library! Saves so much time ⚡" },
+  { lat: -33.8, lon: 151.2, flag: "🇦🇺", name: "Emma Wilson", city: "Sydney, Australia", msg: "Love the product library! Saves so much time ⚡" },
   { lat: 52.5, lon: 13.4, flag: "🇩🇪", name: "Klaus Weber", city: "Berlin, Germany", msg: "Tokun API integrates perfectly with our stack!" },
-  { lat: 19.0, lon: 72.8, flag: "🇮🇳", name: "Priya Nair", city: "Mumbai, India", msg: "SmartGen wrote a better prompt than me 😂❤️" },
-  { lat: 40.7, lon: -74.0, flag: "🇺🇸", name: "Alex Rivera", city: "New York, USA", msg: "50K prompts on Tokun already? So deserved!" },
+  { lat: 19.0, lon: 72.8, flag: "🇮🇳", name: "Priya Nair", city: "Mumbai, India", msg: "SmartGen wrote a better product than me 😂❤️" },
+  { lat: 40.7, lon: -74.0, flag: "🇺🇸", name: "Alex Rivera", city: "New York, USA", msg: "50K products on Tokun already? So deserved!" },
   { lat: 31.2, lon: 121.5, flag: "🇨🇳", name: "Li Wei", city: "Shanghai, China", msg: "Supports every LLM I use. Perfect tool!" },
   { lat: -1.3, lon: 36.8, flag: "🇰🇪", name: "Amara Osei", city: "Nairobi, Kenya", msg: "Tokun is growing our AI startup faster 🌍" },
   { lat: 59.3, lon: 18.1, flag: "🇸🇪", name: "Erik Lindqvist", city: "Stockholm, Sweden", msg: "Elegant, fast, support is amazing 🙌" },
-  { lat: 25.2, lon: 55.3, flag: "🇦🇪", name: "Farah Al-Nasser", city: "Dubai, UAE", msg: "Prompt marketplace is a brilliant idea! 💡" },
+  { lat: 25.2, lon: 55.3, flag: "🇦🇪", name: "Farah Al-Nasser", city: "Dubai, UAE", msg: "Product marketplace is a brilliant idea! 💡" },
   { lat: 41.0, lon: 29.0, flag: "🇹🇷", name: "Ceren Yilmaz", city: "Istanbul, Turkey", msg: "Tokun helped me 10x my freelance AI work!" },
 ];
 
@@ -4063,7 +4063,7 @@ export function GlobeSection() {
 
       <h2 className="text-4xl md:text-5xl font-bold mb-4">Loved across the globe</h2>
       <p className="text-white/70 text-lg mb-6 max-w-xl mx-auto">
-        Thousands of prompt engineers from every corner of the world trust Tokun.WORLD daily.
+        Thousands of product engineers from every corner of the world trust Tokun.WORLD daily.
       </p>
 
       {/* Globe wrapper — koi background nahi, sirf subtle glow */}
@@ -4158,15 +4158,15 @@ const FAQ_ITEMS = [
   },
   {
     q: "How does the token reduction actually work?",
-    a: "SmartGen analyzes your intent and rewrites prompts to be semantically equivalent but structurally more efficient. It removes redundant instructions, consolidates overlapping requirements, and uses model-specific formatting that reduces token consumption without sacrificing output quality.",
+    a: "SmartGen analyzes your intent and rewrites products to be semantically equivalent but structurally more efficient. It removes redundant instructions, consolidates overlapping requirements, and uses model-specific formatting that reduces token consumption without sacrificing output quality.",
   },
   {
     q: "How do I earn money on the marketplace?",
-    a: "You list your optimized prompts with a price (one-time or subscription). When other users purchase your prompt, you receive 80% of the revenue. Payouts are processed monthly via Stripe to your bank account or PayPal.",
+    a: "You list your optimized products with a price (one-time or subscription). When other users purchase your product, you receive 80% of the revenue. Payouts are processed monthly via Stripe to your bank account or PayPal.",
   },
   {
-    q: "Is my prompt data private and secure?",
-    a: "Yes. All prompts you create are private by default. We never train our models on your prompts without explicit consent. You choose what to share publicly on the marketplace. We are SOC2 Type II compliant.",
+    q: "Is my product data private and secure?",
+    a: "Yes. All products you create are private by default. We never train our models on your products without explicit consent. You choose what to share publicly on the marketplace. We are SOC2 Type II compliant.",
   },
   {
     q: "Can I use the API in production apps?",
@@ -4174,7 +4174,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "What makes Tokun different from just using ChatGPT directly?",
-    a: "Tokun isn't a chatbot — it's an optimization layer. It takes your raw prompt ideas, refines them for any LLM, tracks performance metrics, and lets you monetize your best work. It works on top of any LLM, not instead of it.",
+    a: "Tokun isn't a chatbot — it's an optimization layer. It takes your raw product ideas, refines them for any LLM, tracks performance metrics, and lets you monetize your best work. It works on top of any LLM, not instead of it.",
   },
 ];
 

@@ -1125,7 +1125,7 @@ const onlyDigits = (value: string) => value.replace(/\D/g, "").slice(0, 18);
 
                       <div className="divide-y divide-white/10">
                         {[
-                          { item: "Premium e-commerce\ncopy prompt", date: "Sep 16, 2025" },
+                          { item: "Premium e-commerce\ncopy product", date: "Sep 16, 2025" },
                           { item: "Customization Add-on", date: "Sep 15, 2025" },
                         ].map((row, i) => (
                           <div key={i} className="grid grid-cols-[2fr,1fr,120px] items-center px-4 py-4">

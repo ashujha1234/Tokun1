@@ -162,7 +162,7 @@ function PersonCard({
             {/* Falls back to a plain seller line — a prompt seller has no
                 professional title, and inventing one would be a lie. */}
             <p className="text-white/45 text-[12px] truncate">
-              {person.professionalTitle || (person.isSeller ? "Prompt creator" : "")}
+              {person.professionalTitle || (person.isSeller ? "Product creator" : "")}
             </p>
 
             {person.location && (
@@ -192,7 +192,8 @@ function PersonCard({
               style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.7)" }}
             >
               <Sparkles className="w-3 h-3" />
-              PROMPTS
+              {/* `isSeller` is the data flag; PRODUCTS is what we call it. */}
+              PRODUCTS
             </span>
           )}
           {isTopCreator && (
@@ -282,7 +283,9 @@ function PersonCard({
           )}
           {person.totalUploadedPrompts > 0 && (
             <span className="text-white/40">
-              {person.totalUploadedPrompts} prompt{person.totalUploadedPrompts === 1 ? "" : "s"}
+              {/* "product", not "prompt" — the API field name stays
+                  totalUploadedPrompts; only the wording changes. */}
+              {person.totalUploadedPrompts} product{person.totalUploadedPrompts === 1 ? "" : "s"}
             </span>
           )}
         </div>
@@ -744,7 +747,7 @@ const FindCreatorsPage = () => {
                   // Labels only — the `id`s stay as they are, PeopleRole and
                   // the ranking logic key off them.
                   { id: "freelancers", label: "Creators" },
-                  { id: "sellers", label: "Prompt sellers" },
+                  { id: "sellers", label: "Product Creators" },
                 ] as { id: PeopleRole; label: string }[]
               ).map((r) => {
                 const active = role === r.id;

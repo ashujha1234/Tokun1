@@ -20,16 +20,12 @@ export type TagGroup = {
   tags: string[];
 };
 
+/* A "Model" group (ChatGPT, Midjourney, Sora, …) was here and has been removed
+   on request: those are third-party product names, they date fast, and a tag
+   naming the tool is not what a buyer searches for — they search for what the
+   prompt makes. The catalog below describes subject and craft only. Anyone who
+   still wants a model name can type it; the picker's "Add …" row takes it. */
 export const PROMPT_TAG_GROUPS: TagGroup[] = [
-  {
-    group: "Model",
-    tags: [
-      "ChatGPT", "GPT-4", "Claude", "Gemini", "Llama", "Mistral", "Midjourney",
-      "DALL·E", "Stable Diffusion", "Flux", "Sora", "Runway", "Kling", "Veo",
-      "Luma", "Pika", "Ideogram", "Leonardo AI", "ElevenLabs", "Suno", "Udio",
-      "HeyGen", "Krea", "Recraft", "Nano Banana",
-    ],
-  },
   {
     group: "Image",
     tags: [

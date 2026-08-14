@@ -993,7 +993,7 @@ router.put(
         return res.status(403).json({
           success: false,
           error: "not_editable",
-          message: "This prompt isn't open for editing — it's only editable after an admin specifically requests changes.",
+          message: "This product isn't open for editing — it's only editable after an admin specifically requests changes.",
         });
       }
 
@@ -1191,11 +1191,18 @@ router.get("/admin/all", requireAuth, async (req, res) => {
       return res.status(403).json({ success: false, error: "forbidden" });
     }
 
+    /* description, promptText, tags and sub-categories are selected because the
+       admin catalogue is a MODERATION screen: deciding whether a listing should
+       stay up means reading what it actually sells, and this used to return a
+       thumbnail, a title and a price. promptText is paid content and stays out
+       of every public response — this route is admin-only (the isAdmin check
+       above), which is the whole reason it exists separately from /others. */
     const prompts = await Prompt.find({})
       .populate("categories", "name")
+      .populate("subCategories", "name")
       .populate("userId", "name email")
       .select(
-        "title price tokun_price attachment categories userId flagged deleted deletedAt draft exclusive sold salesCount totalRevenue createdAt mediaValidation.status"
+        "title description promptText tags price tokun_price free attachment categories subCategories userId flagged deleted deletedAt draft exclusive sold salesCount totalRevenue createdAt mediaValidation"
       )
       .sort({ createdAt: -1 })
       .lean();
@@ -1622,7 +1629,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
       await prompt.save();
       return res.json({
         success: true,
-        message: "Prompt soft-deleted (buyers still have access)",
+        message: "Product soft-deleted (buyers still have access)",
       });
     }
 
@@ -1630,7 +1637,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
     await Prompt.deleteOne({ _id: promptId });
     return res.json({
       success: true,
-      message: "Prompt deleted successfully (no buyers)",
+      message: "Product deleted successfully (no buyers)",
     });
   } catch (err) {
     console.error("delete prompt error:", err);

@@ -705,6 +705,30 @@ body.is-loading { overflow: hidden; }
   50% { transform: translate3d(0, 8px, 0); }
 }
 
+/* ── Floating feedback tab (FeedbackButton in Landing.tsx) ──
+   Only the anchoring is here; the rest of its look is inline with the
+   component.
+
+   `top` is declared twice on purpose. A percentage resolves against the
+   viewport, and on a phone the viewport height changes every time the URL bar
+   slides in or out of view — so the tab crept up and down the edge on every
+   scroll, which is what read as it shivering. `svh` is the small-viewport unit:
+   fixed to the URL-bar-visible height, so it does not move. The percentage
+   above it is the fallback for browsers without svh (pre-15.4 Safari,
+   pre-108 Chrome), which drop the second declaration and keep the first. */
+.feedback-tab {
+  position: fixed;
+  right: 0;
+  top: 38%;
+  top: 38svh;
+  z-index: 1000;
+  /* A press that turns into a scroll must not select text or flash a tap
+     highlight, and manipulation drops the 300ms double-tap-zoom wait. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
 .hero__fab {
   position: fixed;
   bottom: 32px;
@@ -2554,6 +2578,19 @@ body.is-loading { overflow: hidden; }
   .loading-screen__token,
   .loading-screen__bar-fill::after,
   .loading-screen__cursor {
+    animation: none;
+  }
+}
+/* Placeholder for the 3D globe while its chunk and 7.8 MB model download —
+   see GlobeFallback in Landing.tsx. Opacity only, so it composites without
+   touching layout. */
+@keyframes globeFallbackPulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [aria-label="Loading the 3D globe"] > div {
     animation: none;
   }
 }

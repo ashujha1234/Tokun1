@@ -51,7 +51,7 @@ const TONE_STYLES: Record<OrderRow["tone"], { color: string; bg: string; border:
 };
 
 const KIND_META: Record<OrderRow["kind"], { icon: string; label: string }> = {
-  prompt: { icon: "📄", label: "Prompt" },
+  prompt: { icon: "📄", label: "Product" },
   service: { icon: "🧩", label: "Service" },
   hire: { icon: "💼", label: "Project" },
 };
@@ -116,7 +116,7 @@ export default function OrdersPage() {
       <div className="mx-auto w-full max-w-4xl px-4 sm:px-6 py-8">
         <h1 className="text-2xl sm:text-3xl font-extrabold">Orders</h1>
         <p className="mt-1.5 text-sm text-white/45">
-          Everything you've bought and sold — prompts, services and projects.
+          Everything you've bought and sold — products, services and projects.
         </p>
 
         {counts.needsAction > 0 && (
@@ -156,8 +156,8 @@ export default function OrdersPage() {
               <p className="text-white/70 font-medium">Nothing here yet</p>
               <p className="mt-1.5 text-sm text-white/40">
                 {side === "selling"
-                  ? "Once someone buys a prompt or books a service from you, it'll show up here."
-                  : "Prompts you buy and creators you hire will show up here."}
+                  ? "Once someone buys a product or books a service from you, it'll show up here."
+                  : "Products you buy and creators you hire will show up here."}
               </p>
               <button
                 type="button"

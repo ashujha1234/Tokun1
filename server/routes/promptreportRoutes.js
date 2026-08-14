@@ -344,9 +344,27 @@ router.post("/", requireAuth, upload.array("screenshots", 5), async (req, res) =
  */
 router.get("/", requireAuth, requireAdmin, async (req, res) => {
   try {
+    /* The whole listing, not just its cover.
+       This used to send title + attachment, so an admin ruling on "this prompt
+       doesn't do what it says" or "this is copied from X" was looking at a
+       thumbnail and a complaint — the one thing that would settle either
+       question, the prompt text itself, was never sent.
+
+       promptText is paid content and is deliberately NOT in any public
+       response. This route is requireAuth + requireAdmin, and reviewing the
+       product is the entire purpose of the screen it feeds. */
     const reports = await PromptReport.find()
       .populate("reporter", "name email")
-      .populate({ path: "prompt", select: "title attachment userId flagged deleted", populate: { path: "userId", select: "name email" } })
+      .populate({
+        path: "prompt",
+        select:
+          "title description promptText attachment userId flagged deleted price free exclusive tags categories subCategories createdAt averageRating downloads mediaValidation",
+        populate: [
+          { path: "userId", select: "name email sellerStatus createdAt" },
+          { path: "categories", select: "name" },
+          { path: "subCategories", select: "name" },
+        ],
+      })
       .populate("category", "name")
       .sort({ createdAt: -1 });
 
@@ -403,7 +421,7 @@ router.post("/:id/flag", requireAuth, requireAdmin, async (req, res) => {
       receiverUserId: report.prompt.userId,
       type: "PROMPT_MEDIA_REVIEW",
       promptId: report.prompt._id,
-      message: `Your prompt "${report.prompt.title}" was flagged after a user report${note ? `: ${note}` : "."} It's now hidden from the marketplace.`,
+      message: `Your product "${report.prompt.title}" was flagged after a user report${note ? `: ${note}` : "."} It's now hidden from the marketplace.`,
       meta: { reportId: report._id, adminAction: "flagged", note: note || "" },
     });
 
@@ -438,7 +456,7 @@ router.post("/:id/suspend", requireAuth, requireAdmin, async (req, res) => {
       receiverUserId: report.prompt.userId,
       type: "PROMPT_MEDIA_REVIEW",
       promptId: report.prompt._id,
-      message: `Your prompt "${report.prompt.title}" was suspended after a user report${note ? `: ${note}` : "."} It's no longer listed on the marketplace.`,
+      message: `Your product "${report.prompt.title}" was suspended after a user report${note ? `: ${note}` : "."} It's no longer listed on the marketplace.`,
       meta: { reportId: report._id, adminAction: "suspended", note: note || "" },
     });
 

@@ -244,8 +244,8 @@ const setTabAndUrl = (next: TabKey) => {
       ) : viewList.length === 0 ? (
         <div className="text-center py-16">
           <img src="/icons/void.png" alt="" className="mx-auto mb-6 h-40 w-auto opacity-90" />
-          <p className="text-white text-xl">No Prompt optimiser history</p>
-          <p className="text-white/70 mt-2">When you generate prompts, they’ll show up here.</p>
+          <p className="text-white text-xl">No Product optimiser history</p>
+          <p className="text-white/70 mt-2">When you generate products, they’ll show up here.</p>
         </div>
       ) : (
         <ul className="flex flex-col items-center gap-4">
@@ -323,7 +323,7 @@ const setTabAndUrl = (next: TabKey) => {
                       className="h-9 px-3 rounded-[10px] bg-[#3A3A3A] hover:bg-[#4A4A4A] inline-flex items-center gap-2"
                       onClick={() =>
                         navigator.clipboard.writeText(preview).then(() =>
-                          toast({ title: "Copied", description: "Prompt copied to clipboard." })
+                          toast({ title: "Copied", description: "Product copied to clipboard." })
                         )
                       }
                     >
@@ -709,7 +709,7 @@ useEffect(() => {
         <div className="text-center py-16">
           <img src="/icons/void.png" alt="" className="mx-auto mb-6 h-40 w-auto opacity-90" />
           <p className="text-white text-xl">No smartgen history</p>
-          <p className="text-white/70 mt-2">When you generate prompts, they’ll show up here.</p>
+          <p className="text-white/70 mt-2">When you generate products, they’ll show up here.</p>
         </div>
       ) : (
         <ul className="flex flex-col items-center gap-4">
@@ -783,7 +783,7 @@ useEffect(() => {
                         navigator.clipboard
                           .writeText(it.text)
                           .then(() =>
-                            toast({ title: "Copied", description: "Prompt copied to clipboard." })
+                            toast({ title: "Copied", description: "Product copied to clipboard." })
                           )
                       }
                     >
@@ -875,7 +875,7 @@ export default function History() {
   </h2>
   <p className="text-white/70 mt-1">
     {tab === "smartgen"
-      ? "All detailed prompts you’ve generated"
+      ? "All detailed products you’ve generated"
       : "All optimiser inputs & outputs you’ve saved"}
   </p>
 </div>
@@ -903,7 +903,7 @@ export default function History() {
       style={tab === "optimizer" ? { backgroundImage: GRADIENT } : undefined}
     >
       <span className="inline-flex items-center gap-2">
-        <span>⚡</span> Prompt Optimiser
+        <span>⚡</span> Product Optimiser
       </span>
     </button>
   </div>

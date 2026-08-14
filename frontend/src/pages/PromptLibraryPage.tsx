@@ -260,7 +260,7 @@ const HeroBanner = () => {
     <div className="relative w-full overflow-hidden rounded-[28px]" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
       <img
         src={BANNERS.hero}
-        alt="Prompt Marketplace"
+        alt="Product Marketplace"
         className="absolute inset-0 w-full h-full object-cover"
       />
       <div
@@ -317,7 +317,7 @@ const HeroBanner = () => {
           <Search className="h-5 w-5 text-white/40 ml-2" />
           <input
             name="q"
-            placeholder="Search prompts for 'Hyper-realistic architecture'..."
+            placeholder="Search products for 'Hyper-realistic architecture'..."
             className="ml-3 flex-1 bg-transparent outline-none text-white placeholder:text-white/40 text-sm"
           />
           <button
@@ -375,9 +375,9 @@ const CreateAppBanner = () => {
           <Rocket className="h-6 w-6 text-white" />
         </div>
         <div>
-          <h4 className="text-white text-[17px] font-semibold">Create an AI app using prompts</h4>
+          <h4 className="text-white text-[17px] font-semibold">Create an AI app using products</h4>
           <p className="text-white/60 text-[13px] mt-1 max-w-[420px]">
-            Turn any prompt into a shareable AI app in minutes — no code required.
+            Turn any product into a shareable AI app in minutes — no code required.
           </p>
         </div>
       </div>
@@ -486,11 +486,11 @@ const FeaturedSection = ({ prompts, onOpenDetails }: { prompts: Prompt[]; onOpen
       <div className="flex items-center justify-between mb-2">
         <div>
           <Eyebrow icon={<ShieldCheck className="h-4 w-4" />}>VERIFIED EXCELLENCE</Eyebrow>
-          <h3 className="mt-2 text-white text-[22px] sm:text-[26px] font-semibold">Featured Prompts</h3>
+          <h3 className="mt-2 text-white text-[22px] sm:text-[26px] font-semibold">Featured Products</h3>
         </div>
       </div>
       <p className="text-white/60 text-[13px] max-w-[520px] mb-6">
-        Curated selection of professional-grade prompts hand-picked by our prompt engineering specialists.
+        Curated selection of professional-grade products hand-picked by our product engineering specialists.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -593,7 +593,7 @@ const BrandIdentitySpotlight = () => {
           </h3>
 
           <p className="mt-4 text-white/65 text-[14px] leading-relaxed max-w-[440px]">
-            Elevate your branding workflow with prompts specifically designed for vector-style
+            Elevate your branding workflow with products specifically designed for vector-style
             logos, consistent brand assets, and crystalline geometric designs.
           </p>
 
@@ -622,7 +622,7 @@ const BrandIdentitySpotlight = () => {
 
         <div className="grid grid-cols-2 gap-4">
           <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.1)" }}>
-            <img src={BANNERS.brandIdentity} alt="Logo & Brand Identity AI prompts" className="w-full h-[220px] object-cover" />
+            <img src={BANNERS.brandIdentity} alt="Logo & Brand Identity AI products" className="w-full h-[220px] object-cover" />
             <p className="text-center text-[12px] text-white/60 py-2">Crystalline Logic</p>
           </div>
           <div className="rounded-2xl overflow-hidden self-end" style={{ border: "1px solid rgba(255,255,255,0.1)" }}>
@@ -707,8 +707,8 @@ const SellHireSection = () => {
       <GlassCTACard
         bgSeed="sell-your-prompts-bg"
         bgGradient="linear-gradient(135deg, #1C1620 0%, #14141A 100%)"
-        title="Sell your prompts"
-        description="Upload your prompts, connect with Stripe, and join a global community of elite prompt engineers. Become a seller in just 2 minutes."
+        title="Sell your products"
+        description="Upload your products, connect with Stripe, and join a global community of elite product engineers. Become a Creator in just 2 minutes."
         ctaLabel="Start Selling"
         ctaBg={GRADIENT}
         onClick={() => navigate("/marketplace/sell")}
@@ -718,7 +718,7 @@ const SellHireSection = () => {
         bgSeed="hire-an-ai-expert-bg"
         bgGradient="linear-gradient(135deg, #101A1E 0%, #14141A 100%)"
         title="Hire an AI Expert"
-        description="Commission custom prompt solutions and fine-tuned AI workflows from world-class prompt engineers for your specific business needs."
+        description="Commission custom product solutions and fine-tuned AI workflows from world-class product engineers for your specific business needs."
         ctaLabel="Find a Creator"
         ctaBg="#1A73E8"
         onClick={() => navigate("/marketplace/experts")}
@@ -850,9 +850,9 @@ const PromptMarketplacePage = () => {
 
         setPrompts(mapped);
       } catch (err: any) {
-        console.error("Failed to load prompts", err);
+        console.error("Failed to load products", err);
         toast({
-          title: "Couldn't load prompts",
+          title: "Couldn't load products",
           description: err?.message || "Please try again.",
         });
       } finally {
@@ -917,7 +917,7 @@ const PromptMarketplacePage = () => {
     const promptId = String(detailsP.id);
     const prompt = prompts.find((p) => p.id === promptId);
     if (prompt && isOwnPrompt(prompt)) {
-      toast({ title: "Not allowed", description: "You cannot buy your own prompt." });
+      toast({ title: "Not allowed", description: "You cannot buy your own product." });
       return;
     }
     if (!token) {
@@ -969,7 +969,7 @@ const PromptMarketplacePage = () => {
             if (vb?.success) {
               setPurchasedPrompts((prev) => (prev.includes(promptId) ? prev : [...prev, promptId]));
               setDetailsOpen(false);
-              toast({ title: "Payment Successful", description: "You now own this prompt." });
+              toast({ title: "Payment Successful", description: "You now own this product." });
             } else {
               toast({ title: "Verification Failed", description: vb?.error || "Unknown error" });
             }
@@ -1020,14 +1020,14 @@ const PromptMarketplacePage = () => {
               had — removed from both, so re-enabling this page (it's currently
               hidden from the nav) doesn't bring it back on its own. */}
 
-          {loading && <p className="text-white/60 text-sm">Loading prompts…</p>}
+          {loading && <p className="text-white/60 text-sm">Loading products…</p>}
 
           {!loading && (
             <>
               <PromptRow
                 eyebrowIcon={<Sparkles className="h-4 w-4" />}
                 eyebrow="JUST ADDED"
-                title="Newest Prompts"
+                title="Newest Products"
                 exploreHref="/marketplace?sort=newest"
                 items={newestPrompts}
                 onOpenDetails={handleOpenDetails}
@@ -1036,7 +1036,7 @@ const PromptMarketplacePage = () => {
               <PromptRow
                 eyebrowIcon={<TrendingUp className="h-4 w-4" />}
                 eyebrow="TRENDING THIS MONTH"
-                title="Most Popular Prompts This Month"
+                title="Most Popular Products This Month"
                 exploreHref="/marketplace?sort=popular&range=month"
                 items={popularThisMonthPrompts}
                 onOpenDetails={handleOpenDetails}
@@ -1045,7 +1045,7 @@ const PromptMarketplacePage = () => {
               <PromptRow
                 eyebrowIcon={<Shirt className="h-4 w-4" />}
                 eyebrow="APPAREL"
-                title="T-Shirt Design Prompts"
+                title="T-Shirt Design Products"
                 exploreHref="/marketplace/category/tshirt-design"
                 items={tshirtDesignPrompts}
                 onOpenDetails={handleOpenDetails}

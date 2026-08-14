@@ -116,7 +116,7 @@ export default function ShareWithTeamModal({
           <div className="flex-1 min-w-0">
             <h3 className="font-medium text-[15px] text-white">{promptTitle}</h3>
             <p className="text-sm text-gray-400 leading-snug">
-              Give your team read access to this prompt
+              Give your team read access to this product
             </p>
           </div>
         </div>

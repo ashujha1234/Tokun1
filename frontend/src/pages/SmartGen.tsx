@@ -51,7 +51,7 @@ export default function SmartGenPage() {
   }, []);
 
   const handleSmartgenPromptGenerated = async (_prompt: string) => {
-    console.log("SmartGen: Prompt generated, refreshing quota...");
+    console.log("SmartGen: Product generated, refreshing quota...");
     try {
       await refreshQuota();
       console.log("SmartGen: Token count refreshed successfully");

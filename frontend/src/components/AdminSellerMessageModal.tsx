@@ -76,7 +76,7 @@ export default function AdminSellerMessageModal({
      plain users, and org owners, but every label in it said "Seller" — so
      messaging an organisation's owner from the Org tab opened a window titled
      "Message Seller" about someone who has never sold anything. */
-  subjectRole = "Seller",
+  subjectRole = "Creator",
   subjectContext,
 }: {
   open: boolean;

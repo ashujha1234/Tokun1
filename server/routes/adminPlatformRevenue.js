@@ -69,7 +69,7 @@ router.get("/by-source", async (req, res) => {
        paid work delivered through escrow. */
     const BUCKET = {
       subscription: "Subscriptions",
-      prompt_purchase: "Prompt sales",
+      prompt_purchase: "Product sales",
       service_purchase: "Services & hire",
       hire_escrow: "Services & hire",
     };
@@ -97,7 +97,7 @@ router.get("/by-source", async (req, res) => {
 
       const day = new Date(t.createdAt).toISOString().slice(0, 10);
       if (!byDay.has(day)) {
-        byDay.set(day, { day, Subscriptions: 0, "Prompt sales": 0, "Services & hire": 0 });
+        byDay.set(day, { day, Subscriptions: 0, "Product sales": 0, "Services & hire": 0 });
       }
       byDay.get(day)[bucket] += signed;
     }

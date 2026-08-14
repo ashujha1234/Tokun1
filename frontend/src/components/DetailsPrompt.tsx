@@ -1139,7 +1139,7 @@ export default function DetailsPrompt({
     if (savingPrompt || !promptRefId) return;
 
     if (!currentUserId) {
-      toast({ title: "Sign in to save", description: "Saved prompts are kept on your account." });
+      toast({ title: "Sign in to save", description: "Saved products are kept on your account." });
       return;
     }
 
@@ -1256,12 +1256,12 @@ const comingSoon = !!prompt?.sellerVerificationPending || sellerHasPayout === fa
     await navigator.clipboard.writeText(prompt?.fullPrompt || "");
     toast({
       title: "Copied",
-      description: "Prompt copied to clipboard.",
+      description: "Product copied to clipboard.",
     });
   } catch {
     toast({
       title: "Copy failed",
-      description: "Unable to copy prompt.",
+      description: "Unable to copy product.",
     });
   }
 };
@@ -1569,7 +1569,7 @@ const comingSoon = !!prompt?.sellerVerificationPending || sellerHasPayout === fa
               >
                 <Info className="h-4 w-4 shrink-0 mt-[1px]" />
                 <span>
-                  Seller verification pending. This listing goes on sale automatically
+                  Creator verification pending. This listing goes on sale automatically
                   once their payout account is approved.
                 </span>
               </div>
@@ -1623,7 +1623,7 @@ const comingSoon = !!prompt?.sellerVerificationPending || sellerHasPayout === fa
                 <button
                   type="button"
                   disabled
-                  title="This seller's payout account is still being verified."
+                  title="This Creator's payout account is still being verified."
                   className="w-full h-12 flex items-center justify-center gap-2 rounded-[10px] font-semibold text-[15px] cursor-not-allowed bg-[#2A2A2A] text-white/50"
                 >
                   <Lock className="w-4 h-4" />
@@ -1660,7 +1660,7 @@ const comingSoon = !!prompt?.sellerVerificationPending || sellerHasPayout === fa
                   {chargedPrice > 0 && platformFee > 0 && (
                     <div className="rounded-[10px] border border-white/10 bg-white/[0.03] p-3 space-y-1.5">
                       <div className="flex items-center justify-between text-[12px] text-white/55">
-                        <span>Prompt price</span>
+                        <span>Product price</span>
                         <span>₹{listPrice.toLocaleString()}</span>
                       </div>
                       <div className="flex items-center justify-between text-[12px] text-white/55">
@@ -1711,7 +1711,7 @@ const comingSoon = !!prompt?.sellerVerificationPending || sellerHasPayout === fa
 
             {isTeamMember && !isOwnPrompt && !owned && Number(prompt.price || 0) > 0 && (
               <p className="text-[11px] text-white/40 text-center">
-                Your organization buys prompts for you — your owner can purchase this and share it.
+                Your organization buys products for you — your owner can purchase this and share it.
               </p>
             )}
 

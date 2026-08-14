@@ -1283,7 +1283,7 @@ export default function NotificationsPage() {
         setOrgPurchasedPrompts(data.sharedPrompts || []);
       }
     } catch (err) {
-      console.error("Failed to load org purchased prompts:", err);
+      console.error("Failed to load org purchased products:", err);
     }
   };
 
@@ -1334,7 +1334,7 @@ export default function NotificationsPage() {
         setPurchasedPromptIds(new Set(ids));
       }
     } catch (err) {
-      console.error("Failed to load purchased prompt ids:", err);
+      console.error("Failed to load purchased product ids:", err);
     }
   };
 
@@ -1443,8 +1443,8 @@ export default function NotificationsPage() {
   const openPromptDetails = (prompt: any) => {
     if (!prompt?._id && !prompt?.id) {
       toast({
-        title: "Prompt not found",
-        description: "Could not open this prompt. Try refreshing.",
+        title: "Product not found",
+        description: "Could not open this product. Try refreshing.",
       });
       return;
     }
@@ -1544,9 +1544,9 @@ export default function NotificationsPage() {
   const renderPromptImage = (path?: string) => {
     if (path) {
       const src = path.startsWith("http") ? path : `${API_BASE}${path}`;
-      return <img src={src} alt="Prompt" className="w-full h-full object-cover" />;
+      return <img src={src} alt="Product" className="w-full h-full object-cover" />;
     }
-    return <img src="/icons/pm2.png" alt="Prompt" className="w-full h-full object-cover" />;
+    return <img src="/icons/pm2.png" alt="Product" className="w-full h-full object-cover" />;
   };
 
   const unreadCount = notifications.filter((n) => !n.read).length;
@@ -1753,7 +1753,7 @@ export default function NotificationsPage() {
       return NotifCard({
         ...base,
         message: n.message || "You have a collaboration invite",
-        title: "Prompt Optimizer Collaboration",
+        title: "Product Optimizer Collaboration",
         attachmentPath: undefined,
         prompt: null,
         actionButton: actionBtn("Accept & Join", () => acceptInvite(n.sessionId || "")),
@@ -1926,7 +1926,7 @@ export default function NotificationsPage() {
                   prompt,
                 });
               })}
-              {!sharedPrompts.length && <EmptyState text="No shared prompts yet." />}
+              {!sharedPrompts.length && <EmptyState text="No shared products yet." />}
             </div>
           )}
 

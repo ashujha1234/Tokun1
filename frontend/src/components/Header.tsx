@@ -2871,7 +2871,7 @@ const handlePostPrompt = () => {
   if (!token) {
     toast({
       title: "Please log in",
-      description: "You must be logged in to upload prompts.",
+      description: "You must be logged in to upload products.",
     });
     navigate("/login");
     return;
@@ -3588,7 +3588,7 @@ const doCheckout = async () => {
     console.groupEnd();
 
     if (!order) {
-      console.log("[Checkout] No paid prompts → directly calling verify");
+      console.log("[Checkout] No paid products → directly calling verify");
 
       const verifyRes = await fetch(VERIFY_URL, {
         method: "POST",
@@ -3616,7 +3616,7 @@ const doCheckout = async () => {
 
       toast({
         title: "Checkout complete",
-        description: "Free prompts added to purchases.",
+        description: "Free products added to purchases.",
       });
       return;
     }
@@ -3629,7 +3629,7 @@ const doCheckout = async () => {
       amount: order.amount,
       currency: order.currency,
       name: "Tokun.world",
-      description: "Prompt Checkout",
+      description: "Product Checkout",
       order_id: order.id,
       handler: async (response: any) => {
         console.log("[Razorpay] Payment success:", response);
@@ -3665,7 +3665,7 @@ const doCheckout = async () => {
         );
         toast({
   title: "Checkout complete",
-  description: "Your prompts are now available.",
+  description: "Your products are now available.",
 });
 // ✅ Cart refresh karo
 fetchCart();
@@ -4206,7 +4206,7 @@ useEffect(() => {
         <Plus className="w-3 h-3 text-white" strokeWidth={2.5} />
       </span>
 
-      <span className="text-sm">Upload Prompt</span>
+      <span className="text-sm">Upload Product</span>
     </button>
     {/* MOBILE UPLOAD BUTTON */}
     <button
@@ -4615,7 +4615,7 @@ useEffect(() => {
           width: "100%",
         }}
       >
-        <span className="text-left">Prompt</span>
+        <span className="text-left">Product</span>
         <span className="text-center">Price</span>
         <span className="text-center">Remove</span>
       </div>
@@ -5344,7 +5344,7 @@ style={{
       {/* Rows */}
       <div className="divide-y divide-white/10">
         {[
-          { item: "Premium e-commerce\ncopy prompt", date: "Sep 16, 2025" },
+          { item: "Premium e-commerce\ncopy product", date: "Sep 16, 2025" },
           { item: "Customization Add-on", date: "Sep 15, 2025" },
         ].map((row, i) => (
           <div

@@ -468,7 +468,7 @@ router.delete("/user/all", requireAuth, async (req, res) => {
        const result = await PromptOptimizer.deleteMany({ createdBy: req.user._id });
     res.json({
       success: true,
-      message: `Deleted ${result.deletedCount} Prompt optimizer records`,
+      message: `Deleted ${result.deletedCount} Product optimizer records`,
     });
   } catch (err) {
     console.error("Delete All prompt Optimizer error:", err);

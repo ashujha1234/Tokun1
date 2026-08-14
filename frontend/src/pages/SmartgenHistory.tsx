@@ -375,7 +375,7 @@ function HistorySmartgenList() {
         <div className="text-center py-16">
           <img src="/icons/void.png" alt="" className="mx-auto mb-6 h-40 w-auto opacity-90" />
           <p className="text-white text-xl">No smartgen history</p>
-          <p className="text-white/70 mt-2">When you generate prompts, they’ll show up here.</p>
+          <p className="text-white/70 mt-2">When you generate products, they’ll show up here.</p>
         </div>
       ) : (
         <ul className="flex flex-col items-center gap-4">
@@ -449,7 +449,7 @@ function HistorySmartgenList() {
                         navigator.clipboard
                           .writeText(it.text)
                           .then(() =>
-                            toast({ title: "Copied", description: "Prompt copied to clipboard." })
+                            toast({ title: "Copied", description: "Product copied to clipboard." })
                           )
                       }
                     >
@@ -482,7 +482,7 @@ export default function SmartgenHistory() {
         <Header />
         <div className="mt-6 mb-4 text-center">
           <h2 className="text-white text-2xl font-semibold">Smartgen History</h2>
-          <p className="text-white/70 mt-1">All detailed prompts you’ve generated</p>
+          <p className="text-white/70 mt-1">All detailed products you’ve generated</p>
         </div>
         <HistorySmartgenList />
         <footer className="py-8 mt-8 text-center text-sm text-muted-foreground">

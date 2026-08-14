@@ -51,7 +51,7 @@ const jobs = [
     type: "Full-time",
     location: "Hybrid",
     description:
-      "Work across prompt workflows, user research, and AI product behavior to improve customer outcomes.",
+      "Work across product workflows, user research, and AI product behavior to improve customer outcomes.",
   },
 ];
 
@@ -102,7 +102,7 @@ export default function CareersPage() {
                     "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)",
                 }}
               >
-                prompt workflows with us
+                product workflows with us
               </span>
             </h1>
 
@@ -188,7 +188,7 @@ export default function CareersPage() {
                     Collaborate with a small, ambitious, product-first team.
                   </li>
                   <li>
-                    Contribute to features that shape prompt creation and
+                    Contribute to features that shape product creation and
                     monetization.
                   </li>
                   <li>

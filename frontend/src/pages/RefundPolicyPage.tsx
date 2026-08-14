@@ -30,7 +30,7 @@ const SECTIONS = [
     title: "1. What this policy covers",
     body: [
       "Tokun handles three kinds of paid transaction, and they are refunded differently because they work differently.",
-      "Prompts (Sections 2–9) are digital files delivered the moment you pay. Nothing is held back, so refunds are a short, fixed window.",
+      "Products (Sections 2–9) are digital files delivered the moment you pay. Nothing is held back, so refunds are a short, fixed window.",
       "Services and Projects (Sections 10–14) are work someone does for you after you pay. Your money is held by our payment provider and is not passed to the creator until the work is approved — so cancelling is possible, but what you get back depends on how much work has already been done.",
       "Subscription plans (Free, Pro, Enterprise) and token top-ups are billed in advance and are covered by the Terms & Conditions, not this policy.",
     ],
@@ -40,14 +40,14 @@ const SECTIONS = [
     body: [
       `You can request a refund on a purchased prompt within ${REFUND_WINDOW} of the purchase. After that the purchase is final and the request will be declined automatically.`,
       `The seller's earnings are held for the same ${REFUND_WINDOW}. This is deliberate: while your refund window is open, the money has not yet reached the seller, so an approved refund does not have to be recovered from them.`,
-      "Free prompts involve no payment and therefore cannot be refunded.",
+      "Free products involve no payment and therefore cannot be refunded.",
     ],
   },
   {
     title: "3. How much you get back",
     body: [
-      "Approved refunds return the full listed price of the item. The seller's price comes back to you in full.",
-      "Tokun's platform fee is not refunded. It pays for processing the transaction — the payment rails, the holding of funds and the support behind it — and that work is done whether or not you keep the purchase. On a ₹100 prompt you pay ₹103.54 and an approved refund returns ₹100.",
+      "Approved refunds return the full listed price of the item. The Creator's price comes back to you in full.",
+      "Tokun's platform fee is not refunded. It pays for processing the transaction — the payment rails, the holding of funds and the support behind it — and that work is done whether or not you keep the purchase. On a ₹100 product you pay ₹103.54 and an approved refund returns ₹100.",
       "Partial refunds are not offered. A refund request is either approved in full or declined.",
     ],
   },
@@ -78,22 +78,22 @@ const SECTIONS = [
   {
     title: "7. Access after a refund",
     body: [
-      "When a refund is approved, your access to the refunded prompt ends. Copies you have already downloaded or saved must be deleted.",
-      "Prompt text delivered to a buyer carries a per-buyer watermark. Continuing to use or redistribute a refunded prompt is a breach of the Terms & Conditions and may result in account suspension.",
+      "When a refund is approved, your access to the refunded product ends. Copies you have already downloaded or saved must be deleted.",
+      "Product text delivered to a buyer carries a per-buyer watermark. Continuing to use or redistribute a refunded product is a breach of the Terms & Conditions and may result in account suspension.",
     ],
   },
   {
     title: "8. Grounds we do and don't refund for",
     body: [
-      "We generally approve: the prompt does not match its description or preview, the prompt is unusable or broken, the listing infringes someone else's rights, or you were charged more than once for the same prompt.",
-      "We generally decline: you changed your mind after viewing the full prompt, the prompt works but produced output you did not personally like, or the request falls outside the refund window.",
+      "We generally approve: the product does not match its description or preview, the product is unusable or broken, the listing infringes someone else's rights, or you were charged more than once for the same product.",
+      "We generally decline: you changed your mind after viewing the full product, the product works but produced output you did not personally like, or the request falls outside the refund window.",
       "Repeated refund requests across many purchases may be reviewed as potential abuse of this policy.",
     ],
   },
   {
-    title: "9. Sellers",
+    title: "9. Creators",
     body: [
-      "If a purchase of your prompt is refunded, the corresponding earnings are reversed — either by reversing the payout before it settles, or by debiting your Wallet if it has already been credited.",
+      "If a purchase of your product is refunded, the corresponding earnings are reversed — either by reversing the payout before it settles, or by debiting your Wallet if it has already been credited.",
       "Tokun's commission on that sale is reversed at the same time, so a refunded sale earns Tokun nothing either.",
       "You are notified in-app whenever one of your sales is refunded.",
     ],
@@ -166,7 +166,7 @@ export default function RefundPolicyPage() {
           </h1>
           <p className="mt-4 text-white/60 text-sm">Last updated: 2026</p>
           <p className="mt-6 text-white/75 max-w-2xl mx-auto leading-relaxed">
-            How refunds work for prompts bought on the Tokun Marketplace — what
+            How refunds work for products bought on the Tokun Marketplace — what
             you can claim, by when, and how the money reaches you.
           </p>
         </section>

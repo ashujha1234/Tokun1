@@ -503,7 +503,7 @@ export default function ModalComponent({
                   handleCreate();
                 }
               }}
-              placeholder="e.g., Advanced Code Review Prompt"
+              placeholder="e.g., Advanced Code Review Product"
               className="mt-2 h-[44px] w-full rounded-[12px] bg-[#252526] px-3 text-[14px] text-white placeholder:text-[#3B3B3B] outline-none"
             />
           </div>

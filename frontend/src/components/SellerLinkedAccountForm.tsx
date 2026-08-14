@@ -465,13 +465,13 @@ export default function SellerLinkedAccountForm({
                   {sellerType === "organization"
                     ? "registered businesses are checked against government records, so this can take a working day or two, and we may ask for your incorporation or GST certificate."
                     : "this usually takes a few minutes."}{" "}
-                  Your prompt will go live on the marketplace as soon as verification completes.
+                  Your product will go live on the marketplace as soon as verification completes.
                 </p>
                 <button
                   onClick={onSubmitted}
                   className="rounded-lg bg-[#1A73E8] px-5 py-2 text-sm font-medium text-white hover:opacity-90"
                 >
-                  Continue to upload your prompt
+                  Continue to upload your product
                 </button>
               </div>
             )}

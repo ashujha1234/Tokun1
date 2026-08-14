@@ -169,7 +169,7 @@ export default function VideoReelCard({
                   <button
                     type="button"
                     disabled
-                    title="This seller's payout account is still being verified."
+                    title="This Creator's payout account is still being verified."
                     className="mp-card__pill mp-card__pill--buy opacity-50 cursor-not-allowed"
                     onClick={(e) => e.stopPropagation()}
                   >

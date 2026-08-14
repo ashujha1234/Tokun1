@@ -353,9 +353,9 @@ export default function PromptValidationAdminDashboard() {
       if (!res.ok || !data?.success) throw new Error(data?.error || data?.message || `${action} failed`);
 
       const ACTION_SUCCESS_MESSAGES: Record<string, string> = {
-        approve: "Prompt approved successfully.",
-        reject: "Prompt rejected successfully.",
-        "request-edit": "Edit request sent to the seller.",
+        approve: "Product approved successfully.",
+        reject: "Product rejected successfully.",
+        "request-edit": "Edit request sent to the Creator.",
         revalidate: "Re-validation started.",
       };
       showToast(ACTION_SUCCESS_MESSAGES[action] || "Done.", "success");
@@ -401,7 +401,7 @@ export default function PromptValidationAdminDashboard() {
             Prompt-Media Match Validation
           </h1>
           <p style={{ fontSize: 14, color: "#6B7280", margin: 0 }}>
-            AI-scored match between uploaded media and prompt text — score is a signal only, you make the final call.
+            AI-scored match between uploaded media and product text — score is a signal only, you make the final call.
           </p>
         </div>
 
@@ -409,7 +409,7 @@ export default function PromptValidationAdminDashboard() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16, marginBottom: 16 }}>
           <StatCard
             icon="📦"
-            label="Total prompts uploaded"
+            label="Total products uploaded"
             value={totals.totalPrompts.toLocaleString()}
             accent="#A78BFA"
           />
@@ -504,7 +504,7 @@ export default function PromptValidationAdminDashboard() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 800 }}>
                 <thead>
                   <tr style={{ background: "#0D1117" }}>
-                    {["Prompt", "Seller", "Type", "Score", "Status", "Checked", "Action"].map((h) => (
+                    {["Prompt", "Creator", "Type", "Score", "Status", "Checked", "Action"].map((h) => (
                       <th
                         key={h}
                         style={{

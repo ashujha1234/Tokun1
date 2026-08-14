@@ -187,7 +187,7 @@ async function handleDownloadInvoice() {
   if (!prompt?.id) {
     toast({
       title: "Invoice error",
-      description: "Prompt ID missing",
+      description: "Product ID missing",
     });
     return;
   }
@@ -352,7 +352,7 @@ pb-8 sm:pb-10
 {/* Full Prompt Text */}
 {owned && prompt.fullPrompt && (
   <div className="mt-8">
-    <div className="text-white/85 text-[14px] mb-2 font-medium">Full Prompt</div>
+    <div className="text-white/85 text-[14px] mb-2 font-medium">Full Product</div>
     <div
       className="w-full rounded-[12px] p-4 text-white/90 text-[14px] leading-relaxed whitespace-pre-wrap select-all"
       style={{ background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.1)" }}
@@ -364,7 +364,7 @@ pb-8 sm:pb-10
         type="button"
         onClick={() => {
           navigator.clipboard.writeText(prompt.fullPrompt!);
-          toast({ title: "Copied!", description: "Prompt copied to clipboard." });
+          toast({ title: "Copied!", description: "Product copied to clipboard." });
         }}
         className="px-4 h-9 rounded-lg text-sm text-white"
         style={{ background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)" }}
@@ -390,7 +390,7 @@ pb-8 sm:pb-10
     className="mt-8 w-full rounded-[12px] p-6 text-center"
     style={{ background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.1)" }}
   >
-    <p className="text-white/60 text-[14px]">Purchase this prompt to unlock the full content.</p>
+    <p className="text-white/60 text-[14px]">Purchase this product to unlock the full content.</p>
   </div>
 )}
 
@@ -604,7 +604,7 @@ export function ReportResourceDialog({
       return;
     }
     if (!promptId) {
-      toast({ title: "Missing prompt", description: "Prompt ID is required." });
+      toast({ title: "Missing product", description: "Product ID is required." });
       return;
     }
     if (!reason || !category) {

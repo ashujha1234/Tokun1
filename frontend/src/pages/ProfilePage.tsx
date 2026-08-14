@@ -3970,7 +3970,7 @@ const sendMessage = () => {
                     Your profile is live, but until your payout account is verified you can't be
                     hired and your services can't be booked. Clients will see you — they just
                     won't be able to pay you. It's one form, it takes a couple of minutes, and it
-                    covers selling prompts as well.
+                    covers selling products as well.
                   </p>
                 </div>
 

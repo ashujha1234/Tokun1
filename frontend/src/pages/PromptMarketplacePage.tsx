@@ -5826,6 +5826,8 @@ type Prompt = {
    * the list correctly.
    */
   categoryNames?: string[];
+  /** The seller's own keywords, also searched. */
+  tags?: string[];
   /** The seller's list price — what they earn from, NOT what the buyer pays. */
   price?: number;
   /**
@@ -6393,7 +6395,7 @@ const LibHeroBanner = ({
         className="mt-4 text-white/85 max-w-[560px] text-[14px] sm:text-[15px] leading-relaxed"
         style={{ textShadow: "0 1px 12px rgba(0,0,0,0.6)" }}
       >
-        Access high-quality prompts for art, logic, architecture, and business optimization.
+        Access high-quality products for art, logic, architecture, and business optimization.
       </p>
 
       <form
@@ -6412,7 +6414,7 @@ const LibHeroBanner = ({
           name="q"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search prompts for 'Hyper-realistic architecture'..."
+          placeholder="Search products for 'Hyper-realistic architecture'..."
           className="ml-2 sm:ml-3 flex-1 min-w-0 bg-transparent outline-none text-white placeholder:text-white/40 text-[13px] sm:text-sm"
         />
         {/* Width lives in classes, not the inline style, so the mobile size
@@ -6473,9 +6475,9 @@ const LibCreateAppBanner = () => {
           <Rocket className="h-6 w-6 text-white" />
         </div>
         <div>
-          <h4 className="text-white text-[17px] font-semibold">Create an AI app using prompts</h4>
+          <h4 className="text-white text-[17px] font-semibold">Create an AI app using products</h4>
           <p className="text-white/60 text-[13px] mt-1 max-w-[420px]">
-            Turn any prompt into a shareable AI app in minutes — no code required.
+            Turn any product into a shareable AI app in minutes — no code required.
           </p>
         </div>
       </div>
@@ -6629,7 +6631,7 @@ const LibOldStyleCard = ({
             }}
           >
             <Info className="h-3.5 w-3.5 shrink-0 mt-[1px]" />
-            <span>Seller verification pending. Goes on sale automatically once approved.</span>
+            <span>Creator verification pending. Goes on sale automatically once approved.</span>
           </div>
         )}
 
@@ -6661,7 +6663,7 @@ const LibOldStyleCard = ({
                   <button
                     type="button"
                     disabled
-                    title="This seller's payout account is still being verified."
+                    title="This Creator's payout account is still being verified."
                     className="mp-card__pill mp-card__pill--buy opacity-50 cursor-not-allowed inline-flex items-center gap-1.5"
                   >
                     <Lock className="h-3.5 w-3.5" />
@@ -6755,11 +6757,11 @@ const LibFeaturedSection = ({
       <div className="flex items-center justify-between mb-2">
         <div>
           <LibEyebrow icon={<ShieldCheck className="h-4 w-4" />}>VERIFIED EXCELLENCE</LibEyebrow>
-          <h3 className="mt-2 text-white text-[22px] sm:text-[26px] font-semibold">Featured Prompts</h3>
+          <h3 className="mt-2 text-white text-[22px] sm:text-[26px] font-semibold">Featured Products</h3>
         </div>
       </div>
       <p className="text-white/60 text-[13px] max-w-[520px] mb-6">
-        Curated selection of professional-grade prompts hand-picked by our prompt engineering specialists.
+        Curated selection of professional-grade products hand-picked by our product engineering specialists.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -6893,7 +6895,7 @@ const LibBrandIdentitySpotlight = ({ onExplore }: { onExplore: () => void }) => 
           </h3>
 
           <p className="mt-4 text-white/65 text-[14px] leading-relaxed max-w-[440px]">
-            Elevate your branding workflow with prompts specifically designed for vector-style
+            Elevate your branding workflow with products specifically designed for vector-style
             logos, consistent brand assets, and crystalline geometric designs.
           </p>
 
@@ -6922,7 +6924,7 @@ const LibBrandIdentitySpotlight = ({ onExplore }: { onExplore: () => void }) => 
 
         <div className="grid grid-cols-2 gap-4">
           <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.1)" }}>
-            <img src={LIB_BANNERS.brandIdentity} alt="Logo & Brand Identity AI prompts" className="w-full h-[220px] object-cover" />
+            <img src={LIB_BANNERS.brandIdentity} alt="Logo & Brand Identity AI products" className="w-full h-[220px] object-cover" />
             <p className="text-center text-[12px] text-white/60 py-2">Crystalline Logic</p>
           </div>
           <div className="rounded-2xl overflow-hidden self-end" style={{ border: "1px solid rgba(255,255,255,0.1)" }}>
@@ -7026,8 +7028,8 @@ const LibSellHireSection = ({ onSell, onHire }: { onSell: () => void; onHire: ()
     <LibGlassCTACard
       bgGradient="linear-gradient(135deg, #1C1620 0%, #14141A 100%)"
       animColors={["#FF14EF", "#7C3AED", "#1A73E8"]}
-      title="Sell your prompts"
-      description="Upload your prompts, connect your payout method, and join a global community of creators. Become a seller in just 2 minutes."
+      title="Sell your products"
+      description="Upload your products, connect your payout method, and join a global community of creators. Become a Creator in just 2 minutes."
       ctaLabel="Start Selling"
       ctaBg={GRADIENT}
       onClick={onSell}
@@ -7036,8 +7038,8 @@ const LibSellHireSection = ({ onSell, onHire }: { onSell: () => void; onHire: ()
     <LibGlassCTACard
       bgGradient="linear-gradient(135deg, #101A1E 0%, #14141A 100%)"
       animColors={["#1A73E8", "#22D3EE", "#0EA5E9"]}
-      title="Hire an AI Expert"
-      description="Commission custom prompt solutions and fine-tuned AI workflows from world-class prompt engineers for your specific business needs."
+      title="Hire an Expert"
+      description="Commission custom product solutions and fine-tuned workflows from world-class product engineers for your specific business needs."
       ctaLabel="Find a Creator"
       ctaBg="#1A73E8"
       onClick={onHire}
@@ -7276,6 +7278,8 @@ const mapPromptDoc = (doc: any): Prompt => {
     ]
       .map((c: any) => (typeof c === "string" ? c : c?.name))
       .filter(Boolean),
+
+    tags: Array.isArray(doc.tags) ? doc.tags.filter(Boolean) : [],
 
     price: typeof doc.price === "number" ? doc.price : 0,
     // Falls back to the list price rather than 0 — a prompt saved before the
@@ -7631,10 +7635,10 @@ const mapped: Prompt[] = (data.prompts || []).map((doc: any) => mapPromptDoc(doc
 
         setPrompts(mapped);
       } catch (err: any) {
-        console.error("Failed to load prompts", err);
+        console.error("Failed to load products", err);
         setLoadError(err?.message || "Failed to load prompts");
         toast({
-          title: "Couldn’t load prompts",
+          title: "Couldn’t load products",
           description: err?.message || "Please try again.",
         });
       } finally {
@@ -7672,8 +7676,8 @@ const mapped: Prompt[] = (data.prompts || []).map((doc: any) => mapPromptDoc(doc
         if (cancelled) return;
         if (!res.ok || !data?.success || !data.prompt) {
           toast({
-            title: "Prompt unavailable",
-            description: "That link points to a prompt that's no longer listed.",
+            title: "Product unavailable",
+            description: "That link points to a product that's no longer listed.",
           });
           openedSharedPromptRef.current = wantedId; // don't retry in a loop
           return;
@@ -7682,7 +7686,7 @@ const mapped: Prompt[] = (data.prompts || []).map((doc: any) => mapPromptDoc(doc
         setDetailsPrompt(mapPromptDoc(data.prompt));
         setDetailsOpen(true);
       } catch (err) {
-        if (!cancelled) console.error("Failed to open shared prompt", err);
+        if (!cancelled) console.error("Failed to open shared product", err);
       }
     })();
 
@@ -7703,12 +7707,21 @@ const filteredPrompts = prompts.filter((p) => {
 
   if (searchQuery.trim()) {
     const q = searchQuery.toLowerCase();
-    if (
-      !p.title.toLowerCase().includes(q) &&
-      !(p.description || "").toLowerCase().includes(q)
-    ) {
-      return false;
-    }
+    /* Searched over the same fields a seller fills in when listing: the title,
+       the description, the categories AND sub-categories they filed it under,
+       and their tags. Title + description alone meant "logo & branding" — a
+       sub-category the upload form offers by name — matched nothing unless the
+       seller happened to repeat those words in their own copy. */
+    const haystack = [
+      p.title,
+      p.description || "",
+      ...(p.categoryNames || [p.category]),
+      ...(p.tags || []),
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    if (!haystack.includes(q)) return false;
   }
 
   if (licenseType === "free" && !p.isFree) return false;
@@ -7755,9 +7768,9 @@ const filteredPrompts = prompts.filter((p) => {
 
   const handlePreview = (prompt: Prompt) => {
     if (purchasedPrompts.includes(prompt.id)) {
-      toast({ title: "Full Prompt Access", description: `You have full access to "${prompt.title}"` });
+      toast({ title: "Full Product Access", description: `You have full access to "${prompt.title}"` });
     } else {
-      toast({ title: "Preview Mode", description: `Showing preview for "${prompt.title}". Purchase to see full prompt.` });
+      toast({ title: "Preview Mode", description: `Showing preview for "${prompt.title}". Purchase to see full product.` });
     }
   };
 
@@ -7794,7 +7807,7 @@ const filteredPrompts = prompts.filter((p) => {
 
    toast({
      title: "Added to Cart",
-     description: title ? `"${title}" was added.` : "Prompt was added.",
+     description: title ? `"${title}" was added.` : "Product was added.",
    });
    return true;
  };
@@ -7817,7 +7830,7 @@ const filteredPrompts = prompts.filter((p) => {
   if (isOwnPrompt(prompt)) {
     toast({
       title: "Not allowed",
-      description: "You cannot buy your own prompt.",
+      description: "You cannot buy your own product.",
     });
     return;
   }
@@ -7945,7 +7958,7 @@ const filteredPrompts = prompts.filter((p) => {
 
   toast({
     title: "Payment Successful",
-    description: "You now own this prompt.",
+    description: "You now own this product.",
   });
 } else {
               toast({ title: "Verification Failed", description: vb?.error || "Unknown error" });
@@ -8042,7 +8055,7 @@ const savePromptToCollections = async ({
   if (!token) {
     toast({
       title: "Please log in",
-      description: "You need to be logged in to save prompts.",
+      description: "You need to be logged in to save products.",
     });
     return { ok: false };
   }
@@ -8152,10 +8165,10 @@ const savePromptToCollections = async ({
       <div className="marketplace__main">
         {/* Title + blurb */}
         <div className="marketplace__head">
-          <h1 className="marketplace__title">Prompt Marketplace</h1>
+          <h1 className="marketplace__title">Product Marketplace</h1>
           <p className="marketplace__subtitle">
             Discover, buy, and sell high-quality AI prompts crafted by creators worldwide.<br />
-            Save hours of trial and error with prompts that actually work, right out of the box.
+            Save hours of trial and error with products that actually work, right out of the box.
           </p>
         </div>
 
@@ -8170,7 +8183,7 @@ const savePromptToCollections = async ({
             <div className="marketplace__search">
               <Search className="marketplace__search-icon" size={20} />
               <input
-                placeholder="Search premium prompts..."
+                placeholder="Search premium products..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="marketplace__search-input"
@@ -8235,7 +8248,7 @@ const savePromptToCollections = async ({
         </div>
 
         {/* Loading / error states */}
-        {loading && <p className="marketplace__status">Loading prompts…</p>}
+        {loading && <p className="marketplace__status">Loading products…</p>}
         {!!loadError && !loading && <p className="marketplace__status marketplace__status--error">{loadError}</p>}
 
         {/* Prompts Grid */}
@@ -8418,7 +8431,7 @@ const savePromptToCollections = async ({
                                   <button
                                     type="button"
                                     disabled
-                                    title="This seller hasn't set up their payout account yet."
+                                    title="This Creator hasn't set up their payout account yet."
                                     className="mp-card__pill mp-card__pill--buy opacity-50 cursor-not-allowed"
                                   >
                                     Seller setup pending
@@ -8451,7 +8464,7 @@ const savePromptToCollections = async ({
                 <p className="marketplace__empty-title">
                   {`Showing 0 premium prompts in ${selectedCategory || "All"}`}
                 </p>
-                <p className="marketplace__empty-sub">No prompts found matching your criteria.</p>
+                <p className="marketplace__empty-sub">No products found matching your criteria.</p>
                 <button
                   type="button"
                   onClick={() => {
@@ -8520,7 +8533,7 @@ const savePromptToCollections = async ({
               exist. The LibCreateAppBanner component is left defined below in
               case it's wanted back. */}
 
-          {loading && <p className="text-white/60 text-sm">Loading prompts…</p>}
+          {loading && <p className="text-white/60 text-sm">Loading products…</p>}
           {!!loadError && !loading && <p className="text-red-400 text-sm">{loadError}</p>}
 
           {/* Every row below hides itself when it has nothing to show, so a
@@ -8560,7 +8573,7 @@ const savePromptToCollections = async ({
               <LibPromptRow
                 eyebrowIcon={<Sparkles className="h-4 w-4" />}
                 eyebrow="JUST ADDED"
-                title="Newest Prompts"
+                title="Newest Products"
                 items={filteredPrompts}
                 renderCard={renderOldStyleCard}
               />
@@ -8568,7 +8581,7 @@ const savePromptToCollections = async ({
               <LibPromptRow
                 eyebrowIcon={<TrendingUp className="h-4 w-4" />}
                 eyebrow="TRENDING THIS MONTH"
-                title="Most Popular Prompts This Month"
+                title="Most Popular Products This Month"
                 items={[...filteredPrompts].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))}
                 renderCard={renderOldStyleCard}
               />
@@ -8580,7 +8593,7 @@ const savePromptToCollections = async ({
               <LibPromptRow
                 eyebrowIcon={<Tag className="h-4 w-4" />}
                 eyebrow="EASY ON THE WALLET"
-                title="Budget-Friendly Prompts"
+                title="Budget-Friendly Products"
                 items={[...filteredPrompts].sort(
                   (a, b) =>
                     (a.isFree ? 0 : cardPrice(a)) - (b.isFree ? 0 : cardPrice(b)),
@@ -8633,7 +8646,7 @@ const savePromptToCollections = async ({
 
           if (payload?.quick) {
             await savePromptToCollections({ refId: saveForPromptId, name: saveForPrompt?.title });
-            toast({ title: "Saved", description: "Prompt saved to All Saved." });
+            toast({ title: "Saved", description: "Product saved to All Saved." });
           } else if (payload?.title) {
             await savePromptToCollections({
               refId: saveForPromptId,
@@ -8643,7 +8656,7 @@ const savePromptToCollections = async ({
             toast({ title: "Collection created", description: `Saved to "${payload.title}".` });
           } else {
             await savePromptToCollections({ refId: saveForPromptId, name: saveForPrompt?.title });
-            toast({ title: "Saved", description: "Prompt saved to All Saved." });
+            toast({ title: "Saved", description: "Product saved to All Saved." });
           }
           setSaveForPromptId(null);
           setSaveForPrompt(null);
@@ -8775,7 +8788,7 @@ const savePromptToCollections = async ({
           apiBase={API_BASE}
           //  apiBase="http://localhost:5000"
           defaultCountry="IN"
-          requiredForLabel="buying and uploading prompts"
+          requiredForLabel="buying and uploading products"
           onVerified={() => {
             if (pendingPurchasePrompt) {
               const p = pendingPurchasePrompt;

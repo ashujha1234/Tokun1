@@ -99,13 +99,13 @@ type CartContextType = {
    to the server's own `message` and then to a generic line, so a new code can
    never surface as a bare identifier. */
 const ADD_ERROR_MESSAGES: Record<string, string> = {
-  not_signed_in: "Sign in to add prompts to your cart.",
-  already_in_cart: "This prompt is already in your cart.",
-  already_purchased: "You already own this prompt — it's in your purchase history.",
-  prompt_already_sold: "This one-time prompt has already been sold.",
-  prompt_deleted: "This prompt is no longer available.",
-  prompt_not_found: "This prompt is no longer available.",
-  seller_not_verified: "This seller is still being verified — the prompt isn't buyable yet.",
+  not_signed_in: "Sign in to add products to your cart.",
+  already_in_cart: "This product is already in your cart.",
+  already_purchased: "You already own this product — it's in your purchase history.",
+  prompt_already_sold: "This one-time product has already been sold.",
+  prompt_deleted: "This product is no longer available.",
+  prompt_not_found: "This product is no longer available.",
+  seller_not_verified: "This Creator is still being verified — the product isn't buyable yet.",
 };
 
 const CartContext = createContext<CartContextType | undefined>(undefined);

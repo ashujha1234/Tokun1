@@ -1286,7 +1286,7 @@ function ComparisonTable() {
         </thead>
 
         <tbody>
-          {row("Basic Access to AI Tools (SmartGen, Prompt Optimizer)", true, true, true)}
+          {row("Basic Access to AI Tools (SmartGen, Product Optimizer)", true, true, true)}
           {row("Chat Support", false, true, true)}
           {row("Email Support", true, true, true)}
           {row("Team Features", false, false, true)}

@@ -510,7 +510,7 @@ export default function RequestToBuyModal({
             <p className="text-sm text-gray-400 leading-snug">
               {userType === "TM"
                 ? "Ask your owner to buy this for you"
-                : "Suggest this prompt to a team member"}
+                : "Suggest this product to a team member"}
             </p>
           </div>
           <div className="text-right font-semibold text-[16px]">

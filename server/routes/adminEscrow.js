@@ -232,7 +232,7 @@ router.post("/:dealId/release", async (req, res) => {
         });
         return res.json({
           success: true,
-          message: `₹${result.sellerPayout} released to the seller.`,
+          message: `₹${result.sellerPayout} released to the Creator.`,
           deal: result.order,
           walletBalance: null,
         });
@@ -625,7 +625,7 @@ router.post("/:orderKind/:orderId/settle", async (req, res) => {
 
     return res.json({
       success: true,
-      message: `Settled at ${percent}% — ₹${result.sellerPayout} to the seller, ₹${result.refundAmount} refunded.`,
+      message: `Settled at ${percent}% — ₹${result.sellerPayout} to the Creator, ₹${result.refundAmount} refunded.`,
       sellerPayout: result.sellerPayout,
       refundAmount: result.refundAmount,
       platformKeeps: result.commissionKept,

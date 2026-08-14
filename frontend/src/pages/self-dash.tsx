@@ -894,7 +894,7 @@
 //                 <nav className="no-scrollbar mt-4 flex gap-2 overflow-x-auto lg:mt-10 lg:block lg:space-y-3">
 //                   <NavButton id="dashboard"    label="DASHBOARD"       icon="/icons/self.svg" />
 //                   <NavButton id="requests"     label="REQUESTS"        icon="/icons/req.svg"  />
-//                   <NavButton id="prompts"      label="MY PROMPTS"      icon="/icons/self.svg" />
+//                   <NavButton id="prompts"      label="MY PRODUCTS"      icon="/icons/self.svg" />
 //                   <NavButton id="subscription" label="MY SUBSCRIPTION" icon="/icons/req.svg"  />
 //                 </nav>
 //               </div>
@@ -2051,7 +2051,7 @@ function ResubmitPromptModal({
 
   const handleSubmit = async () => {
     if (!title.trim() || !promptText.trim()) {
-      setError("Title and prompt text are required.");
+      setError("Title and product text are required.");
       return;
     }
 
@@ -2123,7 +2123,7 @@ function ResubmitPromptModal({
             <textarea className={inputClass} rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
           <div>
-            <label className={labelClass}>Prompt text</label>
+            <label className={labelClass}>Product text</label>
             <textarea className={inputClass} rows={4} value={promptText} onChange={(e) => setPromptText(e.target.value)} />
           </div>
           <div>
@@ -2863,7 +2863,11 @@ const handleAcceptRequest = async (item: any) => {
       /* Multipart, since screenshots can ride along. No Content-Type header on
          purpose — the browser must set it to include the multipart boundary. */
       const form = new FormData();
-      form.append("reason", composeRefundReason(refundReasonTicks, refundReason));
+      /* Two fields, deliberately separate: `reason` is what the buyer ticked,
+         `description` is what they typed. The admin queue labels and counts them
+         differently, which it cannot do if they arrive concatenated. */
+      form.append("reason", composeRefundReason(refundReasonTicks));
+      if (refundReason.trim()) form.append("description", refundReason.trim());
       refundFiles.forEach((file) => form.append("attachments", file));
 
       const res = await fetch(
@@ -2996,7 +3000,7 @@ const handleAcceptRequest = async (item: any) => {
   /* ── Delete uploaded ── */
   const handleDeletePrompt = async (p: Prompt) => {
     const id = String(p.id);
-    const ok = window.confirm("Delete this prompt permanently?");
+    const ok = window.confirm("Delete this product permanently?");
     if (!ok) return;
     try {
       const res = await fetch(`${API_BASE}/api/prompt/${encodeURIComponent(id)}`, {
@@ -3011,7 +3015,7 @@ const handleAcceptRequest = async (item: any) => {
       if (!res.ok || data?.success === false) throw new Error(data?.error || `Failed to delete (${res.status})`);
       setUploadHistory((prev) => prev.filter((x) => String(x.id) !== id));
       if (detailsOpen && detailsPrompt && String((detailsPrompt as any).id) === id) setDetailsOpen(false);
-      toast({ title: "Deleted", description: "Prompt removed from your uploads." });
+      toast({ title: "Deleted", description: "Product removed from your uploads." });
     } catch (err: any) {
       toast({ title: "Delete failed", description: err?.message || "Could not delete." });
     }
@@ -3993,7 +3997,7 @@ const RequestCard = ({ item }: { item: any }) => {
         {/* Header row */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <h2 style={{ margin: 0, fontFamily: "Inter, sans-serif", fontWeight: 800, fontSize: 22, lineHeight: "100%", color: "#FFFFFF" }}>
-            My Prompts
+            My Products
           </h2>
 
           {/* Toggle pill */}
@@ -4079,8 +4083,8 @@ const RequestCard = ({ item }: { item: any }) => {
 
         <p className="mt-2 text-xs text-white/40">
           {promptsTab === "purchased"
-            ? "Prompts you bought"
-            : "Prompts uploaded by you"}
+            ? "Products you bought"
+            : "Products uploaded by you"}
         </p>
       </div>
 
@@ -4236,7 +4240,7 @@ const RequestCard = ({ item }: { item: any }) => {
         ) : isError ? (
           <p className="text-red-400 text-sm py-8 text-center">{isError}</p>
         ) : items.length === 0 ? (
-          <EmptyState message={isPurchased ? "No prompts purchased yet." : "No uploaded prompts yet."} />
+          <EmptyState message={isPurchased ? "No products purchased yet." : "No uploaded products yet."} />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
             {items.map((prompt) => (
@@ -4336,7 +4340,7 @@ const RequestCard = ({ item }: { item: any }) => {
                   <NavButton id="dashboard"       label="DASHBOARD"       icon="/icons/self.svg" />
                   <NavButton id="requests"        label="REQUESTS"        icon="/icons/req.svg"  />
                   <NavButton id="serviceBookings" label="SERVICE BOOKINGS" icon="/icons/service.svg" />
-                  <NavButton id="prompts"         label="MY PROMPTS"      icon="/icons/self.svg" />
+                  <NavButton id="prompts"         label="MY PRODUCTS"      icon="/icons/self.svg" />
                   <NavButton id="subscription"    label="MY SUBSCRIPTION" icon="/icons/req.svg"  />
                 </nav>
               </div>
@@ -4463,7 +4467,7 @@ const RequestCard = ({ item }: { item: any }) => {
 
             {canSell && hasPayoutSetup === false && !requiresResubmission && (
               <div className="relative z-10 mt-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-200">
-                <strong>Action required:</strong> Please set up your bank/linked account so people can buy your prompts.
+                <strong>Action required:</strong> Please set up your bank/linked account so people can buy your products.
                 <button
                   type="button"
                   onClick={() => setSellerFormOpen(true)}
@@ -4490,7 +4494,7 @@ const RequestCard = ({ item }: { item: any }) => {
 
             {hasPayoutSetup === true && activationStatus === "NEEDS_CLARIFICATION" && (
               <div className="relative z-10 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-                <span>Razorpay needs more information to verify your payout account. Your prompts stay hidden from buyers until this is resolved.</span>
+                <span>Razorpay needs more information to verify your payout account. Your products stay hidden from buyers until this is resolved.</span>
                 <button
                   type="button"
                   onClick={() => setClarificationModalOpen(true)}
@@ -4510,7 +4514,7 @@ const RequestCard = ({ item }: { item: any }) => {
 
             {hasPayoutSetup === true && activationStatus === "ACTIVATED" && (
               <div className="relative z-10 mt-4 rounded-lg border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-200">
-                <strong>Payout account activated:</strong> Buyers can now see and purchase your prompts.
+                <strong>Payout account activated:</strong> Buyers can now see and purchase your products.
               </div>
             )}
 

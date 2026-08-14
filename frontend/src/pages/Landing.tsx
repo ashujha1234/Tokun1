@@ -12440,7 +12440,7 @@ const SYNAPSES = [
 ]
 
 const TITLE_FLOATING_TOKENS = [
-  { text: '{prompt}', x: '4%', y: '18%', delay: 0 },
+  { text: '{product}', x: '4%', y: '18%', delay: 0 },
   { text: '01', x: '90%', y: '14%', delay: 1.2 },
   { text: 'λ', x: '92%', y: '72%', delay: 0.6 },
   { text: '⟨AI⟩', x: '2%', y: '68%', delay: 1.8 },
@@ -12449,7 +12449,7 @@ const TITLE_FLOATING_TOKENS = [
 ]
 
 const PAGE_FLOATING_TOKENS = [
-  { text: '{prompt}', x: '6%', y: '14%', delay: 0 },
+  { text: '{product}', x: '6%', y: '14%', delay: 0 },
   { text: '01', x: '88%', y: '10%', delay: 1.2 },
   { text: 'λ', x: '94%', y: '38%', delay: 0.6 },
   { text: '⟨AI⟩', x: '3%', y: '42%', delay: 1.8 },
@@ -13162,7 +13162,7 @@ function GradientButton({ children, variant = 'primary', className = '', to }) {
    ============================================================ */
 
 const STATS = [
-  { label: 'Prompts Optimized', value: '50k' },
+  { label: 'Products Optimized', value: '50k' },
   { label: 'Token Reduction', value: '60%' },
   { label: 'User Rating', value: '4.9', icon: Star },
   { label: 'Support', value: '24/7' },
@@ -13235,8 +13235,8 @@ function Hero() {
           variants={heroFadeUp}
           custom={2}
         >
-          Optimize your LLM prompts, generate better outcomes, and monetize your
-          best prompts—all in one place.
+          Optimize your LLM products, generate better outcomes, and monetize your
+          best products—all in one place.
         </motion.p>
 
         <motion.div
@@ -13248,7 +13248,7 @@ function Hero() {
         >
           <GradientButton variant="primary" to={ROUTES.smartgen}>Try Smartgen</GradientButton>
           <Link to={ROUTES.marketplace} className="hero-btn hero-btn--ghost">
-            <span className="hero-btn__text">Prompt Marketplace</span>
+            <span className="hero-btn__text">Product Marketplace</span>
           </Link>
         </motion.div>
 
@@ -13311,7 +13311,7 @@ const OFFERS = [
   {
     num: '01',
     icon: Zap,
-    title: 'Prompt Optimization',
+    title: 'Product Optimization',
     description:
       'Reduce token usage by up to 60% while maintaining meaning and effectiveness across all LLM platforms.',
     accent: '#38bdf8',
@@ -13321,15 +13321,15 @@ const OFFERS = [
     icon: Sparkles,
     title: 'Smartgen',
     description:
-      'Transform simple ideas into powerful, optimized prompts with our AI-powered generation system.',
+      'Transform simple ideas into powerful, optimized products with our AI-powered generation system.',
     accent: '#a855f7',
   },
   {
     num: '03',
     icon: TrendingUp,
-    title: 'Prompt Marketplace',
+    title: 'Product Marketplace',
     description:
-      'Built a great prompt? Trade it. Monetize your creativity and earn from your best prompt innovations.',
+      'Built a great product? Trade it. Monetize your creativity and earn from your best product innovations.',
     accent: '#ec4899',
     href: ROUTES.marketplace,
   },
@@ -13342,7 +13342,7 @@ const OFFERS = [
     icon: Users,
     title: 'Find Creators',
     description:
-      'Hire the people behind the prompts. Browse verified creators and freelancers, see their work, and book them with payment held safely.',
+      'Hire the people behind the products. Browse verified creators and freelancers, see their work, and book them with payment held safely.',
     accent: '#22d3ee',
     href: ROUTES.findCreators,
   },
@@ -13367,7 +13367,7 @@ function WhatWeOffer() {
           <span className="what-we-offer__eyebrow">Capabilities</span>
           <h2 className="what-we-offer__title">What We Offer</h2>
           <p className="what-we-offer__lead">
-            Everything you need to craft, optimize, and monetize prompts in the
+            Everything you need to craft, optimize, and monetize products in the
             age of AI.
           </p>
         </motion.div>
@@ -13429,7 +13429,7 @@ function WhatWeOffer() {
    LaptopDemo
    ============================================================ */
 
-const TABS = ['Smartgen', 'Prompt Optimiser', 'Prompt Marketplace', 'Prompt Library']
+const TABS = ['Smartgen', 'Product Optimiser', 'Product Marketplace', 'Product Library']
 
 const SAVED_ITEMS = [
   { title: 'SEO Blog Writer', tag: 'Marketing', tokens: '-42%' },
@@ -13481,7 +13481,7 @@ function LaptopDemo() {
                 {TABS.map((tab) => (
                   <span
                     key={tab}
-                    className={`laptop-ui__tab${tab === 'Prompt Library' ? ' laptop-ui__tab--active' : ''}`}
+                    className={`laptop-ui__tab${tab === 'Product Library' ? ' laptop-ui__tab--active' : ''}`}
                   >
                     {tab}
                   </span>
@@ -13521,10 +13521,10 @@ function LaptopDemo() {
 
 const STEPS = [
   { num: '01', icon: MessageSquarePlus, title: 'Input Idea', description: 'Share your concept or requirement', accent: '#38bdf8' },
-  { num: '02', icon: Sparkles, title: 'SmartGen', description: 'AI generates optimized prompts', accent: '#a855f7' },
+  { num: '02', icon: Sparkles, title: 'SmartGen', description: 'AI generates optimized products', accent: '#a855f7' },
   { num: '03', icon: Zap, title: 'Optimize', description: 'Reduce tokens, improve quality', accent: '#818cf8' },
   { num: '04', icon: BarChart3, title: 'Save or Sale', description: 'Store in library or marketplace', accent: '#ec4899' },
-  { num: '05', icon: Wallet, title: 'Earn', description: 'Monetize your best prompts', accent: '#f472b6' },
+  { num: '05', icon: Wallet, title: 'Earn', description: 'Monetize your best products', accent: '#f472b6' },
 ]
 
 function HowItWorks() {
@@ -13604,7 +13604,7 @@ function CtaSection() {
           variants={fadeUp}
         >
           <span className="cta-section__badge">Reach out any time</span>
-          <h2 className="cta-section__title">Ready to optimize your prompts?</h2>
+          <h2 className="cta-section__title">Ready to optimize your products?</h2>
           <p className="cta-section__lead">
             Join thousands of developers who are already saving costs and
             improving efficiency with TOKUN.
@@ -13645,14 +13645,14 @@ function CtaSection() {
 
 const TESTIMONIALS = [
   { name: 'Shivani', role: 'AI ML Developer', initial: 'S', accent: '#38bdf8', quote: "Tokun's optimization is a game-changer. I used to get 10x slower inference; now it's 3x faster with fewer tokens." },
-  { name: 'Marcus Chen', role: 'Staff Engineer', initial: 'M', accent: '#a855f7', quote: 'SmartGen saved our team hours every week. The marketplace is where we discover prompts that work in production.' },
-  { name: 'Elena Rodriguez', role: 'Product Lead', initial: 'E', accent: '#ec4899', quote: 'We cut API costs by 40% without sacrificing output quality. TOKUN feels like a senior prompt engineer on the team.' },
-  { name: 'Bilal Ahmed', role: 'IT Manager', initial: 'B', accent: '#818cf8', quote: 'Implementing TOKUN was smooth and quick. The team adapted fast and our prompt workflows are noticeably cleaner.' },
-  { name: 'Priya Nair', role: 'Prompt Engineer', initial: 'P', accent: '#f472b6', quote: 'The token reduction alone paid for itself in the first month. Optimization quality is consistently impressive.' },
+  { name: 'Marcus Chen', role: 'Staff Engineer', initial: 'M', accent: '#a855f7', quote: 'SmartGen saved our team hours every week. The marketplace is where we discover products that work in production.' },
+  { name: 'Elena Rodriguez', role: 'Product Lead', initial: 'E', accent: '#ec4899', quote: 'We cut API costs by 40% without sacrificing output quality. TOKUN feels like a senior product engineer on the team.' },
+  { name: 'Bilal Ahmed', role: 'IT Manager', initial: 'B', accent: '#818cf8', quote: 'Implementing TOKUN was smooth and quick. The team adapted fast and our product workflows are noticeably cleaner.' },
+  { name: 'Priya Nair', role: 'Product Engineer', initial: 'P', accent: '#f472b6', quote: 'The token reduction alone paid for itself in the first month. Optimization quality is consistently impressive.' },
   { name: 'James Okonkwo', role: 'Founder', initial: 'J', accent: '#38bdf8', quote: 'Our startup runs lean. TOKUN helps us ship AI features without burning through our inference budget.' },
-  { name: 'Sofia Laurent', role: 'Data Scientist', initial: 'S', accent: '#a855f7', quote: 'I love how the library keeps our best prompts organized. Sharing across the team has never been this easy.' },
+  { name: 'Sofia Laurent', role: 'Data Scientist', initial: 'S', accent: '#a855f7', quote: 'I love how the library keeps our best products organized. Sharing across the team has never been this easy.' },
   { name: 'Arjun Patel', role: 'DevOps Lead', initial: 'A', accent: '#ec4899', quote: 'Reliable, fast, and beautifully designed. TOKUN slots right into our stack without any friction.' },
-  { name: 'Nina Kowalski', role: 'Content Strategist', initial: 'N', accent: '#4ade80', quote: 'My marketing prompts went from bloated to razor-sharp. Output quality improved while costs dropped.' },
+  { name: 'Nina Kowalski', role: 'Content Strategist', initial: 'N', accent: '#4ade80', quote: 'My marketing products went from bloated to razor-sharp. Output quality improved while costs dropped.' },
 ]
 
 
@@ -13796,20 +13796,20 @@ function Testimonials() {
 const GLOBE_USERS = [
   { lat: 35.6, lon: 139.7, flag: '🇯🇵', name: 'Yuki Tanaka', city: 'Tokyo, Japan', msg: 'I love SmartGen! Saves me hours every day ✨' },
   { lat: 51.5, lon: -0.1, flag: '🇬🇧', name: 'James Harper', city: 'London, UK', msg: 'Cut my GPT-4 costs by 58% with Tokun!' },
-  { lat: 37.7, lon: -122.4, flag: '🇺🇸', name: 'Sarah Chen', city: 'San Francisco, USA', msg: 'Best prompt tool on the market 🔥' },
+  { lat: 37.7, lon: -122.4, flag: '🇺🇸', name: 'Sarah Chen', city: 'San Francisco, USA', msg: 'Best product tool on the market 🔥' },
   { lat: 48.8, lon: 2.3, flag: '🇫🇷', name: 'Léa Moreau', city: 'Paris, France', msg: 'Tokun marketplace made me ₹800 this month! 💰' },
   { lat: 28.6, lon: 77.2, flag: '🇮🇳', name: 'Arjun Sharma', city: 'New Delhi, India', msg: 'SmartGen is a total game changer for AI devs!' },
-  { lat: -23.5, lon: -46.6, flag: '🇧🇷', name: 'Lucas Oliveira', city: 'São Paulo, Brazil', msg: 'Melhor ferramenta de prompts! 🚀' },
+  { lat: -23.5, lon: -46.6, flag: '🇧🇷', name: 'Lucas Oliveira', city: 'São Paulo, Brazil', msg: 'Melhor ferramenta de products! 🚀' },
   { lat: 1.4, lon: 103.8, flag: '🇸🇬', name: 'Wei Liang', city: 'Singapore', msg: 'Our whole team switched to Tokun. No regrets!' },
   { lat: 55.7, lon: 37.6, flag: '🇷🇺', name: 'Dmitri Volkov', city: 'Moscow, Russia', msg: 'Token optimization is genuinely impressive 👏' },
-  { lat: -33.8, lon: 151.2, flag: '🇦🇺', name: 'Emma Wilson', city: 'Sydney, Australia', msg: 'Love the prompt library! Saves so much time ⚡' },
+  { lat: -33.8, lon: 151.2, flag: '🇦🇺', name: 'Emma Wilson', city: 'Sydney, Australia', msg: 'Love the product library! Saves so much time ⚡' },
   { lat: 52.5, lon: 13.4, flag: '🇩🇪', name: 'Klaus Weber', city: 'Berlin, Germany', msg: 'Tokun API integrates perfectly with our stack!' },
-  { lat: 19.0, lon: 72.8, flag: '🇮🇳', name: 'Priya Nair', city: 'Mumbai, India', msg: 'SmartGen wrote a better prompt than me 😂❤️' },
-  { lat: 40.7, lon: -74.0, flag: '🇺🇸', name: 'Alex Rivera', city: 'New York, USA', msg: '50K prompts on Tokun already? So deserved!' },
+  { lat: 19.0, lon: 72.8, flag: '🇮🇳', name: 'Priya Nair', city: 'Mumbai, India', msg: 'SmartGen wrote a better product than me 😂❤️' },
+  { lat: 40.7, lon: -74.0, flag: '🇺🇸', name: 'Alex Rivera', city: 'New York, USA', msg: '50K products on Tokun already? So deserved!' },
   { lat: 31.2, lon: 121.5, flag: '🇨🇳', name: 'Li Wei', city: 'Shanghai, China', msg: 'Supports every LLM I use. Perfect tool!' },
   { lat: -1.3, lon: 36.8, flag: '🇰🇪', name: 'Amara Osei', city: 'Nairobi, Kenya', msg: 'Tokun is growing our AI startup faster 🌍' },
   { lat: 59.3, lon: 18.1, flag: '🇸🇪', name: 'Erik Lindqvist', city: 'Stockholm, Sweden', msg: 'Elegant, fast, support is amazing 🙌' },
-  { lat: 25.2, lon: 55.3, flag: '🇦🇪', name: 'Farah Al-Nasser', city: 'Dubai, UAE', msg: 'Prompt marketplace is a brilliant idea! 💡' },
+  { lat: 25.2, lon: 55.3, flag: '🇦🇪', name: 'Farah Al-Nasser', city: 'Dubai, UAE', msg: 'Product marketplace is a brilliant idea! 💡' },
   { lat: 41.0, lon: 29.0, flag: '🇹🇷', name: 'Ceren Yilmaz', city: 'Istanbul, Turkey', msg: 'Tokun helped me 10x my freelance AI work!' },
 ]
 
@@ -13835,8 +13835,42 @@ const REVIEW_POSITIONS_MOBILE = [
 // only when the globe is about to enter the viewport — see GlobeSection below.
 const LandingGlobeCanvas = lazy(() => import('./LandingGlobeCanvas'))
 
+/* What sits in the globe's place while its chunk and its 7.8 MB model load.
+   This was a transparent box, so on a slow connection the section rendered its
+   heading and then a hole — indistinguishable from something that had failed.
+   A ring that is visibly waiting is not faster, but it is honest, and it stops
+   people staring at a gap wondering whether to reload. */
 function GlobeFallback() {
-  return <div style={{ width: '100%', aspectRatio: '1 / 1', background: 'transparent' }} />
+  return (
+    <div
+      style={{
+        width: '100%',
+        aspectRatio: '1 / 1',
+        display: 'grid',
+        placeItems: 'center',
+      }}
+      aria-busy="true"
+      aria-label="Loading the 3D globe"
+    >
+      <div
+        style={{
+          width: '62%',
+          aspectRatio: '1 / 1',
+          borderRadius: '50%',
+          border: '1px solid rgba(255,255,255,0.10)',
+          background:
+            'radial-gradient(circle at 50% 40%, rgba(124,58,237,0.14) 0%, rgba(37,99,235,0.06) 55%, transparent 72%)',
+          display: 'grid',
+          placeItems: 'center',
+          animation: 'globeFallbackPulse 1.8s ease-in-out infinite',
+        }}
+      >
+        <span style={{ fontSize: 11, letterSpacing: '0.14em', color: 'rgba(255,255,255,0.35)' }}>
+          LOADING GLOBE
+        </span>
+      </div>
+    </div>
+  )
 }
 
 function ReviewCard({ user, pos, cardKey, isMobile }) {
@@ -13951,7 +13985,12 @@ function GlobeSection() {
   // here. 300px of margin gives the download a head start so the globe is
   // usually already there by the time the section is on screen.
   const canvasHostRef = useRef(null)
-  const globeNear = useInView(canvasHostRef, { once: true, margin: '300px' })
+  /* 1200px of lead — roughly a screen and a half.
+     It was 300px, which at scrolling speed is a fraction of a second, and what
+     starts then is a 7.8 MB model file. On a phone that download is the whole
+     wait: the chunk is already warm (see the idle prefetch below), so the only
+     thing left to buy is time, and this buys about four times as much. */
+  const globeNear = useInView(canvasHostRef, { once: true, margin: '1200px' })
 
   /* Fetch and parse the 3D chunk during idle time, long before the reader gets
      here — the render itself still waits for `globeNear`, so no WebGL context
@@ -14012,7 +14051,7 @@ function GlobeSection() {
 
       <h2 className="globe-section__title">Loved across the globe</h2>
       <p className="globe-section__lead">
-        Thousands of prompt engineers from every corner of the world trust Tokun.WORLD daily.
+        Thousands of product engineers from every corner of the world trust Tokun.WORLD daily.
       </p>
 
       <div className="globe-wrap" style={{ maxWidth: isMobile ? 320 : 460 }}>
@@ -14054,11 +14093,11 @@ function GlobeSection() {
 
 const FAQ_ITEMS = [
   { q: 'What LLMs does Tokun support?', a: 'Tokun supports all major LLMs including GPT-4, GPT-4o, Claude 3 (Sonnet, Opus, Haiku), Gemini Pro/Ultra, Llama 3, Mistral, and more. New models are added within days of their public release.' },
-  { q: 'How does the token reduction actually work?', a: 'SmartGen analyzes your intent and rewrites prompts to be semantically equivalent but structurally more efficient. It removes redundant instructions, consolidates overlapping requirements, and uses model-specific formatting that reduces token consumption without sacrificing output quality.' },
-  { q: 'How do I earn money on the marketplace?', a: 'You list your optimized prompts with a price (one-time or subscription). When other users purchase your prompt, you receive 80% of the revenue. Payouts are processed monthly via Stripe to your bank account or PayPal.' },
-  { q: 'Is my prompt data private and secure?', a: 'Yes. All prompts you create are private by default. We never train our models on your prompts without explicit consent. You choose what to share publicly on the marketplace. We are SOC2 Type II compliant.' },
+  { q: 'How does the token reduction actually work?', a: 'SmartGen analyzes your intent and rewrites products to be semantically equivalent but structurally more efficient. It removes redundant instructions, consolidates overlapping requirements, and uses model-specific formatting that reduces token consumption without sacrificing output quality.' },
+  { q: 'How do I earn money on the marketplace?', a: 'You list your optimized products with a price (one-time or subscription). When other users purchase your product, you receive 80% of the revenue. Payouts are processed monthly via Stripe to your bank account or PayPal.' },
+  { q: 'Is my product data private and secure?', a: 'Yes. All products you create are private by default. We never train our models on your products without explicit consent. You choose what to share publicly on the marketplace. We are SOC2 Type II compliant.' },
   { q: 'Can I use the API in production apps?', a: 'Absolutely. The Tokun API is production-ready with 99.9% SLA uptime. Pro plans include 10,000 API calls/month. Teams plans have no limit. We offer dedicated infrastructure for enterprise customers requiring higher throughput.' },
-  { q: 'What makes Tokun different from just using ChatGPT directly?', a: "Tokun isn't a chatbot — it's an optimization layer. It takes your raw prompt ideas, refines them for any LLM, tracks performance metrics, and lets you monetize your best work. It works on top of any LLM, not instead of it." },
+  { q: 'What makes Tokun different from just using ChatGPT directly?', a: "Tokun isn't a chatbot — it's an optimization layer. It takes your raw product ideas, refines them for any LLM, tracks performance metrics, and lets you monetize your best work. It works on top of any LLM, not instead of it." },
 ]
 
 function FAQSection() {
@@ -14119,7 +14158,7 @@ function FAQSection() {
    ============================================================ */
 
 const PROMPT_STEPS = [
-  'Initializing prompt engine…',
+  'Initializing product engine…',
   'Analyzing token patterns…',
   'Optimizing neural pathways…',
   'Compressing context window…',
@@ -14407,10 +14446,38 @@ function FeedbackButton() {
      offset from the edge with a gap of page showing through — and did it again,
      differently, on the next press. Hover is a pointer idiom; below this width
      the press feedback alone is enough. */
-  const [isCompact, setIsCompact] = useState(false)
+  /* Read on the FIRST render, not in an effect.
+     Starting at `false` meant every load painted the desktop-sized slab and
+     then swapped it for the compact one a frame later — a visible jump from
+     big to small, on the phone where it is most obviously wrong. */
+  const [isCompact, setIsCompact] = useState(() =>
+    typeof window === 'undefined'
+      ? false
+      : window.matchMedia('(max-width: 640px), (hover: none)').matches
+  )
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 640px), (hover: none)')
     const sync = () => setIsCompact(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
+
+  /* Whether this is a real pointer. The hover animation was gated on
+     `isCompact`, whose query is an OR — so a wide screen that reports
+     `hover: none` still got hover, and a phone whose browser claims
+     `hover: hover` (some Android builds do) got it too. On a touch screen
+     hover fires on tap and never leaves, so the tab sat at 1.02 scale, then
+     0.95 on the next press, then back — that is the size flapping between
+     presses. This is the test that actually means "a mouse". */
+  const [hasPointer, setHasPointer] = useState(() =>
+    typeof window === 'undefined'
+      ? true
+      : window.matchMedia('(hover: hover) and (pointer: fine)').matches
+  )
+  useEffect(() => {
+    const mq = window.matchMedia('(hover: hover) and (pointer: fine)')
+    const sync = () => setHasPointer(mq.matches)
     sync()
     mq.addEventListener('change', sync)
     return () => mq.removeEventListener('change', sync)
@@ -14538,13 +14605,19 @@ function FeedbackButton() {
         onClick={() => setOpen(true)}
         aria-label="Share feedback"
         initial={false}
-        whileHover={isCompact ? undefined : { x: -5, scale: 1.02 }}
-        whileTap={{ scale: 0.95 }}
+        whileHover={hasPointer ? { x: -5, scale: 1.02 } : undefined}
+        /* Also pointer-only. A tap that turns into a scroll leaves framer
+           waiting on a pointerup it never gets on some mobile browsers, so the
+           tab stays shrunk mid-scroll — which reads as the thing resizing on
+           its own. The button still gives feedback: it opens the panel. */
+        whileTap={hasPointer ? { scale: 0.95 } : undefined}
+        /* Anchoring lives in .feedback-tab (landing-page.css) because it needs
+           a `top: 38%` → `top: 38svh` fallback pair, and an inline style can
+           only hold one value per property: on a browser without svh the
+           declaration is simply dropped and the tab loses its position
+           entirely. See that rule for why svh matters here. */
+        className="feedback-tab"
         style={{
-          position: 'fixed',
-          right: 0,
-          top: '38%',
-          zIndex: 1000,
           cursor: 'pointer',
           border: 'none',
           padding: 0,

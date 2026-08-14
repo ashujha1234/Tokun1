@@ -87,7 +87,7 @@ router.get("/invoice/by-prompt/:promptId", requireAuth, async (req, res) => {
     if (!purchase) {
       return res.status(404).json({
         success: false,
-        message: "No purchase found for this prompt",
+        message: "No purchase found for this product",
       });
     }
 

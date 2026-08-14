@@ -87,7 +87,7 @@ function blockOrgTeamMemberPurchase(req, res, next) {
     return res.status(403).json({
       success: false,
       error: "team_members_cannot_purchase",
-      message: "Your organization buys prompts for you — ask your org owner to purchase and share this with you.",
+      message: "Your organization buys products for you — ask your org owner to purchase and share this with you.",
     });
   }
   return next();

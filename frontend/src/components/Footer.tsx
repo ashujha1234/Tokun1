@@ -301,10 +301,10 @@ const LINK_GROUPS: { heading: string; links: { label: string; href: string }[] }
   {
     heading: "Product",
     links: [
-      { label: "Prompt Verse", href: "/prompt-marketplace" },
-      { label: "Prompt Library", href: "/prompt-library" },
+      { label: "Product Verse", href: "/prompt-marketplace" },
+      { label: "Product Library", href: "/prompt-library" },
       { label: "SmartGen", href: "/smartgen" },
-      { label: "Prompt Optimizer", href: "/prompt-optimization" },
+      { label: "Product Optimizer", href: "/prompt-optimization" },
       { label: "Hire Creators", href: "/find-creators" },
       { label: "Pricing", href: "/subscription" },
     ],
@@ -411,7 +411,7 @@ export default function Footer() {
             </Link>
 
             <p className="mt-4 text-sm leading-relaxed text-white/55">
-              Buy, sell and sharpen AI prompts. Generate with SmartGen, refine with
+              Buy, sell and sharpen AI products. Generate with SmartGen, refine with
               the Optimizer, and hire creators when you need a human in the loop.
             </p>
 
