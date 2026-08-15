@@ -40,6 +40,7 @@ const { requireAuth, blockIfSuspended } = require("../utils/auth");
 const { notifyAdmins } = require("../utils/notifyAdmins");
 const { withCatalog } = require("../services/freelancerCatalog.service");
 const { validateIntroVideo } = require("../utils/introVideoValidation");
+const { allowlistedUserIds, isAllowlistedEmail } = require("../utils/superCreatorGate");
 
 const { SKILL_LEVELS, LANGUAGE_LEVELS, INTRO_VIDEO_RULES } = FreelancerProfile;
 
@@ -137,7 +138,10 @@ function serializeIntroVideo(video, { includePrivate = false } = {}) {
 }
 
 // Shape sent to the wizard and the freelancer's own edit page.
-function serializeProfile(profile, { payoutReady = false, hasAvatar = false } = {}) {
+function serializeProfile(
+  profile,
+  { payoutReady = false, hasAvatar = false, viewerEmail = null } = {}
+) {
   if (!profile) return null;
 
   const strength = profile.strengthChecklist({ hasAvatar });
@@ -178,6 +182,15 @@ function serializeProfile(profile, { payoutReady = false, hasAvatar = false } = 
     completenessErrors: profile.completenessErrors(),
     strength,
     payoutReady,
+    /* Cleared to publish services and take hire work — an APPROVED intro video
+       or an allowlisted account. This is a read of their own profile, so the
+       email is already in hand (req.user) and no extra query is needed.
+
+       It exists so the creator's own page can say "you can't publish yet, and
+       here's why" instead of letting them fill in a whole listing and meet a
+       403 from POST /api/service. */
+    superCreator:
+      profile.introVideo?.status === "APPROVED" || isAllowlistedEmail(viewerEmail),
     videoRules: INTRO_VIDEO_RULES,
     createdAt: profile.createdAt,
     updatedAt: profile.updatedAt,
@@ -417,7 +430,11 @@ router.get("/me", requireAuth, async (req, res) => {
     return res.json({
       success: true,
       eligible: true,
-      profile: serializeProfile(profile, { payoutReady, hasAvatar: !!req.user.avatarUrl }),
+      profile: serializeProfile(profile, {
+        payoutReady,
+        hasAvatar: !!req.user.avatarUrl,
+        viewerEmail: req.user.email,
+      }),
     });
   } catch (err) {
     console.error("get freelancer profile error:", err);
@@ -601,6 +618,7 @@ router.put("/me", requireAuth, blockIfSuspended, withCatalog, async (req, res) =
       profile: serializeProfile(profile, {
         payoutReady: !!profile.payoutReadyAt,
         hasAvatar: !!req.user.avatarUrl,
+        viewerEmail: req.user.email,
       }),
     });
   } catch (err) {
@@ -659,6 +677,7 @@ router.post("/me/activate", requireAuth, blockIfSuspended, async (req, res) => {
       profile: serializeProfile(profile, {
         payoutReady: !!profile.payoutReadyAt,
         hasAvatar: !!req.user.avatarUrl,
+        viewerEmail: req.user.email,
       }),
     });
   } catch (err) {
@@ -981,6 +1000,14 @@ router.get("/browse", async (req, res) => {
       ).map((b) => String(b.userId))
     );
 
+    /* Who is actually cleared to take work.
+       The same rule the service and proposal endpoints enforce: an APPROVED
+       intro video, or an allowlisted account. The directory has to know it too
+       — a card that badges someone as a Super Creator and offers Hire, when the
+       proposal endpoint will refuse, sends the client through a whole brief to
+       reach a 409. One query for the page, same shape as payoutReady above. */
+    const allowlisted = await allowlistedUserIds(visibleRows.map((p) => p.userId._id));
+
     const freelancers = visibleRows
       .map((p) => ({
         userId: String(p.userId._id),
@@ -1002,6 +1029,11 @@ router.get("/browse", async (req, res) => {
         hourlyRate: p.hourlyRate ?? null,
         availability: p.availability || null,
         hasIntroVideo: p.introVideo?.status === "APPROVED",
+        /* Cleared to sell services and be hired. Distinct from hasIntroVideo,
+           which stays literal — an allowlisted account has no video to show,
+           and claiming otherwise on the card would be a lie about the person. */
+        superCreator:
+          p.introVideo?.status === "APPROVED" || allowlisted.has(String(p.userId._id)),
         activatedAt: p.activatedAt,
         // false = still setting up payouts, so Hire is disabled on their card.
         payoutReady: payoutReadyIds.has(String(p.userId._id)),
@@ -1054,9 +1086,19 @@ router.get("/public/:userId", async (req, res) => {
       .select("_id")
       .lean();
 
+    /* The other half of "can this person be hired": an approved intro video,
+       or an allowlisted account. Sent as a sibling of payoutReady because the
+       profile's Hire button has to answer the same question the proposal
+       endpoint will — the alternative is a client writing a brief to reach a
+       409. Only computed for the unapproved case; approved needs no lookup. */
+    const videoApproved = profile.introVideo?.status === "APPROVED";
+    const superCreator =
+      videoApproved || (await allowlistedUserIds([profile.userId])).size > 0;
+
     return res.json({
       success: true,
       payoutReady: Boolean(payoutAccount),
+      superCreator,
       profile: {
         userId: String(profile.userId),
         displayName: profile.displayName,

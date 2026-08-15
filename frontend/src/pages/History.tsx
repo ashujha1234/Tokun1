@@ -244,7 +244,7 @@ const setTabAndUrl = (next: TabKey) => {
       ) : viewList.length === 0 ? (
         <div className="text-center py-16">
           <img src="/icons/void.png" alt="" className="mx-auto mb-6 h-40 w-auto opacity-90" />
-          <p className="text-white text-xl">No Product optimiser history</p>
+          <p className="text-white text-xl">No Prompt optimiser history</p>
           <p className="text-white/70 mt-2">When you generate products, they’ll show up here.</p>
         </div>
       ) : (
@@ -903,7 +903,7 @@ export default function History() {
       style={tab === "optimizer" ? { backgroundImage: GRADIENT } : undefined}
     >
       <span className="inline-flex items-center gap-2">
-        <span>⚡</span> Product Optimiser
+        <span>⚡</span> Prompt Optimiser
       </span>
     </button>
   </div>

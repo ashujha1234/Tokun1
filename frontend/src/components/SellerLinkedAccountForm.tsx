@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 import {
   peekPayoutStatus,
   getPayoutStatus,
@@ -416,23 +417,42 @@ export default function SellerLinkedAccountForm({
   return (
     <div className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-sm overflow-hidden">
       <div className="h-full w-full flex items-center justify-center p-2 sm:p-3 md:p-4">
+        {/* max-h-full, not `calc(100dvh - 16px)`.
+
+            That calc was the actual reason the close button came out sliced.
+            The wrapper above pads by up to 16px on EACH side (md:p-4), leaving
+            100dvh − 32px of room, but the card was allowed to grow to
+            100dvh − 16px — 16px too tall. Centred in a container that clips,
+            the excess split evenly and took 8px off the top of the card, right
+            where the button sits. A percentage max-height resolves against the
+            wrapper's content box, so it fits exactly at every breakpoint
+            instead of guessing at the padding. */}
         <div
-          className="relative w-full max-w-[560px] rounded-[20px] overflow-hidden border border-white/10 shadow-2xl flex flex-col"
+          className="relative w-full max-w-[560px] max-h-full rounded-[20px] overflow-hidden border border-white/10 shadow-2xl flex flex-col"
           style={{
             background:
               "radial-gradient(900px circle at 50% 0%, rgba(26,115,232,0.25), transparent 60%), linear-gradient(180deg,#070A12 0%, #07080A 100%)",
-            maxHeight: "calc(100dvh - 16px)",
           }}
         >
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 text-white/60 hover:text-white z-10"
-            aria-label="Close"
-          >
-            ✕
-          </button>
+          {/* The close button is a row of its own, not a bare "✕" floated over
+              the content on `absolute top-4 right-4`. Positioned that way it sat
+              on top of a container with `overflow-hidden` and a 20px corner
+              radius, with the form's own scrolling heading passing underneath —
+              which is what left it looking sliced. A flex row at the top of the
+              card cannot be clipped by the corner and nothing can scroll
+              through it. */}
+          <div className="flex shrink-0 items-center justify-end px-4 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-white/5 text-white/70 transition hover:bg-white/10 hover:text-white"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" strokeWidth={2.25} />
+            </button>
+          </div>
 
-          <div className="p-6 overflow-y-auto">
+          <div className="px-6 pb-6 pt-1 overflow-y-auto">
             {phase === "checking" && (
               <p className="text-white/70 text-sm">Checking your payout setup…</p>
             )}

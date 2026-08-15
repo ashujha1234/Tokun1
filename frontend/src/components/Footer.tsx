@@ -301,10 +301,10 @@ const LINK_GROUPS: { heading: string; links: { label: string; href: string }[] }
   {
     heading: "Product",
     links: [
-      { label: "Product Verse", href: "/prompt-marketplace" },
-      { label: "Product Library", href: "/prompt-library" },
+      { label: "Prompt Verse", href: "/prompt-marketplace" },
+      // "Product Library" was here and has been removed on request.
       { label: "SmartGen", href: "/smartgen" },
-      { label: "Product Optimizer", href: "/prompt-optimization" },
+      { label: "Prompt Optimizer", href: "/prompt-optimization" },
       { label: "Hire Creators", href: "/find-creators" },
       { label: "Pricing", href: "/subscription" },
     ],

@@ -113,6 +113,7 @@ const ServiceOrder = require("../models/ServiceOrder");
 const Category = require("../models/Category");
 // Supplies the seller's professional title on the service detail page.
 const FreelancerProfile = require("../models/FreelancerProfile");
+const { assertSuperCreatorActive, isAllowlistedEmail } = require("../utils/superCreatorGate");
 const Notification = require("../models/Notification");
 const Message = require("../models/Message");
 const razorpay = require("../utils/razorpay");
@@ -330,6 +331,19 @@ router.post(
           success: false,
           error: "invalid_category",
           message: "Pick a category from the list.",
+        });
+      }
+
+      /* No unapproved intro video, no services. Checked before anything else
+         about the service is validated: the answer doesn't depend on what they
+         are trying to publish, so there is no reason to make them find out
+         after filling the form. */
+      const gate = await assertSuperCreatorActive(req.user._id);
+      if (!gate.ok) {
+        return res.status(gate.status).json({
+          success: false,
+          error: gate.error,
+          message: gate.message,
         });
       }
 
@@ -1936,7 +1950,12 @@ router.get("/:serviceId", async (req, res) => {
     }
 
     const service = await Service.findById(serviceId)
-      .populate("userId", "name avatarUrl isVerified sellerStatus isDeleted createdAt location sellerRating sellerReviewsCount")
+      .populate(
+        "userId",
+        // email is read only to answer the video-gate allowlist below; it is
+        // never returned to the client.
+        "name email avatarUrl isVerified sellerStatus isDeleted createdAt location sellerRating sellerReviewsCount"
+      )
       .populate("category", "name parent")
       .populate("subCategory", "name parent")
       .lean();
@@ -2012,6 +2031,13 @@ router.get("/:serviceId", async (req, res) => {
         rating: seller.sellerRating || 0,
         reviewsCount: seller.sellerReviewsCount || 0,
         isFreelancer: !!freelancer,
+        /* Cleared to sell services and be hired — the same rule create and
+           create-proposal enforce. Drives the label under their name, so a
+           creator who can't trade yet isn't announced as a Super Creator. */
+        superCreator: Boolean(
+          freelancer &&
+            (freelancer.introVideo?.status === "APPROVED" || isAllowlistedEmail(seller.email))
+        ),
         professionalTitle: freelancer?.professionalTitle || "",
         languages: freelancer?.languages || [],
         hourlyRate: freelancer?.hourlyRate ?? null,

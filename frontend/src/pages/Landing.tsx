@@ -11979,6 +11979,7 @@ import {
   LogOut,
   MessageSquarePlus,
   Mouse,
+  Package,
   Play,
   Sparkles,
   Star,
@@ -12211,6 +12212,9 @@ function HeroAccountMenu() {
        the same reason: payments settle through Razorpay and seller earnings go
        to a linked account, so there is no balance to manage day to day. */
     { label: 'Dashboard', icon: LayoutDashboard, onClick: () => go('/self-dash') },
+    // Kept in step with the Header's account menu — same entry, same target:
+    // the dashboard's "My Products" tab (purchased + uploaded).
+    { label: 'My Products', icon: Package, onClick: () => go('/self-dash?tab=prompts&p=purchased') },
   ]
 
   const secondaryItems = [
@@ -13429,7 +13433,7 @@ function WhatWeOffer() {
    LaptopDemo
    ============================================================ */
 
-const TABS = ['Smartgen', 'Product Optimiser', 'Product Marketplace', 'Product Library']
+const TABS = ['Smartgen', 'Prompt Optimiser', 'Product Marketplace', 'Product Library']
 
 const SAVED_ITEMS = [
   { title: 'SEO Blog Writer', tag: 'Marketing', tokens: '-42%' },

@@ -542,7 +542,7 @@ const SavedOptimizations = () => {
         ) : pageList.length === 0 ? (
           <div className="text-center py-16">
             <img src="/icons/void.png" alt="" className="mx-auto mb-6 h-40 w-auto opacity-90" />
-            <p className="text-white text-xl">No Product optimiser history</p>
+            <p className="text-white text-xl">No Prompt optimiser history</p>
             <p className="text-white/70 mt-2">When you generate products, they’ll show up here.</p>
           </div>
         ) : (

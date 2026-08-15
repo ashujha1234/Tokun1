@@ -4327,6 +4327,7 @@ const mongoose = require("mongoose");
 const path = require("path");
 const multer = require("multer");
 const pdfParse = require("pdf-parse");
+const docToMarkdown = require("./services/docToMarkdown");
 const cron = require("node-cron");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -5145,6 +5146,76 @@ function cleanExtractedPdfText(raw) {
     .trim();
 }
 
+/* Shared by /pdf-to-prompt and /doc-to-markdown: turn extracted document text
+   into one ready-to-use prompt. Both routes reach the model the same way, so
+   the system prompt lives here once — editing it in two places was how the two
+   paths would quietly drift apart. */
+async function buildPromptFromDocumentText(documentText, { instructions = "", sourceLabel = "" } = {}) {
+  // gpt-4o-mini has a 128k-token context window, so we can afford to send a lot
+  // of the document — this was the main reason long documents lost content.
+  const MAX_CHARS = 60000;
+  const truncated = documentText.length > MAX_CHARS;
+  const textForModel = truncated ? documentText.slice(0, MAX_CHARS) : documentText;
+
+  const systemPrompt = `You are an expert prompt engineer. The user has uploaded a document; you're given its extracted text below (${sourceLabel ? `${sourceLabel}, ` : ""}${documentText.length.toLocaleString()} characters${truncated ? `, truncated to the first ${MAX_CHARS.toLocaleString()}` : ""}). Your job is to read it thoroughly and produce ONE polished, ready-to-use AI prompt built from its content, so the user can paste it directly into any LLM (ChatGPT, Claude, Gemini, etc.) and get a great, on-topic result.
+
+How to read the document:
+- Identify what the document actually is (a report, contract, resume, spec, article, dataset, syllabus, spreadsheet, slide deck, etc.) and let that shape the prompt's framing.
+- Extract and preserve EVERY concrete detail that matters: specific names, numbers, dates, figures, definitions, requirements, constraints, and terminology — do not water them down into vague generalities or a loose summary.
+- The text is Markdown, so use its structure: headings mark sections, tables carry the real data, lists carry enumerated requirements.
+- Ignore boilerplate noise (running headers/footers, page numbers, repeated letterhead) if present — focus on substantive content.
+
+How to write the prompt:
+- Output ONLY the final prompt text — no preamble, no explanation, no meta-commentary, no markdown fences.
+- The prompt must be fully self-contained: assume the reader has NOT seen the original document, so restate all the key facts, data, and requirements an LLM needs to act on it well.
+- Structure it clearly with short paragraphs and/or bullet points — e.g. background/context, then the specific task or question, then any constraints, format, or tone requirements.
+- End with a precise instruction telling the LLM exactly what output is wanted.
+- Be thorough rather than brief: aim for roughly 200–600 words, scaling with how much substantive content the document actually contains.`;
+
+  const trimmedInstructions = String(instructions || "").trim();
+  const userMessage = trimmedInstructions
+    ? `Extracted document text:\n"""${textForModel}"""\n\nThe user also asked: "${trimmedInstructions}"\n\nConvert this into a single, ready-to-use prompt as instructed above.`
+    : `Extracted document text:\n"""${textForModel}"""\n\nConvert this into a single, ready-to-use prompt as instructed above.`;
+
+  const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: process.env.OPENAI_STREAM_MODEL || "gpt-4o-mini",
+      temperature: 0.5,
+      max_tokens: 1700,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
+    }),
+  });
+
+  if (!openaiRes.ok) {
+    const errData = await openaiRes.json().catch(() => ({}));
+    const err = new Error(errData?.error?.message || "openai_error");
+    err.httpStatus = 502;
+    throw err;
+  }
+
+  const data = await openaiRes.json();
+  const promptText = (data?.choices?.[0]?.message?.content || "").trim();
+  if (!promptText) {
+    const err = new Error("empty_response");
+    err.httpStatus = 502;
+    throw err;
+  }
+
+  const usage = data?.usage
+    ? { promptTokens: data.usage.prompt_tokens, completionTokens: data.usage.completion_tokens, totalTokens: data.usage.total_tokens }
+    : null;
+
+  return { prompt: promptText, truncated, usage };
+}
+
 app.post(
   "/api/smartgen/pdf-to-prompt",
   requireAuth,
@@ -5177,74 +5248,115 @@ app.post(
         return res.status(400).json({ success: false, error: "pdf_has_no_extractable_text" });
       }
 
-      // gpt-4o-mini has a 128k-token context window, so we can afford to send a lot more
-      // of the document than before — this was the main reason long PDFs lost content.
-      const MAX_CHARS = 60000;
-      const truncated = extractedText.length > MAX_CHARS;
-      const textForModel = truncated ? extractedText.slice(0, MAX_CHARS) : extractedText;
-
-      const instructions = typeof req.body?.instructions === "string" ? req.body.instructions.trim() : "";
-
-      const systemPrompt = `You are an expert prompt engineer. The user has uploaded a PDF document; you're given its extracted text below (${pageCount ? `${pageCount} page(s), ` : ""}${extractedText.length.toLocaleString()} characters${truncated ? `, truncated to the first ${MAX_CHARS.toLocaleString()}` : ""}). Your job is to read it thoroughly and produce ONE polished, ready-to-use AI prompt built from its content, so the user can paste it directly into any LLM (ChatGPT, Claude, Gemini, etc.) and get a great, on-topic result.
-
-How to read the document:
-- Identify what the document actually is (a report, contract, resume, spec, article, dataset, syllabus, etc.) and let that shape the prompt's framing.
-- Extract and preserve EVERY concrete detail that matters: specific names, numbers, dates, figures, definitions, requirements, constraints, and terminology — do not water them down into vague generalities or a loose summary.
-- Ignore boilerplate noise (running headers/footers, page numbers, repeated letterhead) if present — focus on substantive content.
-
-How to write the prompt:
-- Output ONLY the final prompt text — no preamble, no explanation, no meta-commentary, no markdown fences.
-- The prompt must be fully self-contained: assume the reader has NOT seen the original PDF, so restate all the key facts, data, and requirements an LLM needs to act on it well.
-- Structure it clearly with short paragraphs and/or bullet points — e.g. background/context, then the specific task or question, then any constraints, format, or tone requirements.
-- End with a precise instruction telling the LLM exactly what output is wanted.
-- Be thorough rather than brief: aim for roughly 200–600 words, scaling with how much substantive content the document actually contains.`;
-
-      const userMessage = instructions
-        ? `Extracted PDF text:\n"""${textForModel}"""\n\nThe user also asked: "${instructions}"\n\nConvert this into a single, ready-to-use prompt as instructed above.`
-        : `Extracted PDF text:\n"""${textForModel}"""\n\nConvert this into a single, ready-to-use prompt as instructed above.`;
-
-      const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: process.env.OPENAI_STREAM_MODEL || "gpt-4o-mini",
-          temperature: 0.5,
-          max_tokens: 1700,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userMessage },
-          ],
-        }),
+      const { prompt, truncated, usage } = await buildPromptFromDocumentText(extractedText, {
+        instructions: req.body?.instructions,
+        sourceLabel: pageCount ? `${pageCount} page(s)` : "",
       });
 
-      if (!openaiRes.ok) {
-        const errData = await openaiRes.json().catch(() => ({}));
-        return res.status(502).json({
-          success: false,
-          error: errData?.error?.message || "openai_error",
-        });
-      }
-
-      const data = await openaiRes.json();
-      const promptText = (data?.choices?.[0]?.message?.content || "").trim();
-      if (!promptText) {
-        return res.status(502).json({ success: false, error: "empty_response" });
-      }
-
-      const usage = data?.usage
-        ? { promptTokens: data.usage.prompt_tokens, completionTokens: data.usage.completion_tokens, totalTokens: data.usage.total_tokens }
-        : null;
-
-      return res.json({ success: true, prompt: promptText, truncated, usage });
+      return res.json({ success: true, prompt, truncated, usage });
     } catch (err) {
       console.error("[pdf-to-prompt] error:", err?.message || err);
-      return res.status(500).json({ success: false, error: "server_error" });
+      return res.status(err?.httpStatus || 500).json({
+        success: false,
+        error: err?.httpStatus === 502 ? err.message : "server_error",
+      });
     }
   }
 );
+
+/* ===============================
+   SMARTGEN — ANY DOCUMENT → MARKDOWN (and optionally → PROMPT)
+   Supersedes /pdf-to-prompt above, which stays for backward compatibility.
+   Must be registered before app.use('/api/smartgen', ...) for the same reason.
+
+   `mode` decides what the user gets back:
+     markdown → clean .md only. No LLM call, so no tokens are spent and the
+                caller is not quota-gated — conversion is pure local CPU.
+     prompt   → the old behaviour: read the doc, return a ready-to-use prompt.
+     both     → both payloads from a single upload and a single conversion.
+================================ */
+const docToMarkdownUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: docToMarkdown.MAX_FILE_BYTES },
+});
+
+app.post(
+  "/api/smartgen/doc-to-markdown",
+  requireAuth,
+  docToMarkdownUpload.single("file"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: "file_required" });
+      }
+
+      const mode = ["markdown", "prompt", "both"].includes(req.body?.mode)
+        ? req.body.mode
+        : "prompt";
+      const wantsPrompt = mode === "prompt" || mode === "both";
+
+      if (wantsPrompt && !process.env.OPENAI_API_KEY) {
+        return res.status(500).json({ success: false, error: "missing_openai_key" });
+      }
+
+      let converted;
+      try {
+        converted = await docToMarkdown.convertToMarkdown(
+          req.file.buffer,
+          req.file.originalname
+        );
+      } catch (err) {
+        if (err instanceof docToMarkdown.DocConversionError) {
+          return res.status(400).json({ success: false, error: err.code, message: err.message });
+        }
+        throw err;
+      }
+
+      const payload = {
+        success: true,
+        mode,
+        filename: req.file.originalname,
+        format: converted.format,
+        charCount: converted.charCount,
+      };
+
+      // Markdown always rides along for `both` so the client doesn't have to
+      // upload the same file twice to get the other half.
+      if (mode === "markdown" || mode === "both") {
+        payload.markdown = converted.markdown;
+      }
+
+      if (wantsPrompt) {
+        const { prompt, truncated, usage } = await buildPromptFromDocumentText(converted.markdown, {
+          instructions: req.body?.instructions,
+          sourceLabel: `${converted.format.toUpperCase()} document`,
+        });
+        payload.prompt = prompt;
+        payload.truncated = truncated;
+        payload.usage = usage;
+      }
+
+      return res.json(payload);
+    } catch (err) {
+      console.error("[doc-to-markdown] error:", err?.message || err);
+      return res.status(err?.httpStatus || 500).json({
+        success: false,
+        error: err?.httpStatus === 502 ? err.message : "server_error",
+      });
+    }
+  }
+);
+
+/* Lets the frontend build its file-picker `accept` list from the server's
+   actual capability instead of a hand-maintained copy that drifts. */
+app.get("/api/smartgen/supported-formats", (_req, res) => {
+  res.json({
+    success: true,
+    extensions: docToMarkdown.SUPPORTED_EXTENSIONS,
+    accept: docToMarkdown.ACCEPT_ATTRIBUTE,
+    maxBytes: docToMarkdown.MAX_FILE_BYTES,
+  });
+});
 
 app.use("/api/smartgen-detect", smartgenDetectRoutes);
 app.use("/api/smartgen", smartgenRoutes);

@@ -5,7 +5,7 @@ import {
   History, Zap, Sparkles, Copy, RotateCcw,
   ChevronDown, Bookmark, Pencil, Code2, Video,
   Image, Share2, Loader2, ArrowRight, X, Check, Search,
-  AlertTriangle, Paperclip, FileText,
+  AlertTriangle, Paperclip, FileText, Download, FileDown, Wand2,
 } from "lucide-react";
 import { SiOpenai, SiClaude, SiGooglegemini, SiPerplexity, SiX } from "react-icons/si";
 import { llmService } from "@/services/llmService";
@@ -27,6 +27,32 @@ const API_BASE   = (import.meta.env.VITE_API_URL || "http://localhost:5000").rep
 const GRADIENT   = "linear-gradient(270deg, #FF14EF 0%, #1A73E8 100%)";
 const PILL_BG    = "linear-gradient(90deg, #ec4899 0%, #8b5cf6 50%, #3b82f6 100%)";
 const GEN_BG     = "linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)";
+
+/* ─── Document upload ─────────────────────────────────────────────────────── */
+/* Mirrors SUPPORTED_EXTENSIONS in server/services/docToMarkdown.js. The server
+   also serves this list from /api/smartgen/supported-formats; this constant is
+   the offline default so the picker works before that call lands. */
+const DOC_EXTENSIONS = [
+  "pdf",
+  "doc", "docx", "docm", "odt", "rtf", "epub",
+  "ppt", "pptx", "pptm", "pps", "ppsx", "ppsm", "pot", "odp",
+  "xls", "xlsx", "xlsm", "xlsb", "ods",
+  "csv", "txt", "md", "markdown",
+];
+const DOC_ACCEPT    = DOC_EXTENSIONS.map(e => `.${e}`).join(",");
+const DOC_MAX_BYTES = 20 * 1024 * 1024;
+
+/* What the user chose in the popup after attaching a file. */
+type DocMode = "markdown" | "prompt" | "both";
+
+const DOC_ERRORS: Record<string, string> = {
+  needs_ocr: "This document has no selectable text — it looks like scanned images. Try a version with real text.",
+  could_not_read_document: "This file couldn't be read — it may be corrupted or password-protected.",
+  unsupported_format: "That file type isn't supported yet.",
+  empty_document: "No readable content was found in this document.",
+  file_required: "No file was received — please attach it again.",
+  missing_openai_key: "Prompt generation is unavailable right now.",
+};
 
 /* ─── Ideas strip data ────────────────────────────────────────────────────── */
 const EXAMPLE_IDEAS = [
@@ -380,6 +406,98 @@ function DeepModal({
   );
 }
 
+/* ─── Document Mode Modal ────────────────────────────────────────────────────
+   Shown the moment a file is attached. The two jobs a user arrives with —
+   "give me this as Markdown" and "read this and build me a prompt" — cost very
+   different things (the first spends no tokens at all), so we ask instead of
+   guessing. */
+function DocModeModal({ file, onPick, onClose, isBusy }: {
+  file: File;
+  onPick: (mode: DocMode) => void;
+  onClose: () => void;
+  isBusy: boolean;
+}) {
+  const ext = (file.name.split(".").pop() || "").toUpperCase();
+  const sizeKb = file.size / 1024;
+  const sizeLabel = sizeKb >= 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${Math.round(sizeKb)} KB`;
+
+  const OPTIONS: Array<{ mode: DocMode; Icon: typeof FileDown; title: string; body: string; badge: string; badgeTone: string }> = [
+    {
+      mode: "markdown",
+      Icon: FileDown,
+      title: "Convert to Markdown",
+      body: "Turn the file into clean .md — headings, tables and lists preserved. Copy it or download the file.",
+      badge: "Free · no tokens",
+      badgeTone: "#34d399",
+    },
+    {
+      mode: "prompt",
+      Icon: Wand2,
+      title: "Parse & build a prompt",
+      body: "Read the document and write one ready-to-use AI prompt from its content.",
+      badge: "Uses tokens",
+      badgeTone: "#c4b5fd",
+    },
+    {
+      mode: "both",
+      Icon: Sparkles,
+      title: "Do both",
+      body: "Get the Markdown file and a prompt built from it, in one pass.",
+      badge: "Uses tokens",
+      badgeTone: "#fbbf24",
+    },
+  ];
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",padding:20}}>
+      <div style={{width:"100%",maxWidth:520,borderRadius:20,background:"#0f0f10",border:"1px solid rgba(255,255,255,0.1)",boxShadow:"0 20px 80px rgba(0,0,0,0.7)"}}>
+        {/* Header */}
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",padding:"24px 24px 4px"}}>
+          <div style={{minWidth:0}}>
+            <h2 style={{margin:0,fontSize:18,fontWeight:700,color:"#fff"}}>What should we do with this file?</h2>
+            <p style={{margin:"6px 0 0",fontSize:12,color:"rgba(255,255,255,0.45)",display:"flex",alignItems:"center",gap:6}}>
+              <FileText size={13}/>
+              <span style={{maxWidth:300,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{file.name}</span>
+              <span>·</span><span>{ext}</span><span>·</span><span>{sizeLabel}</span>
+            </p>
+          </div>
+          <button onClick={onClose} disabled={isBusy} title="Cancel"
+            style={{marginTop:2,width:32,height:32,flexShrink:0,borderRadius:"50%",border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",cursor:isBusy?"default":"pointer",opacity:isBusy?0.4:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <X size={15} color="rgba(255,255,255,0.6)"/>
+          </button>
+        </div>
+
+        {/* Options */}
+        <div style={{display:"flex",flexDirection:"column",gap:10,padding:"16px 24px 24px"}}>
+          {OPTIONS.map(({mode,Icon,title,body,badge,badgeTone}) => (
+            <button key={mode} onClick={()=>onPick(mode)} disabled={isBusy}
+              style={{display:"flex",alignItems:"flex-start",gap:14,padding:"16px 16px",textAlign:"left",borderRadius:14,background:"#1a1a1b",border:"1px solid rgba(255,255,255,0.09)",cursor:isBusy?"default":"pointer",opacity:isBusy?0.5:1,transition:"border-color 0.15s, background 0.15s",fontFamily:"inherit"}}
+              onMouseEnter={e=>{if(!isBusy){e.currentTarget.style.borderColor="rgba(139,92,246,0.55)";e.currentTarget.style.background="rgba(139,92,246,0.08)";}}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.09)";e.currentTarget.style.background="#1a1a1b";}}>
+              <div style={{width:36,height:36,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,background:"rgba(255,255,255,0.06)"}}>
+                <Icon size={17} color="rgba(255,255,255,0.85)"/>
+              </div>
+              <div style={{minWidth:0,flex:1}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:4}}>
+                  <span style={{fontSize:14,fontWeight:600,color:"#fff"}}>{title}</span>
+                  <span style={{fontSize:10,fontWeight:600,letterSpacing:"0.02em",padding:"2px 8px",borderRadius:100,color:badgeTone,background:"rgba(255,255,255,0.06)"}}>{badge}</span>
+                </div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",lineHeight:1.45}}>{body}</div>
+              </div>
+              {isBusy ? null : <ArrowRight size={15} style={{marginTop:9,flexShrink:0}} color="rgba(255,255,255,0.28)"/>}
+            </button>
+          ))}
+          {isBusy && (
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,paddingTop:4,fontSize:13,color:"rgba(255,255,255,0.5)"}}>
+              <Loader2 size={15} style={{animation:"spin 1s linear infinite"}}/> Working on it…
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Category Modal with search ─────────────────────────────────────────── */
 function CategoryModal({current, onSelect, onClose}: {
   current: string|null;
@@ -496,13 +614,16 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
   const [savingBookmark, setSavingBookmark] = useState(false);
   const [tokensUsed,    setTokensUsed]    = useState<number|null>(null);
 
-  // PDF attachment → convert to prompt
-  const [attachedPdf,   setAttachedPdf]   = useState<File|null>(null);
+  // Document attachment → Markdown and/or prompt
+  const [attachedFile,  setAttachedFile]  = useState<File|null>(null);
+  const [showDocModal,  setShowDocModal]  = useState(false);
+  const [markdownResult, setMarkdownResult] = useState<{filename:string;format:string;markdown:string}|null>(null);
+  const [mdCopied,      setMdCopied]      = useState(false);
 
   const abortRef    = useRef<AbortController|null>(null);
   const detectTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
   const outputRef   = useRef<HTMLDivElement>(null);
-  const pdfInputRef  = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Derived
   const effectiveDomainId    = manualDomainId ?? detection?.domainId ?? null;
@@ -689,79 +810,94 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
     } finally { setIsGenerating(false); }
   }, [user, prompt, skillMode, effectiveDomainId, selectedSubcat, effectiveSubcatLabel, deepAnswers, navigate, onPromptGenerated, isGenerating]);
 
-  /* ── Convert an attached PDF into a ready-to-use prompt ── */
-  const doGenerateFromPdf = useCallback(async () => {
+  /* ── Convert an attached document → Markdown and/or a ready-to-use prompt ──
+     One upload, one server-side conversion; `mode` decides what comes back. */
+  const doConvertDoc = useCallback(async (mode: DocMode) => {
     if (!user) { navigate("/login"); return; }
-    if (!attachedPdf) return;
+    if (!attachedFile) return;
     if (isGenerating) { abortRef.current?.abort(); return; }
 
-    // This path spends tokens too (see saveSmartgen below), so it needs the same
-    // gate as doGenerate — otherwise a user with no plan pays nothing and still
-    // gets a converted prompt.
-    if (isOutOfTokens(user)) { toast(TOKEN_LIMIT_TOAST); return; }
-    const gate = await llmService.checkSmartgenEligibility();
-    if (!gate.allowed) {
-      toast({ title: "Can't generate", description: gate.message });
-      return;
+    const wantsPrompt = mode === "prompt" || mode === "both";
+
+    // Only the prompt-producing modes reach an LLM, so only they are quota-gated.
+    // Plain Markdown conversion is local CPU on the server and stays free —
+    // gating it would be charging for work that costs us nothing.
+    if (wantsPrompt) {
+      if (isOutOfTokens(user)) { toast(TOKEN_LIMIT_TOAST); return; }
+      const gate = await llmService.checkSmartgenEligibility();
+      if (!gate.allowed) {
+        toast({ title: "Can't generate", description: gate.message });
+        return;
+      }
     }
 
-    setIsGenerating(true); setGenerated(""); setStreamedText(""); setIsEditing(false); setTokensUsed(null);
+    setIsGenerating(true);
+    setMarkdownResult(null);
+    if (wantsPrompt) { setGenerated(""); setStreamedText(""); setIsEditing(false); setTokensUsed(null); }
 
     try {
       const token = localStorage.getItem("token") || sessionStorage.getItem("token");
       const form = new FormData();
-      form.append("pdf", attachedPdf);
+      form.append("file", attachedFile);
+      form.append("mode", mode);
       if (prompt.trim()) form.append("instructions", prompt.trim());
 
-      const res = await fetch(`${API_BASE}/api/smartgen/pdf-to-prompt`, {
+      const res = await fetch(`${API_BASE}/api/smartgen/doc-to-markdown`, {
         method: "POST",
         headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: form,
         credentials: "include",
       });
       const data = await res.json();
-      if (!res.ok || !data?.success || !data?.prompt) {
-        const errorMessages: Record<string, string> = {
-          pdf_has_no_extractable_text: "This PDF has no selectable text (likely a scanned image) — try a text-based PDF instead.",
-          could_not_read_pdf: "This file couldn't be read as a PDF — it may be corrupted or password-protected.",
-          only_pdf_allowed: "Only PDF files are supported for this feature.",
-        };
-        throw new Error(errorMessages[data?.error] || data?.error || "Could not convert this PDF");
+      if (!res.ok || !data?.success) {
+        throw new Error(DOC_ERRORS[data?.error] || data?.message || data?.error || "Could not convert this file");
       }
 
-      // Only count the tokens actually generated (the converted prompt output) — not the
-      // tokens spent reading the PDF's extracted text as input.
-      const outputTokens = data.usage?.completionTokens ?? Math.ceil(data.prompt.length / 3.5);
-      setGenerated(data.prompt);
-      setTokensUsed(outputTokens);
-      setAttachedPdf(null);
-      if (data.truncated) {
-        toast({ title: "PDF was very long", description: "Only the first part of the document was used to build the product." });
+      const sourceName = attachedFile.name;
+      setShowDocModal(false);
+      setAttachedFile(null);
+
+      if (data.markdown) {
+        setMarkdownResult({ filename: sourceName, format: data.format, markdown: data.markdown });
       }
-      // Deduct quota BEFORE notifying the parent (which refreshes the quota widget) —
-      // otherwise the widget refetches before the spend lands and looks stale.
-      const saveRes = await llmService.saveSmartgen({
-        inputPrompt: `Converted from PDF: ${attachedPdf.name}`,
-        detailedPrompt: data.prompt,
-        tokensUsed: outputTokens,
-      });
-      warnIfQuotaSaveFailed(saveRes);
-      setSmartgenDocId(saveRes.id ?? null);
-      onPromptGenerated?.(data.prompt);
+
+      if (wantsPrompt) {
+        if (!data.prompt) throw new Error("The document converted, but no prompt came back.");
+        // Only count the tokens actually generated (the prompt output) — not the
+        // tokens spent reading the document's text as input.
+        const outputTokens = data.usage?.completionTokens ?? Math.ceil(data.prompt.length / 3.5);
+        setGenerated(data.prompt);
+        setTokensUsed(outputTokens);
+        if (data.truncated) {
+          toast({ title: "Document was very long", description: "Only the first part of it was used to build the product." });
+        }
+        // Deduct quota BEFORE notifying the parent (which refreshes the quota widget) —
+        // otherwise the widget refetches before the spend lands and looks stale.
+        const saveRes = await llmService.saveSmartgen({
+          inputPrompt: `Converted from ${String(data.format || "").toUpperCase()}: ${sourceName}`,
+          detailedPrompt: data.prompt,
+          tokensUsed: outputTokens,
+        });
+        warnIfQuotaSaveFailed(saveRes);
+        setSmartgenDocId(saveRes.id ?? null);
+        onPromptGenerated?.(data.prompt);
+      } else {
+        toast({ title: "Converted to Markdown", description: `${data.charCount?.toLocaleString?.() ?? ""} characters ready.` });
+      }
     } catch (err) {
-      toast({ title: "PDF conversion failed", description: (err as Error).message });
+      toast({ title: "Conversion failed", description: (err as Error).message });
     } finally {
       setIsGenerating(false);
     }
-  }, [user, attachedPdf, prompt, isGenerating, navigate, onPromptGenerated]);
+  }, [user, attachedFile, prompt, isGenerating, navigate, onPromptGenerated]);
 
   /* ── Generate button click ──
-     If a PDF is attached → convert it into a prompt
+     If a file is attached → re-open the "what should we do with this?" popup
      If deep mode ON and domain known → show "Next" → open deep modal
      Otherwise → generate directly
   ── */
   const handleGenerateClick = useCallback(async () => {
-    if (attachedPdf) { doGenerateFromPdf(); return; }
+    if (attachedFile) { setShowDocModal(true); return; }
     if (!prompt.trim()) return;
     if (isGenerating) { abortRef.current?.abort(); return; }
     // Deep mode: always show "Next" → open the questions popup first
@@ -770,7 +906,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
       return;
     }
     doGenerate();
-  }, [prompt, isGenerating, deepMode, showDeepModal, openDeepModal, doGenerate, attachedPdf, doGenerateFromPdf]);
+  }, [prompt, isGenerating, deepMode, showDeepModal, openDeepModal, doGenerate, attachedFile]);
 
   /* ── Save (bookmark) ─────────────────────────────────────────────────────
      Writes a reference into the user's Saved Collections under the "smartgen"
@@ -828,23 +964,54 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
     }
   }, [savingBookmark, smartgenDocId, isBookmarked]);
 
-  const handlePdfSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (file.type !== "application/pdf") {
-      toast({ title: "PDF files only" });
+    // Validate on extension, not MIME type — browsers report inconsistent (and
+    // often empty) types for Office formats, which is what made the old
+    // `file.type !== "application/pdf"` check the tightest thing here.
+    const ext = (file.name.split(".").pop() || "").toLowerCase();
+    if (!DOC_EXTENSIONS.includes(ext)) {
+      toast({
+        title: "Unsupported file type",
+        description: "Try a PDF, Word, Excel, PowerPoint, OpenDocument, CSV or text file.",
+      });
       return;
     }
-    if (file.size > 20 * 1024 * 1024) {
-      toast({ title: "File too large", description: "PDF must be under 20MB." });
+    if (file.size > DOC_MAX_BYTES) {
+      toast({ title: "File too large", description: "Files must be under 20MB." });
       return;
     }
-    setAttachedPdf(file);
+    setAttachedFile(file);
+    setShowDocModal(true);
   };
 
   function handleCopy() {
     navigator.clipboard.writeText(displayText).then(()=>toast({title:"Copied to clipboard"}));
+  }
+
+  /* Markdown output actions — deliberately separate from handleCopy, which is
+     bound to the generated-prompt card. */
+  function handleCopyMarkdown() {
+    if (!markdownResult) return;
+    navigator.clipboard.writeText(markdownResult.markdown).then(() => {
+      setMdCopied(true);
+      setTimeout(() => setMdCopied(false), 1800);
+    });
+  }
+
+  function handleDownloadMarkdown() {
+    if (!markdownResult) return;
+    const blob = new Blob([markdownResult.markdown], { type: "text/markdown;charset=utf-8" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url;
+    a.download = markdownResult.filename.replace(/\.[^.]+$/, "") + ".md";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   }
 
   const inputBg    = "#111214";
@@ -962,49 +1129,49 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
             </button>
 
             {/* Clear — wipes idea + generated output + attachment (the only way any of it goes away) */}
-            {(prompt || generated || streamedText || attachedPdf) && (
+            {(prompt || generated || streamedText || attachedFile || markdownResult) && (
               <button onClick={()=>{
                 setPrompt("");setActiveIdea(null);setDetection(null);setManualDomainId(null);setSelectedSubcat(null);setDeepAnswers({});
                 // smartgenDocId goes with it — leaving the old id behind would
                 // point the next Save at the previous generation's row.
                 setGenerated("");setStreamedText("");setIsEditing(false);setEditable("");setIsBookmarked(false);setSmartgenDocId(null);
-                setAttachedPdf(null);setTokensUsed(null);
+                setAttachedFile(null);setTokensUsed(null);setMarkdownResult(null);setShowDocModal(false);
               }}
                 style={{...btnDark,display:"flex",alignItems:"center",gap:6,height:36,padding:"0 14px",borderRadius:100,fontSize:13,cursor:"pointer"}}>
                 <X size={13}/> Clear
               </button>
             )}
 
-            {/* Attach PDF → convert to prompt */}
-            <input ref={pdfInputRef} type="file" accept="application/pdf" onChange={handlePdfSelected} style={{display:"none"}}/>
-            {attachedPdf ? (
+            {/* Attach a document → convert to Markdown and/or a prompt */}
+            <input ref={fileInputRef} type="file" accept={DOC_ACCEPT} onChange={handleFileSelected} style={{display:"none"}}/>
+            {attachedFile ? (
               <div style={{display:"flex",alignItems:"center",gap:6,height:36,padding:"0 10px 0 14px",borderRadius:100,fontSize:13,background:"rgba(139,92,246,0.12)",border:"1px solid rgba(139,92,246,0.35)",color:"#c4b5fd"}}>
                 <FileText size={14}/>
-                <span style={{maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{attachedPdf.name}</span>
-                <button type="button" onClick={()=>setAttachedPdf(null)} title="Remove attachment"
+                <span style={{maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{attachedFile.name}</span>
+                <button type="button" onClick={()=>{setAttachedFile(null);setShowDocModal(false);}} title="Remove attachment"
                   style={{display:"flex",alignItems:"center",justifyContent:"center",width:20,height:20,borderRadius:"50%",border:"none",background:"rgba(255,255,255,0.1)",color:"#c4b5fd",cursor:"pointer"}}>
                   <X size={12}/>
                 </button>
               </div>
             ) : (
-              <button type="button" onClick={()=>pdfInputRef.current?.click()} title="Attach a PDF to convert into a product"
+              <button type="button" onClick={()=>fileInputRef.current?.click()} title="Attach a PDF, Word, Excel, PowerPoint, CSV or text file"
                 style={{...btnDark,display:"flex",alignItems:"center",gap:6,height:36,padding:"0 14px",borderRadius:100,fontSize:13,cursor:"pointer"}}>
-                <Paperclip size={14}/> Attach PDF
+                <Paperclip size={14}/> Attach File
               </button>
             )}
           </div>
 
           {/* Generate / Next / Stop */}
-          <button onClick={handleGenerateClick} disabled={!prompt.trim()&&!isGenerating&&!attachedPdf}
+          <button onClick={handleGenerateClick} disabled={!prompt.trim()&&!isGenerating&&!attachedFile}
             style={{display:"flex",alignItems:"center",gap:8,height:40,padding:"0 22px",borderRadius:100,border:"none",
-              cursor:prompt.trim()||isGenerating||attachedPdf?"pointer":"not-allowed",
-              background:prompt.trim()||isGenerating||attachedPdf?GEN_BG:"rgba(124,58,237,0.3)",
+              cursor:prompt.trim()||isGenerating||attachedFile?"pointer":"not-allowed",
+              background:prompt.trim()||isGenerating||attachedFile?GEN_BG:"rgba(124,58,237,0.3)",
               color:"#fff",fontWeight:600,fontSize:14,transition:"opacity 0.15s",
-              opacity:!prompt.trim()&&!isGenerating&&!attachedPdf?0.5:1}}>
+              opacity:!prompt.trim()&&!isGenerating&&!attachedFile?0.5:1}}>
             {isGenerating
               ? <><Loader2 size={15} style={{animation:"spin 1s linear infinite"}}/> Stop</>
-              : attachedPdf
-              ? <><span>Convert PDF</span><ArrowRight size={15}/></>
+              : attachedFile
+              ? <><span>Convert File</span><ArrowRight size={15}/></>
               : isDeepNext
               ? <><span>Next</span><ArrowRight size={15}/></>
               : <><span>Generate</span><ArrowRight size={15}/></>
@@ -1012,6 +1179,49 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
           </button>
         </div>
       </div>
+
+      {/* ── Markdown Card ────────────────────────────────────────────────────
+          Raw .md is shown in a monospace block on purpose: the point of this
+          mode is the Markdown source itself, so rendering it would hide the
+          very thing the user asked for. */}
+      {markdownResult && (
+        <div style={{marginBottom:24}}>
+          <div style={{textAlign:"center",marginBottom:16}}>
+            <h2 style={{margin:0,fontSize:28,fontWeight:700,color:"#fff",letterSpacing:"-0.02em"}}>Markdown</h2>
+            <div style={{marginTop:6,display:"flex",alignItems:"center",justifyContent:"center",gap:6,color:"rgba(255,255,255,0.4)",fontSize:13,flexWrap:"wrap"}}>
+              <FileText size={13}/>
+              <span>{markdownResult.filename}</span>
+              <span>·</span><span>{markdownResult.format.toUpperCase()}</span>
+              <span>·</span><span>{markdownResult.markdown.length.toLocaleString()} characters</span>
+            </div>
+          </div>
+
+          <div style={{background:inputBg,borderRadius:20,border:cardBorder,overflow:"hidden"}}>
+            <pre style={{margin:0,padding:"24px 28px",maxHeight:480,overflow:"auto",color:"rgba(255,255,255,0.82)",fontSize:13,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word",fontFamily:"ui-monospace, SFMono-Regular, Menlo, monospace"}}>
+              {markdownResult.markdown}
+            </pre>
+
+            <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:8,padding:"14px 20px",borderTop:"1px solid #1e1e1f"}}>
+              <button onClick={handleCopyMarkdown}
+                style={{display:"flex",alignItems:"center",gap:7,height:38,padding:"0 18px",borderRadius:100,border:"none",background:"#7c3aed",color:"#fff",fontWeight:600,fontSize:13,cursor:"pointer"}}>
+                {mdCopied ? <><Check size={14}/> Copied</> : <><Copy size={14}/> Copy Markdown</>}
+              </button>
+              <button onClick={handleDownloadMarkdown}
+                style={{...btnDark,display:"flex",alignItems:"center",gap:7,height:38,padding:"0 16px",borderRadius:100,fontSize:13,cursor:"pointer"}}>
+                <Download size={14}/> Download .md
+              </button>
+              <button onClick={()=>onUseInOptimizer?.(markdownResult.markdown)}
+                style={{...btnDark,display:"flex",alignItems:"center",gap:7,height:38,padding:"0 16px",borderRadius:100,fontSize:13,cursor:"pointer"}}>
+                <Sparkles size={14}/> Optimise
+              </button>
+              <button onClick={()=>setMarkdownResult(null)} title="Dismiss"
+                style={{...btnDark,marginLeft:"auto",display:"flex",alignItems:"center",gap:7,height:38,padding:"0 16px",borderRadius:100,fontSize:13,cursor:"pointer"}}>
+                <X size={14}/> Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Output Card ──────────────────────────────────────────────────── */}
       {(isGenerating || hasOutput) && (
@@ -1079,6 +1289,16 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
             )}
           </div>
         </div>
+      )}
+
+      {/* ── Document Mode Modal ───────────────────────────────────────────── */}
+      {showDocModal && attachedFile && (
+        <DocModeModal
+          file={attachedFile}
+          isBusy={isGenerating}
+          onPick={doConvertDoc}
+          onClose={()=>setShowDocModal(false)}
+        />
       )}
 
       {/* ── Deep Mode Modal ───────────────────────────────────────────────── */}

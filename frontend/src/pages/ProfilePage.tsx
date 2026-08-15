@@ -2782,6 +2782,7 @@ import {
   MessageCircle,
   Pencil,
   Landmark,
+  Video,
 } from "lucide-react";
 import SellerLinkedAccountForm from "@/components/SellerLinkedAccountForm";
 // The cards here are the marketplace's, so the panel that opens from them is
@@ -3033,7 +3034,10 @@ useEffect(() => {
     // Money for a hire routes to this person's Razorpay linked account and is
     // held there, so an unverified account means a proposal they physically
     // cannot accept. Hire is disabled on this; Message deliberately isn't.
-    setPayoutReady(res.ok ? Boolean((res.data as any).payoutReady) : false);
+    setPayoutReady(res.ok ? Boolean(res.data.payoutReady) : false);
+    // The second condition on the same button: an approved intro video (or an
+    // allowlisted account). create-proposal refuses without it.
+    setSuperCreator(res.ok ? Boolean(res.data.superCreator) : false);
   });
 
   return () => {
@@ -3084,7 +3088,14 @@ const publishFreelancerProfile = async () => {
     const pub = await getPublicFreelancerProfile(userId);
     if (pub.ok) setFreelancer(pub.data.profile);
   }
-  toast({ title: "Your profile is live", description: "Buyers can now find and hire you." });
+  // Same correction as the wizard's success screen: live means findable, not
+  // hireable — that waits on the intro video being approved.
+  toast({
+    title: "Your profile is live",
+    description: res.data.profile?.superCreator
+      ? "Buyers can now find and hire you."
+      : "Buyers can find and message you. Services and hiring unlock once your intro video is approved.",
+  });
 };
 
 const focusAvatar = () => {
@@ -3101,9 +3112,20 @@ const displayedFreelancer = useMemo(
   [isOwnProfile, ownProfile, freelancer]
 );
 
-// Set from the public profile fetch above. Starts true so the Hire button
+// Set from the public profile fetch above. Both start true so the Hire button
 // doesn't flash a disabled state on every profile before the answer arrives.
 const [payoutReady, setPayoutReady] = useState(true);
+// Their intro video is approved (or they're allowlisted), so they're cleared to
+// take on work. Same rule the directory badges and the proposal endpoint use.
+const [superCreator, setSuperCreator] = useState(true);
+
+/* One answer for the whole page, from whichever read owns this profile: your
+   own document when it's yours (so the badge updates the moment a video is
+   approved and /me is refetched), the public read otherwise. Both carry the
+   same server-computed flag, so the two paths can't disagree. */
+const isSuperCreator = isOwnProfile
+  ? Boolean(ownProfile?.superCreator)
+  : superCreator;
 
 // Bumped after posting a review so the list below remounts and picks it up,
 // rather than the new review only appearing on a full reload.
@@ -3759,13 +3781,32 @@ const sendMessage = () => {
                         </span>
                       )}
 
-                      {displayedFreelancer && (
+                      {/* The tier — claimed only once it's real, exactly as on
+                          the directory card for the same person. It used to
+                          read CREATOR for anyone with a profile at all, which
+                          is how four accounts that can't take a single job came
+                          to look identical to the one that can. */}
+                      {displayedFreelancer && isSuperCreator && (
                         <span
                           className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold text-white"
                           style={{ background: GRADIENT }}
                         >
                           <LuBadgeCheck className="w-3 h-3" />
-                          CREATOR
+                          SUPER CREATOR
+                        </span>
+                      )}
+
+                      {/* The waiting state, and only to people who can act on
+                          it: the owner, who has the upload banner right below.
+                          A buyer doesn't need a badge for it — the disabled
+                          Hire button already tells them. */}
+                      {displayedFreelancer && !isSuperCreator && isOwnProfile && (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold"
+                          style={{ background: "rgba(250,188,78,0.10)", color: "#FABC4E" }}
+                        >
+                          <LuBadgeCheck className="w-3 h-3" />
+                          SUPER CREATOR PENDING
                         </span>
                       )}
                     </div>
@@ -3825,7 +3866,7 @@ const sendMessage = () => {
                           wondering whether this person takes custom work at
                           all. The server refuses the proposal too; this just
                           means they find out before writing a brief. */}
-                      {payoutReady ? (
+                      {payoutReady && superCreator ? (
                         <button
                           onClick={() => setOpenHirePopup(true)}
                           className="inline-flex items-center gap-1.5 px-5 h-10 rounded-full text-sm font-semibold text-white"
@@ -3838,7 +3879,16 @@ const sendMessage = () => {
                         <button
                           type="button"
                           disabled
-                          title="This creator is still setting up payouts, so they can't take paid work yet. You can still message them."
+                          title={
+                            !superCreator
+                              ? // Never says which video state they're in —
+                                // NONE, PENDING and REJECTED are all the same
+                                // to a client, and naming a rejection would
+                                // leak a moderation decision about someone
+                                // else. Same line the proposal endpoint sends.
+                                "This creator isn't approved to take on work yet. You can still message them."
+                              : "This creator is still setting up payouts, so they can't take paid work yet. You can still message them."
+                          }
                           className="inline-flex items-center gap-1.5 px-5 h-10 rounded-full text-sm font-semibold text-white/35 bg-white/[0.04] border border-white/[0.07] cursor-not-allowed"
                         >
                           <Briefcase className="w-4 h-4" />
@@ -3981,6 +4031,73 @@ const sendMessage = () => {
                 >
                   Set up payouts
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Intro video: the other blocking one ───────────────────────────
+              A live profile no longer means a trading profile. Until an admin
+              approves the intro video, POST /api/service and
+              POST /api/hire/create-proposal both refuse — so the creator is
+              told here rather than after writing a listing or waiting for a
+              proposal that can never arrive.
+
+              Sits beside the payout banner, not instead of it: they are
+              independent, and someone can be blocked by both at once.
+              `superCreator` is read rather than `introVideo.status` so an
+              allowlisted account isn't nagged about a video it doesn't need. */}
+          {isOwnProfile && ownProfile?.status === "ACTIVE" && !ownProfile.superCreator && (
+            <div
+              className="mb-6 rounded-2xl border p-5"
+              style={{
+                borderColor: "rgba(251,191,36,0.35)",
+                background:
+                  "linear-gradient(135deg, rgba(251,191,36,0.10), rgba(251,191,36,0.04))",
+              }}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div
+                  className="w-11 h-11 rounded-xl grid place-items-center shrink-0"
+                  style={{ background: "rgba(251,191,36,0.14)" }}
+                >
+                  <Video className="w-5 h-5" style={{ color: "#FBBF24" }} />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-[15px] font-semibold text-white">
+                    {ownProfile.introVideo?.status === "PENDING"
+                      ? "Your intro video is with our reviewers"
+                      : ownProfile.introVideo?.status === "REJECTED"
+                        ? "Your intro video wasn't approved"
+                        : "Add an intro video to start selling"}
+                  </p>
+                  {/* The owner — unlike a buyer — gets the exact state, including
+                      the rejection reason. It's their own video, and "try again"
+                      is unactionable without knowing what was wrong. */}
+                  <p className="text-[13px] text-white/65 mt-1 leading-relaxed">
+                    {ownProfile.introVideo?.status === "PENDING"
+                      ? "Until it's approved you can't publish services or be hired. Nothing else to do — we'll email you when it's done."
+                      : ownProfile.introVideo?.status === "REJECTED"
+                        ? `Upload a new one to publish services and be hired.${
+                            ownProfile.introVideo?.rejectionReason
+                              ? ` Reason: ${ownProfile.introVideo.rejectionReason}`
+                              : ""
+                          }`
+                        : "Buyers can see your profile, but you can't publish services or be hired until an admin approves your intro video."}
+                  </p>
+                </div>
+
+                {ownProfile.introVideo?.status !== "PENDING" && (
+                  <button
+                    onClick={() => setEditorSection("intro_video")}
+                    className="shrink-0 rounded-full px-5 h-10 text-sm font-semibold text-white whitespace-nowrap"
+                    style={{ background: GRADIENT }}
+                  >
+                    {ownProfile.introVideo?.status === "REJECTED"
+                      ? "Upload a new video"
+                      : "Upload intro video"}
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -4266,7 +4383,18 @@ const sendMessage = () => {
                       </div>
                     )}
 
-                    {isOwnProfile && payoutReady &&
+                    {/* Same reasoning as the payout card above, for the other
+                        half of the rule. The banner under the header already
+                        explains it and offers the upload, so this one is a
+                        single line — repeating the whole explanation twice on
+                        one page is noise. */}
+                    {isOwnProfile && payoutReady && !ownProfile?.superCreator && (
+                      <p className="text-[13px] text-white/55 leading-relaxed">
+                        You can't publish a service until your intro video is approved.
+                      </p>
+                    )}
+
+                    {isOwnProfile && payoutReady && ownProfile?.superCreator &&
                       (services.length === 0 ? (
                         // Nothing to show yet — the full card is the page's
                         // whole content, so it earns the space.

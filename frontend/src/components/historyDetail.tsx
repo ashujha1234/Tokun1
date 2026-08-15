@@ -540,6 +540,7 @@ export function ReportResourceDialog({
   open,
   onOpenChange,
   promptId,
+  promptTitle,
 }: ReportDialogProps) {
   const { token } = useAuth();
 
@@ -596,6 +597,49 @@ export function ReportResourceDialog({
       }
     })();
   }, [open]);
+
+  /* Everything about the listing, filled in for the reporter.
+     This form asked a buyer to type the title, the URL, the category and the
+     tags of a product they are looking at — facts the app already holds. In
+     practice that meant a wrong or empty title, a pasted URL that was often
+     the page they happened to be on, and a category picked at random, and all
+     of it landed on the admin's report queue as the description of what was
+     being reported.
+     The fields stay editable; they're prefilled, not locked. */
+  useEffect(() => {
+    if (!open || !promptId) return;
+    let cancelled = false;
+
+    // The canonical link to the listing — the same one Share produces, so a
+    // report and a share of the same product point at the same place.
+    setUrl(`${window.location.origin}/prompt-marketplace?prompt=${encodeURIComponent(promptId)}`);
+    if (promptTitle) setTitle(promptTitle);
+
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/api/prompt/public/${encodeURIComponent(promptId)}`);
+        const data = await r.json().catch(() => ({}));
+        if (cancelled || !r.ok || !data?.success || !data.prompt) return;
+
+        const p = data.prompt;
+        if (p.title) setTitle(p.title);
+        if (Array.isArray(p.tags) && p.tags.length) setTags(p.tags.join(", "));
+
+        /* The listing's own category, matched by id against the loaded list.
+           Falls back to matching on name for a prompt whose categories came
+           back unpopulated. */
+        const first = Array.isArray(p.categories) ? p.categories[0] : null;
+        if (first) setCategory(typeof first === "string" ? first : String(first._id || ""));
+      } catch {
+        // Prefill is a convenience — a failure just leaves the fields empty,
+        // exactly as they were before.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, promptId, promptTitle]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();

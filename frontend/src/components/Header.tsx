@@ -3618,6 +3618,11 @@ const doCheckout = async () => {
         title: "Checkout complete",
         description: "Free products added to purchases.",
       });
+      // The cart is empty now and what was in it is owned — take them to it.
+      fetchCart();
+      navigate("/self-dash?tab=prompts&p=purchased", {
+        state: { refreshPurchases: true },
+      });
       return;
     }
 
@@ -3669,6 +3674,18 @@ const doCheckout = async () => {
 });
 // ✅ Cart refresh karo
 fetchCart();
+
+/* Same trip the single-prompt buy flow makes: land the buyer on My Products
+   with everything they just paid for, instead of back on the page they were
+   browsing with only a toast to say the payment worked. */
+try {
+  window.dispatchEvent(
+    new CustomEvent("tokun:purchased", { detail: verifyData?.purchase ?? null })
+  );
+} catch {}
+navigate("/self-dash?tab=prompts&p=purchased", {
+  state: { refreshPurchases: true },
+});
       },
       theme: { color: "#1A73E8" },
     };
@@ -4388,6 +4405,11 @@ useEffect(() => {
          /wallet route are left intact, so restoring this is one line.
          See the note in Landing.tsx, which carries a second copy of this menu. */
       { label: "Dashboard",      icon: LayoutDashboard, onClick: () => navigate("/self-dash") },
+      // The same "My Products" the dashboard's own sidebar has — everything you
+      // bought and everything you uploaded. It was only reachable by going to
+      // the dashboard first and finding the tab, which is a long way round for
+      // the screen a buyer wants immediately after paying.
+      { label: "My Products",    icon: Package,         onClick: () => navigate("/self-dash?tab=prompts&p=purchased") },
       { label: "My Feedback",    icon: MessageCircle,   onClick: () => navigate("/my-feedback") },
       // Sits next to My Feedback because it's the same kind of thing: a list of
       // requests you've made and what came of them.

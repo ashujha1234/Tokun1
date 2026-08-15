@@ -23,6 +23,10 @@ const User = require("../models/User");
 const Notification = require("../models/Notification");
 
 const { requireAuth } = require("../utils/auth");
+const {
+  isAllowlistedEmail,
+  VIDEO_GATE_ALLOWLIST,
+} = require("../utils/superCreatorGate");
 
 // Same shape as the other admin routers in this folder (adminRefunds.js,
 // adminOrgs.js): requireAuth resolves an admin token to req.isAdmin.
@@ -37,6 +41,8 @@ router.use(requireAuth, requireAdmin);
 
 const VIDEO_STATUSES = ["PENDING", "APPROVED", "REJECTED", "NONE"];
 const PROFILE_STATUSES = ["ACTIVE", "DRAFT"];
+// Roster slices. Absent = every profile of the requested status.
+const ROSTER_VIEWS = ["trading", "blocked"];
 
 /** Row shape for both tables — enough to triage without opening the detail view. */
 function serializeRow(profile) {
@@ -70,6 +76,11 @@ function serializeRow(profile) {
       rejectionReason: video.rejectionReason || null,
       submissionCount: video.submissionCount || 0,
     },
+    /* Exempt from the video rule by allowlist, so this profile can sell and be
+       hired with the video in any state. Sent so the roster doesn't read as a
+       bug — an admin seeing a NONE video on a creator who is clearly trading
+       would otherwise go looking for one. */
+    videoGateExempt: isAllowlistedEmail(user?.email),
     user: user
       ? {
           _id: String(user._id),
@@ -104,6 +115,46 @@ async function buildSearchFilter(q) {
     { "skills.name": rx },
     ...(matchingUsers.length ? [{ userId: { $in: matchingUsers.map((u) => u._id) } }] : []),
   ];
+}
+
+/**
+ * How many live profiles can actually trade.
+ *
+ * "Live" and "Super Creator" stopped meaning the same thing when the intro
+ * video became a gate: a profile can be ACTIVE, complete and discoverable and
+ * still be unable to publish a service or accept a proposal. A roster that only
+ * counts ACTIVE reads as "N Super Creators" and overstates the platform — which
+ * is how five profiles with no video between them looked like five working
+ * creators.
+ *
+ * Two counts rather than a scan of every ACTIVE profile: the allowlist is
+ * resolved to ids first, so both halves are index-served countDocuments.
+ */
+async function allowlistedUserIds() {
+  if (VIDEO_GATE_ALLOWLIST.size === 0) return [];
+  const users = await User.find({ email: { $in: [...VIDEO_GATE_ALLOWLIST] } })
+    .select("_id")
+    .lean();
+  return users.map((u) => u._id);
+}
+
+async function countTrading() {
+  const allowlistedIds = await allowlistedUserIds();
+
+  const [approved, exempt, live] = await Promise.all([
+    FreelancerProfile.countDocuments({ status: "ACTIVE", "introVideo.status": "APPROVED" }),
+    allowlistedIds.length
+      ? FreelancerProfile.countDocuments({
+          status: "ACTIVE",
+          userId: { $in: allowlistedIds },
+          "introVideo.status": { $ne: "APPROVED" },
+        })
+      : 0,
+    FreelancerProfile.countDocuments({ status: "ACTIVE" }),
+  ]);
+
+  const trading = approved + exempt;
+  return { trading, blocked: Math.max(live - trading, 0), live };
 }
 
 /**
@@ -178,11 +229,32 @@ router.get("/", async (req, res) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 100);
     const q = String(req.query.q || "").trim();
 
-    const filter = { status };
-    const searchOr = await buildSearchFilter(q);
-    if (searchOr) filter.$or = searchOr;
+    /* Which slice of the roster. "Super Creators" is the ones who can actually
+       trade, not everyone with a published profile — an admin asking "how many
+       Super Creators do we have" is asking how many can take work today, and
+       the two numbers are nothing alike while the video queue is backed up. */
+    const view = ROSTER_VIEWS.includes(req.query.view) ? req.query.view : null;
 
-    const [rows, total, counts] = await Promise.all([
+    const filter = { status };
+    const and = [];
+
+    const searchOr = await buildSearchFilter(q);
+    /* $and rather than filter.$or: the clearance clause below is an $or too,
+       and a second assignment would silently drop the search. */
+    if (searchOr) and.push({ $or: searchOr });
+
+    if (view === "trading" || view === "blocked") {
+      const allowlistedIds = await allowlistedUserIds();
+      and.push(
+        view === "trading"
+          ? { $or: [{ "introVideo.status": "APPROVED" }, { userId: { $in: allowlistedIds } }] }
+          : { "introVideo.status": { $ne: "APPROVED" }, userId: { $nin: allowlistedIds } }
+      );
+    }
+
+    if (and.length) filter.$and = and;
+
+    const [rows, total, counts, tradingCounts] = await Promise.all([
       FreelancerProfile.find(filter)
         .sort({ activatedAt: -1, updatedAt: -1 })
         .skip((page - 1) * limit)
@@ -192,6 +264,7 @@ router.get("/", async (req, res) => {
         .lean(),
       FreelancerProfile.countDocuments(filter),
       FreelancerProfile.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
+      countTrading(),
     ]);
 
     const statusCounts = PROFILE_STATUSES.reduce((acc, s) => ({ ...acc, [s]: 0 }), {});
@@ -205,6 +278,8 @@ router.get("/", async (req, res) => {
       limit,
       pages: Math.max(Math.ceil(total / limit), 1),
       statusCounts,
+      // Live vs. actually able to trade. See countTrading.
+      tradingCounts,
     });
   } catch (err) {
     console.error("admin freelancer roster error:", err);

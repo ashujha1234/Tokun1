@@ -107,12 +107,21 @@ function PersonCard({
   const isTopCreator = person.totalSoldPrompts >= TOP_CREATOR_THRESHOLD;
   const openProfile = () => navigate(`/profile/${person.userId}`);
 
-  // Freelancers whose payout account isn't verified yet can't legally be hired
-  // — the money for a hire routes to that account and is held there, so a
-  // proposal they can't accept is a dead end. Message stays available: a client
-  // should still be able to talk to someone who's mid-verification.
-  const canHire = person.isFreelancer && person.payoutReady;
-  const hireBlocked = person.isFreelancer && !person.payoutReady;
+  /* Two independent things have to be true before a hire can happen, and the
+     card states both rather than only discovering them at the proposal:
+
+       payoutReady  — Razorpay has ACTIVATED their account. Money for a hire is
+                      routed there and held, so a proposal to an unverified
+                      account is a dead end.
+       superCreator — their intro video is approved (or they're allowlisted).
+                      POST /api/hire/create-proposal refuses otherwise.
+
+     Message stays available in both cases: a client should still be able to
+     talk to someone who's mid-setup. */
+  const videoPending = person.isFreelancer && !person.superCreator;
+  const payoutPending = person.isFreelancer && !person.payoutReady;
+  const canHire = person.isFreelancer && person.payoutReady && person.superCreator;
+  const hireBlocked = videoPending || payoutPending;
 
   return (
     <div className={`${GLASS_CARD} group relative flex flex-col`}>
@@ -159,10 +168,14 @@ function PersonCard({
               )}
             </div>
 
-            {/* Falls back to a plain seller line — a prompt seller has no
-                professional title, and inventing one would be a lie. */}
+            {/* Falls back to the tier name — a prompt seller has no
+                professional title, and inventing one would be a lie. It was
+                "Product creator", a third name for a group the badges already
+                call Creators. Not repeated for a Super Creator: the badge
+                directly below says that, and saying it twice on one card reads
+                as a rendering bug. */}
             <p className="text-white/45 text-[12px] truncate">
-              {person.professionalTitle || (person.isSeller ? "Product creator" : "")}
+              {person.professionalTitle || (person.isSeller && !person.isFreelancer ? "Creator" : "")}
             </p>
 
             {person.location && (
@@ -176,14 +189,24 @@ function PersonCard({
 
         {/* What kind of account this is. Both badges appear when both are true. */}
         <div className="flex flex-wrap items-center gap-1.5">
-          {person.isFreelancer && (
+          {/* The gradient badge is the claim "this person can be hired right
+              now", so it is spent only on someone the server agrees with. A
+              live profile whose video isn't approved yet is still a real
+              creator — it just reads flat until they're cleared, and the
+              pending state below says why. */}
+          {/* Said only where it's true. Wearing it on a profile that can't be
+              hired is what made the directory claim five Super Creators when
+              one person could actually take work — the badge, the filter count
+              and the Hire button now all read the same flag. Someone still
+              waiting gets the amber chip below instead, which names the tier
+              and the fact that they haven't reached it yet. */}
+          {person.isFreelancer && person.superCreator && (
             <span
               className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold text-white"
               style={{ background: GRADIENT }}
             >
               <Briefcase className="w-3 h-3" />
-              {/* `isFreelancer` is the data flag; CREATOR is what we call it. */}
-              CREATOR
+              SUPER CREATOR
             </span>
           )}
           {person.isSeller && (
@@ -206,8 +229,23 @@ function PersonCard({
             </span>
           )}
           {/* Stated on the card rather than only on a disabled button, so a
-              client understands the gap before clicking anything. */}
-          {hireBlocked && (
+              client understands the gap before clicking anything.
+
+              Deliberately vague about which state the video is in: NONE,
+              PENDING and REJECTED are all "not cleared" to a client, and
+              spelling out a rejection would leak a moderation decision about
+              someone else. Same wording the proposal endpoint uses. */}
+          {videoPending && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold"
+              style={{ background: "rgba(250,188,78,0.10)", color: "#FABC4E" }}
+              title="This creator isn't approved to take on work yet"
+            >
+              <Clock className="w-3 h-3" />
+              SUPER CREATOR PENDING
+            </span>
+          )}
+          {payoutPending && (
             <span
               className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold"
               style={{ background: "rgba(250,188,78,0.10)", color: "#FABC4E" }}
@@ -308,7 +346,11 @@ function PersonCard({
           <button
             type="button"
             disabled
-            title="This creator is still setting up payouts, so they can't take paid work yet. You can still message them."
+            title={
+              videoPending
+                ? "This creator isn't approved to take on work yet. You can still message them."
+                : "This creator is still setting up payouts, so they can't take paid work yet. You can still message them."
+            }
             className="flex-1 h-9 rounded-full flex items-center justify-center gap-1.5 text-[12px] font-semibold text-white/35 bg-white/[0.04] border border-white/[0.07] cursor-not-allowed"
           >
             <Briefcase className="w-3.5 h-3.5" />
@@ -639,10 +681,13 @@ const FindCreatorsPage = () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  /* Counted the same way the filter filters — see filterPeopleByRole. A
+     Super Creator is someone who can actually be hired today, so a profile
+     still waiting on its intro video is not one and isn't counted as one. */
   const roleCounts = useMemo(
     () => ({
       all: people.length,
-      freelancers: people.filter((p) => p.isFreelancer).length,
+      freelancers: people.filter((p) => p.isFreelancer && p.superCreator).length,
       sellers: people.filter((p) => p.isSeller).length,
     }),
     [people]
@@ -744,10 +789,16 @@ const FindCreatorsPage = () => {
               {(
                 [
                   { id: "all", label: "Everyone" },
-                  // Labels only — the `id`s stay as they are, PeopleRole and
-                  // the ranking logic key off them.
-                  { id: "freelancers", label: "Creators" },
-                  { id: "sellers", label: "Product Creators" },
+                  /* Labels only — the `id`s stay as they are, PeopleRole and
+                     the ranking logic key off them.
+
+                     The two tiers, named the same way the badges on the cards
+                     below name them. "Creators / Product Creators" invented a
+                     third and fourth term for the same two groups, and made the
+                     freelancer filter look like the broader of the two when it
+                     is the narrower one. */
+                  { id: "freelancers", label: "Super Creators" },
+                  { id: "sellers", label: "Creators" },
                 ] as { id: PeopleRole; label: string }[]
               ).map((r) => {
                 const active = role === r.id;

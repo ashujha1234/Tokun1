@@ -769,74 +769,15 @@ router.post("/verifypayment", async (req, res) => {
         status: "active",
       });
 
-      /* -------------------- USER INVOICE (safe — payment already saved) -------------------- */
-      try {
-        const invoiceNo = `INV-${payment._id}`;
-        const date = new Date(payment.processedAt).toLocaleDateString("en-GB");
-
-        const subtotal = amount;
-        const gst = +(subtotal * 0.18).toFixed(2);
-        const total = +(subtotal + gst).toFixed(2);
-
-        const pdfBuffer = await generateInvoicePDF({
-          logo: "",
-          date,
-          invoiceNo,
-          buyerName: user.name || "Customer",
-          buyerEmail: user.email || "",
-          items: [
-            {
-              title: planKey.toUpperCase(),
-              subtitle: billingCycle,
-              price: subtotal,
-            },
-          ],
-          total: total.toFixed(2),
-          planCard: { plan: planKey, billingCycle, price: subtotal },
-        });
-
-        if (user.email) {
-          await sendInvoiceEmail({
-            to: user.email,
-            buyerName: user.name || "Customer",
-            buyerEmail: user.email,
-            items: [
-              {
-                title: planKey.toUpperCase(),
-                subtitle: billingCycle,
-                price: subtotal,
-              },
-            ],
-            invoiceNo,
-            date,
-            subtotal,
-            gst,
-            total,
-            pdfBuffer,
-          });
-        }
-      } catch (invoiceErr) {
-        // Invoice fail hone pe bhi payment success return karo
-        console.error(
-          "⚠️ USER invoice/email failed (payment still success):",
-          invoiceErr.message
-        );
-      }
-
-      // Subscriptions have no seller to split with — the full amount is
-      // Tokun's own revenue, so it goes straight into the admin dashboard's
-      // platform-revenue ledger (safe — payment already saved above).
-      try {
-        await PlatformWallet.recordCommission(amount, {
-          source: "subscription",
-          refId: payment._id,
-          description: `${planKey.toUpperCase()} subscription (${billingCycle})`,
-        });
-      } catch (revErr) {
-        console.error("⚠️ PlatformWallet commission record failed (USER subscription):", revErr.message);
-      }
-
-      return res.json({
+      /* ── ANSWER THE SUBSCRIBER HERE ──────────────────────────────────────
+         The plan is live: the payment is marked paid, the user's plan/cycle/
+         period have been written and the SubscriptionPeriod row exists. What
+         follows is an invoice PDF and a Gmail SMTP send with it attached,
+         which took seconds — seconds the subscriber spent on Razorpay's
+         spinner watching a plan they had already paid for fail to appear.
+         Both were already "log it and carry on" on failure, so neither has
+         any business holding up the response. */
+      res.json({
         success: true,
         kind: "USER",
         plan: user.plan,
@@ -848,6 +789,101 @@ router.post("/verifypayment", async (req, res) => {
           periodEnd,
         },
       });
+
+      settleUserSubscription().catch((bgErr) => {
+        console.error("Post-subscription settlement failed (USER):", bgErr);
+      });
+
+      async function settleUserSubscription() {
+        /* -------------------- USER INVOICE (safe — payment already saved) -------------------- */
+        try {
+          const invoiceNo = `INV-${payment._id}`;
+          const date = new Date(payment.processedAt).toLocaleDateString("en-GB");
+
+          /* GST off, exactly as the PDF has it.
+
+             This used to add 18% here and nowhere else, so a ₹799 Pro plan
+             produced an email reading "Total: ₹942.82" with a ₹799 PDF stapled
+             to it — two different totals for one payment, neither matching the
+             ₹799 Razorpay actually charged. generateInvoicePDF ignores any
+             `total` passed to it and computes subtotal-with-no-GST itself (see
+             the note in services/invoice.service.js), which is why only the
+             email drifted. Re-enable in BOTH places, and only once the charge
+             itself includes GST. */
+          const subtotal = amount;
+          const gst = 0;
+          const total = +Number(subtotal).toFixed(2);
+
+          const planCard = { plan: planKey, billingCycle, price: subtotal };
+
+          const pdfBuffer = await generateInvoicePDF({
+            logo: "",
+            date,
+            invoiceNo,
+            buyerName: user.name || "Customer",
+            buyerEmail: user.email || "",
+            items: [
+              {
+                title: planKey.toUpperCase(),
+                subtitle: billingCycle,
+                price: subtotal,
+              },
+            ],
+            total: total.toFixed(2),
+            planCard,
+          });
+
+          if (user.email) {
+            await sendInvoiceEmail({
+              to: user.email,
+              buyerName: user.name || "Customer",
+              buyerEmail: user.email,
+              items: [
+                {
+                  title: planKey.toUpperCase(),
+                  subtitle: billingCycle,
+                  price: subtotal,
+                },
+              ],
+              invoiceNo,
+              date,
+              subtotal,
+              gst,
+              total,
+              pdfBuffer,
+              /* Was omitted, so the email rendered without the plan card the
+                 PDF has — no plan summary and, more to the point, no "More
+                 info." button, which is the one place it can actually be
+                 clicked (a PDF's version is a picture of a button). The email
+                 template has always had a {{PLAN_CARD_HTML}} slot; nothing was
+                 filling it. Passing it also fixes the opening line, which read
+                 "your recent purchase" instead of naming the subscription. */
+              planCard,
+            });
+          }
+        } catch (invoiceErr) {
+          // Invoice fail hone pe bhi payment success return karo
+          console.error(
+            "⚠️ USER invoice/email failed (payment still success):",
+            invoiceErr.message
+          );
+        }
+
+        // Subscriptions have no seller to split with — the full amount is
+        // Tokun's own revenue, so it goes straight into the admin dashboard's
+        // platform-revenue ledger (safe — payment already saved above).
+        try {
+          await PlatformWallet.recordCommission(amount, {
+            source: "subscription",
+            refId: payment._id,
+            description: `${planKey.toUpperCase()} subscription (${billingCycle})`,
+          });
+        } catch (revErr) {
+          console.error("⚠️ PlatformWallet commission record failed (USER subscription):", revErr.message);
+        }
+      } // ── end settleUserSubscription ──
+
+      return;
     }
 
     /* ====================================================
@@ -890,85 +926,9 @@ router.post("/verifypayment", async (req, res) => {
         status: "active",
       });
 
-      /* -------------------- ORG INVOICE (safe — payment already saved) -------------------- */
-      try {
-        // owner null-safe fetch
-        const owner = payment.userId
-          ? await User.findById(payment.userId).catch(() => null)
-          : null;
-
-        if (!owner) {
-          console.warn(
-            "[billingVerify] ORG: owner user not found for invoice, skipping email"
-          );
-        } else {
-          const invoiceNo = `INV-${payment._id}`;
-          const date = new Date(payment.processedAt).toLocaleDateString("en-GB");
-
-          const subtotal = amount;
-          const gst = +(subtotal * 0.18).toFixed(2);
-          const total = +(subtotal + gst).toFixed(2);
-
-          const pdfBuffer = await generateInvoicePDF({
-            logo: "",
-            date,
-            invoiceNo,
-            buyerName: owner.name || "Customer",
-            buyerEmail: owner.email || "",
-            items: [
-              {
-                title: "ENTERPRISE",
-                subtitle: payment.billingCycle,
-                price: subtotal,
-              },
-            ],
-            total: total.toFixed(2),
-            planCard: { plan: "enterprise", billingCycle: payment.billingCycle, price: subtotal },
-          });
-
-          if (owner.email) {
-            await sendInvoiceEmail({
-              to: owner.email,
-              buyerName: owner.name || "Customer",
-              buyerEmail: owner.email,
-              items: [
-                {
-                  title: "ENTERPRISE",
-                  subtitle: payment.billingCycle,
-                  price: subtotal,
-                },
-              ],
-              invoiceNo,
-              date,
-              subtotal,
-              gst,
-              total,
-              pdfBuffer,
-            });
-          }
-        }
-      } catch (invoiceErr) {
-        // Invoice fail hone pe bhi payment success return karo
-        console.error(
-          "⚠️ ORG invoice/email failed (payment still success):",
-          invoiceErr.message
-        );
-      }
-
-      // Subscriptions have no seller to split with — the full amount is
-      // Tokun's own revenue, so it goes straight into the admin dashboard's
-      // platform-revenue ledger (safe — payment already saved above).
-      try {
-        await PlatformWallet.recordCommission(amount, {
-          source: "subscription",
-          refId: payment._id,
-          description: `ENTERPRISE subscription (${payment.billingCycle})`,
-        });
-      } catch (revErr) {
-        console.error("⚠️ PlatformWallet commission record failed (ORG subscription):", revErr.message);
-      }
-
-      return res.json({
+      // Same reasoning as the USER branch above: the org's plan is live, so
+      // the answer goes out now and the paperwork follows.
+      res.json({
         success: true,
         kind: "ORG",
         orgId: org._id,
@@ -981,6 +941,101 @@ router.post("/verifypayment", async (req, res) => {
           periodEnd,
         },
       });
+
+      settleOrgSubscription().catch((bgErr) => {
+        console.error("Post-subscription settlement failed (ORG):", bgErr);
+      });
+
+      async function settleOrgSubscription() {
+        /* -------------------- ORG INVOICE (safe — payment already saved) -------------------- */
+        try {
+          // owner null-safe fetch
+          const owner = payment.userId
+            ? await User.findById(payment.userId).catch(() => null)
+            : null;
+
+          if (!owner) {
+            console.warn(
+              "[billingVerify] ORG: owner user not found for invoice, skipping email"
+            );
+          } else {
+            const invoiceNo = `INV-${payment._id}`;
+            const date = new Date(payment.processedAt).toLocaleDateString("en-GB");
+
+            // GST off and plan card passed through, for the same reasons as
+            // the USER branch above — the two must stay in step.
+            const subtotal = amount;
+            const gst = 0;
+            const total = +Number(subtotal).toFixed(2);
+
+            const planCard = {
+              plan: "enterprise",
+              billingCycle: payment.billingCycle,
+              price: subtotal,
+            };
+
+            const pdfBuffer = await generateInvoicePDF({
+              logo: "",
+              date,
+              invoiceNo,
+              buyerName: owner.name || "Customer",
+              buyerEmail: owner.email || "",
+              items: [
+                {
+                  title: "ENTERPRISE",
+                  subtitle: payment.billingCycle,
+                  price: subtotal,
+                },
+              ],
+              total: total.toFixed(2),
+              planCard,
+            });
+
+            if (owner.email) {
+              await sendInvoiceEmail({
+                to: owner.email,
+                buyerName: owner.name || "Customer",
+                buyerEmail: owner.email,
+                items: [
+                  {
+                    title: "ENTERPRISE",
+                    subtitle: payment.billingCycle,
+                    price: subtotal,
+                  },
+                ],
+                invoiceNo,
+                date,
+                subtotal,
+                gst,
+                total,
+                pdfBuffer,
+                planCard,
+              });
+            }
+          }
+        } catch (invoiceErr) {
+          // Invoice fail hone pe bhi payment success return karo
+          console.error(
+            "⚠️ ORG invoice/email failed (payment still success):",
+            invoiceErr.message
+          );
+        }
+
+        // Subscriptions have no seller to split with — the full amount is
+        // Tokun's own revenue, so it goes straight into the admin dashboard's
+        // platform-revenue ledger (safe — payment already saved above).
+        try {
+          await PlatformWallet.recordCommission(amount, {
+            source: "subscription",
+            refId: payment._id,
+            description: `ENTERPRISE subscription (${payment.billingCycle})`,
+          });
+        } catch (revErr) {
+          console.error("⚠️ PlatformWallet commission record failed (ORG subscription):", revErr.message);
+        }
+      } // ── end settleOrgSubscription ──
+
+      return;
     }
 
     // Fallback
@@ -989,6 +1044,8 @@ router.post("/verifypayment", async (req, res) => {
       .json({ success: false, error: "unknown_payment_kind" });
   } catch (err) {
     console.error("billingVerify error:", err);
+    // The response may already be out — the invoice/ledger work runs after it.
+    if (res.headersSent) return;
     return res.status(500).json({ success: false, error: "server_error" });
   }
 });

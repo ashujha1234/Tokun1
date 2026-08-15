@@ -4061,7 +4061,7 @@ const GRADIENT = "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)";
 
 const TABS = [
   { id: "smartgen", label: "Smartgen", icon: "/icons/smartgen.svg" },
-  { id: "prompt-optimization", label: "Product Optimiser", icon: "/icons/prompt-optimization.svg" },
+  { id: "prompt-optimization", label: "Prompt Optimiser", icon: "/icons/prompt-optimization.svg" },
   { id: "prompt-marketplace", label: "Product Marketplace", icon: "/icons/prompt-marketplace.png" },
   { id: "prompt-library", label: "Product Library", icon: "/icons/prompt-library.png" },
 ] as const;

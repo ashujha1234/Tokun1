@@ -560,92 +560,107 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
       await session.endSession();
     }
 
-    /* -------------------- LEDGER (safe — the transaction has committed) ----- */
-    if (purchases.length > 0) {
-      // One payment in, once. Deduped against the webhook's own row for the
-      // same payment id, so whichever arrives first wins and the other is a
-      // no-op. The individual purchases live in meta rather than in the
-      // linkage columns, because this row belongs to all of them.
-      const cartTotal = purchases.reduce((sum, p) => sum + Number(p.pricePaid || 0), 0);
-      await ledger.record({
-        kind: "PAYMENT",
-        direction: "IN",
-        purpose: "PROMPT_PURCHASE",
-        amount: ledger.toPaise(cartTotal),
-        occurredAt: purchases[0].purchasedAt || new Date(),
-        razorpayPaymentId,
-        razorpayOrderId,
-        source: "api",
-        user: req.user._id,
-        meta: {
-          viaCart: true,
-          items: purchases.length,
-          purchaseIds: purchases.map((p) => String(p._id)),
-        },
-      });
-    }
+    /* ── ANSWER THE BUYER HERE ────────────────────────────────────────────────
+       The transaction has committed, so every prompt in the cart is owned and
+       the cart is cleared — that is the whole of what the buyer is waiting to
+       hear. What follows is ledger rows and an invoice email, and the email
+       alone (Gmail SMTP, two PDF attachments) took seconds the buyer spent
+       staring at Razorpay's spinner. Both already treated their own failures
+       as non-fatal, so neither belongs in front of the response. */
+    res.json({ success: true, purchases });
 
-    // Sequential rather than Promise.all: a burst of concurrent duplicate-key
-    // errors is noisier than it's worth for a handful of cart items.
-    for (const row of ledgerRows) {
-      await ledger.record(row);
-    }
+    settleAfterCheckout().catch((bgErr) => {
+      console.error("Post-checkout settlement failed:", bgErr);
+    });
 
-    /* -------------------- INVOICE (safe — purchases already saved) -------------------- */
-    try {
-      if (purchases.length > 0 && req.user.email) {
-        const invoiceNo = `INV-${purchases[0]._id}`;
-        const date = new Date().toLocaleDateString("en-GB");
-
-        const items = purchases.map((purchase) => ({
-          title: purchase.promptSnapshot?.title || "Prompt",
-          price: Number(purchase.pricePaid || 0),
-        }));
-        const subtotal = items.reduce((s, it) => s + it.price, 0);
-        // GST off — see services/invoice.service.js for why.
-        // const gst = +(subtotal * 0.18).toFixed(2);
-        const gst = 0;
-        const total = +subtotal.toFixed(2);
-
-        const logoPath = path.join(__dirname, "../assets/icons/Tokun.png");
-        const logoBase64 = fs.existsSync(logoPath)
-          ? `data:image/png;base64,${fs.readFileSync(logoPath).toString("base64")}`
-          : "";
-
-        const pdfBuffer = await generateInvoicePDF({
-          logo: logoBase64,
-          date,
-          invoiceNo,
-          buyerName: req.user.name || "Customer",
-          buyerEmail: req.user.email || "",
-          items,
-          // Instant delivery and a 24-hour refund window — a very different
-          // thing from the escrow-backed service and hire invoices.
-          kind: "prompt",
-        });
-
-        await sendInvoiceEmail({
-          to: req.user.email,
-          buyerName: req.user.name || "Customer",
-          buyerEmail: req.user.email,
-          items,
-          invoiceNo,
-          date,
-          subtotal,
-          gst,
-          total,
-          pdfBuffer,
-          kind: "prompt",
+    async function settleAfterCheckout() {
+      /* -------------------- LEDGER (safe — the transaction has committed) ----- */
+      if (purchases.length > 0) {
+        // One payment in, once. Deduped against the webhook's own row for the
+        // same payment id, so whichever arrives first wins and the other is a
+        // no-op. The individual purchases live in meta rather than in the
+        // linkage columns, because this row belongs to all of them.
+        const cartTotal = purchases.reduce((sum, p) => sum + Number(p.pricePaid || 0), 0);
+        await ledger.record({
+          kind: "PAYMENT",
+          direction: "IN",
+          purpose: "PROMPT_PURCHASE",
+          amount: ledger.toPaise(cartTotal),
+          occurredAt: purchases[0].purchasedAt || new Date(),
+          razorpayPaymentId,
+          razorpayOrderId,
+          source: "api",
+          user: req.user._id,
+          meta: {
+            viaCart: true,
+            items: purchases.length,
+            purchaseIds: purchases.map((p) => String(p._id)),
+          },
         });
       }
-    } catch (invoiceErr) {
-      // Invoice fail hone pe bhi checkout success hi return karo
-      console.error("⚠️ Cart invoice/email failed (checkout still success):", invoiceErr.message);
-    }
 
-    res.json({ success: true, purchases });
+      // Sequential rather than Promise.all: a burst of concurrent duplicate-key
+      // errors is noisier than it's worth for a handful of cart items.
+      for (const row of ledgerRows) {
+        await ledger.record(row);
+      }
+
+      /* -------------------- INVOICE (safe — purchases already saved) -------------------- */
+      try {
+        if (purchases.length > 0 && req.user.email) {
+          const invoiceNo = `INV-${purchases[0]._id}`;
+          const date = new Date().toLocaleDateString("en-GB");
+
+          const items = purchases.map((purchase) => ({
+            title: purchase.promptSnapshot?.title || "Prompt",
+            price: Number(purchase.pricePaid || 0),
+          }));
+          const subtotal = items.reduce((s, it) => s + it.price, 0);
+          // GST off — see services/invoice.service.js for why.
+          // const gst = +(subtotal * 0.18).toFixed(2);
+          const gst = 0;
+          const total = +subtotal.toFixed(2);
+
+          const logoPath = path.join(__dirname, "../assets/icons/Tokun.png");
+          const logoBase64 = fs.existsSync(logoPath)
+            ? `data:image/png;base64,${fs.readFileSync(logoPath).toString("base64")}`
+            : "";
+
+          const pdfBuffer = await generateInvoicePDF({
+            logo: logoBase64,
+            date,
+            invoiceNo,
+            buyerName: req.user.name || "Customer",
+            buyerEmail: req.user.email || "",
+            items,
+            // Instant delivery and a 24-hour refund window — a very different
+            // thing from the escrow-backed service and hire invoices.
+            kind: "prompt",
+          });
+
+          await sendInvoiceEmail({
+            to: req.user.email,
+            buyerName: req.user.name || "Customer",
+            buyerEmail: req.user.email,
+            items,
+            invoiceNo,
+            date,
+            subtotal,
+            gst,
+            total,
+            pdfBuffer,
+            kind: "prompt",
+          });
+        }
+      } catch (invoiceErr) {
+        // Invoice fail hone pe bhi checkout success hi return karo
+        console.error("⚠️ Cart invoice/email failed (checkout still success):", invoiceErr.message);
+      }
+    } // ── end settleAfterCheckout ──
   } catch (err) {
     console.error("Cart verify error:", err);
+    // Already answered — see settleAfterCheckout above.
+    if (res.headersSent) return;
     res.status(500).json({ success: false, error: "server_error" });
   }
 });

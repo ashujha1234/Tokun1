@@ -358,6 +358,7 @@ const Notification = require("../models/Notification");
 const Message = require("../models/Message");
 const { releaseEscrowToFreelancer, EscrowAlreadyReleasedError } = require("../services/escrowRelease.service");
 const { checkPayoutReady, buildHeldTransfer } = require("../utils/routeEscrow");
+const { assertSuperCreatorActive } = require("../utils/superCreatorGate");
 const { validateTargetDate, escrowExpiryFrom } = require("../utils/escrowWindow");
 const { transactionSplit, SERVICE_COMMISSION_PERCENT } = require("../utils/fees");
 const { normalizeBriefAttachments } = require("./briefAttachments");
@@ -478,6 +479,22 @@ router.post("/create-proposal", requireAuth, blockIfSuspended, async (req, res) 
         error: payoutReady.error,
         reason: payoutReady.reason,
         message: payoutReady.message,
+      });
+    }
+
+    /* And their intro video has to be approved. Same reasoning as the payout
+       check above — this is about the person being proposed to, not the person
+       proposing, so the message is written for the buyer to read.
+
+       This is deliberately the freelancer's own message suppressed: telling a
+       client "their video was rejected" leaks a moderation decision about
+       someone else, so all unapproved states collapse to one neutral line. */
+    const videoGate = await assertSuperCreatorActive(freelancerId);
+    if (!videoGate.ok) {
+      return res.status(409).json({
+        success: false,
+        error: videoGate.error,
+        message: "This Super Creator isn't approved to take on work yet.",
       });
     }
 

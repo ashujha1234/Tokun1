@@ -708,223 +708,251 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
       });
     }
 
-    // If Route already moved the money (order had a transfer attached
-    // because the seller was registered at create-order time), don't ALSO
-    // credit the Wallet ledger — that would double-pay the seller.
-    let routeTransferId = null;
-    try {
-      const transfersResp = await fetchTransfersForPayment(razorpayPaymentId);
-      routeTransferId = transfersResp?.items?.[0]?.id || null;
-    } catch (routeErr) {
-      // Not fatal — either the seller wasn't on Route yet (no transfer to
-      // find) or the lookup failed; the Wallet fallback below still pays
-      // the seller correctly either way.
-      console.error("Route transfer lookup failed (falling back to Wallet):", routeErr?.message);
-    }
-
-    // Ledger row for the payment, tied to our own entities. The webhook records
-    // the same payment from Razorpay's side with the gateway fee attached; the
-    // natural-key index collapses the two. What only this side knows is WHICH
-    // purchase, prompt, buyer and seller the money was for — the webhook
-    // payload can't say.
-    await ledger.record({
-      kind: "PAYMENT",
-      direction: "IN",
-      purpose: "PROMPT_PURCHASE",
-      amount: ledger.toPaise(pricePaid),
-      occurredAt: purchase.purchasedAt || new Date(),
-      razorpayPaymentId,
-      razorpayOrderId,
-      source: "api",
-      user: req.user._id,
-      counterparty: sellerId,
-      purchase: purchase._id,
-      prompt: prompt._id,
-      meta: {
-        listPrice: split.listPrice,
-        sellerNet: split.sellerNet,
-        platformCommission,
-      },
-    });
-
-    if (routeTransferId) {
-      purchase.routeTransferId = routeTransferId;
-      await purchase.save();
-
-      // The seller's side of the same sale. Recorded here as well as from the
-      // transfer.* webhook because a Route transfer attached at order-creation
-      // time may never produce an event we see.
-      await ledger.record({
-        kind: "TRANSFER",
-        direction: "OUT",
-        purpose: "PROMPT_PURCHASE",
-        amount: ledger.toPaise(split.sellerNet),
-        occurredAt: new Date(),
-        razorpayTransferId: routeTransferId,
-        razorpayPaymentId,
-        source: "api",
-        user: sellerId,
-        counterparty: req.user._id,
-        purchase: purchase._id,
-        prompt: prompt._id,
-        meta: { via: "route" },
-      });
-    } else {
-      /* No transfer id came back from the lookup.
-
-         This is NOT "the seller didn't get paid". A linked account is required
-         at order-creation (see the gate above), so the transfer is attached to
-         the order and Razorpay executes it at capture regardless of whether
-         this lookup succeeded — the only thing missing is our record of which
-         transfer id covered it.
-
-         Crediting the Wallet here, which is what used to happen, paid the
-         seller a SECOND time whenever this lookup merely failed on a network
-         blip. The ledger row below is flagged for reconciliation instead. */
-      console.error(
-        "Route transfer id not resolved for payment",
-        razorpayPaymentId,
-        "- purchase",
-        String(purchase._id)
-      );
-
-      // Still a TRANSFER — Razorpay is moving the money — just one whose id we
-      // failed to read. `needsReconciliation` is the flag to grep for when a
-      // seller's transfer id is missing from a purchase.
-      await ledger.record({
-        kind: "TRANSFER",
-        direction: "OUT",
-        purpose: "PROMPT_PURCHASE",
-        amount: ledger.toPaise(split.sellerNet),
-        occurredAt: new Date(),
-        razorpayPaymentId,
-        source: "api",
-        user: sellerId,
-        counterparty: req.user._id,
-        purchase: purchase._id,
-        prompt: prompt._id,
-        meta: { via: "route", needsReconciliation: true },
-      });
-    }
-
-    // Record Tokun's commission cut for this sale (non-fatal — purchase already succeeded)
-    try {
-      // Earnings, net of the GST charged on the platform fee. That GST goes to
-      // gstCollected instead — it's owed to the government, not earned here.
-      const gstOnFees = Number(split.platformFeeGst || 0);
-      await PlatformWallet.recordCommission(+(platformCommission - gstOnFees).toFixed(2), {
-        source: "prompt_purchase",
-        refId: purchase._id,
-        description: `Commission: "${prompt.title}"`,
-      });
-      await PlatformWallet.recordGst(gstOnFees, {
-        source: "prompt_purchase",
-        refId: purchase._id,
-        description: `GST on fee: "${prompt.title}"`,
-      });
-    } catch (revErr) {
-      console.error("PlatformWallet commission record failed:", revErr);
-    }
-
     // Update buyer's purchasedPrompts
     req.user.purchasedPrompts.push(purchase._id);
     await req.user.save();
 
-    // Buying a prompt directly (Buy Now) left it sitting in the cart, because
-    // nothing outside the cart flow ever touched the cart. It would then be
-    // charged for again at cart checkout — and the verify step's
-    // already-owned guard would skip creating the purchase, so the buyer paid
-    // and received nothing. Pulling it out here closes that off at the source.
-    try {
-      await Cart.updateOne(
-        { user: req.user._id },
-        { $pull: { items: { prompt: prompt._id } } }
-      );
-    } catch (cartErr) {
-      // Non-fatal: the purchase is done and owned. GET /api/cart filters
-      // already-purchased items anyway, so a failure here is cosmetic.
-      console.error("Cart cleanup after purchase failed:", cartErr?.message);
-    }
+    /* ── ANSWER THE BUYER HERE ────────────────────────────────────────────────
+       Everything the buyer's ownership depends on is now written: the Purchase
+       row, the prompt's sold/stats flags, and the buyer's purchasedPrompts.
+       From here on it's bookkeeping and paperwork — a Razorpay transfers
+       lookup, ledger rows, the platform wallet, the invoice PDF and an SMTP
+       send to Gmail. Those took SECONDS, and the buyer sat on Razorpay's
+       spinner for every one of them before the app could react.
 
-    /* -------------------- INVOICE (safe — purchase already saved) -------------------- */
-    try {
-      const invoiceNo = `INV-${purchase._id}`;
-      const date = new Date(purchase.createdAt || Date.now()).toLocaleDateString("en-GB");
-
-      // Mirrors generateInvoicePDF's own maths so the email body matches the
-      // attached PDF exactly. GST is off in both — see the note in
-      // services/invoice.service.js.
-      const subtotal = Number(pricePaid || 0);
-      // const gst = +(subtotal * 0.18).toFixed(2);
-      const gst = 0;
-      const total = +subtotal.toFixed(2);
-      const items = [
-        {
-          title: prompt.title,
-          price: subtotal,
-        },
-      ];
-
-      const logoPath = path.join(__dirname, "../assets/icons/Tokun.png");
-      const logoBase64 = fs.existsSync(logoPath)
-        ? `data:image/png;base64,${fs.readFileSync(logoPath).toString("base64")}`
-        : "";
-
-      const pdfBuffer = await generateInvoicePDF({
-        logo: logoBase64,
-        date,
-        invoiceNo,
-        buyerName: req.user.name || "Customer",
-        buyerEmail: req.user.email || "",
-        items,
-        // Instant delivery and a 24-hour refund window — a very different
-        // thing from the escrow-backed service and hire invoices.
-        kind: "prompt",
-      });
-
-      if (req.user.email) {
-        await sendInvoiceEmail({
-          to: req.user.email,
-          buyerName: req.user.name || "Customer",
-          buyerEmail: req.user.email,
-          items,
-          invoiceNo,
-          date,
-          subtotal,
-          gst,
-          total,
-          pdfBuffer,
-          kind: "prompt",
-        });
-      }
-    } catch (invoiceErr) {
-      // Invoice fail hone pe bhi purchase success hi return karo
-      console.error("⚠️ Prompt invoice/email failed (purchase still success):", invoiceErr.message);
-    }
-
-    // Log activity
-    await logActivity({
-      type: "PRODUCT_PURCHASED",
-      title: "Product purchased",
-      description: `${req.user.name} bought "${prompt.title}"`,
-      actorId: req.user._id,
-      actorName: req.user.name,
-      targetId: prompt._id,
-      targetType: "Prompt",
-      targetName: prompt.title,
-      meta: {
-        price: pricePaid,
-        promptId: String(prompt._id),
-        razorpayPaymentId,
-      },
-    });
-
-    return res.json({
+       So: reply now, finish the rest after. The work below still runs, still
+       logs its own failures, and none of it was ever allowed to fail the
+       purchase anyway — the try/catch blocks around it said so already. */
+    res.json({
       success: true,
       purchase,
     });
+
+    settleAfterPurchase().catch((bgErr) => {
+      // Nothing above this point is at risk — the buyer owns the prompt and
+      // has been told so. This is the last line of defence so an unhandled
+      // rejection can't take the process down.
+      console.error("Post-purchase settlement failed:", bgErr);
+    });
+
+    /* Everything the buyer doesn't have to wait for. Declared as a closure over
+       the handler's locals rather than a module-level helper so it can't drift
+       from the values the purchase was actually recorded with. */
+    async function settleAfterPurchase() {
+      // If Route already moved the money (order had a transfer attached
+      // because the seller was registered at create-order time), don't ALSO
+      // credit the Wallet ledger — that would double-pay the seller.
+      let routeTransferId = null;
+      try {
+        const transfersResp = await fetchTransfersForPayment(razorpayPaymentId);
+        routeTransferId = transfersResp?.items?.[0]?.id || null;
+      } catch (routeErr) {
+        // Not fatal — either the seller wasn't on Route yet (no transfer to
+        // find) or the lookup failed; the Wallet fallback below still pays
+        // the seller correctly either way.
+        console.error("Route transfer lookup failed (falling back to Wallet):", routeErr?.message);
+      }
+
+      // Ledger row for the payment, tied to our own entities. The webhook records
+      // the same payment from Razorpay's side with the gateway fee attached; the
+      // natural-key index collapses the two. What only this side knows is WHICH
+      // purchase, prompt, buyer and seller the money was for — the webhook
+      // payload can't say.
+      await ledger.record({
+        kind: "PAYMENT",
+        direction: "IN",
+        purpose: "PROMPT_PURCHASE",
+        amount: ledger.toPaise(pricePaid),
+        occurredAt: purchase.purchasedAt || new Date(),
+        razorpayPaymentId,
+        razorpayOrderId,
+        source: "api",
+        user: req.user._id,
+        counterparty: sellerId,
+        purchase: purchase._id,
+        prompt: prompt._id,
+        meta: {
+          listPrice: split.listPrice,
+          sellerNet: split.sellerNet,
+          platformCommission,
+        },
+      });
+
+      if (routeTransferId) {
+        purchase.routeTransferId = routeTransferId;
+        await purchase.save();
+
+        // The seller's side of the same sale. Recorded here as well as from the
+        // transfer.* webhook because a Route transfer attached at order-creation
+        // time may never produce an event we see.
+        await ledger.record({
+          kind: "TRANSFER",
+          direction: "OUT",
+          purpose: "PROMPT_PURCHASE",
+          amount: ledger.toPaise(split.sellerNet),
+          occurredAt: new Date(),
+          razorpayTransferId: routeTransferId,
+          razorpayPaymentId,
+          source: "api",
+          user: sellerId,
+          counterparty: req.user._id,
+          purchase: purchase._id,
+          prompt: prompt._id,
+          meta: { via: "route" },
+        });
+      } else {
+        /* No transfer id came back from the lookup.
+
+           This is NOT "the seller didn't get paid". A linked account is required
+           at order-creation (see the gate above), so the transfer is attached to
+           the order and Razorpay executes it at capture regardless of whether
+           this lookup succeeded — the only thing missing is our record of which
+           transfer id covered it.
+
+           Crediting the Wallet here, which is what used to happen, paid the
+           seller a SECOND time whenever this lookup merely failed on a network
+           blip. The ledger row below is flagged for reconciliation instead. */
+        console.error(
+          "Route transfer id not resolved for payment",
+          razorpayPaymentId,
+          "- purchase",
+          String(purchase._id)
+        );
+
+        // Still a TRANSFER — Razorpay is moving the money — just one whose id we
+        // failed to read. `needsReconciliation` is the flag to grep for when a
+        // seller's transfer id is missing from a purchase.
+        await ledger.record({
+          kind: "TRANSFER",
+          direction: "OUT",
+          purpose: "PROMPT_PURCHASE",
+          amount: ledger.toPaise(split.sellerNet),
+          occurredAt: new Date(),
+          razorpayPaymentId,
+          source: "api",
+          user: sellerId,
+          counterparty: req.user._id,
+          purchase: purchase._id,
+          prompt: prompt._id,
+          meta: { via: "route", needsReconciliation: true },
+        });
+      }
+
+      // Record Tokun's commission cut for this sale (non-fatal — purchase already succeeded)
+      try {
+        // Earnings, net of the GST charged on the platform fee. That GST goes to
+        // gstCollected instead — it's owed to the government, not earned here.
+        const gstOnFees = Number(split.platformFeeGst || 0);
+        await PlatformWallet.recordCommission(+(platformCommission - gstOnFees).toFixed(2), {
+          source: "prompt_purchase",
+          refId: purchase._id,
+          description: `Commission: "${prompt.title}"`,
+        });
+        await PlatformWallet.recordGst(gstOnFees, {
+          source: "prompt_purchase",
+          refId: purchase._id,
+          description: `GST on fee: "${prompt.title}"`,
+        });
+      } catch (revErr) {
+        console.error("PlatformWallet commission record failed:", revErr);
+      }
+
+      // Buying a prompt directly (Buy Now) left it sitting in the cart, because
+      // nothing outside the cart flow ever touched the cart. It would then be
+      // charged for again at cart checkout — and the verify step's
+      // already-owned guard would skip creating the purchase, so the buyer paid
+      // and received nothing. Pulling it out here closes that off at the source.
+      try {
+        await Cart.updateOne(
+          { user: req.user._id },
+          { $pull: { items: { prompt: prompt._id } } }
+        );
+      } catch (cartErr) {
+        // Non-fatal: the purchase is done and owned. GET /api/cart filters
+        // already-purchased items anyway, so a failure here is cosmetic.
+        console.error("Cart cleanup after purchase failed:", cartErr?.message);
+      }
+
+      /* -------------------- INVOICE (safe — purchase already saved) -------------------- */
+      try {
+        const invoiceNo = `INV-${purchase._id}`;
+        const date = new Date(purchase.createdAt || Date.now()).toLocaleDateString("en-GB");
+
+        // Mirrors generateInvoicePDF's own maths so the email body matches the
+        // attached PDF exactly. GST is off in both — see the note in
+        // services/invoice.service.js.
+        const subtotal = Number(pricePaid || 0);
+        // const gst = +(subtotal * 0.18).toFixed(2);
+        const gst = 0;
+        const total = +subtotal.toFixed(2);
+        const items = [
+          {
+            title: prompt.title,
+            price: subtotal,
+          },
+        ];
+
+        const logoPath = path.join(__dirname, "../assets/icons/Tokun.png");
+        const logoBase64 = fs.existsSync(logoPath)
+          ? `data:image/png;base64,${fs.readFileSync(logoPath).toString("base64")}`
+          : "";
+
+        const pdfBuffer = await generateInvoicePDF({
+          logo: logoBase64,
+          date,
+          invoiceNo,
+          buyerName: req.user.name || "Customer",
+          buyerEmail: req.user.email || "",
+          items,
+          // Instant delivery and a 24-hour refund window — a very different
+          // thing from the escrow-backed service and hire invoices.
+          kind: "prompt",
+        });
+
+        if (req.user.email) {
+          await sendInvoiceEmail({
+            to: req.user.email,
+            buyerName: req.user.name || "Customer",
+            buyerEmail: req.user.email,
+            items,
+            invoiceNo,
+            date,
+            subtotal,
+            gst,
+            total,
+            pdfBuffer,
+            kind: "prompt",
+          });
+        }
+      } catch (invoiceErr) {
+        // Invoice fail hone pe bhi purchase success hi return karo
+        console.error("⚠️ Prompt invoice/email failed (purchase still success):", invoiceErr.message);
+      }
+
+      // Log activity
+      await logActivity({
+        type: "PRODUCT_PURCHASED",
+        title: "Product purchased",
+        description: `${req.user.name} bought "${prompt.title}"`,
+        actorId: req.user._id,
+        actorName: req.user.name,
+        targetId: prompt._id,
+        targetType: "Prompt",
+        targetName: prompt.title,
+        meta: {
+          price: pricePaid,
+          promptId: String(prompt._id),
+          razorpayPaymentId,
+        },
+      });
+    } // ── end settleAfterPurchase ──
   } catch (err) {
     console.error("Verify purchase error:", err);
+
+    /* The response may already have gone out — everything after res.json() is
+       background work. Trying to send a second one throws
+       ERR_HTTP_HEADERS_SENT and buries the real error. */
+    if (res.headersSent) return;
 
     return res.status(500).json({
       success: false,

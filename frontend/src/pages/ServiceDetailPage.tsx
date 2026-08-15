@@ -609,8 +609,13 @@ export default function ServiceDetailPage() {
                 )}
               </span>
               <span className="block text-white/40 text-[12px] truncate">
+                {/* "Freelancer" and "Product creator" were both left over from
+                    before the tier was named. The platform says Creator for
+                    anyone who sells, and Super Creator for a cleared freelancer
+                    profile — one vocabulary, or the same person is three
+                    different things across three pages. */}
                 {seller.professionalTitle ||
-                  (seller.isFreelancer ? "Freelancer" : "Product creator")}
+                  (seller.superCreator ? "Super Creator" : "Creator")}
                 {seller.freelancerLocation ? ` · ${seller.freelancerLocation}` : ""}
               </span>
             </div>

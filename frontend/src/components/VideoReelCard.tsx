@@ -5,7 +5,7 @@
 // shown, and a second copy would have drifted the moment either page changed.
 // The styles come from pages/PromptMarketplace.css (.reel-card*), which both
 // pages already import.
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ShoppingCart, Lock } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { isTeamMember } from "@/lib/orgRoles";
@@ -48,7 +48,10 @@ export default function VideoReelCard({
   prompt: any;
   isPurchased: boolean;
   isOwn: boolean;
-  isPlaying: boolean;
+  /** Legacy one-video-at-a-time flag. Every reel now autoplays on its own (see
+      below), so this no longer drives playback — kept optional so the existing
+      call sites don't have to change. */
+  isPlaying?: boolean;
   /** false = this prompt's seller has no Route payout account yet. */
   hasPayoutSetup?: boolean;
   onVideoPlay: (id: string | number) => void;
@@ -64,11 +67,44 @@ export default function VideoReelCard({
   const teamMember = isTeamMember(viewer);
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  /* Every reel plays by itself now, the way a feed does — a grid of frozen
+     first frames each waiting for a click told a browser nothing about what
+     the prompt actually produces. Two things keep that from being expensive:
+     only the cards on screen are playing (the observer below), and a card the
+     viewer has deliberately paused stays paused even as it scrolls in and out. */
+  const [inView, setInView] = useState(false);
+  const [pausedByUser, setPausedByUser] = useState(false);
+
   useEffect(() => {
-    if (!videoRef.current) return;
-    if (isPlaying) videoRef.current.play().catch(() => {});
-    else videoRef.current.pause();
-  }, [isPlaying]);
+    const el = videoRef.current;
+    if (!el) return;
+
+    // No IntersectionObserver (old Safari, jsdom in tests): fall back to
+    // "always in view", which is the pre-observer behaviour of an autoplaying
+    // video rather than a card that never plays.
+    if (typeof IntersectionObserver === "undefined") {
+      setInView(true);
+      return;
+    }
+
+    const io = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      // A quarter of the card is enough to be worth playing; the margin starts
+      // it just before it scrolls into view so it isn't a black rectangle.
+      { threshold: 0.25, rootMargin: "100px 0px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (inView && !pausedByUser) el.play().catch(() => {});
+    else el.pause();
+  }, [inView, pausedByUser]);
+
+  const playing = inView && !pausedByUser;
 
   // Listed but not purchasable — the seller is still going through Route payout
   // onboarding. Same rule the image cards use.
@@ -80,7 +116,16 @@ export default function VideoReelCard({
   const showActions = !isPurchased && !isOwn && !prompt.isFree;
 
   return (
-    <div className="reel-card" onClick={() => onVideoPlay(prompt.id)}>
+    <div
+      className="reel-card"
+      onClick={() => {
+        // Tapping a reel now pauses/resumes that one card. The parent is still
+        // told, because pages keep their own "which reel was last touched"
+        // state, but playback is decided here.
+        setPausedByUser((v) => !v);
+        onVideoPlay(prompt.id);
+      }}
+    >
       {/* Video */}
       <video
         ref={videoRef}
@@ -88,7 +133,11 @@ export default function VideoReelCard({
         className="reel-card__video"
         loop
         muted
+        // Muted + inline is what lets a browser autoplay this at all; without
+        // both, the play() above is rejected and every card sits frozen.
+        autoPlay
         playsInline
+        preload="metadata"
       />
 
       {/* Watermark */}
@@ -97,7 +146,7 @@ export default function VideoReelCard({
       )}
 
       {/* Play / Pause hint */}
-      {!isPlaying && (
+      {!playing && (
         <div className="reel-card__play-hint">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
         </div>

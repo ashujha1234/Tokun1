@@ -171,6 +171,13 @@ export interface FreelancerProfile {
   strength: ProfileStrength;
   /** Whether a Razorpay linked account already exists for this user. */
   payoutReady: boolean;
+  /**
+   * Cleared to publish services and take hire work: `introVideo.status` is
+   * APPROVED, or the account is allowlisted. Read it rather than checking
+   * `introVideo.status` directly — an allowlisted creator has no video and
+   * would otherwise be told to wait for an approval that isn't coming.
+   */
+  superCreator: boolean;
   videoRules: IntroVideoRules;
 }
 
@@ -557,11 +564,19 @@ export interface PublicFreelancerProfile {
 }
 
 /** ACTIVE profiles only; resolves to null for everyone else. */
+/**
+ * `payoutReady` and `superCreator` sit beside the profile rather than inside it
+ * — neither is a profile field, both are answers about whether a hire can
+ * happen at all, and the same two conditions the server enforces on
+ * POST /api/hire/create-proposal.
+ */
 export function getPublicFreelancerProfile(userId: string) {
-  return request<{ profile: PublicFreelancerProfile | null }>(
-    `/api/freelancer/public/${userId}`,
-    { method: "GET" }
-  );
+  return request<{
+    profile: PublicFreelancerProfile | null;
+    payoutReady: boolean;
+    /** Intro video approved, or an allowlisted account. */
+    superCreator: boolean;
+  }>(`/api/freelancer/public/${userId}`, { method: "GET" });
 }
 
 /** Resolves an API-relative upload path (e.g. /uploads/...) against the API origin. */

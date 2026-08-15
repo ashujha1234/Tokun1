@@ -64,7 +64,7 @@ type StepId = "basics" | "skills" | "specializations" | "credentials" | "review"
 const STEPS: StepId[] = ["basics", "skills", "specializations", "credentials", "review"];
 
 const STEP_TITLES: Record<StepId, string> = {
-  basics: "Set up your freelancer profile",
+  basics: "Set up your Super Creator profile",
   skills: "What are your skills?",
   specializations: "What do you specialize in?",
   credentials: "Experience, education & certifications",
@@ -303,7 +303,7 @@ export default function BecomeFreelancerWizard({
       }
 
       if (res.data.eligible === false) {
-        setBlockedMessage(res.data.message || "This account can't create a freelancer profile.");
+        setBlockedMessage(res.data.message || "This account can't create a Super Creator profile.");
         setPhase("blocked");
         return;
       }
@@ -837,13 +837,23 @@ export default function BecomeFreelancerWizard({
                   <BadgeCheck className="w-7 h-7" />
                 </div>
                 <h3 className="text-white text-lg font-semibold mb-2">
-                  Your freelancer profile is live
+                  Your Super Creator profile is live
                 </h3>
                 <div className="text-white/60 text-sm space-y-2 max-w-[420px] mx-auto">
-                  <p>Buyers can find you and hire you for custom work right now.</p>
+                  {/* Deliberately not "you can be hired now" any more: a live
+                      profile is discoverable, but publishing services and
+                      taking hire work both wait on an approved intro video —
+                      the server refuses either without one. Promising work that
+                      can't happen yet is how a new creator concludes the
+                      platform is broken. */}
+                  <p>Buyers can find you and message you right now.</p>
+                  <p>
+                    Services and hiring unlock once an admin approves your intro video — that's
+                    the one thing left.
+                  </p>
                   <p className="text-white/40 text-[12px]">
-                    Anything still missing — an intro video, portfolio, or the credentials you
-                    skipped — is listed on your profile page. Click any of it to fill it in.
+                    Anything else still missing — portfolio, or the credentials you skipped — is
+                    listed on your profile page. Click any of it to fill it in.
                   </p>
                 </div>
                 <div className="mt-6 flex flex-wrap items-center justify-center gap-2">

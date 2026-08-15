@@ -14,7 +14,11 @@ const PLAN_CARD_CONTENT = {
     title: "Pro",
     subtitle: "(Individuals)",
     tokens: "100,000",
-    highlight: "Most Popular",
+    // "Most Popular" was a shop-window label. On a receipt for a plan the
+    // customer has already bought, it sells them nothing and just clutters the
+    // card. Null here removes it from both the invoice PDF and the email — the
+    // pricing page keeps its own badge.
+    highlight: null,
     extras: [
       { label: "Extra Tokens Feature", value: "Yes" },
       { label: "No. of Extra Tokens", value: "50,000" },

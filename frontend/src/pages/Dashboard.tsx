@@ -18272,7 +18272,9 @@ const ADMIN_NAV_SECTIONS: Array<{
       { id: "sellers", label: "Creators", icon: <Store className="h-[17px] w-[17px]" /> },
       { id: "products", label: "Products", icon: <Package className="h-[17px] w-[17px]" /> },
       { id: "analytics", label: "Product Validation", icon: <ShieldCheck className="h-[17px] w-[17px]" /> },
-      { id: "freelancers", label: "Freelancers", icon: <Briefcase className="h-[17px] w-[17px]" /> },
+      // Label only — the id "freelancers", the route and the state machine
+      // underneath are untouched.
+      { id: "freelancers", label: "Super Creators", icon: <Briefcase className="h-[17px] w-[17px]" /> },
     ],
   },
   {
@@ -18292,7 +18294,7 @@ const ADMIN_NAV_SECTIONS: Array<{
 
 const MOBILE_NAV_MORE_ITEMS: { id: NavKey; label: string; icon: React.ReactNode }[] = [
   { id: "analytics", label: "Product Validation", icon: <ShieldCheck className="h-4 w-4" /> },
-  { id: "freelancers", label: "Freelancers", icon: <Briefcase className="h-4 w-4" /> },
+  { id: "freelancers", label: "Super Creators", icon: <Briefcase className="h-4 w-4" /> },
   { id: "payments", label: "Payments", icon: <Wallet className="h-4 w-4" /> },
   { id: "feedback", label: "Feedback", icon: <MessageSquare className="h-4 w-4" /> },
 ];

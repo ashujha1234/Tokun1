@@ -66,7 +66,7 @@
 //   }).format(n);
 
 // export default function Subscription() {
-//    const { user, isReady } = useAuth();
+//   const { user, isReady } = useAuth();
 //   const [annual, setAnnual] = useState(false);
 //   const [selected, setSelected] = useState<PlanKey>("Pro");
 //   const [creating, setCreating] = useState(false);
@@ -668,6 +668,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Check, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 type PlanKey = "Free" | "Pro" | "Enterprise";
 type ServerPlanKey = "free" | "pro";
@@ -715,7 +716,8 @@ const INR = (n: number) =>
   }).format(n);
 
 export default function Subscription() {
-  const { user, isReady } = useAuth();
+  const { user, isReady, persistAuth, refreshQuota } = useAuth();
+  const navigate = useNavigate();
   const [annual, setAnnual] = useState(false);
   const [selected, setSelected] = useState<PlanKey>("Pro");
   const [creating, setCreating] = useState(false);
@@ -842,6 +844,32 @@ export default function Subscription() {
     return data;
   }
 
+  /* What happens the moment a plan is paid for.
+
+     Neither of these used to happen at all: the page logged "purchase
+     complete" and left the buyer sitting on the pricing grid, with the auth
+     context still holding the plan it had cached at login. So the new plan
+     appeared only whenever something else happened to refresh the account —
+     the lag you'd see on the subscription page after paying for Pro.
+
+     The verify response is authoritative for plan/cycle/period, so it goes
+     into the context first; refreshQuota() then follows with the new token
+     allowance, and My Subscription is where the buyer actually wanted to end
+     up. */
+  const finishPurchase = (verified: any) => {
+    const patch: Record<string, any> = {};
+    if (verified?.plan) patch.plan = verified.plan;
+    if (verified?.billingCycle) patch.billingCycle = verified.billingCycle;
+    if (verified?.currentPeriodEnd) patch.currentPeriodEnd = verified.currentPeriodEnd;
+
+    if (Object.keys(patch).length) persistAuth?.({ user: patch as any });
+
+    // Fire and forget — the navigation below doesn't wait on token counts.
+    refreshQuota?.()?.catch?.(() => {});
+
+    navigate("/self-dash?tab=subscription");
+  };
+
   const startPurchase = async () => {
     const planKey = toServerPlanKey(selected);
 
@@ -919,9 +947,11 @@ export default function Subscription() {
         order: data.order,
       });
 
-      await verifyUserPayment(checkoutRes);
+      const verified = await verifyUserPayment(checkoutRes);
 
       console.log("%c[Subscribe] 🎉 IND purchase complete", "color:#22c55e;font-weight:700;");
+
+      finishPurchase(verified);
     } catch (e: any) {
       console.error("[Subscribe] ❌ FLOW FAILED:", e?.message || e);
     } finally {
@@ -999,6 +1029,8 @@ export default function Subscription() {
       }
 
       console.log("[Subscribe/ORG] ✅ verify success:", vJson);
+
+      finishPurchase(vJson);
     } catch (e: any) {
       console.error("[Subscribe/ORG] ❌ FLOW FAILED:", e?.message || e);
       alert(`Enterprise purchase failed: ${e?.message || "unexpected_error"}`);

@@ -43,6 +43,12 @@ export interface BrowseFreelancer {
   hourlyRate: number | null;
   availability: "full_time" | "part_time" | "occasional" | null;
   hasIntroVideo: boolean;
+  /**
+   * Cleared to sell services and take hire work — an admin-approved intro
+   * video, or an allowlisted account. The server refuses both actions without
+   * it, so the card must not present them as available.
+   */
+  superCreator: boolean;
   activatedAt: string | null;
   /** Razorpay has ACTIVATED their payout account, so a hire can actually pay out. */
   payoutReady: boolean;
@@ -78,6 +84,15 @@ export interface DirectoryPerson {
   hourlyRate: number | null;
   availability: BrowseFreelancer["availability"];
   hasIntroVideo: boolean;
+  /**
+   * Cleared to sell services and take hire work. False while their intro video
+   * is unapproved (and they aren't allowlisted) — the service and proposal
+   * endpoints both refuse in that state, so the card badges and Hire button
+   * follow it rather than assuming every live profile can trade.
+   *
+   * Meaningless for prompt-only sellers, who sell nothing gated by it.
+   */
+  superCreator: boolean;
   rating: number;
   reviewsCount: number;
   totalUploadedPrompts: number;
@@ -242,6 +257,7 @@ export function mergePeople(
       hourlyRate: f.hourlyRate,
       availability: f.availability,
       hasIntroVideo: f.hasIntroVideo,
+      superCreator: Boolean(f.superCreator),
       rating: 0,
       reviewsCount: 0,
       totalUploadedPrompts: 0,
@@ -285,6 +301,8 @@ export function mergePeople(
       hourlyRate: null,
       availability: null,
       hasIntroVideo: false,
+      // Not a freelancer, so nothing on their card is gated by the video rule.
+      superCreator: false,
       rating: s.rating || 0,
       reviewsCount: s.reviewsCount || 0,
       totalUploadedPrompts: s.totalUploadedPrompts || 0,
@@ -309,7 +327,12 @@ export function mergePeople(
 export type PeopleRole = "all" | "freelancers" | "sellers";
 
 export function filterPeopleByRole(people: DirectoryPerson[], role: PeopleRole) {
-  if (role === "freelancers") return people.filter((p) => p.isFreelancer);
+  /* Super Creator means "can be hired for custom work right now", not "has
+     filled in a profile". A profile whose intro video hasn't been approved
+     can't be hired at all — the proposal endpoint refuses — so listing it here
+     would answer the buyer's question wrongly. Those people are still in
+     "Everyone", where the card says plainly what they're waiting on. */
+  if (role === "freelancers") return people.filter((p) => p.isFreelancer && p.superCreator);
   // Anyone who sells prompts, including freelancers who also do — "show me
   // people I can buy a prompt from" is the question, and excluding freelancers
   // would answer a different one.
@@ -382,6 +405,8 @@ export interface ServiceSeller {
   reviewsCount: number;
   /** False for a prompt-only seller — the title and rate lines are then absent. */
   isFreelancer: boolean;
+  /** Cleared to sell services and be hired: approved intro video, or allowlisted. */
+  superCreator: boolean;
   professionalTitle: string;
   languages: { name: string; level: string }[];
   hourlyRate: number | null;

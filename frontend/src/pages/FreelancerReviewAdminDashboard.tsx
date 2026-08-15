@@ -46,9 +46,17 @@ const VIDEO_TABS: { id: VideoStatus; label: string }[] = [
   { id: "NONE", label: "No video" },
 ];
 
-const ROSTER_TABS: { id: ProfileStatus; label: string }[] = [
-  { id: "ACTIVE", label: "Live" },
-  { id: "DRAFT", label: "Drafts" },
+/* The roster is sliced by what someone can DO, not by whether a document
+   exists. An ACTIVE profile is published and findable; it is only a Super
+   Creator once the intro video is approved (or the account is allowlisted).
+   Listing all five ACTIVE profiles under "Super Creators" is how a queue of
+   four unreviewed videos read as a roster of five working creators. */
+type RosterView = "trading" | "blocked" | "drafts";
+
+const ROSTER_TABS: { id: RosterView; label: string; status: ProfileStatus }[] = [
+  { id: "trading", label: "Super Creators", status: "ACTIVE" },
+  { id: "blocked", label: "Awaiting video", status: "ACTIVE" },
+  { id: "drafts", label: "Drafts", status: "DRAFT" },
 ];
 
 const CHIP: Record<string, { color: string; bg: string; dot: string; label: string }> = {
@@ -95,6 +103,12 @@ interface QueueRow {
   createdAt?: string;
   updatedAt?: string;
   introVideo: IntroVideoRow;
+  /**
+   * Allowlisted, so the video rule doesn't apply to them — they can publish
+   * services and be hired whatever `introVideo.status` says. Shown in the table
+   * because a trading creator with a NONE video otherwise looks like a bug.
+   */
+  videoGateExempt?: boolean;
   user: {
     _id: string;
     name?: string;
@@ -275,10 +289,17 @@ export default function FreelancerReviewAdminDashboard() {
   // decision. The roster is a lookup tool.
   const [mode, setMode] = useState<Mode>("videos");
   const [videoStatus, setVideoStatus] = useState<VideoStatus>("PENDING");
-  const [profileStatus, setProfileStatus] = useState<ProfileStatus>("ACTIVE");
+  const [rosterView, setRosterView] = useState<RosterView>("trading");
 
   const [rows, setRows] = useState<QueueRow[]>([]);
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  /* How many live profiles can actually trade, vs. how many are only published.
+     Roster mode only — the video queue doesn't ask this question. */
+  const [tradingCounts, setTradingCounts] = useState<{
+    trading: number;
+    blocked: number;
+    live: number;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -310,9 +331,13 @@ export default function FreelancerReviewAdminDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const status = mode === "videos" ? videoStatus : profileStatus;
+      const tab = ROSTER_TABS.find((t) => t.id === rosterView);
+      const status = mode === "videos" ? videoStatus : tab?.status || "ACTIVE";
       const path = mode === "videos" ? "/videos" : "";
-      const url = `${API_BASE}${path}?status=${status}&page=${page}&limit=25${
+      // `view` narrows an ACTIVE roster to who can actually trade; Drafts has
+      // no clearance question, so it sends none.
+      const view = mode === "roster" && rosterView !== "drafts" ? `&view=${rosterView}` : "";
+      const url = `${API_BASE}${path}?status=${status}${view}&page=${page}&limit=25${
         debouncedSearch ? `&q=${encodeURIComponent(debouncedSearch)}` : ""
       }`;
 
@@ -325,15 +350,16 @@ export default function FreelancerReviewAdminDashboard() {
 
       setRows(data.profiles || []);
       setStatusCounts(data.statusCounts || {});
+      setTradingCounts(data.tradingCounts || null);
       setPages(data.pages || 1);
       setTotal(data.total || 0);
     } catch (e: any) {
-      setError(e?.message || "Could not load freelancers.");
+      setError(e?.message || "Could not load Super Creators.");
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [mode, videoStatus, profileStatus, page, debouncedSearch]);
+  }, [mode, videoStatus, rosterView, page, debouncedSearch]);
 
   useEffect(() => {
     fetchQueue();
@@ -459,15 +485,27 @@ export default function FreelancerReviewAdminDashboard() {
   return (
     <div style={{ color: "#fff" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 600 }}>Freelancers</h2>
+        <h2 style={{ fontSize: 20, fontWeight: 600 }}>Super Creators</h2>
         {mode === "videos" && pendingCount > 0 && (
           <span style={{ fontSize: 12, color: "#93C5FD" }}>{pendingCount} video(s) waiting</span>
         )}
       </div>
       <p style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginBottom: 16 }}>
-        Freelancer profiles go live without review — the intro video is the only thing approved here.
-        Approving publishes the video on their public profile.
+        Super Creator profiles go live without review — the intro video is the only thing approved
+        here. Approving publishes the video on their public profile, and is what lets them publish
+        services and be hired.
       </p>
+
+      {/* One sentence of what the tab counts mean, since the difference between
+          them is the whole point: a published profile is not a creator who can
+          take work. The numbers themselves live on the tabs — repeating them
+          here would just be two sources to disagree with each other. */}
+      {mode === "roster" && tradingCounts && (
+        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginBottom: 14 }}>
+          {tradingCounts.live} live profile{tradingCounts.live === 1 ? "" : "s"} — of which only
+          Super Creators can publish services and be hired.
+        </p>
+      )}
 
       {/* Mode switch: what needs deciding vs. who exists. */}
       <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
@@ -476,7 +514,7 @@ export default function FreelancerReviewAdminDashboard() {
           setPage(1);
           setSelectedId(null);
         })}
-        {tabButton(mode === "roster", "All freelancers", undefined, () => {
+        {tabButton(mode === "roster", "Profiles", undefined, () => {
           setMode("roster");
           setPage(1);
           setSelectedId(null);
@@ -493,11 +531,20 @@ export default function FreelancerReviewAdminDashboard() {
               })
             )
           : ROSTER_TABS.map((tab) =>
-              tabButton(profileStatus === tab.id, tab.label, statusCounts[tab.id] ?? 0, () => {
-                setProfileStatus(tab.id);
-                setPage(1);
-                setSelectedId(null);
-              })
+              tabButton(
+                rosterView === tab.id,
+                tab.label,
+                tab.id === "trading"
+                  ? tradingCounts?.trading ?? 0
+                  : tab.id === "blocked"
+                    ? tradingCounts?.blocked ?? 0
+                    : statusCounts.DRAFT ?? 0,
+                () => {
+                  setRosterView(tab.id);
+                  setPage(1);
+                  setSelectedId(null);
+                }
+              )
             )}
       </div>
 
@@ -546,7 +593,7 @@ export default function FreelancerReviewAdminDashboard() {
         <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 800 }}>
           <thead>
             <tr>
-              <th style={headerCell}>Freelancer</th>
+              <th style={headerCell}>Creator</th>
               <th style={headerCell}>Title</th>
               {mode === "videos" ? (
                 <>
@@ -559,6 +606,14 @@ export default function FreelancerReviewAdminDashboard() {
                   <th style={headerCell}>Specializations</th>
                   <th style={headerCell}>Skills</th>
                   <th style={headerCell}>Profile</th>
+                  {/* Video status belongs on the roster too, not only on the
+                      videos queue. A draft is not one thing: some stopped after
+                      typing a name, others went all the way to uploading a
+                      video. Without this column those look identical, so there
+                      was no way to tell who is actually waiting on a decision.
+                      It is also the field that now decides whether they can sell
+                      services or be hired at all. */}
+                  <th style={headerCell}>Video</th>
                 </>
               )}
               <th style={headerCell} />
@@ -698,6 +753,30 @@ export default function FreelancerReviewAdminDashboard() {
                           {formatDate(row.activatedAt || row.createdAt)}
                         </div>
                       </td>
+
+                      {/* How far they actually got. A PENDING badge here is the
+                          signal that this row is waiting on a decision — and
+                          since an unapproved video now blocks services and
+                          hiring, it is also why an otherwise complete profile
+                          can't do anything yet. */}
+                      <td style={bodyCell}>
+                        <Badge status={row.introVideo.status} />
+                        {row.introVideo.status === "PENDING" && row.introVideo.uploadedAt && (
+                          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>
+                            {waitingFor(row.introVideo.uploadedAt)}
+                          </div>
+                        )}
+                        {row.introVideo.status === "NONE" && (
+                          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 4 }}>
+                            never uploaded
+                          </div>
+                        )}
+                        {row.videoGateExempt && row.introVideo.status !== "APPROVED" && (
+                          <div style={{ marginTop: 4 }}>
+                            <Chip tone="accent">allowlisted — can sell anyway</Chip>
+                          </div>
+                        )}
+                      </td>
                     </>
                   )}
 
@@ -828,6 +907,13 @@ export default function FreelancerReviewAdminDashboard() {
                       <Chip>KYC: {detail.user.kycStatus}</Chip>
                     )}
                     <Chip>{detail.payoutReadyAt ? "Payouts ready" : "No payout account yet"}</Chip>
+                    {/* Says plainly that approving or rejecting this video won't
+                        change what they can do — an allowlisted account trades
+                        either way. Without it, a reviewer could reject a video
+                        expecting it to take the profile out of the market. */}
+                    {detail.videoGateExempt && (
+                      <Chip tone="accent">Allowlisted — exempt from the video rule</Chip>
+                    )}
                   </div>
 
                   {/* The video first — it's the reason this drawer is open. */}
@@ -867,7 +953,7 @@ export default function FreelancerReviewAdminDashboard() {
                     ) : (
                       <p style={{ fontSize: 12.5, color: "rgba(255,255,255,0.45)" }}>
                         {video?.status === "NONE"
-                          ? "This freelancer hasn't uploaded a video."
+                          ? "This Super Creator hasn't uploaded a video."
                           : "The video file is no longer stored."}
                       </p>
                     )}

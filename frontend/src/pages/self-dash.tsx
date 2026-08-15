@@ -1184,6 +1184,18 @@ const toDateValue = (date: Date) => {
 const getMonthLabel = (date: Date) =>
   date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
+/* "10:45 AM IST" — the viewer's own wall clock and their own zone abbreviation,
+   not a fixed string. `timeZoneName: "short"` gives IST / GMT+5:30 / PST etc.
+   from the browser, so it can't disagree with the time printed beside it. */
+const formatClock = () =>
+  new Date()
+    .toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    })
+    .toUpperCase();
+
 const formatDashboardDate = (value: string) => {
   if (!value) return "OCTOBER 24";
   const [year, month, day] = value.split("-").map(Number);
@@ -1193,7 +1205,15 @@ const formatDashboardDate = (value: string) => {
     .toUpperCase();
 };
 
-type DashTab = "dashboard" | "requests" | "serviceBookings" | "prompts" | "subscription";
+// One list, so a ?tab= value can be checked against exactly the tabs that exist.
+const VALID_DASH_TABS = [
+  "dashboard",
+  "requests",
+  "serviceBookings",
+  "prompts",
+  "subscription",
+] as const;
+type DashTab = (typeof VALID_DASH_TABS)[number];
 type PromptsTab = "purchased" | "uploaded";
 type PlanKey = "Free" | "Pro" | "Enterprise";
 
@@ -2167,7 +2187,9 @@ function EmptyState({ message }: { message: string }) {
    MAIN COMPONENT
 ═══════════════════════════════════════════════════════════ */
 const SelfDash = () => {
-  const { user, token } = useAuth() as any;
+  // persistAuth/refreshQuota so a plan bought on this page shows up on it
+  // immediately — see applyPlanFromVerify below.
+  const { user, token, persistAuth, refreshQuota } = useAuth() as any;
 
   const displayName = user?.name?.trim() || user?.email?.split("@")?.[0] || "User";
   const avatar =
@@ -2180,8 +2202,15 @@ const SelfDash = () => {
   const location = useLocation();
   const initialParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
 
+  /* ?tab= used to be understood only when it said "prompts", so every other
+     deep link — most importantly ?tab=subscription, where the Subscription
+     page sends someone straight after paying — silently landed on the
+     dashboard tab instead. Validated against the real tab list now. */
+  const readTabParam = (raw: string | null): DashTab | null =>
+    raw && (VALID_DASH_TABS as readonly string[]).includes(raw) ? (raw as DashTab) : null;
+
   const [activeTab, setActiveTab] = useState<DashTab>(
-    initialParams.get("tab") === "prompts" ? "prompts" : "dashboard"
+    () => readTabParam(initialParams.get("tab")) ?? "dashboard"
   );
   const [promptsTab, setPromptsTab] = useState<PromptsTab>(
     initialParams.get("p") === "uploaded" ? "uploaded" : "purchased"
@@ -2190,11 +2219,20 @@ const SelfDash = () => {
   // The account menu links here while the user may already be on this page —
   // without this, the URL changes but the visible tab doesn't.
   useEffect(() => {
-    const tab = initialParams.get("tab") as DashTab | null;
+    const tab = readTabParam(initialParams.get("tab"));
     const p = initialParams.get("p");
-    if (tab === "prompts") setActiveTab("prompts");
+    if (tab) setActiveTab(tab);
     if (p === "purchased" || p === "uploaded") setPromptsTab(p);
   }, [initialParams]);
+
+  /* The clock next to the date. Ticks on the minute rather than every second —
+     it only ever shows hours and minutes, so a per-second interval would be
+     re-rendering the dashboard 59 times for nothing. */
+  const [clockLabel, setClockLabel] = useState(formatClock);
+  useEffect(() => {
+    const id = window.setInterval(() => setClockLabel(formatClock()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const [showCalendar, setShowCalendar] = useState(false);
   const [selectedDate, setSelectedDate] = useState(toDateValue(new Date()));
@@ -2297,6 +2335,29 @@ const verifyUserPayment = async (payload: {
   return data;
 };
 
+/* Nothing used to touch the signed-in user after a subscription verified, so
+   the page kept rendering the plan it had cached at login — "Free Plan" on a
+   banner belonging to someone who had just paid for Pro. It only corrected
+   itself whenever something else happened to refresh the account, which is
+   the delay you'd see.
+
+   The verify response already carries the authoritative plan, cycle and period
+   end, so those go into the auth context straight away; refreshQuota() then
+   follows up with the new token allowance. */
+const applyPlanFromVerify = (data: any) => {
+  const patch: Record<string, any> = {};
+  if (data?.plan) patch.plan = data.plan;
+  if (data?.billingCycle) patch.billingCycle = data.billingCycle;
+  if (data?.currentPeriodEnd) patch.currentPeriodEnd = data.currentPeriodEnd;
+
+  if (Object.keys(patch).length) persistAuth?.({ user: patch });
+
+  // Token limits, extra-token balance and org pool live behind /api/quota —
+  // not in the verify response. Fire and forget; the banner above doesn't
+  // wait on it.
+  refreshQuota?.().catch?.(() => {});
+};
+
 const startUserSubscriptionPurchase = async (
   plan: PlanKey,
   annual: boolean
@@ -2357,7 +2418,12 @@ const startUserSubscriptionPurchase = async (
       order: data.order,
     });
 
-    await verifyUserPayment(checkoutRes);
+    const verified = await verifyUserPayment(checkoutRes);
+
+    applyPlanFromVerify(verified);
+    // Already on the dashboard — put the plan they just bought in front of
+    // them rather than leaving them on whichever tab they started from.
+    setActiveTab("subscription");
 
     toast({
       title: "Payment successful",
@@ -2454,6 +2520,9 @@ const startEnterpriseSubscriptionPurchase = async (annual: boolean) => {
         verifyJson?.error || `verify_org_failed_${verifyRes.status}`
       );
     }
+
+    applyPlanFromVerify(verifyJson);
+    setActiveTab("subscription");
 
     toast({
       title: "Payment successful",
@@ -4386,7 +4455,11 @@ const RequestCard = ({ item }: { item: any }) => {
                     <p style={{ margin: 0, fontFamily: "Inter, sans-serif", fontWeight: 800, fontSize: 12, lineHeight: "100%", color: "#FFFFFF", textTransform: "uppercase" }}>
                       {formatDashboardDate(selectedDate)}
                     </p>
-                    <p style={{ margin: "6px 0 0", fontFamily: "Inter, sans-serif", fontWeight: 400, fontSize: 11, lineHeight: "100%", color: "#A1A1AA" }}>10:45 AM GMT</p>
+                    {/* Was the literal string "10:45 AM GMT" — a mockup value that
+                        shipped, so the dashboard told everyone it was quarter to
+                        eleven in London no matter when or where they opened it.
+                        Real clock now, in the viewer's own timezone. */}
+                    <p style={{ margin: "6px 0 0", fontFamily: "Inter, sans-serif", fontWeight: 400, fontSize: 11, lineHeight: "100%", color: "#A1A1AA" }}>{clockLabel}</p>
                   </div>
                   <div className="h-8 w-px bg-white/20" />
                   <button type="button" onClick={() => setShowCalendar((v) => !v)} className="grid h-10 w-10 place-items-center rounded-xl border-0 bg-transparent p-0">

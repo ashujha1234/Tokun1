@@ -782,6 +782,9 @@ const CategoriesRow = ({
 const PromptMarketplacePage = () => {
   const { token, user } = useAuth?.() || ({} as any);
   const { addToCart } = useCart();
+  // Used after a successful purchase — same destination as the marketplace's
+  // own buy flow, so a buyer ends up on My Products wherever they bought from.
+  const navigate = useNavigate();
   const currentUserId = user?._id || user?.id || null;
 
   const [prompts, setPrompts] = useState<Prompt[]>([]);
@@ -970,6 +973,14 @@ const PromptMarketplacePage = () => {
               setPurchasedPrompts((prev) => (prev.includes(promptId) ? prev : [...prev, promptId]));
               setDetailsOpen(false);
               toast({ title: "Payment Successful", description: "You now own this product." });
+              try {
+                window.dispatchEvent(
+                  new CustomEvent("tokun:purchased", { detail: vb.purchase })
+                );
+              } catch {}
+              navigate("/self-dash?tab=prompts&p=purchased", {
+                state: { refreshPurchases: true },
+              });
             } else {
               toast({ title: "Verification Failed", description: vb?.error || "Unknown error" });
             }

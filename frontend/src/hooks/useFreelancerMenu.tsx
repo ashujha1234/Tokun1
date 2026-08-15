@@ -162,37 +162,43 @@ export function useFreelancerMenu(): FreelancerMenuState {
   const meta = useMemo(() => {
     if (!eligible) {
       return {
-        label: "Creator work via your org",
+        label: "Super Creator work via your org",
         hint: "Your organization handles client work",
         icon: <AlertCircle size={16} />,
         tint: "rgba(255,255,255,0.45)",
       };
     }
-    /* "Creator", not "freelancer" — the profile page says Creator on the badge
-       and the button, and this is the same profile seen from the account menu.
-       All three states are renamed together: a menu that offers "Become a
-       Creator" and then reports "Finish freelancer profile" reads as two
-       different features. Only the wording changes; the state machine, the
-       API and the field names underneath are untouched. */
+    /* "Super Creator", the tier this profile actually unlocks.
+       This menu is the entry point to the Super Creator flow — services, hire
+       and escrow deals. It said "Creator", which now means something else:
+       anyone with an activated payout account and a published product is a
+       Creator, and that needs no profile, no skills and no intro video.
+       Leaving both called "Creator" made the menu look like it was offering a
+       tier the user already had.
+
+       All states are renamed together — a menu that offers "Become a Super
+       Creator" and then reports "Finish creator profile" reads as two different
+       features. Only the wording changes here; the state machine, the API and
+       the field names underneath are untouched. */
     switch (status) {
       case "ACTIVE":
         return {
-          label: "My creator profile",
+          label: "My Super Creator profile",
           hint: "Live",
           icon: <BadgeCheck size={16} />,
           tint: "#19E66C",
         };
       case "DRAFT":
         return {
-          label: "Finish creator profile",
+          label: "Finish Super Creator profile",
           hint: "Draft saved",
           icon: <Briefcase size={16} />,
           tint: "#FF14EF",
         };
       default:
         return {
-          label: "Become a Creator",
-          hint: "Get hired for custom work",
+          label: "Become a Super Creator",
+          hint: "Offer services and get hired",
           icon: <Briefcase size={16} />,
           tint: "#FF14EF",
         };
