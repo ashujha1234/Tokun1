@@ -4392,6 +4392,9 @@ const reviewRoutes = require("./routes/reviews");
 /* Reviews OF A PRODUCT, as opposed to reviews of a person — different model,
    different uniqueness rule. See the header of models/ProductReview.js. */
 const productReviewRoutes = require("./routes/productReviews");
+/* Admin-applied deductions to a creator's star rating, used when a refund or a
+   dispute is decided against them. Never automatic — see the file header. */
+const adminRatingPenaltyRoutes = require("./routes/adminRatingPenalties");
 const adminDisputesRouter = require("./routes/adminDisputes");
 const adminPlatformRevenueRouter = require("./routes/adminPlatformRevenue");
 /* Everything that moved through Razorpay, joined to Tokun's own commission
@@ -5418,6 +5421,7 @@ app.use("/api/progress-review", progressReviewRoutes);
    paid transaction, one per booking per direction. */
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/product-reviews", productReviewRoutes);
+app.use("/api/admin/rating-penalties", adminRatingPenaltyRoutes);
 app.use("/api/admin/disputes", adminDisputesRouter);
 app.use("/api/admin/platform-revenue", adminPlatformRevenueRouter);
 app.use("/api/admin/payments", adminPaymentsRouter);

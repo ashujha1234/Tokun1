@@ -20,6 +20,7 @@ const Purchase = require("../models/Purchase");
 const Prompt = require("../models/Prompt");
 const Notification = require("../models/Notification");
 const { requireAuth } = require("../utils/auth");
+const { recomputeUserRating } = require("../utils/sellerRating");
 const { sendReviewReceivedEmail } = require("../services/creatorEmail.service");
 
 const router = express.Router();
@@ -35,30 +36,13 @@ const router = express.Router();
  * number the marketplace sorts and badges on, and it should mean "is their work
  * good", not an average of that with "are they pleasant to deliver to".
  */
-async function recomputeUserRating(userId) {
-  const agg = await Review.aggregate([
-    {
-      $match: {
-        revieweeId: new mongoose.Types.ObjectId(String(userId)),
-        hidden: false,
-        reviewerRole: "buyer",
-      },
-    },
-    { $group: { _id: null, avg: { $avg: "$rating" }, count: { $sum: 1 } } },
-  ]);
+/* recomputeUserRating now lives in utils/sellerRating.js.
 
-  const avg = agg[0]?.avg || 0;
-  const count = agg[0]?.count || 0;
-
-  await User.findByIdAndUpdate(userId, {
-    $set: {
-      sellerRating: +avg.toFixed(2),
-      sellerReviewsCount: count,
-    },
-  });
-
-  return { rating: +avg.toFixed(2), count };
-}
+   It moved because admin rating penalties (models/RatingPenalty.js) subtract
+   from the same number. Two implementations would have meant the rating said
+   one thing after a review and another after a penalty, depending on which ran
+   last. Re-exported at the bottom of this file so existing importers are
+   unaffected. */
 
 
 /* ══════════════════════════════════════════════════════════════════════════

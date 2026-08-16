@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft, RefreshCw, CheckCircle2, XCircle, Clock, ImageOff, X } from "lucide-react";
 // window.alert blocks the tab and looks nothing like the rest of the admin UI.
 import { toast } from "@/hooks/use-toast";
+import RatingPenaltyControl from "@/components/admin/RatingPenaltyControl";
 // Attachments are stored as absolute Blob URLs; mediaUrl passes those through
 // untouched and still resolves any older API-relative path.
 import { mediaUrl } from "@/lib/mediaUrl";
@@ -681,6 +682,21 @@ export default function AdminRefundsPage() {
                       </button>
                     </div>
                   )}
+
+                  {/* Separate decision from the refund itself: refunding the
+                      buyer is about the buyer, this is about whether the
+                      creator did something wrong. Often the answer is no. */}
+                  <RatingPenaltyControl
+                    creatorId={r.seller?._id}
+                    creatorName={r.seller?.name || r.seller?.email}
+                    getAuthHeaders={getAuthHeaders}
+                    context={{
+                      kind: "refund",
+                      refundRequestId: r._id,
+                      promptId: r.prompt?._id,
+                      title: r.prompt?.title || "",
+                    }}
+                  />
                 </>
               ) : (
                 <p className="text-xs text-white/50">
@@ -688,6 +704,23 @@ export default function AdminRefundsPage() {
                   {r.resolvedAt ? new Date(r.resolvedAt).toLocaleString("en-IN") : "—"}
                   {r.adminNote ? ` — "${r.adminNote}"` : ""}
                 </p>
+              )}
+
+              {/* Also available after the fact. Whether a creator was at fault
+                  is often only clear once the refund has been processed and
+                  they've had a chance to respond. */}
+              {r.status === "APPROVED" && (
+                <RatingPenaltyControl
+                  creatorId={r.seller?._id}
+                  creatorName={r.seller?.name || r.seller?.email}
+                  getAuthHeaders={getAuthHeaders}
+                  context={{
+                    kind: "refund",
+                    refundRequestId: r._id,
+                    promptId: r.prompt?._id,
+                    title: r.prompt?.title || "",
+                  }}
+                />
               )}
             </div>
           ))}

@@ -424,3 +424,61 @@ exports.sendIntroVideoPendingEmail = async ({ to, creatorName }) =>
       "Reviews are usually done within a working day, and we'll email you either way. In the meantime you can upload and sell prompts as normal.",
     receivingBecause: "your Tokun.World creator profile",
   });
+
+/* ─────────────────────────── RATING PENALTIES ─────────────────────────── */
+
+/**
+ * An admin has deducted stars from your rating.
+ *
+ * Sent without exception. A rating is the single biggest factor in whether a
+ * creator gets hired again, and one that drops silently is indistinguishable
+ * from a bug — they'd open a support ticket about it, which is a worse
+ * conversation than this email. The admin's stated reason goes out verbatim.
+ */
+exports.sendRatingPenaltyEmail = async ({
+  to,
+  creatorName,
+  stars,
+  reason,
+  newRating,
+  contextLabel,
+}) =>
+  sendShellEmail({
+    to,
+    subject: `Your Tokun rating has been reduced by ${stars} star${stars === 1 ? "" : "s"}`,
+    heading: "Your rating has been adjusted",
+    accent: ACCENT.danger,
+    preheader: reason ? String(reason).slice(0, 120) : "An admin reviewed a case on your account.",
+    introHtml: `Hi ${escapeHtml(
+      firstName(creatorName)
+    )}, after reviewing ${escapeHtml(contextLabel || "a case on your account")}, our team has reduced your creator rating.`,
+    rows: [
+      { label: "Deducted", value: `${stars} star${stars === 1 ? "" : "s"}`, emphasis: true },
+      { label: newRating ? "Your rating is now" : "", value: newRating ? `${newRating} / 5` : "" },
+      { label: "Reason", value: reason || "" },
+    ],
+    cta: { label: "Open your dashboard", href: `${SITE}/self-dash` },
+    footerNote:
+      "Your reviews themselves are untouched — this is a separate adjustment recorded against your account, and it can be lifted. If you think it's wrong, reply to this email with your side and we'll review it.",
+    receivingBecause: "a decision on your Tokun.World creator account",
+  });
+
+/** The adjustment has been lifted. */
+exports.sendRatingPenaltyRevokedEmail = async ({ to, creatorName, stars, newRating, note }) =>
+  sendShellEmail({
+    to,
+    subject: "Your Tokun rating adjustment has been removed",
+    heading: "Your rating has been restored",
+    accent: ACCENT.money,
+    preheader: "The deduction on your account has been lifted.",
+    introHtml: `Hi ${escapeHtml(
+      firstName(creatorName)
+    )}, the ${stars}-star adjustment on your creator rating has been removed and your rating is back to what your reviews say.`,
+    rows: [
+      { label: newRating ? "Your rating is now" : "", value: newRating ? `${newRating} / 5` : "" },
+      { label: note ? "Note from our team" : "", value: note || "" },
+    ],
+    cta: { label: "Open your dashboard", href: `${SITE}/self-dash` },
+    footerNote: "Nothing else on your account changed.",
+    receivingBecause: "a decision on your Tokun.World creator account",
+  });

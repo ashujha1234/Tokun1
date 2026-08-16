@@ -14010,6 +14010,9 @@ import {
 import PromptValidationAdminDashboard from "./PromptValidationAdminDashboard";
 import FreelancerReviewAdminDashboard from "./FreelancerReviewAdminDashboard";
 import AdminSellerMessageModal from "@/components/AdminSellerMessageModal";
+import AdminMessagesBell from "@/components/admin/AdminMessagesBell";
+import RatingPenaltyPanel from "@/components/admin/RatingPenaltyPanel";
+import RatingPenaltyControl from "@/components/admin/RatingPenaltyControl";
 // The full listing behind a products-grid card — description, prompt text,
 // tags — which is what a moderation decision is actually made on.
 import AdminProductDetailModal from "@/components/AdminProductDetailModal";
@@ -19632,17 +19635,29 @@ setSelectedSeller({
   useEffect(() => { setPage(1); }, [query, tab, pageSize]);
 
   if (selectedSeller) {
+    /* The reason sheet has to be rendered HERE too.
+
+       This early return is the whole page when a creator's profile is open, and
+       the <ModerationReasonModal request={moderation}> further down sits after
+       it — unreachable. So the profile's Suspend button set `moderation`, the
+       state changed, and nothing appeared on screen: the suspend looked broken
+       while Block from the list (whose sheet renders in the branch below) kept
+       working. Same state, same component, two exit paths, one of which had no
+       sheet in it. */
     return (
-      <SellerProfileView
-        seller={selectedSeller}
-        products={sellerProducts}
-        loading={sellerLoading}
-        error={sellerError}
-        onBack={closeSellerProfile}
-        onToggleSuspend={handleProfileSuspendToggle}
-        suspendLoading={profileSuspendLoading}
-        suspendError={profileSuspendError}
-      />
+      <>
+        <ModerationReasonModal request={moderation} onClose={() => setModeration(null)} />
+        <SellerProfileView
+          seller={selectedSeller}
+          products={sellerProducts}
+          loading={sellerLoading}
+          error={sellerError}
+          onBack={closeSellerProfile}
+          onToggleSuspend={handleProfileSuspendToggle}
+          suspendLoading={profileSuspendLoading}
+          suspendError={profileSuspendError}
+        />
+      </>
     );
   }
 
@@ -20848,6 +20863,9 @@ const SellerProfileView = ({
 
     const [messageOpen, setMessageOpen] = useState(false);
 
+  // Bumped when a penalty is applied from this page, so the panel above refetches.
+  const [penaltyRefresh, setPenaltyRefresh] = useState(0);
+
   /* The products table below shows the first four. Its two "View All" buttons
      used to open the all-sellers modal — the wrong list entirely, and on the
      header button, nothing at all. They expand this table instead. */
@@ -20933,6 +20951,22 @@ const SellerProfileView = ({
       {suspendError && (
         <p className="mt-3 text-sm text-red-300">{suspendError}</p>
       )}
+
+      {/* Rating adjustments — the history, the running total, and the button to
+          lift one. The refund queue and the dispute screen can each apply a
+          deduction, but neither can show what a creator already carries; two
+          admins working two cases would otherwise dock a star each, and nobody
+          could say where the rating went. Renders nothing for a clean creator. */}
+      <RatingPenaltyPanel creatorId={seller.id} refreshKey={penaltyRefresh} />
+
+      {/* And applying one from here, for cases that arrive as a support email
+          rather than through a refund or a dispute. */}
+      <RatingPenaltyControl
+        creatorId={seller.id}
+        creatorName={seller.name}
+        context={{ kind: "manual" }}
+        onApplied={() => setPenaltyRefresh((n) => n + 1)}
+      />
 
       {/* KPI row */}
       <section className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-5">
@@ -22584,6 +22618,12 @@ const WithdrawalsView = () => {
                 middle gives way instead — the account menu is the one thing
                 here that must never be clipped. */}
             <div className="flex items-center gap-1.5 sm:gap-3 ml-auto shrink-0">
+              {/* Creator messages. The appeal route we point suspended accounts
+                  at (/support/admin-chat) had no admin-side entry point at all,
+                  so anything sent through it landed in a database nobody was
+                  watching. This is the other end of it. */}
+              <AdminMessagesBell getToken={getToken} />
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button

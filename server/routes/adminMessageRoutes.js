@@ -349,9 +349,14 @@ router.get("/admin/conversations", requireAuth, async (req, res) => {
       });
     }
 
-    const conversations = await AdminConversation.find({
-      adminId,
-    })
+    /* Every conversation, not just the ones assigned to this admin.
+
+       Seller-opened threads are attached to whichever admin account is oldest
+       (see POST /seller/conversation), so a suspended creator asking why could
+       land in the inbox of an admin who never logs in — and no other admin
+       could see it, because this query filtered on adminId. Support is a shared
+       queue; the assigned admin is still recorded and returned. */
+    const conversations = await AdminConversation.find({})
       .populate("adminId", "name email avatar avatarUrl role userType")
       .populate("sellerId", "name email avatar avatarUrl role userType")
       .populate("lastSender", "name email avatar avatarUrl role userType")
@@ -395,6 +400,39 @@ router.get("/admin/conversations", requireAuth, async (req, res) => {
 });
 
 /* =====================================================
+   ADMIN: UNREAD COUNT  (badge)
+   GET /api/admin-message/admin/unread-count
+
+   Its own endpoint rather than summing the conversations list: the header
+   polls this every half-minute, and the list query populates three refs and
+   runs a countDocuments per thread. This is one count.
+===================================================== */
+router.get("/admin/unread-count", requireAuth, async (req, res) => {
+  try {
+    const adminId = req.user?._id;
+    if (!adminId || !req.isAdmin) {
+      return res.status(401).json({ success: false, error: "Login required" });
+    }
+
+    /* Unread means: somebody who isn't me sent it, and I haven't opened it.
+       Not scoped to threads assigned to me — a creator's appeal sitting unread
+       in another admin's thread is exactly what this badge exists to surface. */
+    const [total, threads] = await Promise.all([
+      AdminMessage.countDocuments({ sender: { $ne: adminId }, readBy: { $ne: adminId } }),
+      AdminMessage.distinct("conversationId", {
+        sender: { $ne: adminId },
+        readBy: { $ne: adminId },
+      }),
+    ]);
+
+    return res.json({ success: true, total, conversations: threads.length });
+  } catch (err) {
+    console.error("Admin unread-count error:", err);
+    return res.status(500).json({ success: false, error: err?.message || "Server error" });
+  }
+});
+
+/* =====================================================
    ADMIN: FETCH MESSAGES
    GET /api/admin-message/admin/messages/:conversationId
 ===================================================== */
@@ -418,15 +456,14 @@ router.get("/admin/messages/:conversationId", requireAuth, async (req, res) => {
       });
     }
 
-    const conversation = await AdminConversation.findOne({
-      _id: conversationId,
-      adminId,
-    });
+    // Not scoped to adminId — see the note on GET /admin/conversations. Any
+    // admin can pick up any thread, which is the point of a shared queue.
+    const conversation = await AdminConversation.findOne({ _id: conversationId });
 
     if (!conversation) {
-      return res.status(403).json({
+      return res.status(404).json({
         success: false,
-        error: "Conversation not found or not allowed",
+        error: "Conversation not found",
       });
     }
 
@@ -496,15 +533,14 @@ router.post("/admin/send", requireAuth, async (req, res) => {
       });
     }
 
-    const conversation = await AdminConversation.findOne({
-      _id: conversationId,
-      adminId,
-    });
+    // Not scoped to adminId — see the note on GET /admin/conversations. Any
+    // admin can pick up any thread, which is the point of a shared queue.
+    const conversation = await AdminConversation.findOne({ _id: conversationId });
 
     if (!conversation) {
-      return res.status(403).json({
+      return res.status(404).json({
         success: false,
-        error: "Conversation not found or not allowed",
+        error: "Conversation not found",
       });
     }
 
@@ -587,13 +623,11 @@ router.post(
         });
       }
 
-      const conversation = await AdminConversation.findOne({
-        _id: conversationId,
-        adminId,
-      });
+      // Shared queue, same as the text route above.
+      const conversation = await AdminConversation.findOne({ _id: conversationId });
 
       if (!conversation) {
-        return res.status(403).json({
+        return res.status(404).json({
           success: false,
           error: "Conversation not found or not allowed",
         });

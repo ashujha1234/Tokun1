@@ -202,6 +202,11 @@ freelancerStatus: {
 },
 
 sellerRating: { type: Number, default: 0 },
+/* Stars currently deducted by admin rating penalties (models/RatingPenalty.js).
+   sellerRating above is already NET of this — the field is stored separately so
+   a profile or a support query can say why the number is what it is, instead of
+   the drop looking like a bug. Maintained by utils/sellerRating.js. */
+sellerRatingPenalty: { type: Number, default: 0 },
 sellerReviewsCount: { type: Number, default: 0 },
 sellerRefundRate: { type: Number, default: 0 },
 sellerRefundThreshold: { type: Number, default: 5 },

@@ -20,6 +20,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, RefreshCw, Scale, AlertTriangle } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
+import RatingPenaltyControl from "@/components/admin/RatingPenaltyControl";
 
 const API_BASE = `${(import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "")}/api/admin/disputes`;
 
@@ -756,6 +757,23 @@ export default function AdminDisputesPage() {
                         : `Pay ${money(creatorWinsAmount)} to ${detail.dispute.sellerId?.name || "the creator"}`}
                     </button>
                   )}
+
+                  {/* Ruling for the client says the creator lost the argument.
+                      It does not automatically say they were negligent — a job
+                      can fall apart with nobody behaving badly. So the rating
+                      deduction is a second, separate decision, taken here where
+                      the admin has just read the whole case. */}
+                  <RatingPenaltyControl
+                    creatorId={detail.dispute.sellerId?._id}
+                    creatorName={detail.dispute.sellerId?.name || "the creator"}
+                    getAuthHeaders={getAuthHeaders}
+                    context={{
+                      kind: "dispute",
+                      disputeId: detail.dispute._id,
+                      orderKind: detail.dispute.orderKind as "hire" | "service",
+                      title: detail.dispute.title || "",
+                    }}
+                  />
                 </div>
               </>
             )}
