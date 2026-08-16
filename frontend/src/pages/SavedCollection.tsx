@@ -4051,6 +4051,13 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { loadSaved, type SavedItem } from "@/lib/savedCollections";
+import DetailsPrompt, { type MarketplacePrompt } from "@/components/DetailsPrompt";
+import { StarRating } from "@/components/StarRating";
+import { useNavigate } from "react-router-dom";
+/* The marketplace's own card styles (.mp-card*). Imported rather than
+   reimplemented: a saved product should be the same card the buyer saved, and a
+   lookalike would drift the first time either was touched. */
+import "./PromptMarketplace.css";
 
 /* ============================================================================
    CONSTANTS
@@ -4063,7 +4070,10 @@ const TABS = [
   { id: "smartgen", label: "Smartgen", icon: "/icons/smartgen.svg" },
   { id: "prompt-optimization", label: "Prompt Optimiser", icon: "/icons/prompt-optimization.svg" },
   { id: "prompt-marketplace", label: "Product Marketplace", icon: "/icons/prompt-marketplace.png" },
-  { id: "prompt-library", label: "Product Library", icon: "/icons/prompt-library.png" },
+  /* "Product Library" was here. Removed: it read the SAME "prompt" section as
+     Product Marketplace, so the two tabs were two doors onto one identical
+     list — switching between them changed nothing but the highlight. Prompt
+     Library is also hidden from the main nav (see AppNavigation.tsx). */
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -4072,7 +4082,6 @@ const SECTION_BY_TAB: Record<TabId, SectionKey> = {
   smartgen: "smartgen",
   "prompt-optimization": "promptOptimizer",
   "prompt-marketplace": "prompt",
-  "prompt-library": "prompt",
 };
 
 const mockImages = ["/icons/pl1.png", "/icons/pl2.png", "/icons/pl3.png", "/icons/pl4.png"];
@@ -4174,6 +4183,58 @@ const pickTextFromRef = (section: SectionKey, refDoc: any): string => {
 };
 
 /* ============================================================================
+   SAVED PRODUCTS
+   ==========================================================================*/
+
+/* A populated Prompt ref → the shape DetailsPrompt and the marketplace card
+   expect. Mirrors mapPromptDoc() in PromptMarketplacePage; the server sends the
+   same document minus promptText (see SAVED_PROMPT_FIELDS in
+   routes/savedCollectionRoutes.js — the prompt text is the thing being sold and
+   never leaves the purchase flow). */
+const mediaFromRef = (ref: any) => {
+  const att = ref?.attachment || null;
+  const path = att?.path;
+  if (!path) return { imageUrl: undefined, videoUrl: undefined };
+
+  const url = String(path).startsWith("http") ? path : `${base}${path}`;
+  return att?.type === "video"
+    ? { imageUrl: undefined, videoUrl: url }
+    : { imageUrl: url, videoUrl: undefined };
+};
+
+const toMarketplacePrompt = (ref: any): MarketplacePrompt | null => {
+  if (!ref || typeof ref !== "object") return null;
+  const { imageUrl, videoUrl } = mediaFromRef(ref);
+
+  return {
+    id: String(ref._id || ref.id || ""),
+    title: ref.title || "Untitled",
+    description: ref.description || "",
+    price: typeof ref.price === "number" ? ref.price : 0,
+    tokunPrice:
+      typeof ref.tokun_price === "number" && ref.tokun_price > 0 ? ref.tokun_price : undefined,
+    rating:
+      typeof ref.reviewAverage === "number" && ref.reviewAverage > 0
+        ? ref.reviewAverage
+        : typeof ref.averageRating === "number"
+          ? ref.averageRating
+          : 0,
+    reviewCount: typeof ref.reviewCount === "number" ? ref.reviewCount : 0,
+    downloads: typeof ref.salesCount === "number" ? ref.salesCount : 0,
+    category: ref.categories?.[0]?.name || "General",
+    imageUrl,
+    videoUrl,
+    exclusive: !!ref.exclusive,
+    sold: !!ref.sold,
+    uploaderId: ref.userId?._id ? String(ref.userId._id) : undefined,
+    isFree: !!ref.free,
+    uploaderName: ref.userId?.name || "Unknown",
+  } as MarketplacePrompt & { isFree?: boolean; uploaderName?: string; reviewCount?: number };
+};
+
+const authorInitials = (name?: string) => (name || "U").trim().slice(0, 2).toUpperCase();
+
+/* ============================================================================
    COMPONENT
    ==========================================================================*/
 export default function SavedCollection() {
@@ -4200,6 +4261,51 @@ export default function SavedCollection() {
   const [editItemTitle, setEditItemTitle] = useState("");
 
   const menuScopeRef = useRef<HTMLDivElement>(null);
+
+  /* Saved products open the same details panel the marketplace uses. Saving a
+     listing used to produce a generic tile with a Copy button that copied its
+     description — you could save something and then not actually look at it. */
+  const navigate = useNavigate();
+  const [detailsPrompt, setDetailsPrompt] = useState<MarketplacePrompt | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  /* Which of these the viewer already owns, so a purchased product opens as
+     owned instead of showing a Buy button for something they've paid for. */
+  const [purchasedIds, setPurchasedIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(`${base}/api/purchase/history`, {
+          credentials: "include",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (cancelled || !data?.success) return;
+
+        const ids = (data.purchases || [])
+          .map((p: any) => String(p?.prompt?._id || p?.prompt || ""))
+          .filter(Boolean);
+        setPurchasedIds(ids);
+      } catch {
+        // Only decides whether a card opens as owned — not worth an error state.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  const openPromptDetails = (ref: any) => {
+    const mapped = toMarketplacePrompt(ref);
+    if (!mapped?.id) return;
+    setDetailsPrompt(mapped);
+    setDetailsOpen(true);
+  };
 
   const fetchAll = async () => {
     setLoading(true);
@@ -4410,6 +4516,135 @@ export default function SavedCollection() {
     </div>
   );
 
+  /* A saved product, rendered as the marketplace card it came from. Used by
+     both the folder view and All Saved so the two can't diverge. */
+  const renderPromptCard = (it: any, idx: number, onMenu: () => void, menuOpen: boolean) => {
+    const ref = it?.ref;
+    const refId = getDocId(ref);
+    const mapped = toMarketplacePrompt(ref);
+    const title = mapped?.title || getItemTitle(it);
+    const owned = purchasedIds.includes(String(refId));
+
+    // A listing the seller has since deleted, or a ref that never populated.
+    // Still shown, because it IS in the user's saved list and silently dropping
+    // it looks like data loss — just not clickable.
+    const missing = !mapped || ref?.deleted;
+
+    return (
+      <div
+        key={refId || `${title}_${idx}`}
+        className="mp-card"
+        style={{ cursor: missing ? "default" : "pointer" }}
+        onClick={() => !missing && openPromptDetails(ref)}
+      >
+        <div className="mp-card__media">
+          <div className="mp-card__preview">
+            {mapped?.videoUrl ? (
+              <video className="mp-card__video" src={mapped.videoUrl} muted loop playsInline autoPlay />
+            ) : mapped?.imageUrl ? (
+              <img src={mapped.imageUrl} alt={title} className="mp-card__img" />
+            ) : (
+              <img src={mockImages[idx % mockImages.length]} alt={title} className="mp-card__img" />
+            )}
+          </div>
+
+          <div className="mp-card__badges">
+            <span className="mp-card__cat">{(mapped?.category || "GENERAL").toUpperCase()}</span>
+            {owned ? (
+              <span className="mp-card__unlock" style={{ background: "#14532D", color: "#BBF7D0" }}>
+                PURCHASED
+              </span>
+            ) : missing ? (
+              <span className="mp-card__unlock" style={{ background: "#3F1D1D", color: "#FCA5A5" }}>
+                NO LONGER LISTED
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="mp-card__body">
+          <div className="mp-card__meta">
+            <span className="mp-card__avatar">{authorInitials((mapped as any)?.uploaderName)}</span>
+            <span
+              className="mp-card__author-name"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (mapped?.uploaderId) navigate(`/profile/${mapped.uploaderId}`);
+              }}
+            >
+              {(mapped as any)?.uploaderName || "Unknown"}
+            </span>
+
+            {/* Unsave lives here rather than in the "…" menu the other tabs use:
+                on a product card the move/rename actions in that menu make no
+                sense, and removing the save is the only thing anyone wants. */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMenu();
+              }}
+              className="ml-auto p-1 rounded-full hover:bg-white/10"
+              aria-label="More actions"
+            >
+              <MoreHorizontal className="h-4 w-4 text-white/70" />
+            </button>
+          </div>
+
+          <h3 className="mp-card__title">{title}</h3>
+          <div style={{ margin: "2px 0 6px" }}>
+            <StarRating value={mapped?.rating} count={(mapped as any)?.reviewCount} size={12} compact />
+          </div>
+          <p className="mp-card__desc">{mapped?.description}</p>
+
+          <div className="mp-card__footer">
+            {(mapped as any)?.isFree ? (
+              <div className="mp-card__pill mp-card__pill--free">FREE</div>
+            ) : owned ? (
+              <div className="mp-card__pill mp-card__pill--owned">PURCHASED</div>
+            ) : (
+              <div className="mp-card__pill mp-card__pill--muted">
+                ₹{Number(mapped?.price || 0).toFixed(2)}
+              </div>
+            )}
+
+            {!missing && (
+              <button
+                type="button"
+                className="mp-card__pill mp-card__pill--buy"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openPromptDetails(ref);
+                }}
+              >
+                {owned ? "Open" : "Details"}
+              </button>
+            )}
+          </div>
+
+          {menuOpen && (
+            <div className="mt-2 rounded-[10px] border border-white/10 bg-[#141416] p-1.5">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteSingleItem(refId);
+                }}
+                className="w-full rounded-md px-3 py-2 text-left text-[13px] text-red-300/90 hover:bg-red-500/10"
+              >
+                Remove from saved
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // The Product Marketplace and Product Library tabs both read the "prompt"
+  // section, and both should look like the marketplace they came from.
+  const isPromptSection = section === "prompt";
+
   const renderFolderPage = () => {
     if (!viewingFolder) return null;
     const folder = folders.find((f) => f.title === viewingFolder);
@@ -4422,7 +4657,23 @@ export default function SavedCollection() {
     return (
       <div className="w-full">
         <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6 lg:gap-8">
-          {(folder.items || []).map((it, idx) => {
+          {/* Products render as the marketplace card they came from; every other
+              tab keeps the generic saved tile below. A saved prompt is a listing
+              with a price, a seller and a details panel — a Copy button over its
+              description was never what anyone saved it for. */}
+          {isPromptSection &&
+            (folder.items || []).map((it, idx) =>
+              renderPromptCard(
+                it,
+                idx,
+                () => {
+                  const refId = getDocId(it.ref);
+                  setMenuForFolderItem(menuForFolderItem === refId ? null : refId);
+                },
+                menuForFolderItem === getDocId(it.ref)
+              )
+            )}
+          {!isPromptSection && (folder.items || []).map((it, idx) => {
             const refId = getDocId(it.ref);
             const title = getItemTitle(it);
             const text = pickTextFromRef(section, it.ref);
@@ -4549,16 +4800,27 @@ export default function SavedCollection() {
   const renderAllSaved = () => {
     if (!directItems.length) return null;
     return (
-      <div className="w-full mt-14 sm:mt-16">
-        <h2
-          className="text-white mb-6 px-1 text-[20px] sm:text-[22px]"
-          style={{ fontFamily: "Inter", fontWeight: 600, lineHeight: "100%" }}
-        >
-          All Saved
-        </h2>
-
+      /* No "All Saved" heading any more.
+         Saving something used to file it under a heading two scrolls below the
+         folder grid, so the thing you had just saved was the hardest thing on
+         the page to find. These are the saves; they go straight on the page.
+         The margin only opens up when there are folders above to separate them
+         from — with none, the cards start at the top where you'd expect. */
+      <div className={`w-full ${folders.length ? "mt-10 sm:mt-12" : "mt-2"}`}>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6 lg:gap-8">
-          {directItems.map((it, idx) => {
+          {isPromptSection &&
+            directItems.map((it, idx) =>
+              renderPromptCard(
+                it,
+                idx,
+                () => {
+                  const refId = getDocId(it.ref);
+                  setMenuForDirect(menuForDirect === refId ? null : refId);
+                },
+                menuForDirect === getDocId(it.ref)
+              )
+            )}
+          {!isPromptSection && directItems.map((it, idx) => {
             const refId = getDocId(it.ref);
             const title = getItemTitle(it);
             const text = pickTextFromRef(section, it.ref);
@@ -4667,14 +4929,26 @@ export default function SavedCollection() {
 
   const renderFolderGrid = () => {
     if (loading) return <div className="text-center text-white/80 py-10">Loading your saved items…</div>;
-    if (!folders.length)
+
+    if (!folders.length) {
+      /* Nothing at all — folders AND loose saves both empty. That's the only
+         case worth a full empty state now.
+
+         It used to fire on "no folders" alone, which after the heading change
+         meant someone who had just saved a product was shown a large "No
+         folders yet" over the top of the card they had come to look at. */
+      if (directItems.length) return null;
+
       return (
         <div className="text-center py-16">
           <img src="/icons/void.png" alt="" className="mx-auto mb-6 h-32 sm:h-40 w-auto opacity-90" />
-          <p className="text-white text-lg sm:text-xl">No folders yet</p>
-          <p className="text-white/70 mt-2 text-sm sm:text-base">Save with a Name/Title to create a folder here.</p>
+          <p className="text-white text-lg sm:text-xl">Nothing saved yet</p>
+          <p className="text-white/70 mt-2 text-sm sm:text-base">
+            Saved items show up here. Save with a Name/Title to group them into a folder.
+          </p>
         </div>
       );
+    }
 
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6 lg:gap-8">
@@ -4804,6 +5078,20 @@ export default function SavedCollection() {
           {!viewingFolder && renderAllSaved()}
         </>
       </div>
+
+      {/* The marketplace's own details panel, opened from a saved product card.
+          Buying happens on the marketplace — this hands the prompt over rather
+          than duplicating a Razorpay flow that already exists in two places. */}
+      <DetailsPrompt
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+        prompt={detailsPrompt}
+        owned={!!detailsPrompt && purchasedIds.includes(String(detailsPrompt.id))}
+        onPurchase={(p) => {
+          setDetailsOpen(false);
+          navigate(`/prompt-marketplace?prompt=${encodeURIComponent(String(p.id))}`);
+        }}
+      />
 
       {editingFolder && (
         <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#1C1C1C] border border-white/10 rounded-2xl p-3 shadow-xl w-[92vw] sm:w-[min(90vw,520px)]">

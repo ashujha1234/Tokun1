@@ -376,6 +376,18 @@ const {
 const { fetchTransferIdsByAccount } = require("../utils/routePayouts");
 const { generateInvoicePDF } = require("../services/invoice.service");
 const { sendInvoiceEmail } = require("../services/email.service");
+const {
+  sendNewWorkRequestEmail,
+  sendRevisionRequestedEmail,
+  sendEscrowReleasedEmail,
+} = require("../services/creatorEmail.service");
+const { sendWorkSubmittedEmail } = require("../services/buyerEmail.service");
+// Same window the stale-request cron closes on, read the same way, so the
+// deadline promised in the email is the deadline actually enforced.
+const REQUEST_RESPONSE_DAYS = Number(process.env.REQUEST_RESPONSE_DAYS || 3);
+// Mirrors cron/autoReleaseEscrow.js. If that changes, this must too — the email
+// promises a date the cron is the one actually keeping.
+const AUTO_RELEASE_HOURS = 72;
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -578,6 +590,31 @@ router.post("/create-proposal", requireAuth, blockIfSuspended, async (req, res) 
       })),
       status: "PENDING",
     };
+
+    /* Tell the freelancer a request has landed.
+
+       There was nothing here at all — not even a notification. The proposal
+       went out as a chat card and that was the whole of it, which is why the
+       stale-request cron exists: it emails this same person three days later
+       to say they missed something nobody told them about. This is that email,
+       sent at the point it can still be acted on. */
+    try {
+      const freelancer = await User.findById(freelancerId).select("name email").lean();
+      if (freelancer?.email) {
+        await sendNewWorkRequestEmail({
+          to: freelancer.email,
+          creatorName: freelancer.name,
+          clientName: req.user.name,
+          title: deal.title,
+          amount: deal.amount,
+          kind: "project",
+          respondWithinDays: REQUEST_RESPONSE_DAYS,
+          deliveryDate: deal.deliveryDate,
+        });
+      }
+    } catch (mailErr) {
+      console.error("New hire request email failed (proposal still created):", mailErr.message);
+    }
 
     return res.json({ success: true, deal, cardPayload });
   } catch (err) {
@@ -1405,6 +1442,25 @@ router.post("/:dealId/submit-work", requireAuth, async (req, res) => {
       },
     });
 
+    /* The client gets this by email too, and it carries the auto-release date.
+       That date is the part with consequences: do nothing for 72 hours and the
+       escrow pays out on its own (cron/autoReleaseEscrow.js). Running that
+       clock on an in-app badge alone was never fair to the person whose money
+       it is. */
+    try {
+      await sendWorkSubmittedEmail({
+        to: deal.clientId.email,
+        clientName: deal.clientId.name,
+        creatorName: deal.freelancerId.name,
+        title: deal.title,
+        amount: deal.freelancerAmount ?? deal.amount,
+        autoReleaseAt: new Date(Date.now() + AUTO_RELEASE_HOURS * 60 * 60 * 1000),
+        orderPath: `/orders/hire/${deal._id}`,
+      });
+    } catch (mailErr) {
+      console.error("Work-submitted email failed (submission stands):", mailErr.message);
+    }
+
     await Message.create({
       conversationId: deal.chatId,
       sender: req.user._id,
@@ -1551,6 +1607,20 @@ router.post("/:dealId/approve-work", requireAuth, async (req, res) => {
         fundsStatus: "RELEASED_TO_FREELANCER",
       },
     });
+
+    // Getting paid is worth an email — this was in-app only.
+    try {
+      await sendEscrowReleasedEmail({
+        to: deal.freelancerId.email,
+        creatorName: deal.freelancerId.name,
+        clientName: deal.clientId.name,
+        title: deal.title,
+        amount: payoutAmount,
+        automatic: false,
+      });
+    } catch (mailErr) {
+      console.error("Escrow-released email failed (payout stands):", mailErr.message);
+    }
  
     // ── Chat message ────────────────────────────────────────────────────────
     await Message.create({
@@ -1628,6 +1698,21 @@ router.post("/:dealId/request-revision", requireAuth, async (req, res) => {
       message: `${deal.clientId.name} requested a revision (${updatedRevisionState.label}): ${reason || "No reason given"}`,
       meta: { title: deal.title, reason, revisionState: updatedRevisionState },
     });
+
+    // A revision is work the freelancer has to actually do, and the payout sits
+    // frozen until it's done — not something to leave sitting in a badge.
+    try {
+      await sendRevisionRequestedEmail({
+        to: deal.freelancerId.email,
+        creatorName: deal.freelancerId.name,
+        clientName: deal.clientId.name,
+        title: deal.title,
+        note: reason,
+        dueAt: deal.deliveryDate,
+      });
+    } catch (mailErr) {
+      console.error("Revision email failed (revision still recorded):", mailErr.message);
+    }
 
     return res.json({
       success: true,

@@ -9,6 +9,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { ShoppingCart, Lock } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { isTeamMember } from "@/lib/orgRoles";
+import { StarRating } from "@/components/StarRating";
 
 /* ---------- author initials (UI only) ---------- */
 export const authorInitials = (name?: string) =>
@@ -179,6 +180,11 @@ export default function VideoReelCard({
             <span className="reel-card__avatar">{authorInitials(prompt.uploaderName)}</span>
             <span className="reel-card__author-name">{prompt.uploaderName || "Unknown"}</span>
           </div>
+          {/* Rating, only once there is one: an empty "No reviews yet" would eat
+              the little horizontal room a 9:16 reel has for its author row. */}
+          {Number(prompt.reviewCount || 0) > 0 && (
+            <StarRating value={prompt.rating} count={prompt.reviewCount} size={11} compact className="mr-1" />
+          )}
           <button
             className="reel-card__details-btn"
             onClick={(e) => { e.stopPropagation(); onOpenDetails(prompt); }}

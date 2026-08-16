@@ -15,7 +15,12 @@ const HireDeal = require("../models/HireDeal");
 const ServiceOrder = require("../models/ServiceOrder");
 const BankAccount = require("../models/BankAccount");
 const WebhookEvent = require("../models/WebhookEvent");
+const User = require("../models/User");
 const ledger = require("../utils/ledger");
+const {
+  sendPayoutAccountActivatedEmail,
+  sendPayoutAccountNeedsAttentionEmail,
+} = require("../services/creatorEmail.service");
 
 function verifySignature(rawBody, signature, secret) {
   if (!signature || !secret) return false;
@@ -47,6 +52,52 @@ async function handleAccountStatusEvent(payload) {
     { routeLinkedAccountId: accountId },
     { $set: { activationStatus: mappedStatus } }
   );
+
+  /* Tell the creator. This status decides whether their products are visible
+     and whether they can be paid at all, and the only thing that ever reported
+     it was a banner on a dashboard they had no reason to reopen — so creators
+     sat waiting for days after being cleared, and sat waiting forever when
+     Razorpay had actually asked them for something.
+
+     CREATED and UNDER_REVIEW are deliberately silent: they're the states you're
+     in immediately after submitting, and the form already says so. */
+  const NOTIFY = ["ACTIVATED", "NEEDS_CLARIFICATION", "SUSPENDED", "REJECTED"];
+  if (!NOTIFY.includes(mappedStatus)) return;
+
+  try {
+    const accounts = await BankAccount.find({ routeLinkedAccountId: accountId })
+      .select("userId")
+      .lean();
+
+    // De-duplicated: a creator can have more than one BankAccount row pointing
+    // at the same linked account, and this must not send them four copies.
+    const userIds = [...new Set(accounts.map((a) => String(a.userId)).filter(Boolean))];
+
+    for (const userId of userIds) {
+      const owner = await User.findById(userId).select("name email").lean();
+      if (!owner?.email) continue;
+
+      if (mappedStatus === "ACTIVATED") {
+        await sendPayoutAccountActivatedEmail({ to: owner.email, creatorName: owner.name });
+      } else {
+        await sendPayoutAccountNeedsAttentionEmail({
+          to: owner.email,
+          creatorName: owner.name,
+          status: mappedStatus,
+          // Razorpay's own wording when it gives one — far more useful than
+          // anything we could paraphrase.
+          message:
+            payload?.payload?.account?.entity?.notes?.reason ||
+            payload?.payload?.account?.entity?.status_reason ||
+            "",
+        });
+      }
+    }
+  } catch (mailErr) {
+    // The status change is already saved. A webhook must return 200 or Razorpay
+    // retries it, and retrying would re-send the email, not fix it.
+    console.error("Payout status email failed (status still updated):", mailErr.message);
+  }
 }
 
 /* ── Route transfer events ────────────────────────────────────────────────

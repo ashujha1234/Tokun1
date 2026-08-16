@@ -21,6 +21,10 @@ const router = express.Router();
 const FreelancerProfile = require("../models/FreelancerProfile");
 const User = require("../models/User");
 const Notification = require("../models/Notification");
+const {
+  sendIntroVideoApprovedEmail,
+  sendIntroVideoRejectedEmail,
+} = require("../services/creatorEmail.service");
 
 const { requireAuth } = require("../utils/auth");
 const {
@@ -381,6 +385,19 @@ router.patch("/:id/video/approve", async (req, res) => {
       console.error("video approve notify failed:", notifyErr?.message || notifyErr);
     }
 
+    /* The unlock email. This approval is the gate that decides whether someone
+       may list services or take hire work at all (see utils/superCreatorGate.js)
+       — the single most consequential moment in a creator's onboarding, and
+       until now it happened in silence. */
+    try {
+      const creator = await User.findById(profile.userId).select("name email").lean();
+      if (creator?.email) {
+        await sendIntroVideoApprovedEmail({ to: creator.email, creatorName: creator.name });
+      }
+    } catch (mailErr) {
+      console.error("video approve email failed (approval stands):", mailErr?.message || mailErr);
+    }
+
     return res.json({ success: true, status: profile.introVideo.status });
   } catch (err) {
     console.error("admin video approve error:", err);
@@ -457,6 +474,22 @@ router.patch("/:id/video/reject", async (req, res) => {
       });
     } catch (notifyErr) {
       console.error("video reject notify failed:", notifyErr?.message || notifyErr);
+    }
+
+    // The reason is the whole point of this email — a creator can't fix a video
+    // they were never told the problem with, and they stay locked out of
+    // services and hire work until they do.
+    try {
+      const creator = await User.findById(profile.userId).select("name email").lean();
+      if (creator?.email) {
+        await sendIntroVideoRejectedEmail({
+          to: creator.email,
+          creatorName: creator.name,
+          reason,
+        });
+      }
+    } catch (mailErr) {
+      console.error("video reject email failed (rejection stands):", mailErr?.message || mailErr);
     }
 
     return res.json({ success: true, status: profile.introVideo.status });

@@ -399,6 +399,9 @@ const fs = require("fs");
 const { embedWatermark, extractWatermark } = require("../utils/nvisibleWatermark");
 const { generateInvoicePDF } = require("../services/invoice.service");
 const { sendInvoiceEmail } = require("../services/email.service");
+const { sendPromptSoldEmail } = require("../services/creatorEmail.service");
+const { sendRefundRequestReceivedEmail } = require("../services/buyerEmail.service");
+const { alertRefundRequested } = require("../services/adminAlertEmail.service");
 const multer = require("multer");
 const uploadToAzure = require("../utils/uploadToAzure");
 const RefundRequest = require("../models/RefundRequest");
@@ -929,6 +932,34 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
         console.error("⚠️ Prompt invoice/email failed (purchase still success):", invoiceErr.message);
       }
 
+      /* -------------------- THE SELLER'S SIDE OF THE SAME SALE --------------
+         The buyer has had an invoice since day one. The seller — whose money
+         this is — got a notification badge and nothing else, so a creator could
+         make a sale on Monday and not find out until they next opened the
+         dashboard. Itemised the way their earnings page is, because "you sold
+         something" without "and this is what you'll be paid" is the half
+         creators actually write in asking about. */
+      try {
+        const seller = await User.findById(sellerId).select("name email");
+        if (seller?.email) {
+          await sendPromptSoldEmail({
+            to: seller.email,
+            sellerName: seller.name,
+            productTitle: prompt.title,
+            buyerName: req.user.name,
+            salePrice: pricePaid,
+            platformCut: platformCommission,
+            netEarning: split.sellerNet,
+            soldAt: purchase.purchasedAt,
+          });
+        }
+      } catch (sellerMailErr) {
+        console.error(
+          "⚠️ Seller sale email failed (the sale itself is unaffected):",
+          sellerMailErr.message
+        );
+      }
+
       // Log activity
       await logActivity({
         type: "PRODUCT_PURCHASED",
@@ -968,11 +999,41 @@ router.get("/history", requireAuth, async (req, res) => {
   try {
     const purchases = await Purchase.find({ buyer: req.user._id })
       .sort({ purchasedAt: -1 })
-      .populate("prompt", "title free price deleted");
+      .populate("prompt", "title free price deleted")
+      .lean();
+
+    /* When each purchase stops being refundable, computed here rather than in
+       the browser.
+
+       The 24-hour window is enforced by POST /:purchaseId/refund-request from
+       REFUND_WINDOW_HOURS, which is env-configurable. A client that hardcodes
+       "24" to decide whether to show the button will disagree with the server
+       the moment that value changes — offering a refund the API then refuses,
+       or hiding one it would have accepted. Sending the deadline means the UI
+       can only ever show what the server will actually honour. */
+    const windowMs = REFUND_WINDOW_HOURS * 3600 * 1000;
+    const decorated = purchases.map((p) => {
+      const purchasedAt = new Date(p.purchasedAt || p.createdAt).getTime();
+      const eligibleUntil = Number.isFinite(purchasedAt) ? purchasedAt + windowMs : null;
+
+      return {
+        ...p,
+        refundEligibleUntil: eligibleUntil ? new Date(eligibleUntil).toISOString() : null,
+        // Free prompts were never charged, and a purchase already in a refund
+        // flow can't start a second one — both are refusals the server makes
+        // anyway, so the flag matches the API exactly.
+        refundEligible:
+          !!eligibleUntil &&
+          Date.now() < eligibleUntil &&
+          (p.refundStatus || "NONE") === "NONE" &&
+          Number(p.pricePaid || 0) > 0,
+      };
+    });
 
     return res.json({
       success: true,
-      purchases,
+      purchases: decorated,
+      refundWindowHours: REFUND_WINDOW_HOURS,
     });
   } catch (err) {
     console.error("Buyer history error:", err);
@@ -1144,6 +1205,40 @@ router.post("/:purchaseId/refund-request", requireAuth, refundUpload.array("atta
         attachmentCount: attachments.length,
       },
     });
+
+    /* Two emails the notification above can't replace.
+
+       The buyer gets a receipt: the decision was already emailed, the intake
+       never was, so someone filing at midnight had no evidence it landed and
+       support fielded "did you get my request?" the next morning.
+
+       The team gets the alert: ADMIN_REFUND_REQUESTED is only visible to
+       someone who opens the admin panel, and a refund sitting unread is a
+       buyer waiting on their money. Both best-effort — the request is already
+       saved and must not fail on SMTP. */
+    try {
+      await sendRefundRequestReceivedEmail({
+        to: req.user.email,
+        buyerName: req.user.name,
+        itemTitle: purchase.prompt.title,
+        amount: purchase.pricePaid,
+        reason: effectiveReason,
+      });
+    } catch (mailErr) {
+      console.error("Refund-received email failed (request still filed):", mailErr.message);
+    }
+
+    try {
+      await alertRefundRequested({
+        itemTitle: purchase.prompt.title,
+        buyerName: req.user.name || req.user.email,
+        amount: purchase.pricePaid,
+        reason: effectiveReason,
+        requestedAt: refundRequest.createdAt,
+      });
+    } catch (mailErr) {
+      console.error("Admin refund alert failed:", mailErr.message);
+    }
 
     return res.json({ success: true, refundRequest });
   } catch (err) {

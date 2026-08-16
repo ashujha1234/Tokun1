@@ -20,6 +20,7 @@ const Purchase = require("../models/Purchase");
 const Prompt = require("../models/Prompt");
 const Notification = require("../models/Notification");
 const { requireAuth } = require("../utils/auth");
+const { sendReviewReceivedEmail } = require("../services/creatorEmail.service");
 
 const router = express.Router();
 
@@ -400,6 +401,25 @@ router.post("/user/:userId", requireAuth, async (req, res) => {
       });
     } catch (notifyErr) {
       console.error("Review notification failed:", notifyErr.message);
+    }
+
+    /* Reviews decide whether a creator gets hired again, so they're worth
+       telling someone about properly — including the comment, which is the part
+       that stings or delights and which the notification truncates away. */
+    try {
+      const reviewee = await User.findById(userId).select("name email").lean();
+      if (reviewee?.email) {
+        await sendReviewReceivedEmail({
+          to: reviewee.email,
+          creatorName: reviewee.name,
+          reviewerName: req.user.name,
+          rating,
+          comment: review.comment,
+          title: match.context?.serviceTitle || match.context?.title || "",
+        });
+      }
+    } catch (mailErr) {
+      console.error("Review email failed (review still saved):", mailErr.message);
     }
 
     return res.json({ success: true, review, summary });

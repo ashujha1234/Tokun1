@@ -13,69 +13,9 @@
 // database, and SMTP being down must not undo that or stop the run.
 
 const transporter = require("../utils/mailer");
-
-function escapeHtml(str) {
-  return String(str ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-const SITE = (process.env.SITE_URL || "").replace(/\/$/, "");
-
-/* Same table-and-inline-styles shell as the refund emails, for the same reason:
-   email clients strip <style> blocks and don't do flexbox. Kept visually in
-   line with those so both look like they came from the same product. */
-function shell({ heading, accent, introHtml, rows, footerNote, cta }) {
-  const rowsHtml = (rows || [])
-    .map(
-      (r) => `
-      <tr>
-        <td style="padding:11px 0;font-size:13px;color:rgba(255,255,255,0.55);border-bottom:1px solid #222222">
-          ${escapeHtml(r.label)}
-        </td>
-        <td align="right" style="padding:11px 0;font-size:13px;color:${r.emphasis ? accent : "#ffffff"};font-weight:${r.emphasis ? 700 : 400};border-bottom:1px solid #222222">
-          ${escapeHtml(r.value)}
-        </td>
-      </tr>`
-    )
-    .join("");
-
-  const ctaHtml = cta
-    ? `<tr><td style="padding:4px 28px 26px">
-         <a href="${cta.href}" style="display:inline-block;padding:12px 22px;border-radius:100px;background:${accent};color:#0B0B0D;font-size:14px;font-weight:700;text-decoration:none">${escapeHtml(cta.label)}</a>
-       </td></tr>`
-    : "";
-
-  return `
-  <div style="margin:0;padding:0;background:#0B0B0D;font-family:Inter,Arial,Helvetica,sans-serif">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0B0B0D;padding:32px 16px">
-      <tr><td align="center">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#121214;border:1px solid #232326;border-radius:16px;overflow:hidden">
-          <tr><td style="height:4px;background:${accent};line-height:4px;font-size:0">&nbsp;</td></tr>
-          <tr><td style="padding:28px 28px 8px">
-            <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:2px;color:${accent};text-transform:uppercase">Tokun.World</p>
-            <h1 style="margin:0;font-size:22px;line-height:30px;color:#ffffff;font-weight:800">${escapeHtml(heading)}</h1>
-          </td></tr>
-          <tr><td style="padding:12px 28px 0;font-size:14px;line-height:22px;color:rgba(255,255,255,0.65)">
-            ${introHtml}
-          </td></tr>
-          <tr><td style="padding:20px 28px 4px">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rowsHtml}</table>
-          </td></tr>
-          <tr><td style="padding:22px 28px 0">&nbsp;</td></tr>
-          ${ctaHtml}
-          <tr><td style="padding:0 28px 28px;font-size:12px;line-height:19px;color:rgba(255,255,255,0.40)">
-            ${footerNote}
-          </td></tr>
-        </table>
-        <p style="margin:18px 0 0;font-size:11px;color:rgba(255,255,255,0.28)">
-          You're receiving this because of a request on your Tokun.World account.
-        </p>
-      </td></tr>
-    </table>
-  </div>`;
-}
+/* Shell/escaping/site URL come from services/emailLayout.js — see the note
+   there about the three copies this design used to have. */
+const { escapeHtml, SITE, shell } = require("./emailLayout");
 
 // Said on every one of these. It's the first question either side has.
 const NO_CHARGE_NOTE =

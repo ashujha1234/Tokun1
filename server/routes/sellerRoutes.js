@@ -852,6 +852,7 @@ const Purchase = require("../models/Purchase");
 const HireDeal = require("../models/HireDeal");
 const BankAccount = require("../models/BankAccount");
 const Notification = require("../models/Notification");
+const { sendSellingSuspendedEmail } = require("../services/creatorEmail.service");
 const { notifyAdmins } = require("../utils/notifyAdmins");
 const { requireAuth } = require("../utils/auth");
 
@@ -1380,6 +1381,25 @@ router.patch("/:sellerId/status", requireAuth, requireAdmin, async (req, res) =>
           : "Your account has been reactivated. You can sell on the platform again.",
       meta: { adminAction: status === "SUSPENDED" ? "suspended" : "unsuspended" },
     });
+
+    /* Suspension is emailed; reactivation isn't.
+
+       Being cut off from selling — with products pulled and unpaid deals
+       cancelled by the cascade below — is not something to leave in a
+       notification the person may be logged out of. Reactivation is good news
+       arriving at an account they can simply use again, and the in-app notice
+       covers it. */
+    if (status === "SUSPENDED" && updated.email) {
+      try {
+        await sendSellingSuspendedEmail({
+          to: updated.email,
+          creatorName: updated.name,
+          reason: String(req.body?.reason || "").trim(),
+        });
+      } catch (mailErr) {
+        console.error("Suspension email failed (suspension stands):", mailErr.message);
+      }
+    }
 
     let cascade = null;
     if (status === "SUSPENDED") {

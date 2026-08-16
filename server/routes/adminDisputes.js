@@ -18,6 +18,7 @@ const Notification = require("../models/Notification");
 const Message = require("../models/Message");
 const User = require("../models/User");
 const { requireAuth } = require("../utils/auth");
+const { sendDisputeResolvedEmail } = require("../services/buyerEmail.service");
 const {
   settleEscrow,
   previewSettlement,
@@ -388,6 +389,38 @@ router.post("/:id/resolve", async (req, res) => {
         meta: { disputeId: String(dispute._id), orderKind: dispute.orderKind },
       }),
     ]);
+
+    /* Both sides get the ruling in writing.
+
+       The settlement service already emails the money side of this (refund /
+       partial / settlement notices from refundEmail.service.js). What neither
+       party had was the DECISION itself — the percentage, the note, and who
+       made the call — which is the part they'll want to refer back to. */
+    try {
+      const outcome = `Tokun ruled ${percent}% to the creator${adminNote ? ` — ${adminNote}` : ""}`;
+      await Promise.all([
+        sendDisputeResolvedEmail({
+          to: dispute.sellerId?.email,
+          recipientName: dispute.sellerId?.name,
+          title: dispute.title,
+          outcome,
+          refundAmount: result.refundAmount,
+          sellerPayout: result.sellerPayout,
+          decidedBy: "Tokun",
+        }),
+        sendDisputeResolvedEmail({
+          to: dispute.buyerId?.email,
+          recipientName: dispute.buyerId?.name,
+          title: dispute.title,
+          outcome,
+          refundAmount: result.refundAmount,
+          sellerPayout: result.sellerPayout,
+          decidedBy: "Tokun",
+        }),
+      ]);
+    } catch (mailErr) {
+      console.error("Dispute-resolved emails failed (ruling stands):", mailErr.message);
+    }
 
     const order = await kind.model.findById(orderId).select("chatId");
     if (order?.chatId) {

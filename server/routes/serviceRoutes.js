@@ -157,6 +157,17 @@ const {
 const { generateInvoicePDF } = require("../services/invoice.service");
 const { sendInvoiceEmail } = require("../services/email.service");
 const {
+  sendNewWorkRequestEmail,
+  sendRevisionRequestedEmail,
+  sendEscrowReleasedEmail,
+} = require("../services/creatorEmail.service");
+const { sendWorkSubmittedEmail } = require("../services/buyerEmail.service");
+// Both mirror the crons that actually enforce them — staleRequestWatch.js and
+// autoReleaseServiceEscrow.js. The email must never promise a different window
+// from the one the job keeps.
+const REQUEST_RESPONSE_DAYS = Number(process.env.REQUEST_RESPONSE_DAYS || 3);
+const AUTO_RELEASE_HOURS = 72;
+const {
   releaseServiceEscrowToSeller,
   ServiceEscrowAlreadyReleasedError,
 } = require("../services/serviceEscrowRelease.service");
@@ -885,6 +896,28 @@ router.post("/:serviceId/book", requireAuth, blockIfSuspended, async (req, res) 
       console.error("Service booking-requested notification failed:", notifyErr);
     }
 
+    /* And by email. The booking is waiting on the CLIENT to pay, but the seller
+       is the one who has to be around to deliver it — and the stale-request
+       cron closes the whole thing after a few days. Better they hear about it
+       when it arrives than when it dies. */
+    try {
+      const seller = await mongoose.model("User").findById(service.userId).select("name email").lean();
+      const buyerDoc = await mongoose.model("User").findById(req.user._id).select("name").lean();
+      if (seller?.email) {
+        await sendNewWorkRequestEmail({
+          to: seller.email,
+          creatorName: seller.name,
+          clientName: buyerDoc?.name,
+          title: service.title,
+          amount,
+          kind: "booking",
+          respondWithinDays: REQUEST_RESPONSE_DAYS,
+        });
+      }
+    } catch (mailErr) {
+      console.error("New booking email failed (booking still created):", mailErr.message);
+    }
+
     return res.json({ success: true, order, cardPayload });
   } catch (err) {
     console.error("book service error:", err);
@@ -1575,6 +1608,23 @@ router.post("/orders/:orderId/submit-work", requireAuth, async (req, res) => {
       console.error("Service work-submitted notification failed:", notifyErr);
     }
 
+    // Carries the auto-release date: 72 hours of silence and the escrow pays
+    // out by itself (cron/autoReleaseServiceEscrow.js). A timer that spends
+    // someone's money can't run on an in-app badge alone.
+    try {
+      await sendWorkSubmittedEmail({
+        to: order.buyerId.email,
+        clientName: order.buyerId.name,
+        creatorName: order.sellerId.name,
+        title: order.serviceTitle,
+        amount: order.sellerAmount ?? order.amount,
+        autoReleaseAt: new Date(Date.now() + AUTO_RELEASE_HOURS * 60 * 60 * 1000),
+        orderPath: `/orders/service/${order._id}`,
+      });
+    } catch (mailErr) {
+      console.error("Service work-submitted email failed (submission stands):", mailErr.message);
+    }
+
     if (order.chatId) {
       try {
         await Message.create({
@@ -1658,6 +1708,19 @@ router.post("/orders/:orderId/approve-work", requireAuth, async (req, res) => {
       });
     } catch (notifyErr) {
       console.error("Service payment-released notification failed:", notifyErr);
+    }
+
+    try {
+      await sendEscrowReleasedEmail({
+        to: order.sellerId.email,
+        creatorName: order.sellerId.name,
+        clientName: order.buyerId.name,
+        title: order.serviceTitle,
+        amount: payoutAmount,
+        automatic: false,
+      });
+    } catch (mailErr) {
+      console.error("Service escrow-released email failed (payout stands):", mailErr.message);
     }
 
     if (order.chatId) {
@@ -1748,6 +1811,19 @@ router.post("/orders/:orderId/request-revision", requireAuth, async (req, res) =
       });
     } catch (notifyErr) {
       console.error("Service revision-requested notification failed:", notifyErr);
+    }
+
+    try {
+      await sendRevisionRequestedEmail({
+        to: order.sellerId.email,
+        creatorName: order.sellerId.name,
+        clientName: order.buyerId.name,
+        title: order.serviceTitle,
+        note: reason,
+        dueAt: order.deliveryDueAt,
+      });
+    } catch (mailErr) {
+      console.error("Service revision email failed (revision still recorded):", mailErr.message);
     }
 
     return res.json({

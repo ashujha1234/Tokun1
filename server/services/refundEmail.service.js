@@ -16,64 +16,11 @@
 // Every one of these is best-effort at the call site: a refund that has already
 // gone through Razorpay must never be rolled back because SMTP was down.
 
+/* Shell, escaping and money formatting come from services/emailLayout.js — this
+   file used to carry its own copy of all three, which is how a second and then
+   a third variant of the same email design came to exist. */
 const transporter = require("../utils/mailer");
-
-function escapeHtml(str) {
-  return String(str ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-const rupees = (n) => `₹${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-/* Inline styles and a table layout throughout, because email clients strip
-   <style> blocks and don't do flexbox. Matches the dark palette the invoice
-   email already uses so the two look like they come from the same place. */
-function shell({ heading, accent, introHtml, rows, footerNote }) {
-  const rowsHtml = (rows || [])
-    .map(
-      (r) => `
-      <tr>
-        <td style="padding:11px 0;font-size:13px;color:rgba(255,255,255,0.55);border-bottom:1px solid #222222">
-          ${escapeHtml(r.label)}
-        </td>
-        <td align="right" style="padding:11px 0;font-size:13px;color:${r.emphasis ? accent : "#ffffff"};font-weight:${r.emphasis ? 700 : 400};border-bottom:1px solid #222222;white-space:nowrap">
-          ${escapeHtml(r.value)}
-        </td>
-      </tr>`
-    )
-    .join("");
-
-  return `
-  <div style="margin:0;padding:0;background:#0B0B0D;font-family:Inter,Arial,Helvetica,sans-serif">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0B0B0D;padding:32px 16px">
-      <tr><td align="center">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#121214;border:1px solid #232326;border-radius:16px;overflow:hidden">
-          <tr>
-            <td style="height:4px;background:${accent};line-height:4px;font-size:0">&nbsp;</td>
-          </tr>
-          <tr><td style="padding:28px 28px 8px">
-            <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:2px;color:${accent};text-transform:uppercase">Tokun.World</p>
-            <h1 style="margin:0;font-size:22px;line-height:30px;color:#ffffff;font-weight:800">${escapeHtml(heading)}</h1>
-          </td></tr>
-          <tr><td style="padding:12px 28px 0;font-size:14px;line-height:22px;color:rgba(255,255,255,0.65)">
-            ${introHtml}
-          </td></tr>
-          <tr><td style="padding:20px 28px 4px">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rowsHtml}</table>
-          </td></tr>
-          <tr><td style="padding:20px 28px 28px;font-size:12px;line-height:19px;color:rgba(255,255,255,0.40)">
-            ${footerNote}
-          </td></tr>
-        </table>
-        <p style="margin:18px 0 0;font-size:11px;color:rgba(255,255,255,0.28)">
-          You're receiving this because of a transaction on your Tokun.World account.
-        </p>
-      </td></tr>
-    </table>
-  </div>`;
-}
+const { escapeHtml, rupees, shell } = require("./emailLayout");
 
 // Said on every buyer-facing refund email. People chase support on day two
 // otherwise, and the answer is always the same.

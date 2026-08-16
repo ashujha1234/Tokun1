@@ -75,6 +75,19 @@ const PromptSchema = new mongoose.Schema(
     tokun_price: { type: Number, default: 0 }, // <-- new field
     ratings: [ratingSchema],      // <--- store user ratings
     averageRating: { type: Number, default: 0 }, // <--- store calculated avg
+
+    /* Buyer reviews (models/ProductReview.js), kept denormalised so the
+       marketplace can show a star rating on every card without a second query
+       per listing. Maintained by recomputePromptRating() in
+       routes/productReviews.js.
+
+       Deliberately NOT written into `averageRating` above: the pre-save hook at
+       the bottom of this file recalculates that field from the embedded
+       `ratings` array on every single save, so a sale incrementing salesCount
+       would silently reset it to 0. These two are safe because nothing else
+       touches them. */
+    reviewAverage: { type: Number, default: 0 },
+    reviewCount: { type: Number, default: 0 },
     // NEW FIELD: uploadCode (can be null, single, or multiple)
     uploadCode: {
       type: [AttachmentSchema], // array of attachments

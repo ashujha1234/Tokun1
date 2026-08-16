@@ -241,6 +241,9 @@ const Prompt = require("../models/Prompt");
 const Notification = require("../models/Notification");
 const { requireAuth } = require("../utils/auth");
 const { notifyAdmins } = require("../utils/notifyAdmins");
+const User = require("../models/User");
+const { sendProductReportedEmail } = require("../services/creatorEmail.service");
+const { alertProductReported } = require("../services/adminAlertEmail.service");
 const mongoose = require("mongoose");
 const multer = require("multer");
 const uploadToAzure = require("../utils/uploadToAzure");
@@ -331,6 +334,16 @@ router.post("/", requireAuth, upload.array("screenshots", 5), async (req, res) =
       meta: { reportId: report._id, reason },
     }).catch((err) => console.error("Admin report-notification failed:", err.message));
 
+    /* The same alert by email. A reported product stays on sale until a human
+       acts on it, and ADMIN_PROMPT_REPORTED is only seen by whoever happens to
+       open the admin panel next. */
+    alertProductReported({
+      productTitle: reportedPrompt?.title,
+      productId: String(prompt),
+      reporterName: req.user.name || req.user.email,
+      reason,
+    }).catch((err) => console.error("Admin report-alert email failed:", err.message));
+
     res.json({ success: true, report });
   } catch (err) {
     console.error("POST /prompt-reports error:", err);
@@ -405,6 +418,25 @@ router.post("/:id/dismiss", requireAuth, requireAdmin, async (req, res) => {
  * marketplace, see the flagged:true gate in GET /api/prompt/others) and
  * notify the seller. Report stays open for record-keeping (status: Reviewed).
  */
+/* Tells the seller their product was taken out of the marketplace after a
+   report. Never fatal: the listing is already hidden and the report already
+   resolved by the time this runs. */
+async function emailReportedSeller(report, note, takenDown) {
+  try {
+    const seller = await User.findById(report.prompt.userId).select("name email").lean();
+    if (!seller?.email) return;
+    await sendProductReportedEmail({
+      to: seller.email,
+      creatorName: seller.name,
+      productTitle: report.prompt.title,
+      reason: note || report.reason || "",
+      takenDown,
+    });
+  } catch (mailErr) {
+    console.error("Reported-product email failed (action stands):", mailErr?.message || mailErr);
+  }
+}
+
 router.post("/:id/flag", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { note } = req.body;
@@ -424,6 +456,8 @@ router.post("/:id/flag", requireAuth, requireAdmin, async (req, res) => {
       message: `Your product "${report.prompt.title}" was flagged after a user report${note ? `: ${note}` : "."} It's now hidden from the marketplace.`,
       meta: { reportId: report._id, adminAction: "flagged", note: note || "" },
     });
+
+    await emailReportedSeller(report, note, true);
 
     return res.json({ success: true, report });
   } catch (err) {
@@ -459,6 +493,8 @@ router.post("/:id/suspend", requireAuth, requireAdmin, async (req, res) => {
       message: `Your product "${report.prompt.title}" was suspended after a user report${note ? `: ${note}` : "."} It's no longer listed on the marketplace.`,
       meta: { reportId: report._id, adminAction: "suspended", note: note || "" },
     });
+
+    await emailReportedSeller(report, note, true);
 
     return res.json({ success: true, report });
   } catch (err) {

@@ -38,6 +38,8 @@ const User = require("../models/User");
 const BankAccount = require("../models/BankAccount");
 const { requireAuth, blockIfSuspended } = require("../utils/auth");
 const { notifyAdmins } = require("../utils/notifyAdmins");
+const { sendIntroVideoPendingEmail } = require("../services/creatorEmail.service");
+const { alertIntroVideoReviewNeeded } = require("../services/adminAlertEmail.service");
 const { withCatalog } = require("../services/freelancerCatalog.service");
 const { validateIntroVideo } = require("../utils/introVideoValidation");
 const { allowlistedUserIds, isAllowlistedEmail } = require("../utils/superCreatorGate");
@@ -670,6 +672,25 @@ router.post("/me/activate", requireAuth, blockIfSuspended, async (req, res) => {
       await profile.save();
 
       await User.updateOne({ _id: req.user._id }, { $set: { freelancerStatus: "ACTIVE" } });
+
+      /* Live, but not necessarily able to sell.
+
+         Onboarding says "done" and the profile goes ACTIVE, while the video
+         gate (utils/superCreatorGate.js) quietly blocks every service and hire
+         listing until an admin approves the intro video. Nothing told the
+         creator that, so people believed they were open for business and
+         wondered why no work came. Only sent when the gate is actually
+         closed — an already-approved video needs no explanation. */
+      if (profile.introVideo?.status !== "APPROVED") {
+        try {
+          await sendIntroVideoPendingEmail({
+            to: req.user.email,
+            creatorName: profile.displayName || req.user.name,
+          });
+        } catch (mailErr) {
+          console.error("Video-pending email failed (profile still active):", mailErr.message);
+        }
+      }
     }
 
     return res.json({
@@ -860,6 +881,15 @@ router.post(
       } catch (notifyErr) {
         console.error("intro video notify failed:", notifyErr?.message || notifyErr);
       }
+
+      /* The same alert to the team by email. This review is a gate on someone's
+         ability to earn at all, so it shouldn't wait for whenever an admin next
+         opens the panel. */
+      alertIntroVideoReviewNeeded({
+        creatorName: profile.displayName || req.user.name,
+        creatorEmail: req.user.email,
+        profileId: String(profile._id),
+      }).catch((err) => console.error("Admin video-review alert failed:", err.message));
 
       return res.json({
         success: true,

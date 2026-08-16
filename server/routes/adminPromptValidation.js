@@ -12,6 +12,11 @@ const router = express.Router();
 
 const Prompt = require("../models/Prompt");
 const Notification = require("../models/Notification");
+const User = require("../models/User");
+const {
+  sendProductApprovedEmail,
+  sendProductRejectedEmail,
+} = require("../services/creatorEmail.service");
 const { requireAuth } = require("../utils/auth");
 const { runPromptMediaValidation } = require("../utils/promptMediaValidation");
 
@@ -108,6 +113,22 @@ router.get("/:promptId", async (req, res) => {
   }
 });
 
+
+/* One lookup, one email, never fatal.
+   Each of the three decisions below already writes the outcome to the prompt
+   and (mostly) to a notification. None of them reached the creator's inbox, so
+   a product could be approved, rejected or sent back for changes and the person
+   who made it would only find out by opening the dashboard and noticing. */
+async function emailSellerAboutReview(prompt, send) {
+  try {
+    const seller = await User.findById(prompt.userId).select("name email").lean();
+    if (!seller?.email) return;
+    await send(seller);
+  } catch (mailErr) {
+    console.error("Product review email failed (decision stands):", mailErr?.message || mailErr);
+  }
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // POST /api/admin/prompt-validation/:promptId/approve
 // Body: { note? }
@@ -128,6 +149,15 @@ router.post("/:promptId/approve", async (req, res) => {
       at: new Date(),
     };
     await prompt.save();
+
+    await emailSellerAboutReview(prompt, (seller) =>
+      sendProductApprovedEmail({
+        to: seller.email,
+        creatorName: seller.name,
+        productTitle: prompt.title,
+        productId: String(prompt._id),
+      })
+    );
 
     return res.json({ success: true, prompt });
   } catch (err) {
@@ -164,6 +194,16 @@ router.post("/:promptId/reject", async (req, res) => {
       message: `Your product "${prompt.title}" was rejected after review${note ? `: ${note}` : "."}`,
       meta: { adminAction: "rejected", note: note || "" },
     });
+
+    await emailSellerAboutReview(prompt, (seller) =>
+      sendProductRejectedEmail({
+        to: seller.email,
+        creatorName: seller.name,
+        productTitle: prompt.title,
+        reason: note || "",
+        editable: false,
+      })
+    );
 
     return res.json({ success: true, prompt });
   } catch (err) {
@@ -208,6 +248,16 @@ router.post("/:promptId/request-edit", async (req, res) => {
       message: `Your product "${prompt.title}" needs changes before it can go live: ${String(note).trim()}`,
       meta: { adminAction: "edit_requested", note: String(note).trim() },
     });
+
+    await emailSellerAboutReview(prompt, (seller) =>
+      sendProductRejectedEmail({
+        to: seller.email,
+        creatorName: seller.name,
+        productTitle: prompt.title,
+        reason: String(note).trim(),
+        editable: true,
+      })
+    );
 
     return res.json({ success: true, prompt });
   } catch (err) {

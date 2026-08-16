@@ -37,6 +37,11 @@ const User = require("../models/User");
 const { requireAuth } = require("../utils/auth");
 const { notifyAdmins } = require("../utils/notifyAdmins");
 const {
+  sendDisputeOpenedEmail,
+  sendDisputeEscalatedEmail,
+} = require("../services/buyerEmail.service");
+const { alertDisputeEscalated } = require("../services/adminAlertEmail.service");
+const {
   settleEscrow,
   refundEscrowFully,
   previewSettlement,
@@ -283,6 +288,22 @@ router.post("/:orderKind/:orderId/cancel", requireAuth, async (req, res) => {
       meta: { orderKind, orderId: String(orderId), disputeId: String(dispute._id) },
     });
 
+    /* The creator has just had a job cancelled mid-flight and their payout
+       frozen, and they have to respond with a completion claim for any of it to
+       be paid. That cannot wait for them to notice a badge. */
+    try {
+      await sendDisputeOpenedEmail({
+        to: seller?.email,
+        recipientName: seller?.name,
+        openedByName: buyer?.name,
+        title: order[kind.titleField],
+        reason,
+        amount: order.totalPayable,
+      });
+    } catch (mailErr) {
+      console.error("Dispute-opened email failed (dispute still open):", mailErr.message);
+    }
+
     await postToChat(
       order,
       req.user._id,
@@ -491,6 +512,41 @@ router.post("/:orderKind/:orderId/dispute/respond", requireAuth, async (req, res
         });
       } catch (notifyErr) {
         console.error("notifyAdmins failed (dispute escalation):", notifyErr.message);
+      }
+
+      /* Both parties by email, and the team as well.
+
+         Both, not just the creator: the money is now frozen pending a ruling
+         neither of them controls, and the person who escalated needs the same
+         written record of when it happened as the person who was escalated
+         against. The admin copy goes out because ESCROW_DISPUTE_ADMIN_REVIEW
+         above only reaches someone already looking at the admin panel — and a
+         frozen escrow is a clock running against Razorpay's 90-day hold. */
+      try {
+        await Promise.all([
+          sendDisputeEscalatedEmail({
+            to: seller?.email,
+            recipientName: seller?.name,
+            title: order[kind.titleField],
+            escalatedByName: buyer?.name,
+          }),
+          sendDisputeEscalatedEmail({
+            to: buyer?.email,
+            recipientName: buyer?.name,
+            title: order[kind.titleField],
+            escalatedByName: buyer?.name,
+          }),
+          alertDisputeEscalated({
+            orderTitle: order[kind.titleField],
+            orderId: String(orderId),
+            amount: order.totalPayable,
+            buyerName: buyer?.name,
+            sellerName: seller?.name,
+            reason: note || dispute.reason,
+          }),
+        ]);
+      } catch (mailErr) {
+        console.error("Dispute-escalation emails failed (escalation stands):", mailErr.message);
       }
 
       return res.json({

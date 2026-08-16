@@ -15,6 +15,7 @@ import RequestToBuyModal from "@/components/RequestToBuyModel";
 import SharePromptMenu from "@/components/SharePromptMenu";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/use-toast";
+import ProductReviews from "@/components/ProductReviews";
 
 /* ================== Types ================== */
 export interface MarketplacePrompt {
@@ -488,6 +489,20 @@ pb-8 sm:pb-10
                 </button> */}
               </div>
             </div>
+
+            {/* Review the thing you bought, from the place you own it.
+
+                This panel is My Products' details view (self-dash imports it as
+                DetailsPrompt), and until now the only way to review a purchase
+                was to leave, find the creator's profile, and rate the PERSON —
+                which isn't even the same thing as rating the product. The buy
+                → own → review path now closes here.
+
+                Same component the marketplace panel uses, so a review written
+                here and one written there are the same review. */}
+            {/* Sellers see the reviews on their own product too — they just
+                don't get the form (ProductReviews hides it for the owner). */}
+            <ProductReviews promptId={String(prompt.id)} isOwnProduct={isOwnPrompt} />
           </div>
         </DialogContent>
       </Dialog>

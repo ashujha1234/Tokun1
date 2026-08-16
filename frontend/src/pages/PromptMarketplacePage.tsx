@@ -5796,6 +5796,7 @@ import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import Footer from "@/components/Footer";
 import DetailsPrompt from "@/components/DetailsPrompt";
 import VideoReelCard, { authorInitials, cardPrice } from "@/components/VideoReelCard";
+import { StarRating } from "@/components/StarRating";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import ModalComponent from "@/components/ModalComponent";
@@ -5837,7 +5838,11 @@ type Prompt = {
    * more than the card advertised.
    */
   tokunPrice?: number;
+  /** Average of this product's buyer reviews, 0–5. Undefined = never reviewed. */
   rating?: number;
+  /** How many reviews that average is made of — a 5.0 from one buyer and a 4.6
+      from ninety are not the same claim, so cards show both. */
+  reviewCount?: number;
   downloads?: number;
   imageUrl?: string;
   videoUrl?: string;
@@ -6616,6 +6621,10 @@ const LibOldStyleCard = ({
         </div>
 
         <h3 className="mp-card__title">{prompt.title}</h3>
+        {/* Same rating the grid card shows — this is the rail version of it. */}
+        <div style={{ margin: "2px 0 6px" }}>
+          <StarRating value={prompt.rating} count={prompt.reviewCount} size={12} compact />
+        </div>
         <p className="mp-card__desc">{prompt.description}</p>
 
         {/* Says WHY it can't be bought and that it will fix itself. Without
@@ -7289,7 +7298,16 @@ const mapPromptDoc = (doc: any): Prompt => {
         : typeof doc.price === "number"
           ? doc.price
           : 0,
-    rating: typeof doc.averageRating === "number" ? doc.averageRating : undefined,
+    /* Buyer reviews, from models/ProductReview.js. `averageRating` is the
+       legacy embedded-ratings field that nothing ever wrote to — kept only as a
+       fallback so any old row carrying a value doesn't lose it. */
+    rating:
+      typeof doc.reviewAverage === "number" && doc.reviewAverage > 0
+        ? doc.reviewAverage
+        : typeof doc.averageRating === "number"
+          ? doc.averageRating
+          : undefined,
+    reviewCount: typeof doc.reviewCount === "number" ? doc.reviewCount : 0,
     // Only present when the endpoint chose to send it — /public/:id strips it.
     // The details panel shows it to the uploader and uses it for Copy on free
     // prompts, which until now copied an empty string because nothing set it.
@@ -8388,6 +8406,11 @@ const savePromptToCollections = async ({
 
                       {/* TEXT */}
                       <h3 className="mp-card__title">{prompt.title}</h3>
+                      {/* Buyer rating. Sits between the title and the blurb
+                          because that's where the eye goes before the price. */}
+                      <div style={{ margin: "2px 0 6px" }}>
+                        <StarRating value={prompt.rating} count={prompt.reviewCount} size={12} compact />
+                      </div>
                       <p className="mp-card__desc">{prompt.description}</p>
 
                       {/* FOOTER */}

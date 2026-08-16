@@ -1267,6 +1267,10 @@ type Prompt = {
      endpoint keys off, and refundStatus drives the button vs. badge. */
   purchaseId?: string;
   refundStatus?: "NONE" | "REQUESTED" | "APPROVED" | "REJECTED" | "REFUNDED";
+  /** ISO timestamp after which this purchase can no longer be refunded. */
+  refundEligibleUntil?: string | null;
+  /** The server's own verdict on whether a refund can still be requested. */
+  refundEligible?: boolean;
   mediaValidation?: {
     status?: string;
     score?: number | null;
@@ -1743,9 +1747,29 @@ function HistoryGridCard({
     user?.userType === "ORG" &&
     user?.role === "Owner";
 
-  // Free prompts were never charged, so there's nothing to refund.
+  /* Free prompts were never charged, so there's nothing to refund — and the
+     24-hour window has to close on screen as well as on the server.
+
+     It didn't before: the button stayed on every purchase forever, so a buyer
+     could open a week-old product, write out a reason, attach screenshots and
+     submit, only to be told `refund_window_expired`. The deadline comes from
+     the API (refundEligibleUntil) rather than being recomputed here, so what's
+     offered is exactly what will be accepted. */
+  const refundWindowOpen =
+    prompt.refundEligible ??
+    (prompt.refundEligibleUntil
+      ? Date.now() < new Date(prompt.refundEligibleUntil).getTime()
+      : // Older responses didn't carry the field. Showing the button and
+        // letting the server refuse is friendlier than hiding a refund someone
+        // is still entitled to.
+        true);
+
   const canRefund =
-    !isUploaded && !!onRequestRefund && !prompt.isFree && !!prompt.purchaseId;
+    !isUploaded &&
+    !!onRequestRefund &&
+    !prompt.isFree &&
+    !!prompt.purchaseId &&
+    refundWindowOpen;
   const refundPending =
     !!prompt.refundStatus && prompt.refundStatus !== "NONE";
   const refundBadge = refundPending
@@ -2856,6 +2880,13 @@ const handleAcceptRequest = async (item: any) => {
           isUploadedByMe: false, promptText, fullPrompt,
           purchaseId: String(p?._id || ""),
           refundStatus: p?.refundStatus || "NONE",
+          /* When the refund window shuts, as computed by the server from
+             REFUND_WINDOW_HOURS — the same value POST /refund-request enforces.
+             Not recalculated here from purchasedAt: a hardcoded "24" in the
+             browser would disagree with the server the moment that env var
+             changes, and offer a refund the API then refuses. */
+          refundEligibleUntil: p?.refundEligibleUntil || null,
+          refundEligible: !!p?.refundEligible,
         } as Prompt;
       });
 

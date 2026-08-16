@@ -1,6 +1,19 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const { requireAuth } = require("../utils/auth");
+
+/* What a saved prompt is allowed to carry out of the API.
+   promptText is absent on purpose — it is the thing being sold. */
+const SAVED_PROMPT_FIELDS =
+  "title description price tokun_price free exclusive sold attachment categories subCategories userId salesCount reviewAverage reviewCount averageRating deleted flagged createdAt";
+
+const PROMPT_REF_POPULATE = [
+  { path: "categories", select: "name" },
+  { path: "subCategories", select: "name" },
+  // Name only. The card shows the seller's name and links to their profile;
+  // their email is not the page's business.
+  { path: "userId", select: "name" },
+];
 const SavedCollection = require("../models/SavedCollection");
 
 const router = express.Router();
@@ -88,15 +101,28 @@ router.get("/", requireAuth, async (req, res) => {
         path: "sections.smartgen.collections.items.ref",
         model: "Smartgen",
       })
-      // populate prompt directItems
+      /* Prompt refs, WITHOUT promptText.
+
+         These two used to populate the whole Prompt document, which meant
+         saving a listing was enough to be handed the paid content itself — the
+         one field every public prompt endpoint deliberately withholds (see the
+         `-promptText` select on GET /api/prompt/public/:id). The Saved page now
+         renders these as real marketplace cards with a details panel, so the
+         payload has to obey the same rule the marketplace does.
+
+         Everything a card and its details panel need is here; the prompt text
+         still comes only from the purchase flow. */
       .populate({
         path: "sections.prompt.directItems.ref",
         model: "Prompt",
+        select: SAVED_PROMPT_FIELDS,
+        populate: PROMPT_REF_POPULATE,
       })
-      // populate prompt collections.items
       .populate({
         path: "sections.prompt.collections.items.ref",
         model: "Prompt",
+        select: SAVED_PROMPT_FIELDS,
+        populate: PROMPT_REF_POPULATE,
       })
        .populate({
         path: "sections.promptOptimizer.directItems.ref",

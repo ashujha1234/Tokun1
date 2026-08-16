@@ -1035,6 +1035,8 @@ import SharePromptMenu from "@/components/SharePromptMenu";
 import { toast } from "@/components/ui/use-toast";
 import { useCart } from "@/contexts/CartContext";
 import { isTeamMember as isTeamMemberUser, isOrgOwner } from "@/lib/orgRoles";
+import ProductReviews from "@/components/ProductReviews";
+import { StarRating } from "@/components/StarRating";
 
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 const PURCHASE_BASE = `${API_BASE}/api/purchase`;
@@ -1464,6 +1466,15 @@ const comingSoon = !!prompt?.sellerVerificationPending || sellerHasPayout === fa
               </button>
             </div>
 
+            {/* What buyers made of it, right under the title where a price
+                comparison actually happens. The old `rating` field on this
+                object was never written to by anything, so every listing
+                claimed the same score; it now comes from real purchase-gated
+                reviews (models/ProductReview.js). */}
+            <div className="mt-3">
+              <StarRating value={prompt.rating} count={(prompt as any).reviewCount} size={15} />
+            </div>
+
             {/* Description */}
             <p className="mt-5 text-white/80 text-[15px] leading-relaxed">
               {prompt.description}
@@ -1721,6 +1732,14 @@ const comingSoon = !!prompt?.sellerVerificationPending || sellerHasPayout === fa
               </div>
             )}
           </div>
+
+          {/* Reviews. Below the buy area rather than above it: someone who has
+              already decided shouldn't have to scroll past other people's
+              opinions to reach the button, and someone still deciding is
+              scrolling anyway. Sellers see the list but never the form. */}
+          {promptRefId && (
+            <ProductReviews promptId={promptRefId} isOwnProduct={isOwnPrompt} />
+          )}
           </div>
         </DialogContent>
       </Dialog>

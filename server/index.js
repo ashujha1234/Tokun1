@@ -4389,6 +4389,9 @@ const myOrdersRoutes = require("./routes/myOrders");
 const briefAttachmentRoutes = require("./routes/briefAttachments");
 const progressReviewRoutes = require("./routes/progressReview");
 const reviewRoutes = require("./routes/reviews");
+/* Reviews OF A PRODUCT, as opposed to reviews of a person — different model,
+   different uniqueness rule. See the header of models/ProductReview.js. */
+const productReviewRoutes = require("./routes/productReviews");
 const adminDisputesRouter = require("./routes/adminDisputes");
 const adminPlatformRevenueRouter = require("./routes/adminPlatformRevenue");
 /* Everything that moved through Razorpay, joined to Tokun's own commission
@@ -4430,6 +4433,10 @@ require("./cron/stalledRevisionWatch");
    REQUEST_RESPONSE_DAYS (3). Pre-payment states only — no money is ever moved
    by this one. */
 require("./cron/staleRequestWatch");
+/* Plans don't auto-renew — nothing charges a card a second time — so an expiry
+   is something the subscriber has to act on. Warns 3 days out and confirms once
+   it has lapsed. Email only; it moves no money and changes no plan. */
+require("./cron/subscriptionExpiryWatch");
 
 const app = express();
 
@@ -5410,6 +5417,7 @@ app.use("/api/progress-review", progressReviewRoutes);
 /* Reviews between the two sides of a finished booking — anchored to a real
    paid transaction, one per booking per direction. */
 app.use("/api/reviews", reviewRoutes);
+app.use("/api/product-reviews", productReviewRoutes);
 app.use("/api/admin/disputes", adminDisputesRouter);
 app.use("/api/admin/platform-revenue", adminPlatformRevenueRouter);
 app.use("/api/admin/payments", adminPaymentsRouter);

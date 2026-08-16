@@ -28,6 +28,7 @@ const PlatformWallet = require("../models/PlatformWallet");
 const { route } = require("./authRoutes");
 const { generateInvoicePDF } = require("../services/invoice.service");
 const { sendInvoiceEmail } = require("../services/email.service");
+const { sendPromptSoldEmail } = require("../services/creatorEmail.service");
 
 
 // POST /api/cart/add/:promptId
@@ -655,6 +656,41 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
       } catch (invoiceErr) {
         // Invoice fail hone pe bhi checkout success hi return karo
         console.error("⚠️ Cart invoice/email failed (checkout still success):", invoiceErr.message);
+      }
+
+      /* One "you made a sale" email per seller in the cart.
+         A cart can pay several creators at once, and each of them owns exactly
+         one line of it — so the email is per purchase, not per checkout, and
+         carries only that creator's own numbers. Sequential rather than
+         Promise.all: this is already off the response path, and a burst of
+         parallel SMTP connections to Gmail is how you get rate-limited. */
+      for (const purchase of purchases) {
+        try {
+          const prompt = await Prompt.findById(purchase.prompt).select("title userId");
+          if (!prompt?.userId) continue;
+
+          // `user` (lowercase) is this file's import of the User MODEL — see the
+          // requires at the top. Not to be confused with req.user, the buyer.
+          const seller = await user.findById(prompt.userId).select("name email");
+          if (!seller?.email) continue;
+
+          await sendPromptSoldEmail({
+            to: seller.email,
+            sellerName: seller.name,
+            productTitle: prompt.title || purchase.promptSnapshot?.title,
+            buyerName: req.user.name,
+            salePrice: purchase.pricePaid,
+            platformCut: purchase.platformCommission,
+            netEarning:
+              Number(purchase.pricePaid || 0) - Number(purchase.platformCommission || 0),
+            soldAt: purchase.purchasedAt,
+          });
+        } catch (sellerMailErr) {
+          console.error(
+            `⚠️ Seller sale email failed for purchase ${purchase._id} (sale unaffected):`,
+            sellerMailErr.message
+          );
+        }
       }
     } // ── end settleAfterCheckout ──
   } catch (err) {
