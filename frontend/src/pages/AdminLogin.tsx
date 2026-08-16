@@ -255,7 +255,7 @@
 // export default AdminLogin;
 
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 
@@ -270,6 +270,28 @@ const AdminLogin = () => {
   const [remember, setRemember] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
+  /* Sign-in is two steps now: the password gets a code emailed, the code gets
+     the session. `challengeToken` is what proves step 1 happened — without it
+     the verify endpoint refuses, so nobody can grind codes against an address
+     whose password they don't have. Its presence is also what switches this
+     screen from the password form to the code form. */
+  const [challengeToken, setChallengeToken] = useState("");
+  const [sentTo, setSentTo] = useState("");
+  const [otp, setOtp] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
+
+  /* Errors used to go to console.error only, so a wrong password looked like a
+     button that did nothing. Every failure below is now on screen. */
+  const [error, setError] = useState<string | null>(null);
+
+  // Resend cooldown, matching the server's own 60s per-account limit.
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const id = window.setTimeout(() => setResendIn((n) => n - 1), 1000);
+    return () => window.clearTimeout(id);
+  }, [resendIn]);
+
   const isValid = useMemo(() => {
     const e = email.trim();
     return e.length > 3 && e.includes("@") && password.trim().length >= 1;
@@ -280,10 +302,9 @@ const AdminLogin = () => {
     if (!isValid || submitting) return;
 
     setSubmitting(true);
+    setError(null);
     try {
       const url = `${API_BASE}/api/admin/auth/login`;
-
-      console.log("[ADMIN LOGIN] → POST", url, { email, remember });
 
       const res = await fetch(url, {
         method: "POST",
@@ -291,32 +312,159 @@ const AdminLogin = () => {
         body: JSON.stringify({ email: email.trim().toLowerCase(), password, remember }),
       });
 
+      /* These three lines used to log the URL, the admin's email, the HTTP
+         status and the ENTIRE response body — which, before the OTP step
+         existed, included the admin session token itself. Removed from the
+         source rather than left to the console silencer: anyone who turns
+         debugging back on should not get an admin token printed for them. */
       const data = await res.json();
-      console.log("[ADMIN LOGIN] ← status:", res.status);
-      console.log("[ADMIN LOGIN] ← json:", data);
 
       if (!res.ok || !data?.success) {
-        console.error("[ADMIN LOGIN] failed:", data?.error || "Login failed");
+        setError(data?.message || data?.error || "Login failed");
         return;
       }
 
-      // ✅ Admin JWT + identity save karo — ab admin requests admin token se jaayengi
-      if (data?.token) {
-        localStorage.setItem("tokun_admin_token", data.token);
+      /* BUG 2 guard — an older server still answers this call with a token and
+         no challenge. The frontend then waited for a challenge that was never
+         coming and the screen sat there doing nothing, which looks exactly like
+         a dead button. Signing them in on that response instead would silently
+         skip the second factor, so it says what's actually wrong. */
+      if (!data.challengeToken) {
+        setError(
+          data?.token
+            ? "The server is running an older build that skips the login code. Restart the API and try again."
+            : "The server didn't send a login code. Try again in a moment."
+        );
+        return;
       }
-      localStorage.setItem("tokun_admin_id", String(data?.admin?.id || ""));
-      localStorage.setItem("tokun_admin_email", data?.admin?.email || email.trim().toLowerCase());
-      localStorage.setItem("tokun_admin_auth", "true");
 
-      console.log("✅ ADMIN LOGGED IN:", data?.admin);
-
-      navigate("/admin/dashboard");
+      /* No token at this step, by design. What comes back is a challenge and a
+         code in the admin's inbox. */
+      setChallengeToken(data.challengeToken);
+      setSentTo(data.sentTo || "");
+      setResendIn(60);
+      setPassword("");
     } catch (err) {
-      console.error("[ADMIN LOGIN] error:", err);
+      setError("Couldn't reach the server. Check your connection and try again.");
     } finally {
       setSubmitting(false);
     }
   };
+
+  /** Step 2 — the code. This is what returns the admin session. */
+  const verifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (verifying || otp.trim().length < 6) return;
+
+    setVerifying(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/auth/verify-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challengeToken, otp: otp.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data?.success) {
+        setError(data?.message || data?.error || "That code didn't work.");
+        // An expired or burned challenge means starting over, so send them back
+        // to the password rather than leaving them typing into a dead form.
+        if (data?.error === "challenge_expired" || data?.error === "otp_attempts_exceeded") {
+          setChallengeToken("");
+          setOtp("");
+        }
+        return;
+      }
+
+      if (data?.token) localStorage.setItem("tokun_admin_token", data.token);
+      localStorage.setItem("tokun_admin_id", String(data?.admin?.id || ""));
+      localStorage.setItem("tokun_admin_email", data?.admin?.email || email.trim().toLowerCase());
+      localStorage.setItem("tokun_admin_auth", "true");
+
+      navigate("/admin/dashboard");
+    } catch {
+      setError("Couldn't reach the server. Check your connection and try again.");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const resendOtp = async () => {
+    if (resendIn > 0) return;
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/auth/resend-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challengeToken }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        setError(data?.message || "Couldn't send another code.");
+        return;
+      }
+      setResendIn(60);
+    } catch {
+      setError("Couldn't send another code.");
+    }
+  };
+
+  /* The code form. Rendered in place of the password form in both the mobile
+     and desktop layouts below, so the two can't drift apart. */
+  const OtpStep = () => (
+    <form onSubmit={verifyOtp} className="space-y-4">
+      <div>
+        <label className="text-[13px] text-white/70">Enter the 6-digit code</label>
+        <p className="mt-1 text-[12px] text-white/40">
+          Sent to {sentTo || "your admin email"}. It expires in 5 minutes.
+        </p>
+      </div>
+
+      <Input
+        value={otp}
+        onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        autoFocus
+        placeholder="000000"
+        className="h-[52px] w-full rounded-[12px] bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)] border border-white/20 text-white text-center text-[22px] tracking-[0.5em] placeholder:text-white/20 focus-visible:ring-0 focus:border-white/50"
+      />
+
+      {error && <p className="text-[12.5px] text-red-400">{error}</p>}
+
+      <button
+        type="submit"
+        disabled={otp.length < 6 || verifying}
+        className="w-full h-[44px] rounded-[12px] text-[14px] font-semibold text-white disabled:opacity-40 transition-opacity"
+        style={{ background: "linear-gradient(90deg, #FF14EF 0%, #A855F7 50%, #1A73E8 100%)" }}
+      >
+        {verifying ? "Verifying…" : "Verify and sign in"}
+      </button>
+
+      <div className="flex items-center justify-between text-[12.5px]">
+        <button
+          type="button"
+          onClick={() => {
+            setChallengeToken("");
+            setOtp("");
+            setError(null);
+          }}
+          className="text-white/50 hover:text-white/80"
+        >
+          ← Use a different account
+        </button>
+        <button
+          type="button"
+          onClick={resendOtp}
+          disabled={resendIn > 0}
+          className="text-[#3A7CFF] hover:underline disabled:text-white/25 disabled:no-underline"
+        >
+          {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
+        </button>
+      </div>
+    </form>
+  );
 
   return (
     <div className="min-h-screen w-full bg-[#030406] text-white font-inter">
@@ -358,7 +506,8 @@ const AdminLogin = () => {
               <p className="text-[12px] text-white/50 leading-snug">Enter your admin credentials to continue</p>
             </div>
 
-            {/* Form */}
+            {/* Form — password first, then the code. */}
+            {challengeToken ? <OtpStep /> : (
             <form onSubmit={onSubmit} className="space-y-3">
 
               {/* Email */}
@@ -411,6 +560,13 @@ const AdminLogin = () => {
                 <span className="text-[13px] text-white/85">Remember this device for 30 days</span>
               </label>
 
+              {/* Whatever went wrong on this step — wrong password, locked account,
+                  rate limited, code couldn't be sent. Until now setError() was
+                  called and nothing rendered it, so a failed sign-in looked
+                  like a button that did nothing at all. */}
+              {error && (
+                <p className="text-[12.5px] text-red-400" role="alert">{error}</p>
+              )}
               {/* Submit */}
               <button type="submit" disabled={!isValid || submitting}
                 className="w-full h-[44px] rounded-[12px] text-[14px] font-semibold text-white disabled:opacity-40 transition-opacity"
@@ -426,6 +582,7 @@ const AdminLogin = () => {
                 ) : "Sign in"}
               </button>
             </form>
+            )}
 
             {/* Footer */}
             <div className="mt-9 text-center">
@@ -446,6 +603,7 @@ const AdminLogin = () => {
                 Enter your credentials to manage sellers <br className="hidden sm:block" /> and products.
               </p>
 
+              {challengeToken ? <div className="mt-10"><OtpStep /></div> : (
               <form onSubmit={onSubmit} className="mt-10 space-y-6">
                 <div className="space-y-2">
                   <label className="text-[13px] text-white/80">Email address</label>
@@ -489,9 +647,15 @@ const AdminLogin = () => {
                   <span className="text-[14px] text-white/85">Remember this device for 30 days</span>
                 </label>
 
+                {/* Same reason as the mobile form: a failure here had nowhere
+                    to show itself. */}
+                {error && (
+                  <p className="text-[13px] text-red-400" role="alert">{error}</p>
+                )}
+
                 <button type="submit" disabled={!isValid || submitting}
                   className="w-full h-[54px] rounded-[10px] text-[16px] font-medium text-white bg-gradient-to-r from-[#FF14EF] via-[#8A4BFF] to-[#1A73E8] hover:opacity-90 disabled:opacity-50 transition">
-                  {submitting ? "Signing in..." : "Sign in"}
+                  {submitting ? "Sending code..." : "Sign in"}
                 </button>
 
                 <div className="pt-6 flex items-center justify-center gap-10 text-[13px] text-white/70">
@@ -500,6 +664,7 @@ const AdminLogin = () => {
                   <Link to="/terms" className="hover:text-white">Terms of Service</Link>
                 </div>
               </form>
+              )}
             </div>
           </div>
 
