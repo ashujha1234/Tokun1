@@ -267,9 +267,78 @@ function buildMarkdownFile(result: { filename: string; format: string; markdown:
   return { name: `${stem}.md`, contents };
 }
 
+/* The optimiser answers with `{"optimizedText":"…"}` and this takes the text out
+   of it — including while that JSON is still arriving.
+   ────────────────────────────────────────────────────────────────────────────
+   It used to be JSON.parse or nothing, which is fine for a finished response and
+   wrong for a streaming one: half an object never parses, so every chunk fell
+   through to the raw string and the reader watched `{"optimizedText":"Your Expert
+   Role\nYou are an AI…` scroll past with the envelope and the escapes showing.
+   The formatted version — sections, pills, tables — only appeared at the end,
+   when the last brace finally made the parse succeed, so the output visibly
+   changed shape the moment it finished.
+
+   So a partial envelope is decoded by hand instead: find the key, then walk the
+   string value undoing JSON escapes. The stream now reads the same from the
+   first chunk as it does when it's done. */
+
+/** JSON string-escape decoding for a value whose closing quote may not be here
+    yet. Stops at the first unescaped quote, or at the end of what has arrived. */
+function decodeJsonStringBody(s: string): string {
+  let out = "";
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '"') break; // the value ended
+    if (c !== "\\") { out += c; continue; }
+
+    const next = s[i + 1];
+    // A lone trailing backslash is a chunk boundary mid-escape — drop it and
+    // wait; the next chunk brings the rest.
+    if (next === undefined) break;
+    i++;
+
+    switch (next) {
+      case "n":  out += "\n"; break;
+      case "t":  out += "\t"; break;
+      case "r":  out += "\r"; break;
+      case "b":  out += "\b"; break;
+      case "f":  out += "\f"; break;
+      case '"':  out += '"';  break;
+      case "\\": out += "\\"; break;
+      case "/":  out += "/";  break;
+      case "u": {
+        const hex = s.slice(i + 1, i + 5);
+        if (hex.length < 4 || !/^[0-9a-fA-F]{4}$/.test(hex)) return out; // split escape
+        out += String.fromCharCode(parseInt(hex, 16));
+        i += 4;
+        break;
+      }
+      default: out += next; // not an escape we know; keep it verbatim
+    }
+  }
+  return out;
+}
+
+const OPTIMIZED_ENVELOPE = '{"optimizedText":"';
+
 function unwrapJson(raw: string): string {
   const s = raw.replace(/^```json\s*/i,"").replace(/^```\s*/i,"").replace(/```\s*$/i,"").trim();
-  if (s.startsWith("{")) { try { const p = JSON.parse(s); if (p.optimizedText) return p.optimizedText; } catch {} }
+  if (!s.startsWith("{")) return raw;
+
+  // Complete and valid — the exact path, and the common one once done.
+  try {
+    const p = JSON.parse(s);
+    if (typeof p?.optimizedText === "string") return p.optimizedText;
+  } catch { /* still arriving, or not this shape */ }
+
+  // The opening chars of the envelope, before any text has come through. Showing
+  // them would flash `{"optimizedText":"` on screen for a frame or two.
+  if (OPTIMIZED_ENVELOPE.startsWith(s.replace(/\s+/g, ""))) return "";
+
+  // Mid-value: take everything after the key and decode as far as it goes.
+  const key = /"optimizedText"\s*:\s*"/.exec(s);
+  if (key) return decodeJsonStringBody(s.slice(key.index + key[0].length));
+
   return raw;
 }
 

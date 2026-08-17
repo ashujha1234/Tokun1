@@ -171,7 +171,7 @@ const day = new Date().getDate();
   user.userType = "IND";
   user.role = "Self";  // <— previously "TM"; change to SELF (or set to null)
   user.orgId = null;
-  
+
 
   await user.save();
 }

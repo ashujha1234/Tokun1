@@ -207,7 +207,19 @@ freelancerStatus: {
    for every signup fills the collection with codes nobody shares.
    referredBy is set once at signup and never again: letting it change means
    whoever asks last gets the credit. */
-referralCode: { type: String, default: null, unique: true, sparse: true, uppercase: true, trim: true },
+/* NO `default: null` here, and that is the whole point.
+
+   The index is `unique + sparse`, and sparse skips documents where the field is
+   ABSENT — not documents where it is explicitly null. A default of null means
+   every new account is written with a real null value, so it lands IN the unique
+   index. The first signup after this field shipped took the null slot; every
+   signup after that collided with it and POST /signup/initiate answered 500 on
+   the upsert, before it reached anything else. Nobody could register.
+
+   Left undefined, the field simply isn't on the document until
+   getOrCreateReferralCode mints one — which is what the note above already
+   describes, and what the sparse index was chosen for. */
+referralCode: { type: String, unique: true, sparse: true, uppercase: true, trim: true },
 referredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
 referredAt: { type: Date, default: null },
 /* Set when a referral qualifies: this creator's listings sort to the top of
