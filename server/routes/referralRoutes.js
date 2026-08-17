@@ -14,7 +14,16 @@ const { requireAuth } = require("../utils/auth");
 const { getOrCreateReferralCode } = require("../services/referral.service");
 const cfg = require("../config/referral");
 
-const SITE = (process.env.SITE_URL || "https://tokun.world").replace(/\/$/, "");
+/* The www host, not the apex, and that is not cosmetic.
+   tokun.world 301s to www.tokun.world and the redirect drops the query string:
+       GET https://tokun.world/?ref=ABC1234  →  Location: https://www.tokun.world
+   An invite link built on the apex therefore arrives with no ?ref= at all, the
+   code is never stored (lib/referral.ts reads it on boot), signup sends nothing,
+   and the invited person never appears under "Your invites" — the whole
+   programme fails silently, with every piece of it working.
+   Set SITE_URL to the www host in the backend env; this default only decides
+   what happens when nobody has. */
+const SITE = (process.env.SITE_URL || "https://www.tokun.world").replace(/\/$/, "");
 
 /* What an invited person's progress looks like from the referrer's side.
    Deliberately vague about the other person's business — "made their first
@@ -58,7 +67,14 @@ router.get("/me", requireAuth, async (req, res) => {
     return res.json({
       success: true,
       code,
-      link: `${SITE}/?ref=${code}`,
+      /* Straight to signup, not the landing page. The one thing an invite has
+         to produce is an account, and the code only ever pays off at the end of
+         that form — a link that lands on the marketing page asks the visitor to
+         find the way there themselves.
+         The code still rides in the query string and is still read on app boot
+         (lib/referral.ts runs before any route mounts), so it survives the
+         signup → OTP → verify hop exactly as before. */
+      link: `${SITE}/signup?ref=${code}`,
 
       /* The terms, sent rather than hardcoded in the page. The page's copy has
          to say "₹500 cap" and "₹200 minimum", and those numbers live in
