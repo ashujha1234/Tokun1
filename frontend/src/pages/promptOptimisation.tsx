@@ -307,7 +307,14 @@ export default function PromptOptimizationPage() {
           one against a parent the sticky algorithm is already moving, and they
           oscillate by a pixel as you scroll. That was the shake. */}
       <Header />
-      <div className="container mx-auto px-4 pt-6">
+      {/* pb, not just pt. This container only ever had top padding — the gap
+          above the footer came from the <Card> that used to wrap the input and
+          its default `p-6`. Taking that wrapper out (it was invisible and it
+          misaligned the two columns) took the bottom gap with it, and the last
+          panel ended up touching the footer. Padding on the container is where
+          this belongs anyway: it holds whatever ends up last, on any breakpoint,
+          rather than depending on one child's incidental padding. */}
+      <div className="container mx-auto px-4 pt-6 pb-12 sm:pb-16">
 
 <div className="pt-4 text-center">
 
@@ -332,21 +339,25 @@ export default function PromptOptimizationPage() {
           <AppNavigation />
         </div>
 
-        {/* Main grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
+        {/* Main grid.
 
-          <div className="lg:col-span-2 space-y-8">
+            `items-start` and no wrapper padding, because the two columns have to
+            begin on the same line. The input used to sit inside a <Card> that was
+            invisible (`bg-transparent border-none`) but still added `pt-6` — so
+            the left column started 24px lower than the summary card beside it,
+            and that read as sloppy alignment rather than as padding. PromptInput
+            draws its own panel now; wrapping it in a second one is what created
+            the boxes-inside-boxes. */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8 items-start">
 
-            {/* Prompt Input */}
-            <Card className="bg-transparent border-none shadow-none">
-              <CardContent className="pt-6">
-                <PromptInput
-                  onTokensChange={handleTokensChange}
-                  onOptimize={handleOptimize}
-                  initialText={optimizerInput}
-                />
-              </CardContent>
-            </Card>
+          <div className="lg:col-span-2 space-y-6">
+
+            {/* Prompt Input — its own panel, a peer of the one on the right. */}
+            <PromptInput
+              onTokensChange={handleTokensChange}
+              onOptimize={handleOptimize}
+              initialText={optimizerInput}
+            />
 
             {/* Suggestions (Desktop only) */}
             <div className="hidden lg:block">
@@ -360,10 +371,11 @@ export default function PromptOptimizationPage() {
           </div>
 
           {/* Right column */}
-          <div className="space-y-8">
+          <div className="space-y-6">
 
-            {/* Token Circle */}
-            <Card className="bg-[#121213] border-none shadow-lg py-6">
+            {/* Token Circle. Same surface colour and radius as the input panel,
+                so the two read as a pair rather than two unrelated widgets. */}
+            <Card className="bg-[#121213] border-none rounded-2xl shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset] py-6">
               <CardContent>
                 <TokenCircle
                   originalTokens={originalTokens}

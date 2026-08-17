@@ -868,7 +868,7 @@
 //         setOptimizerInput("");
 //         localStorage.removeItem("optimizerInput");
 //       }}
-//       className="absolute top-2.5 right-3 flex items-center justify-center w-6 h-6 rounded-full bg-[#2a2a2a] text-white/70 hover:text-white hover:bg-[#3a3a3a] transition-all duration-200 shadow-sm"
+//       className="absolute top-0 right-0 flex items-center justify-center w-6 h-6 rounded-full bg-[#2a2a2a] text-white/70 hover:text-white hover:bg-[#3a3a3a] transition-all duration-200 shadow-sm"
 //       title="Clear input"
 //       aria-label="Clear input"
 //     >
@@ -2200,16 +2200,29 @@ const startCollaboration = async (): Promise<string | null> => {
 
 
   return (
-   <div className="w-full space-y-4">
-      <div className="mb-3 flex justify-center sm:justify-start">
-  <LLMSelector />
-</div>
+   /* ONE card, holding the provider choice, the box you type in and the actions.
 
-      <div className={PANEL_CLS}>
-        <div className={`${BOX_CLS} ${BOX_PAD} relative`}>
+      Three separate surfaces used to sit here: the provider chips floated bare
+      on the page ABOVE the card, the card itself, and then a second bordered box
+      nested inside it around the textarea. So the left column started higher
+      than the right one and never lined up with it, and what should read as one
+      panel read as boxes inside boxes at three different sizes.
+
+      Now the provider row is a titled section at the top of this card, divided
+      from the input, and the textarea sits directly on the card — the same
+      surface the summary panel on the right uses, at the same top line. */
+   <div className="w-full">
+      <div className={`${PANEL_CLS} h-full flex flex-col`}>
+
+        {/* Provider — a section of this card, not a floating row above it. */}
+        <div className="pb-4 mb-4 border-b border-white/[0.07]">
+          <LLMSelector />
+        </div>
+
+        <div className="relative flex-1">
         <textarea
   placeholder="Enter your product here..."
-  className="min-h-[180px] w-full bg-transparent resize-none border-0 outline-none focus:ring-0 pr-10 text-white placeholder:text-white/40 text-sm p-2"
+  className="min-h-[180px] h-full w-full bg-transparent resize-none border-0 outline-none focus:ring-0 pr-10 text-white placeholder:text-white/40 text-sm p-0"
   value={text}
   onChange={handleTextChange}
 />
@@ -2286,8 +2299,11 @@ const startCollaboration = async (): Promise<string | null> => {
         if (!sessionId) return;
         setInviteModal(true);
       }}
-      className="rounded-2xl w-[180px] h-[40px] text-white border-0 transition-all duration-300 inline-flex items-center justify-center gap-2"
-      style={{ backgroundImage: GRADIENT_BG }}
+      /* Secondary, deliberately. Collaboration is a good feature and not the
+         reason anyone opened this page, but it held the gradient that belongs to
+         Optimize. Same grey as History now, so the row reads as one set of
+         options with a single primary at the end of it. */
+      className="rounded-2xl w-[180px] h-[40px] text-white border border-white/10 bg-[#252525] hover:bg-[#2f2f30] transition-all duration-300 inline-flex items-center justify-center gap-2"
       title="Invite someone to collaborate on this product in real time"
     >
       <UserPlus className="h-4 w-4" />
@@ -2322,18 +2338,22 @@ const startCollaboration = async (): Promise<string | null> => {
   )}
 
   {/* Right: Optimize */}
+  {/* THE action on this page, and now the only thing on the row that looks like
+      it. It used to be flat #252525 — the same grey as History and Clear — and
+      only showed the house gradient on hover, while "Invite Collaborator" wore
+      that gradient permanently. So the loudest button was a side feature, and the
+      page's whole purpose read as disabled even when it wasn't.
+      Now: gradient when it can run, muted when it can't (no text = nothing to
+      optimise), which doubles as the first honest signal that the box is empty. */}
   <Button
     onClick={handleOptimize}
     disabled={isProcessing || !text}
-    className="rounded-2xl w-[140px] h-[40px] text-white border-0 transition-all duration-300"
-    style={{ background: "#252525" }}
-    onMouseEnter={(e) =>
-      (e.currentTarget.style.backgroundImage = GRADIENT_BG)
+    className="rounded-2xl w-[140px] h-[40px] text-white border-0 transition-all duration-300 disabled:opacity-100"
+    style={
+      isProcessing || !text
+        ? { background: "#252525", color: "rgba(255,255,255,0.45)" }
+        : { backgroundImage: GRADIENT_BG, boxShadow: "0 8px 24px -8px rgba(168,85,247,0.55)" }
     }
-    onMouseLeave={(e) => {
-      e.currentTarget.style.backgroundImage = "";
-      e.currentTarget.style.background = "#252525";
-    }}
   >
     {isProcessing ? (
       <>
@@ -2353,10 +2373,23 @@ const startCollaboration = async (): Promise<string | null> => {
         {optimizationOption && (
           <div className="mt-5">
             <div className={`${BOX_CLS} ${BOX_PAD} relative`}>
+              {/* text-white, explicitly.
+
+                  The shared <Textarea> sets no colour of its own — its base
+                  classes stop at `text-sm` — and a form control does not inherit
+                  `color` from the page the way a <div> does, so it fell back to
+                  the browser's default black. On this box, which is
+                  `bg-transparent` over a #151516 panel, that is black on
+                  near-black: the optimised output was there and unreadable.
+
+                  The input above never had the bug because it is a raw
+                  <textarea> that sets text-white itself. leading-relaxed too —
+                  this is a block of generated prose someone actually reads,
+                  not a one-line field. */}
               <Textarea
                 readOnly
                 value={optimizationOption.text}
-                className="min-h-[160px] bg-transparent resize-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 cursor-text"
+                className="min-h-[160px] bg-transparent resize-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 cursor-text text-white text-sm leading-relaxed"
               />
               <div className="mt-3 flex justify-end">
                 <div className="flex gap-2">

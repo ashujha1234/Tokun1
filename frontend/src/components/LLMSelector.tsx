@@ -546,31 +546,30 @@ const LLMSelector = ({ onProviderChange }: LLMSelectorProps) => {
               disabled={loading}
               onClick={() => handleClick(key)}
               className={[
-                "flex items-center gap-2.5",
-                "w-[140px] h-[42px] rounded-[10px]",
-                "transition-all select-none px-3",
+                "flex items-center gap-2",
+                /* Width from the label, not a fixed 140px — that box was
+                   narrower than "Perplexity", which arrived on screen as
+                   "Perple…". A provider you cannot read the name of is not a
+                   choice. min-w keeps the four chips evenly weighted. */
+                "min-w-[124px] h-[42px] rounded-full px-4",
+                "transition-all select-none",
                 loading ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
+                /* Selected reads as selected on its own — tinted fill, brand
+                   border, brighter text. The radio dot next to it was doing that
+                   job twice, in the visual language of a settings form. */
                 isSelected
-                  ? "border-[1.5px] border-[#1A73E8] bg-[#1a1a1b]"
+                  ? "border-[1.5px] border-[#1A73E8] bg-[#1A73E8]/[0.14] shadow-[0_0_0_3px_rgba(26,115,232,0.10)]"
                   : "border border-white/10 bg-[#1a1a1b] hover:border-white/25 hover:bg-[#222224]",
               ].join(" ")}
             >
-              <span
-                className="flex items-center justify-center w-[14px] h-[14px] rounded-full flex-shrink-0"
-                style={{
-                  border: isSelected
-                    ? "1.5px solid #1A73E8"
-                    : "1.5px solid rgba(255,255,255,0.3)",
-                }}
-              >
-                <span
-                  className="w-[7px] h-[7px] rounded-full block"
-                  style={{ background: isSelected ? "#1A73E8" : "transparent" }}
-                />
-              </span>
-
+              {/* No radio dot. `role="radio"` + `aria-checked` above already
+                  carry the state for assistive tech, and the fill and border say
+                  it visually — the dot only made four brand chips look like a
+                  half-finished form. */}
               <Icon size={18} color={color} className="flex-shrink-0" />
-              <span className="text-sm text-white/90 truncate">{label}</span>
+              <span className={`text-sm whitespace-nowrap ${isSelected ? "text-white font-medium" : "text-white/75"}`}>
+                {label}
+              </span>
             </button>
           );
         })}
