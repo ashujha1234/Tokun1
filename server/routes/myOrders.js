@@ -1,21 +1,28 @@
 // routes/myOrders.js
 //
-// One feed of everything a person has bought and sold, so "where is my order?"
-// has a single answer.
+// Service bookings and hire deals — the work someone is paying for, or being
+// paid for. Both sides of it, in one feed.
 //
-// Before this, the three kinds of transaction lived in three unrelated places:
-// prompt purchases under the dashboard's Prompts tab, service bookings four
-// clicks deep inside Service Bookings, and hire deals only inside the chat
-// thread they were created in. A client who paid for something had no one page
-// that could tell them what they'd paid for, and a freelancer had no one page
-// showing what they'd been hired for.
+// They were unreachable before this: a service booking took four clicks inside
+// Service Bookings, and a hire deal existed only inside the chat thread it was
+// created in. A client who had paid had nowhere that listed it, and a freelancer
+// had nowhere showing what they'd been hired to do.
+//
+// PROMPT PURCHASES ARE NOT HERE, on purpose. They used to be, and they were the
+// odd one out in every way that matters: a prompt is delivered the instant it is
+// paid for, so it has no work state, it could never set `needsAction`, it could
+// never contribute to the header's badge, and it needed its own navigation
+// because it has no order-detail page. It was history sitting in a queue about
+// pending work. Prompts live in My Products (/self-dash?tab=prompts), where the
+// bill and the refund flow already are.
+//
+// So what belongs here is exactly what has STATES: paid → in progress →
+// delivered → approved, with a person waiting at each step.
 //
 // Read-only and deliberately flat: every row is normalised to the same shape so
-// the client renders one list, not three.
+// the client renders one list, not two.
 
 const express = require("express");
-const Purchase = require("../models/Purchase");
-const Prompt = require("../models/Prompt");
 const ServiceOrder = require("../models/ServiceOrder");
 const HireDeal = require("../models/HireDeal");
 const { requireAuth } = require("../utils/auth");
@@ -66,25 +73,12 @@ router.get("/", requireAuth, async (req, res) => {
     const wantBuying = side === "buying" || side === "all";
     const wantSelling = side === "selling" || side === "all";
 
-    // Purchase carries no seller field — the seller is whoever owns the prompt
-    // — so "what did I sell" has to start from this user's own prompts.
-    const myPromptIds = wantSelling ? await Prompt.find({ userId }).distinct("_id") : [];
-
     const [
-      promptsBought,
       servicesBought,
       hiresBought,
-      promptsSold,
       servicesSold,
       hiresSold,
     ] = await Promise.all([
-      wantBuying
-        ? Purchase.find({ buyer: userId, paymentStatus: "SUCCESS" })
-            .populate("prompt", "title")
-            .sort({ createdAt: -1 })
-            .limit(100)
-            .lean()
-        : [],
       wantBuying
         ? ServiceOrder.find({ buyerId: userId, paymentStatus: "PAID" })
             .populate("sellerId", "name avatarUrl")
@@ -95,14 +89,6 @@ router.get("/", requireAuth, async (req, res) => {
       wantBuying
         ? HireDeal.find({ clientId: userId, paymentStatus: "PAID" })
             .populate("freelancerId", "name avatarUrl")
-            .sort({ createdAt: -1 })
-            .limit(100)
-            .lean()
-        : [],
-      wantSelling && myPromptIds.length
-        ? Purchase.find({ prompt: { $in: myPromptIds }, paymentStatus: "SUCCESS" })
-            .populate("prompt", "title")
-            .populate("buyer", "name avatarUrl")
             .sort({ createdAt: -1 })
             .limit(100)
             .lean()
@@ -124,46 +110,6 @@ router.get("/", requireAuth, async (req, res) => {
     ]);
 
     const rows = [];
-
-    // ── Prompts: instant delivery, so there is no work state to report —
-    // the only thing that can happen after payment is a refund.
-    for (const p of promptsBought) {
-      const status = p.refundStatus === "REFUNDED" ? "REFUNDED" : "COMPLETED";
-      rows.push({
-        id: String(p._id),
-        kind: "prompt",
-        side: "buying",
-        // Snapshot first: it survives the seller deleting the prompt, which is
-        // exactly when a buyer most wants to see what they paid for.
-        title: p.promptSnapshot?.title || p.prompt?.title || "Prompt",
-        counterpartyName: "",
-        counterpartyAvatar: "",
-        amount: Number(p.pricePaid || 0),
-        status,
-        ...label(status, "buyer"),
-        createdAt: p.createdAt || p.purchasedAt,
-        link: "/self-dash?tab=prompts",
-        needsAction: false,
-      });
-    }
-    for (const p of promptsSold) {
-      const status = p.refundStatus === "REFUNDED" ? "REFUNDED" : "COMPLETED";
-      rows.push({
-        id: String(p._id),
-        kind: "prompt",
-        side: "selling",
-        title: p.promptSnapshot?.title || p.prompt?.title || "Prompt",
-        counterpartyName: p.buyer?.name || "Buyer",
-        counterpartyAvatar: p.buyer?.avatarUrl || "",
-        // What the seller actually kept, not what the buyer paid.
-        amount: +(Number(p.pricePaid || 0) - Number(p.platformCommission || 0)).toFixed(2),
-        status,
-        ...label(status, "seller"),
-        createdAt: p.createdAt || p.purchasedAt,
-        link: "/self-dash?tab=prompts",
-        needsAction: false,
-      });
-    }
 
     const pushEscrowRow = (doc, opts) => {
       const { kind, side: rowSide, title, counterparty, amount, link } = opts;

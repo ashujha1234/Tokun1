@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { avatarFor, onAvatarError } from "@/lib/avatar";
 import { useNavigate } from "react-router-dom";
 import {
   Award,
@@ -78,9 +79,6 @@ const AVAILABILITY_LABEL: Record<string, string> = {
 
 const initials = (name?: string) => (name || "U").trim().slice(0, 2).toUpperCase();
 
-// Deterministic placeholder — the same person always gets the same face, varied
-// across people, stable across reloads.
-const fallbackAvatar = (seed: string) => `https://i.pravatar.cc/200?u=${encodeURIComponent(seed)}`;
 
 // Service covers are uploaded to Azure (absolute) but older ones may be
 // API-relative paths.
@@ -141,7 +139,8 @@ function PersonCard({
         <div className="flex items-start gap-3 cursor-pointer" onClick={openProfile}>
           <div className="relative shrink-0">
             <img
-              src={person.avatar || fallbackAvatar(person.userId)}
+              src={avatarFor(person)}
+              onError={onAvatarError(person)}
               alt={person.name}
               className="w-12 h-12 rounded-xl object-cover"
             />
@@ -443,7 +442,8 @@ function ServiceCard({ service }: { service: BrowseService }) {
 
         <div className="flex items-center gap-2">
           <img
-            src={service.seller.avatar || fallbackAvatar(service.seller.userId)}
+            src={avatarFor(service.seller)}
+            onError={onAvatarError(service.seller)}
             alt={service.seller.name}
             className="w-5 h-5 rounded-full object-cover shrink-0"
           />

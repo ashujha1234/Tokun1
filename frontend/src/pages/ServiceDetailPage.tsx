@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { avatarFor, onAvatarError } from "@/lib/avatar";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ChevronLeft,
@@ -53,7 +54,6 @@ const AVAILABILITY_LABEL: Record<string, string> = {
 
 const isVideo = (url: string) => /\.(mp4|webm|ogg|mov)$/i.test(url);
 
-const fallbackAvatar = (seed: string) => `https://i.pravatar.cc/200?u=${encodeURIComponent(seed)}`;
 
 /* ══════════════════════ gallery ══════════════════════ */
 
@@ -269,7 +269,8 @@ function ContactPanel({
     >
       <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10 shrink-0">
         <img
-          src={seller.avatar || fallbackAvatar(seller.userId)}
+          src={avatarFor(seller)}
+            onError={onAvatarError(seller)}
           alt={seller.name}
           className="w-9 h-9 rounded-full object-cover shrink-0"
         />
@@ -588,7 +589,8 @@ export default function ServiceDetailPage() {
             className="flex items-center gap-3 mb-6 group text-left"
           >
             <img
-              src={seller.avatar || fallbackAvatar(seller.userId)}
+              src={avatarFor(seller)}
+            onError={onAvatarError(seller)}
               alt={seller.name}
               className="w-11 h-11 rounded-full object-cover shrink-0"
             />
@@ -895,7 +897,8 @@ export default function ServiceDetailPage() {
           style={{ background: "#0E0F12" }}
         >
           <img
-            src={seller.avatar || fallbackAvatar(seller.userId)}
+            src={avatarFor(seller)}
+            onError={onAvatarError(seller)}
             alt={seller.name}
             className="w-9 h-9 rounded-full object-cover shrink-0"
           />

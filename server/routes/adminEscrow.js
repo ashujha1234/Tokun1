@@ -57,13 +57,13 @@ router.get("/deals", async (req, res) => {
        with `orderKind`, which is what the release/refund routes below switch on. */
     const [hireDeals, serviceOrders] = await Promise.all([
       HireDeal.find(query)
-        .populate("clientId", "name email avatar profileImage")
-        .populate("freelancerId", "name email avatar profileImage razorpayFundAccountId")
+        .populate("clientId", "name email avatarUrl")
+        .populate("freelancerId", "name email avatarUrl razorpayFundAccountId")
         .sort({ createdAt: -1 })
         .lean(),
       ServiceOrder.find(query)
-        .populate("buyerId", "name email avatar profileImage")
-        .populate("sellerId", "name email avatar profileImage razorpayFundAccountId")
+        .populate("buyerId", "name email avatarUrl")
+        .populate("sellerId", "name email avatarUrl razorpayFundAccountId")
         .sort({ createdAt: -1 })
         .lean(),
     ]);

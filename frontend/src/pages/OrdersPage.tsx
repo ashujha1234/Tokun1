@@ -1,12 +1,16 @@
 /**
- * Orders — everything this person has bought and sold, in one list.
+ * Orders — service bookings and hire projects, both sides of them, in one list.
  *
- * The three kinds of transaction used to live in three unrelated places: prompt
- * purchases under the dashboard's Prompts tab, service bookings four clicks
- * deep inside Service Bookings, and hire deals only inside the chat thread they
- * were created in. A client who had just paid for something had no single page
- * that could tell them what they'd paid for, and a freelancer had no single
+ * Both used to be unreachable: a service booking took four clicks inside Service
+ * Bookings, and a hire deal existed only inside the chat thread it was created
+ * in. A client who had just paid had no page listing it, and a freelancer had no
  * page showing what they'd been hired for.
+ *
+ * Product purchases are NOT here — they live in My Products
+ * (/self-dash?tab=prompts) with their bill and refund flow. A product is
+ * delivered the moment it is paid for, so it has no state anyone waits on, and it
+ * only ever sat in this queue as history. What belongs here is work with a
+ * lifecycle: paid → in progress → delivered → approved.
  *
  * Rows the viewer can act on sort to the top (the server decides that, since it
  * knows which side of each order they're on).
@@ -25,7 +29,7 @@ type Side = "all" | "buying" | "selling";
 
 type OrderRow = {
   id: string;
-  kind: "prompt" | "service" | "hire";
+  kind: "service" | "hire";
   side: "buying" | "selling";
   title: string;
   counterpartyName: string;
@@ -35,7 +39,7 @@ type OrderRow = {
   label: string;
   tone: "good" | "warn" | "info" | "action" | "neutral";
   createdAt: string;
-  // Service bookings only — null on prompts and hire deals.
+  // Service bookings only — null on hire deals.
   deliveryDueAt?: string | null;
   link: string;
   needsAction: boolean;
@@ -51,7 +55,6 @@ const TONE_STYLES: Record<OrderRow["tone"], { color: string; bg: string; border:
 };
 
 const KIND_META: Record<OrderRow["kind"], { icon: string; label: string }> = {
-  prompt: { icon: "📄", label: "Product" },
   service: { icon: "🧩", label: "Service" },
   hire: { icon: "💼", label: "Project" },
 };
@@ -154,18 +157,22 @@ export default function OrdersPage() {
           ) : !orders.length ? (
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center">
               <p className="text-white/70 font-medium">Nothing here yet</p>
+              {/* Both halves used to talk about products and send buyers to the
+                  product marketplace — nothing that lands on this page any more.
+                  A buyer with no orders needs a creator to hire; a seller needs
+                  their freelancer profile, which is what gets them booked. */}
               <p className="mt-1.5 text-sm text-white/40">
                 {side === "selling"
-                  ? "Once someone buys a product or books a service from you, it'll show up here."
-                  : "Products you buy and creators you hire will show up here."}
+                  ? "Once someone books a service or hires you for a project, it'll show up here."
+                  : "Services you book and creators you hire will show up here."}
               </p>
               <button
                 type="button"
-                onClick={() => navigate(side === "selling" ? "/self-dash" : "/prompt-marketplace")}
+                onClick={() => navigate(side === "selling" ? "/self-dash" : "/find-creators")}
                 className="mt-5 inline-flex items-center h-10 px-5 rounded-full text-sm font-semibold text-white"
                 style={{ background: GRADIENT }}
               >
-                {side === "selling" ? "Go to your profile" : "Browse the marketplace"}
+                {side === "selling" ? "Go to your profile" : "Find creators"}
               </button>
             </div>
           ) : (
@@ -177,11 +184,10 @@ export default function OrdersPage() {
                   key={`${o.kind}-${o.id}`}
                   type="button"
                   onClick={() =>
-                    // Escrow orders get a detail page — it's the only place
-                    // either side can cancel, negotiate a split, or ask for a
-                    // progress update. Prompts have no lifecycle after payment,
-                    // so they keep pointing at the library.
-                    navigate(o.kind === "prompt" ? o.link : `/orders/${o.kind}/${o.id}`)
+                    /* Every row here is an escrow order, so every row has a
+                       detail page — the only place either side can cancel,
+                       negotiate a split, or ask for a progress update. */
+                    navigate(`/orders/${o.kind}/${o.id}`)
                   }
                   className="w-full text-left rounded-2xl border border-white/10 bg-white/[0.03] p-4 hover:border-white/25 transition"
                 >

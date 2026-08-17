@@ -1385,7 +1385,28 @@ router.post("/:purchaseId/refund-request", requireAuth, refundUpload.array("atta
       reason: effectiveReason,
       description,
       attachments,
-      refundAmount: purchase.pricePaid,
+      /* What can actually come back — NOT what the buyer paid.
+
+         Tokun's platform fee and the GST on it are non-refundable: they paid for
+         running the transaction, which happened whether or not the buyer kept
+         the product. So on a ₹2,060 purchase (₹2,000 listing + ₹60 fee) the
+         refund is ₹2,000.
+
+         This used to store `pricePaid`, and the approval route capped it to the
+         refundable figure on its way to Razorpay — so the money moved was always
+         right, but every screen reading this field quoted the uncapped number.
+         The admin's confirm box asked "refund ₹2,060?" and then sent ₹2,000, and
+         the buyer's My Refunds page promised them the same ₹2,060. Storing the
+         real figure here means one number, decided once, shown everywhere.
+
+         Both fees are 0 on purchases made before they existed, so those still
+         refund in full, exactly as they were sold. */
+      refundAmount: +Math.max(
+        0,
+        Number(purchase.pricePaid || 0) -
+          Number(purchase.platformFee || 0) -
+          Number(purchase.platformFeeGst || 0)
+      ).toFixed(2),
     });
 
     purchase.refundStatus = "REQUESTED";

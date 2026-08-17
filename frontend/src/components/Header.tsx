@@ -4372,12 +4372,40 @@ useEffect(() => {
       fontFamily: "Inter, system-ui, sans-serif",
     }}
   >
-    {/* Name + email */}
-    <div style={{ padding: "8px 10px 12px" }}>
-      <div style={{ fontSize: 15, fontWeight: 600, color: "#fff" }}>
+    {/* Name + email.
+
+        An email has no spaces, so there is nothing for the browser to break on:
+        anything longer than this 230px card ran straight out the side of it and
+        over the page. `overflowWrap: anywhere` breaks it mid-address onto a
+        second line, which keeps it whole — this line exists so somebody can tell
+        WHICH account they're in, and a truncated address often can't say. The
+        name gets an ellipsis instead: it stays recognisable from its start, and
+        `title` has the full one on hover. Same treatment as the landing page's
+        copy of this menu in pages/Landing.tsx. */}
+    <div style={{ padding: "8px 10px 12px", minWidth: 0 }}>
+      <div
+        title={displayName || "Your Name"}
+        style={{
+          fontSize: 15,
+          fontWeight: 600,
+          color: "#fff",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
         {displayName || "Your Name"}
       </div>
-      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", marginTop: 2 }}>
+      <div
+        title={displayEmail || ""}
+        style={{
+          fontSize: 12,
+          color: "rgba(255,255,255,0.55)",
+          marginTop: 2,
+          overflowWrap: "anywhere",
+          lineHeight: 1.35,
+        }}
+      >
         {displayEmail || ""}
       </div>
     </div>

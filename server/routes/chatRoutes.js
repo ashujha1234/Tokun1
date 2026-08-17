@@ -88,7 +88,13 @@ router.get("/conversations", requireAuth, async (req, res) => {
 
     const conversations = await Conversation.find({ participants: myId })
       .select("participants lastMessage updatedAt")
-      .populate("participants", "name avatar role")
+      /* `avatarUrl`, which is the field the User model actually has. This asked
+         for "avatar" — a field that does not exist on User — so mongoose
+         returned every participant with a name, a role and NO photo, and the
+         chat list drew initials for people who had uploaded one. The projection
+         was quietly wrong: asking for a field that isn't there is not an error,
+         it just comes back missing. */
+      .populate("participants", "name avatarUrl role")
       .sort({ updatedAt: -1 })
       .lean();
 

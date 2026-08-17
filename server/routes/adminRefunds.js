@@ -60,9 +60,13 @@ router.get("/", async (req, res) => {
       .populate("buyer", "name email")
       .populate("seller", "name email")
       .populate("prompt", "title description attachment price free")
+      /* platformFee and platformFeeGst travel too, so the admin screen can show
+         the refund as arithmetic — "₹2,000 (₹2,060 paid − ₹60 non-refundable
+         fee)" — rather than a bare figure the admin has to take on trust and
+         which looked short of what the buyer paid. */
       .populate(
         "purchase",
-        "pricePaid razorpayPaymentId routeTransferId purchasedAt promptSnapshot.title promptSnapshot.description promptSnapshot.attachment"
+        "pricePaid platformFee platformFeeGst razorpayPaymentId routeTransferId purchasedAt promptSnapshot.title promptSnapshot.description promptSnapshot.attachment"
       )
       .sort({ createdAt: -1 })
       .limit(200);

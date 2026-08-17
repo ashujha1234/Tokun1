@@ -11,6 +11,16 @@
 
 import { useEffect, useState } from "react";
 import { Copy, Check, Share2, Gift, TrendingUp, Users } from "lucide-react";
+/* Brand marks — lucide dropped its logo set, so these come from react-icons,
+   which is already a dependency (the header uses it for the plan badge). */
+import {
+  FaWhatsapp,
+  FaFacebookF,
+  FaXTwitter,
+  FaLinkedinIn,
+  FaTelegram,
+  FaRegEnvelope,
+} from "react-icons/fa6";
 
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -118,18 +128,76 @@ export default function ReferEarn() {
     }
   };
 
-  const share = () => {
-    if (!data) return;
-    const text = `I'm selling prompts on Tokun. Join with my link — we both get a sale with zero commission: ${data.link}`;
+  /* One sentence, shared by every share target below — so the invite reads the
+     same whether it arrives on WhatsApp, in a tweet or in an email. */
+  const inviteMessage = data
+    ? `I'm selling prompts on Tokun. Join with my link — we both get a sale with zero commission: ${data.link}`
+    : "";
 
-    // The native sheet where it exists (every phone), WhatsApp where it doesn't
-    // — which is where these links actually get sent.
-    if (navigator.share) {
-      navigator.share({ title: "Join me on Tokun", text, url: data.link }).catch(() => {});
-    } else {
-      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener");
-    }
+  /* The native sheet is still first WHERE IT EXISTS, because on a phone it
+     offers every app the person actually has, including the ones not listed
+     here. It just isn't the only option any more: on a desktop
+     `navigator.share` is missing in most browsers, and this used to silently
+     fall through to WhatsApp Web for everybody — one channel, chosen for them. */
+  const shareNative = () => {
+    if (!data || !navigator.share) return;
+    navigator.share({ title: "Join me on Tokun", text: inviteMessage, url: data.link }).catch(() => {});
   };
+
+  /* Per-network share URLs.
+
+     WhatsApp and Telegram take the whole sentence, so the link arrives with its
+     context. Facebook and LinkedIn only accept a URL — their share dialogs
+     ignore any text a site passes and pull the page's own OG tags instead, so
+     sending more would just be dropped. */
+  const SHARE_TARGETS = data
+    ? [
+        {
+          key: "whatsapp",
+          label: "WhatsApp",
+          Icon: FaWhatsapp,
+          color: "#25D366",
+          href: `https://wa.me/?text=${encodeURIComponent(inviteMessage)}`,
+        },
+        {
+          key: "facebook",
+          label: "Facebook",
+          Icon: FaFacebookF,
+          color: "#1877F2",
+          href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(data.link)}`,
+        },
+        {
+          key: "x",
+          label: "X",
+          Icon: FaXTwitter,
+          color: "#E7E9EA",
+          href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(inviteMessage)}`,
+        },
+        {
+          key: "linkedin",
+          label: "LinkedIn",
+          Icon: FaLinkedinIn,
+          color: "#0A66C2",
+          href: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(data.link)}`,
+        },
+        {
+          key: "telegram",
+          label: "Telegram",
+          Icon: FaTelegram,
+          color: "#26A5E4",
+          href: `https://t.me/share/url?url=${encodeURIComponent(data.link)}&text=${encodeURIComponent(
+            "Join me on Tokun — we both get a sale with zero commission."
+          )}`,
+        },
+        {
+          key: "email",
+          label: "Email",
+          Icon: FaRegEnvelope,
+          color: "#A78BFA",
+          href: `mailto:?subject=${encodeURIComponent("Join me on Tokun")}&body=${encodeURIComponent(inviteMessage)}`,
+        },
+      ]
+    : [];
 
   const t = data?.terms;
 
@@ -137,7 +205,11 @@ export default function ReferEarn() {
     <div className="dark min-h-screen bg-[#08080A] text-white">
       <Header />
 
-      <main className="mx-auto w-full max-w-4xl px-4 sm:px-6 pt-28 sm:pt-32 pb-20">
+      {/* pt-8, not pt-28. The big reserve was for a FIXED header; this one is
+          `sticky`, so it stays in the document flow and already takes its own
+          ~110px above this. The two stacked, and the page opened with a quarter
+          of the screen empty before the first word. */}
+      <main className="mx-auto w-full max-w-4xl px-4 sm:px-6 pt-8 sm:pt-10 pb-20">
         {/* The deal, said once, at the top. */}
         <section className="text-center">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.14em] text-white/50">
@@ -249,14 +321,46 @@ export default function ReferEarn() {
                   {copied === "link" ? "Copied" : "Copy link"}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={share}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold text-white transition hover:opacity-90"
-                  style={{ background: "linear-gradient(90deg,#FF14EF 0%,#1A73E8 100%)" }}
-                >
-                  <Share2 className="h-4 w-4" /> Share
-                </button>
+                {/* Only where the OS actually has a share sheet — on a desktop
+                    this button used to appear and then quietly open WhatsApp
+                    Web, which is not what "Share" promises. */}
+                {typeof navigator !== "undefined" && !!navigator.share && (
+                  <button
+                    type="button"
+                    onClick={shareNative}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold text-white transition hover:opacity-90"
+                    style={{ background: "linear-gradient(90deg,#FF14EF 0%,#1A73E8 100%)" }}
+                  >
+                    <Share2 className="h-4 w-4" /> Share
+                  </button>
+                )}
+              </div>
+
+              {/* One tap per channel, instead of one button that decided for you.
+
+                  Anchors rather than buttons: a share URL is a link, so it gets
+                  middle-click, "open in new tab" and a status-bar preview for
+                  free — and `mailto:` only works as an href anyway. `noopener`
+                  because these open a third-party page. */}
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <span className="mr-1 text-[12px] text-white/35">Share via</span>
+
+                {SHARE_TARGETS.map(({ key, label, Icon, color, href }) => (
+                  <a
+                    key={key}
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    title={`Share on ${label}`}
+                    aria-label={`Share on ${label}`}
+                    className="group grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.04] transition hover:bg-white/[0.10] hover:border-white/25"
+                  >
+                    <Icon
+                      className="h-[17px] w-[17px] transition-transform group-hover:scale-110"
+                      style={{ color }}
+                    />
+                  </a>
+                ))}
               </div>
             </>
           )}

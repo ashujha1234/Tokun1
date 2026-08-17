@@ -12314,9 +12314,41 @@ function HeroAccountMenu() {
             fontFamily: 'Inter, system-ui, sans-serif',
           }}
         >
-          <div style={{ padding: '8px 10px 12px' }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>{fullName}</div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
+          {/* An email has no spaces in it, so there is nothing for the browser to
+              break on: `anandapadmanabhan.s@techverse.world` is wider than this
+              230px card and simply ran out the side of it, over the page.
+
+              `overflowWrap: anywhere` lets it break mid-word onto a second line,
+              which keeps the whole address readable — the point of showing it is
+              so somebody can tell WHICH account they're signed in as, and half an
+              address with an ellipsis often can't answer that. The name is capped
+              at one line with an ellipsis instead, since a long name stays
+              recognisable from its start, and `title` still gives the full one on
+              hover. */}
+          <div style={{ padding: '8px 10px 12px', minWidth: 0 }}>
+            <div
+              title={fullName}
+              style={{
+                fontSize: 15,
+                fontWeight: 600,
+                color: '#fff',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {fullName}
+            </div>
+            <div
+              title={user?.email || ''}
+              style={{
+                fontSize: 12,
+                color: 'rgba(255,255,255,0.55)',
+                overflowWrap: 'anywhere',
+                lineHeight: 1.35,
+                marginTop: 2,
+              }}
+            >
               {user?.email || ''}
             </div>
           </div>

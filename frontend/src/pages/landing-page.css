@@ -433,11 +433,13 @@ body.is-loading { overflow: hidden; }
   background: var(--tokun-bg);
   color: var(--tokun-text);
   contain: layout style;
-  /* No top padding for the bar on purpose. It's fixed, so it floats over this
-     section rather than sitting above it, and the hero starts at the top of
-     the viewport with its backdrop running full-bleed behind the logo.
-     The content inside is vertically centred in the full height, which keeps
-     it clear of the bar without reserving a strip for it. */
+  /* No top padding for the bar on a desktop, on purpose. It's fixed, so it
+     floats over this section rather than sitting above it, and the hero starts
+     at the top of the viewport with its backdrop running full-bleed behind the
+     logo. The content is centred in the full height, and there is enough of it
+     that the title lands well clear of the bar.
+     A phone is where that stops being true — see the padding at the bottom of
+     this file. */
 }
 
 /* The landing bar.
@@ -822,9 +824,26 @@ body.is-loading { overflow: hidden; }
 @media (max-width: 768px) {
   /* .hero-nav styles removed with the landing-only nav — see index.css for
      the shared .site-header this page now uses. */
+
+  /* Reserve the bar's height on a phone.
+
+     On a desktop the hero centres its content in the full viewport height and
+     the title lands far below the fixed bar, so nothing is needed. A phone has
+     the same content in a third of the width: it wraps to roughly twice the
+     lines, the block is taller than the screen, and `justify-content: center`
+     has nothing left to centre — so the top of it rode up UNDER the bar and
+     "TOKUN" sat level with the logo and the account pill.
+
+     The number is the bar's real height, which the logo sets: 88px of mark plus
+     16px of padding either side. `box-sizing: border-box` is global here, so
+     this comes out of the 100svh rather than adding to it. */
+  .hero { padding-top: 120px; }
 }
 
 @media (max-width: 480px) {
+  /* 72px logo at this width, so the bar is 104px and the reserve shrinks with
+     it — see the 768px block above. */
+  .hero { padding-top: 104px; }
   .hero-nav__link { display: none; }
   .hero__subtitle-line { display: none; }
   .hero__subtitle-text { text-align: center; }

@@ -340,6 +340,37 @@
   }
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   SmartGen "Select a Category" grid (the CategoryModal in SmarterPrompt.tsx)
+
+   `minmax(0, 1fr)`, not `1fr`, and that is the whole fix. `1fr` is shorthand
+   for `minmax(auto, 1fr)`, and an `auto` minimum means a column may not shrink
+   below its content's min-content width. Each card carries its subcategory list
+   on one `white-space: nowrap` line — "Business Planning · Menu Design ·
+   Interior & Branding · Marketing Strategy" — so that minimum was ~500px per
+   column. Two of them could not fit the 640px dialog, so the second column was
+   pushed out through the side and clipped: half the domains were unreachable.
+   `overflow: hidden` on the text did not help, because min-content is measured
+   before overflow is applied.
+
+   One column below 640px: two cards across a phone leaves each too narrow to
+   read the title, let alone the subcategories.
+
+   Here rather than inline in the component because inline styles can't carry a
+   media query — same reason as the ideas strip above.
+   ───────────────────────────────────────────────────────────────────────── */
+.smartgen-category-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .smartgen-category-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @font-face {
   font-family: 'Inter';
   src: url('/Fonts/inter/Inter-Regular.woff2') format('woff2');

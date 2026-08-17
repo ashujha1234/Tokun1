@@ -676,11 +676,11 @@ function CategoryModal({current, onSelect, onClose}: {
         </div>
 
         {/* Grid */}
-        <div style={{overflowY:"auto",padding:"0 20px 20px"}}>
+        <div style={{overflowY:"auto",overflowX:"hidden",padding:"0 20px 20px"}}>
           {filtered.length === 0 ? (
             <div style={{textAlign:"center",padding:"32px 0",color:"rgba(255,255,255,0.3)",fontSize:13}}>No domains match "{search}"</div>
           ) : (
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div className="smartgen-category-grid">
               {filtered.map(cat => {
                 const isActive = current === cat.id;
                 return (

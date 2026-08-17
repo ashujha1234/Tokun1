@@ -92,6 +92,11 @@ type RefundRequest = {
   purchase?: {
     _id: string;
     pricePaid?: number;
+    /* Non-refundable: these paid for running the transaction. Sent so the
+       confirm step can show the refund as arithmetic instead of a bare number
+       that looks short of what the buyer paid. */
+    platformFee?: number;
+    platformFeeGst?: number;
     razorpayPaymentId?: string;
     routeTransferId?: string | null;
     purchasedAt?: string;
@@ -637,10 +642,33 @@ export default function AdminRefundsPage() {
                   />
                   {confirmingId === r._id ? (
                     <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3">
-                      <p className="text-xs text-white/80">
-                        Refund ₹{Number(r.refundAmount || 0).toLocaleString("en-IN")} to{" "}
-                        {r.buyer?.name || "the buyer"} via Razorpay now? This can't be undone.
-                      </p>
+                      {(() => {
+                        /* The fee is shown, not hidden, because the number here
+                           is deliberately LESS than the buyer paid and an admin
+                           about to move money should be able to see why. The
+                           refund itself is still whatever the server decides —
+                           this is the same figure, spelled out. */
+                        const paid = Number(r.purchase?.pricePaid || 0);
+                        const fee = +(
+                          Number(r.purchase?.platformFee || 0) +
+                          Number(r.purchase?.platformFeeGst || 0)
+                        ).toFixed(2);
+                        const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
+                        return (
+                          <>
+                            <p className="text-xs text-white/80">
+                              Refund {inr(Number(r.refundAmount || 0))} to{" "}
+                              {r.buyer?.name || "the buyer"} via Razorpay now? This can't be undone.
+                            </p>
+                            {fee > 0 && (
+                              <p className="mt-1 text-[11px] text-white/45">
+                                {inr(paid)} paid − {inr(fee)} platform fee (non-refundable) ={" "}
+                                {inr(Number(r.refundAmount || 0))}
+                              </p>
+                            )}
+                          </>
+                        );
+                      })()}
                       <div className="mt-3 flex items-center gap-2">
                         <button
                           onClick={() => approve(r._id)}

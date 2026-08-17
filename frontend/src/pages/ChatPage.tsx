@@ -1,4 +1,5 @@
 // // import { useEffect, useRef, useState } from "react";
+import { avatarFallback, uploadedAvatar } from "@/lib/avatar";
 // // import { useLocation } from "react-router-dom";
 // // import Header from "@/components/Header";
 // // import { socket } from "@/lib/socket";
@@ -3112,15 +3113,11 @@ type CounterPayload = {
   explanation: string;
 };
 
-function getAvatarUrl(avatar?: string) {
-  if (!avatar) return "";
-  if (avatar.startsWith("http")) return avatar;
-  return `${API_BASE}${avatar}`;
-}
-
+/* Both of these now come from lib/avatar — the placeholder and the way an
+   uploaded path is resolved have to match Find Creators and the service pages,
+   or the same person wears two different faces depending on the screen. */
 function getFallbackAvatar(user?: any) {
-  const key = user?._id || user?.id || user?.email || user?.name || "default-user";
-  return `https://i.pravatar.cc/150?u=${encodeURIComponent(key)}`;
+  return avatarFallback(user);
 }
 
 function getMessageSenderId(message: any) {
@@ -4216,7 +4213,13 @@ function UserAvatar({
 }: {
   user?: any; size?: "sm" | "md" | "lg" | "xl"; online?: boolean;
 }) {
-  const apiAvatar = getAvatarUrl(user?.avatar);
+  /* The whole user, not `user.avatar`.
+     Pulling one field out first was the other half of why uploaded photos never
+     appeared here: the model stores the path on `avatarUrl`, so
+     `user.avatar` was undefined and the placeholder won before the resolver had
+     a chance. uploadedAvatar() checks both names, which also means this keeps
+     working whichever of them an endpoint happens to send. */
+  const apiAvatar = uploadedAvatar(user);
   const fallbackAvatar = getFallbackAvatar(user);
   const [src, setSrc] = useState(apiAvatar || fallbackAvatar);
 
