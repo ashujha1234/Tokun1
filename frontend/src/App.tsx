@@ -43,6 +43,7 @@ const ChatPage = lazy(() => import("./pages/ChatPage"));
 const AdminLogin = lazy(() => import("./pages/AdminLogin"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const MyFeedbackPage = lazy(() => import("@/pages/MyFeedbackPage"));
+const ReferEarn = lazy(() => import("@/pages/ReferEarn"));
 const AboutPage = lazy(() => import("@/pages/AboutPage"));
 const SupportPage = lazy(() => import("@/pages/SupportPage"));
 const CareersPage = lazy(() => import("@/pages/CareersPage"));
@@ -265,6 +266,8 @@ export default function App() {
 <Route path="/admin-forgot-password" element={<AdminForgotPassword />} />
 <Route path="/admin/dashboard" element={<RequireAdminAuth><Dashboard /></RequireAdminAuth>} />
 <Route path="/my-feedback" element={<MyFeedbackPage />} />
+{/* Refer & Earn. Signed-in only — the page is built around your own code. */}
+<Route path="/refer" element={<RequireAuth><ReferEarn /></RequireAuth>} />
 <Route path="/admin/escrow" element={<RequireAdminAuth><EscrowAdminDashboard /></RequireAdminAuth>} />
 <Route path="/admin/notifications" element={<RequireAdminAuth><AdminNotificationsPage /></RequireAdminAuth>} />
 <Route path="/admin/refunds" element={<RequireAdminAuth><AdminRefundsPage /></RequireAdminAuth>} />

@@ -2111,12 +2111,15 @@ router.post("/add", requireAuth, async (req, res) => {
       const member = existingUser || { _id: invitation._id, name: invitation.name, email: normEmail, isVerified: false };
 
     try {
-        // SITE_URL is the login page; the member id is appended so the invite
-        // link identifies who is joining. The previous expression tagged a
-        // template literal onto a string, which would have thrown had SITE_URL
-        // ever been unset — and dropped the member id entirely when it was set.
-        const base = process.env.SITE_URL || "https://tokun.world/login";
-        const inviteUrl = `${base}${base.includes("?") ? "&" : "?"}invite=${member._id}`;
+        /* SITE_URL is the site ROOT; /login is appended here.
+
+           It used to be read as though it already pointed at the login page,
+           which is why the env was set to ".../login" — and that broke every
+           other consumer of the variable, because emails build their CTAs as
+           `${SITE_URL}/self-dash` and were producing "/login/self-dash". The
+           page each link wants belongs at the link, not in the variable. */
+        const base = (process.env.SITE_URL || "https://tokun.world").replace(/\/$/, "");
+        const inviteUrl = `${base}/login?invite=${member._id}`;
 
         const html = invitationTemplate
           .replace(/{{memberName}}/g, member.name || member.email.split("@")[0])
@@ -2844,8 +2847,12 @@ router.post("/resend-invite/:memberId", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: "member_already_verified" });
     }
 
-    // ✅ Generate invite link
-    const inviteUrl = `${process.env.SITE_URL}` || "https://tokun.world/login?invite="`${member._id}`;
+    /* Same as the invite route above: root from the env, page appended here.
+       The old expression also dropped the member id entirely — a template
+       literal tagged onto a string, so the invite went to a bare login page
+       with nothing identifying who was joining. */
+    const inviteBase = (process.env.SITE_URL || "https://tokun.world").replace(/\/$/, "");
+    const inviteUrl = `${inviteBase}/login?invite=${member._id}`;
 
     // ✅ Build email HTML (use the template we created earlier)
     const html = resendInvitationTemplate

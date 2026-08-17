@@ -1444,12 +1444,22 @@ router.get("/others", async (req, res) => {
     // "coming soon" and the UI locks its buy button. Nothing here weakens the
     // actual money guard — POST /api/purchase and the cart both still reject
     // these with `seller_not_verified`, so a direct link can't buy one either.
+    /* Creators inside a Refer & Earn boost window. Their listings ride at the
+       top for a few days — see services/referral.service.js. Held on the USER
+       rather than each Prompt so anything they upload during the window is
+       covered too, which is exactly when a new creator is uploading. */
+    const boostedSellerIds = await User.find({
+      marketplaceBoostUntil: { $gt: new Date() },
+    }).distinct("_id");
+    const boostedSet = new Set(boostedSellerIds.map(String));
+
     const verifiedSet = new Set(verifiedSellerIds.map(String));
     const decorated = prompts.map((p) => ({
       ...p,
       sellerVerificationPending:
         !!p.requiresSellerVerification &&
         !verifiedSet.has(String(p.userId?._id || p.userId)),
+      boosted: boostedSet.has(String(p.userId?._id || p.userId)),
     }));
 
     // Buyable listings first. The sort above is newest-first and these are by
@@ -1459,6 +1469,11 @@ router.get("/others", async (req, res) => {
       if (a.sellerVerificationPending !== b.sellerVerificationPending) {
         return a.sellerVerificationPending ? 1 : -1;
       }
+      /* Boost sits BELOW buyability and above recency: promoting a listing
+         nobody can buy yet would waste the boost and annoy the buyer. Within
+         the boosted group it's still newest-first, so a boosted creator with
+         twenty listings doesn't own the whole first screen in a fixed order. */
+      if (a.boosted !== b.boosted) return a.boosted ? -1 : 1;
       return new Date(b.createdAt) - new Date(a.createdAt);
     });
 

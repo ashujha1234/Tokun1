@@ -2592,7 +2592,7 @@ import { useCart } from "@/contexts/CartContext";
  import { Zap } from "lucide-react";
 import { Crown } from "lucide-react";
 import { MessageCircle } from "lucide-react";
-import { Users, ReceiptText, Briefcase, Package } from "lucide-react";
+import { Users, ReceiptText, Briefcase, Package, Gift } from "lucide-react";
 import { LuBadgeCheck } from "react-icons/lu";
 // Shared with Landing.tsx's HeroAccountMenu, which is a second copy of this
 // dropdown — the hook keeps the freelancer entry identical in both.
@@ -4410,6 +4410,9 @@ useEffect(() => {
       // the dashboard first and finding the tab, which is a long way round for
       // the screen a buyer wants immediately after paying.
       { label: "My Products",    icon: Package,         onClick: () => navigate("/self-dash?tab=prompts&p=purchased") },
+      /* Refer & Earn. Also in Landing.tsx's copy of this menu — the two are
+         separate lists and drift the moment only one is edited. */
+      { label: "Refer & Earn",   icon: Gift,            onClick: () => navigate("/refer") },
       { label: "My Feedback",    icon: MessageCircle,   onClick: () => navigate("/my-feedback") },
       // Sits next to My Feedback because it's the same kind of thing: a list of
       // requests you've made and what came of them.

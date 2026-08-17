@@ -580,6 +580,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/use-toast";
 import { ArrowLeft, ChevronLeft } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { getStoredReferral, clearStoredReferral } from "@/lib/referral";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -630,8 +631,11 @@ export default function VerifySignup() {
 
     setIsLoading(true);
     try {
-      const body = { email, otp };
-      console.log("[VERIFY] POST body →", body);
+      /* The invite code, if this person arrived through one. Sent at VERIFY
+         rather than at signup start: an unverified signup isn't an account yet,
+         and crediting a referral for one would make the invite count fiction.
+         Null when nobody referred them, which the server ignores. */
+      const body = { email, otp, referralCode: getStoredReferral() || undefined };
 
       const resp = await fetch(`${API_BASE}/api/auth/signup/verify`, {
         method: "POST",
@@ -646,6 +650,9 @@ export default function VerifySignup() {
       if (!resp.ok || !json?.success) {
         throw new Error(json?.error || "Verification failed");
       }
+
+      // Attribution is recorded server-side now; the code has done its job.
+      clearStoredReferral();
 
       persistAuth(json);
 

@@ -4,6 +4,7 @@
 // // const Razorpay = require("../utils/razorpay");
 // // const Prompt = require("../models/Prompt");
 // // const Purchase = require("../models/Purchase");
+const CommissionRebate = require("../models/CommissionRebate");
 // // const { requireAuth } = require("../utils/auth");
 // // const { requireKycVerified } = require("../utils/requireKycVerified");
 // // const { logActivity } = require("../utils/activityLogger");
@@ -400,6 +401,13 @@ const { embedWatermark, extractWatermark } = require("../utils/nvisibleWatermark
 const { generateInvoicePDF } = require("../services/invoice.service");
 const { sendInvoiceEmail } = require("../services/email.service");
 const { sendPromptSoldEmail } = require("../services/creatorEmail.service");
+const {
+  reserveCreditForOrder,
+  bindCreditToOrder,
+  consumeReservedCredit,
+  reserveBuyerDiscount,
+  consumeBuyerDiscount,
+} = require("../services/referral.service");
 const { sendRefundRequestReceivedEmail } = require("../services/buyerEmail.service");
 const { alertRefundRequested } = require("../services/adminAlertEmail.service");
 const multer = require("multer");
@@ -473,7 +481,6 @@ router.post("/create-order/:promptId", requireAuth, blockIfSuspended, blockOrgTe
     }
 
     const split = splitPromptSale(prompt);
-    const amount = Math.round(split.buyerPays * 100);
 
     const shortReceipt = `tokun_p${prompt._id
       .toString()
@@ -502,7 +509,10 @@ router.post("/create-order/:promptId", requireAuth, blockIfSuspended, blockOrgTe
     }
 
     const orderPayload = {
-      amount,
+      // Filled in below, once both referral rewards have been settled — they
+      // both come out of Tokun's cut and the buyer's discount depends on how
+      // much of it the seller's waiver already used.
+      amount: 0,
       currency: "INR",
       receipt: shortReceipt,
       notes: {
@@ -513,11 +523,71 @@ router.post("/create-order/:promptId", requireAuth, blockIfSuspended, blockOrgTe
       },
     };
 
+    /* Refer & Earn: does this seller's next sale carry no Tokun commission?
+       Decided HERE because here is where the money is actually divided — the
+       transfer amount below is what Razorpay pays them, and it is fixed before
+       the buyer has paid. Reserving the credit at the same moment stops a
+       second checkout on the same seller spending it twice; an abandoned
+       checkout releases it again on a timer (see cron/referralSettlement.js). */
+    let referralCredit = null;
+    let sellerReceives = split.sellerNet;
+
+    try {
+      referralCredit = await reserveCreditForOrder({
+        sellerId: prompt.userId,
+        listPrice: split.listPrice,
+      });
+
+      if (referralCredit) {
+        /* Capped, so one referral can't cost more than fifty. Above the cap the
+           seller still keeps their normal net plus the capped amount. */
+        const waived = Math.min(split.sellerFee, referralCredit.maxAmount);
+        sellerReceives = +(split.sellerNet + waived).toFixed(2);
+      }
+    } catch (creditErr) {
+      // A referral perk must never block a sale. Falls through at the normal split.
+      console.error("Referral credit lookup failed (sale unaffected):", creditErr.message);
+      referralCredit = null;
+      sellerReceives = split.sellerNet;
+    }
+
+    /* THEN the buyer's welcome discount, if this buyer was invited by someone.
+
+       Order matters: both rewards are paid out of the same pot — Tokun's cut on
+       this one sale — and the seller's waiver is settled first, so what's left
+       is the true ceiling for the buyer's discount. Reversed, the two could
+       between them hand out more than Tokun ever took, the transfer would come
+       out larger than the payment, and Razorpay would reject the order. */
+    let buyerDiscount = 0;
+    let buyerDiscountCredit = null;
+
+    try {
+      const held = await reserveBuyerDiscount({
+        buyerId: req.user._id,
+        buyerPays: split.buyerPays,
+        tokunCut: +(split.platformCut - (sellerReceives - split.sellerNet)).toFixed(2),
+      });
+
+      if (held) {
+        buyerDiscount = held.discount;
+        buyerDiscountCredit = held.credit;
+      }
+    } catch (discountErr) {
+      console.error("Buyer discount lookup failed (sale unaffected):", discountErr.message);
+    }
+
+    const buyerPays = +(split.buyerPays - buyerDiscount).toFixed(2);
+    orderPayload.amount = Math.round(buyerPays * 100);
+
+    if (buyerDiscount > 0) {
+      orderPayload.notes.buyerDiscount = String(buyerDiscount);
+    }
+
     if (linkedAccountId) {
       orderPayload.transfers = [
         {
           account: linkedAccountId,
-          amount: Math.round(split.sellerNet * 100),
+          amount: Math.round(sellerReceives * 100),
           currency: "INR",
           on_hold: 1,
           on_hold_until: transferOnHoldUntil(),
@@ -525,7 +595,29 @@ router.post("/create-order/:promptId", requireAuth, blockIfSuspended, blockOrgTe
       ];
     }
 
+    /* Carried on the order so /verify knows this sale was commission-free
+       without having to re-derive it — and so a support query can see it on
+       the Razorpay dashboard. */
+    if (referralCredit) {
+      orderPayload.notes.referralCreditId = String(referralCredit._id);
+      orderPayload.notes.commissionWaived = String(+(sellerReceives - split.sellerNet).toFixed(2));
+    }
+
     const order = await Razorpay.orders.create(orderPayload);
+
+    /* Bind the held credit to the order that actually exists, so /verify can
+       match it exactly rather than guessing from "this seller has something
+       reserved" — see the note on reservedForOrderId. */
+    if (referralCredit) {
+      await bindCreditToOrder(referralCredit._id, order.id).catch((e) =>
+        console.error("Referral credit bind failed:", e.message)
+      );
+    }
+    if (buyerDiscountCredit) {
+      await bindCreditToOrder(buyerDiscountCredit._id, order.id).catch((e) =>
+        console.error("Buyer discount bind failed:", e.message)
+      );
+    }
 
     return res.json({
       success: true,
@@ -659,13 +751,56 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
     // `pricePaid − platformCommission` from the seller, which is exactly
     // split.sellerNet, so the reversal stays symmetric with what was paid out.
     const split = splitPromptSale(prompt);
-    const platformCommission = split.platformCut;
+
+    /* Refer & Earn: was this sale built commission-free?
+
+       The credit was reserved and bound to this exact order at create-order
+       time, and the Razorpay transfer already carries the larger amount. All
+       that happens here is recording the same numbers Razorpay used — which
+       MATTERS, because the refund path recovers `pricePaid − platformCommission`
+       from the seller. Record the normal commission on a sale where they were
+       paid the full list price and a refund would claw back money they were
+       never given. */
+    const waivedCredit = await CommissionRebate.findOne({
+      userId: prompt.userId,
+      status: "RESERVED",
+      reservedForOrderId: String(razorpayOrderId || ""),
+    }).lean();
+
+    const commissionWaived = waivedCredit
+      ? Math.min(split.sellerFee, waivedCredit.maxAmount)
+      : 0;
+
+    /* And the buyer's side: did they spend a welcome discount on this order? */
+    const buyerCredit = await CommissionRebate.findOne({
+      userId: req.user._id,
+      kind: "buyer_discount",
+      status: "RESERVED",
+      reservedForOrderId: String(razorpayOrderId || ""),
+    }).lean();
+
+    const buyerDiscount = buyerCredit ? Number(buyerCredit.amountPaid || 0) : 0;
+
+    const sellerNet = +(split.sellerNet + commissionWaived).toFixed(2);
+    /* What the buyer was ACTUALLY charged. Razorpay took the discounted amount,
+       so recording the list figure would refund them more than they paid. */
+    const chargedToBuyer = +(split.buyerPays - buyerDiscount).toFixed(2);
+    /* Kept as (what the buyer paid − what the seller got), the same identity
+       splitPromptSale maintains. Deriving it any other way breaks refunds:
+       the refund path recovers `pricePaid − platformCommission` from the
+       seller, and that has to come out at exactly what they were transferred. */
+    const platformCommission = +(chargedToBuyer - sellerNet).toFixed(2);
 
     // Create purchase record
     const purchase = await Purchase.create({
       buyer: req.user._id,
       prompt: prompt._id,
-      pricePaid,
+      /* Server-derived, not the client's `pricePaid` from the request body.
+         That value used to be taken on trust, and it decides what a refund
+         gives back — a caller could have named their own figure. It is also
+         now the discounted amount when a Refer & Earn welcome discount was
+         spent, which the client has no way of computing correctly. */
+      pricePaid: chargedToBuyer,
       platformCommission,
       // Carried onto the purchase so a refund can tell the non-refundable fee
       // apart from the rest of Tokun's cut.
@@ -694,7 +829,7 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
     // net of Tokun's cut — it's surfaced to the seller as their earnings, so
     // crediting the gross list price here would overstate it by the commission.
     prompt.salesCount += 1;
-    prompt.totalRevenue += split.sellerNet;
+    prompt.totalRevenue += sellerNet;  // the amount actually transferred, waiver included
     await prompt.save();
 
     // IMPORTANT:
@@ -776,7 +911,7 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
         prompt: prompt._id,
         meta: {
           listPrice: split.listPrice,
-          sellerNet: split.sellerNet,
+          sellerNet: sellerNet,
           platformCommission,
         },
       });
@@ -792,7 +927,7 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
           kind: "TRANSFER",
           direction: "OUT",
           purpose: "PROMPT_PURCHASE",
-          amount: ledger.toPaise(split.sellerNet),
+          amount: ledger.toPaise(sellerNet),
           occurredAt: new Date(),
           razorpayTransferId: routeTransferId,
           razorpayPaymentId,
@@ -829,7 +964,7 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
           kind: "TRANSFER",
           direction: "OUT",
           purpose: "PROMPT_PURCHASE",
-          amount: ledger.toPaise(split.sellerNet),
+          amount: ledger.toPaise(sellerNet),
           occurredAt: new Date(),
           razorpayPaymentId,
           source: "api",
@@ -930,6 +1065,38 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
       } catch (invoiceErr) {
         // Invoice fail hone pe bhi purchase success hi return karo
         console.error("⚠️ Prompt invoice/email failed (purchase still success):", invoiceErr.message);
+      }
+
+      /* Close out the Refer & Earn credit. Nothing to pay here — Razorpay
+         already sent the seller the larger amount — this just marks the credit
+         spent and tells them why the payout was bigger than usual. */
+      if (commissionWaived > 0) {
+        try {
+          await consumeReservedCredit({
+            sellerId: prompt.userId,
+            razorpayOrderId,
+            purchaseId: purchase._id,
+            amountWaived: commissionWaived,
+            promptTitle: prompt.title,
+          });
+        } catch (creditErr) {
+          console.error("Referral credit consume failed (sale unaffected):", creditErr.message);
+        }
+      }
+
+      /* And the buyer's welcome discount, if one was spent. Nothing to move —
+         Razorpay already charged the reduced amount. */
+      if (buyerDiscount > 0) {
+        try {
+          await consumeBuyerDiscount({
+            buyerId: req.user._id,
+            razorpayOrderId,
+            purchaseId: purchase._id,
+            discount: buyerDiscount,
+          });
+        } catch (discountErr) {
+          console.error("Buyer discount consume failed (sale unaffected):", discountErr.message);
+        }
       }
 
       /* -------------------- THE SELLER'S SIDE OF THE SAME SALE --------------

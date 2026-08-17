@@ -433,23 +433,110 @@ body.is-loading { overflow: hidden; }
   background: var(--tokun-bg);
   color: var(--tokun-text);
   contain: layout style;
+  /* No top padding for the bar on purpose. It's fixed, so it floats over this
+     section rather than sitting above it, and the hero starts at the top of
+     the viewport with its backdrop running full-bleed behind the logo.
+     The content inside is vertically centred in the full height, which keeps
+     it clear of the bar without reserving a strip for it. */
 }
 
-.hero-nav {
+/* The landing bar.
+
+   The panel, the column ladder and the on-scroll travel all come from
+   `.site-header*` in index.css — the same rules the app header runs on, so a
+   change to one lands on both. Everything below is the landing-only delta.
+
+   `fixed`, not `sticky` (the app header is sticky). Both pin the bar to the top
+   of the viewport; the difference is that sticky stays in the document flow, so
+   the bar reserved a strip of its own height above the hero — and that strip
+   showed the shell's own near-black, a dark band across the top of the page.
+   It's easy to miss how tall that band is: the logo alone is 110px, so the row
+   comes out at ~142px, and cancelling it with a negative margin means
+   hard-coding a number that silently goes stale the moment the logo or the
+   padding changes. Out of flow it reserves nothing at all, whatever it ends up
+   containing, and the hero starts at the very top of the page with its backdrop
+   running full-bleed behind the bar.
+
+   `pointer-events: none` here, `auto` on the row: the panel spans the full
+   width and would otherwise swallow clicks on the hero either side of the
+   nav. */
+.landing-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  background: transparent;
+}
+
+/* How far the panel sits inside the row, top and bottom. Overridden from the
+   shared value (12–20px) because this bar is much taller than the app's: the
+   logo scales to ~68px on scroll but the ROW keeps its full 142px, since
+   scaling deliberately doesn't touch layout. Sized so the panel closes around
+   the scaled mark instead of leaving a band of glass above and below it.
+   Two class names, so it beats the `.site-header` breakpoint rules in
+   index.css whatever order the two stylesheets end up in the bundle. */
+.site-header.landing-nav {
+  --header-inset: 32px;
+}
+
+/* The row itself. `max-width` comes from .site-header__inner (the shared
+   breakpoint ladder), so it lines up with the app header and with the page
+   wrappers below it. */
+.landing-nav__inner {
+  pointer-events: auto;
   position: relative;
   z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
+  width: 100%;
   padding: 16px 48px;
   min-height: 80px;
-  max-width: 1280px;
-  width: 100%;
-  margin: 0 auto;
   box-sizing: border-box;
 }
 
-.hero-nav__actions { display: flex; align-items: center; gap: 28px; }
+.landing-nav__actions {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+/* The mark condenses on scroll along with the panel.
+   Scaled, not resized: animating `height` would change the row's height on
+   every frame, and the scroll cue and hero content would jitter under it.
+   The scale goes on the LINK — the wrapper and the image are both
+   framer-motion elements writing inline transforms (a hover spring and the
+   idle float), and an inline transform beats anything declared here. */
+.landing-nav .tokun-logo__link {
+  transform-origin: left center;
+  transition: transform 760ms cubic-bezier(0.65, 0, 0.35, 1);
+  will-change: transform;
+}
+.landing-nav.site-header--scrolled .tokun-logo__link {
+  transform: scale(0.62);
+}
+
+@media (max-width: 768px) {
+  .landing-nav__inner { padding: 16px 20px; min-height: 68px; }
+  .landing-nav__actions { gap: 16px; }
+  /* Shorter logo here (88px), so the panel hugs it more closely. */
+  .site-header.landing-nav { --header-inset: 26px; }
+}
+
+@media (max-width: 480px) {
+  /* 72px logo. */
+  .site-header.landing-nav { --header-inset: 22px; }
+  .landing-nav.site-header--scrolled .tokun-logo__link { transform: scale(0.68); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-nav .tokun-logo__link { transition: none; }
+}
 
 .hero-nav__link {
   color: rgba(255, 255, 255, 0.7);
@@ -729,25 +816,12 @@ body.is-loading { overflow: hidden; }
   user-select: none;
 }
 
-.hero__fab {
-  position: fixed;
-  bottom: 32px;
-  right: 32px;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  background: var(--tokun-btn-gradient);
-  color: #fff;
-  text-decoration: none;
-  box-shadow: var(--tokun-btn-shadow);
-}
+/* .hero__fab — the round "→" jump-to-CTA — is gone; see the note where it used
+   to be rendered in Landing.tsx. */
 
 @media (max-width: 768px) {
-  .hero-nav { padding: 20px 20px; }
+  /* .hero-nav styles removed with the landing-only nav — see index.css for
+     the shared .site-header this page now uses. */
 }
 
 @media (max-width: 480px) {
@@ -772,7 +846,6 @@ body.is-loading { overflow: hidden; }
   .hero-btn__icon { width: 18px; height: 18px; }
   .hero-btn__icon svg { width: 13px; height: 13px; }
   .hero-btn__motion-lines { display: none; }
-  .hero__fab { bottom: 20px; right: 20px; width: 44px; height: 44px; }
 }
 
 /* ============================================================

@@ -201,6 +201,20 @@ freelancerStatus: {
   index: true,
 },
 
+/* ── Refer & Earn ────────────────────────────────────────────────────────
+   referralCode is this user's own code, minted lazily the first time they
+   open the Refer & Earn page — most accounts never will, and generating one
+   for every signup fills the collection with codes nobody shares.
+   referredBy is set once at signup and never again: letting it change means
+   whoever asks last gets the credit. */
+referralCode: { type: String, default: null, unique: true, sparse: true, uppercase: true, trim: true },
+referredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
+referredAt: { type: Date, default: null },
+/* Set when a referral qualifies: this creator's listings sort to the top of
+   the marketplace until then. Costs nothing and aims at the only thing a new
+   creator actually lacks — visibility, since they have no reviews yet. */
+marketplaceBoostUntil: { type: Date, default: null },
+
 sellerRating: { type: Number, default: 0 },
 /* Stars currently deducted by admin rating penalties (models/RatingPenalty.js).
    sellerRating above is already NET of this — the field is stored separately so

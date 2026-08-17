@@ -141,6 +141,47 @@ WalletSchema.statics.creditSale = async function (sellerId, amount, meta = {}) {
 };
 
 /**
+ * Hand back Tokun's commission on a sale, as a Refer & Earn reward.
+ *
+ * Its own static rather than a call to creditSale with a different string: the
+ * transaction description is what a creator reads in their wallet months later,
+ * and "Sale: X" on a line that isn't a sale is how support tickets start.
+ *
+ * @param {ObjectId} sellerId
+ * @param {number}   amount    the commission being returned
+ * @param {object}   meta      { purchaseId, promptTitle }
+ */
+WalletSchema.statics.creditReferralRebate = async function (sellerId, amount, meta = {}) {
+  const { purchaseId = null, promptId = null, promptTitle = "" } = meta;
+
+  return this.findOneAndUpdate(
+    { userId: sellerId },
+    {
+      $inc: { availableBalance: amount, totalRevenue: amount },
+      $push: {
+        transactions: {
+          $each: [
+            {
+              type: "credit",
+              amount,
+              description: promptTitle
+                ? `Refer & Earn: commission returned on "${promptTitle}"`
+                : "Refer & Earn: commission returned",
+              purchaseId,
+              promptId,
+              status: "Completed",
+            },
+          ],
+          $sort: { createdAt: -1 },
+          $slice: 100,
+        },
+      },
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
+};
+
+/**
  * Credit the freelancer's wallet when hire-deal escrow is released.
  * Mirrors creditSale's atomic findOneAndUpdate shape but links a HireDeal
  * instead of a Purchase/Prompt.

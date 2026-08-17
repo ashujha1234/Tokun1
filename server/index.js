@@ -4395,6 +4395,7 @@ const productReviewRoutes = require("./routes/productReviews");
 /* Admin-applied deductions to a creator's star rating, used when a refund or a
    dispute is decided against them. Never automatic — see the file header. */
 const adminRatingPenaltyRoutes = require("./routes/adminRatingPenalties");
+const referralRoutes = require("./routes/referralRoutes");
 const adminDisputesRouter = require("./routes/adminDisputes");
 const adminPlatformRevenueRouter = require("./routes/adminPlatformRevenue");
 /* Everything that moved through Razorpay, joined to Tokun's own commission
@@ -4440,6 +4441,9 @@ require("./cron/staleRequestWatch");
    is something the subscriber has to act on. Warns 3 days out and confirms once
    it has lapsed. Email only; it moves no money and changes no plan. */
 require("./cron/subscriptionExpiryWatch");
+/* Refer & Earn pays out only on sales that outlived the refund window — this is
+   what notices they have. Nothing rewards at the moment of sale on purpose. */
+require("./cron/referralSettlement");
 
 const app = express();
 
@@ -5422,6 +5426,7 @@ app.use("/api/progress-review", progressReviewRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/product-reviews", productReviewRoutes);
 app.use("/api/admin/rating-penalties", adminRatingPenaltyRoutes);
+app.use("/api/referrals", referralRoutes);
 app.use("/api/admin/disputes", adminDisputesRouter);
 app.use("/api/admin/platform-revenue", adminPlatformRevenueRouter);
 app.use("/api/admin/payments", adminPaymentsRouter);

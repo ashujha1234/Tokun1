@@ -29,6 +29,14 @@ const { route } = require("./authRoutes");
 const { generateInvoicePDF } = require("../services/invoice.service");
 const { sendInvoiceEmail } = require("../services/email.service");
 const { sendPromptSoldEmail } = require("../services/creatorEmail.service");
+const {
+  reserveCreditForOrder,
+  bindCreditToOrder,
+  consumeReservedCredit,
+  reserveBuyerDiscount,
+  consumeBuyerDiscount,
+} = require("../services/referral.service");
+const CommissionRebate = require("../models/CommissionRebate");
 
 
 // POST /api/cart/add/:promptId
@@ -235,6 +243,11 @@ router.post("/checkout", requireAuth, blockIfSuspended, blockOrgTeamMemberPurcha
     // prompts from the same seller, and Razorpay wants one transfer per
     // recipient on an order.
     const transferPaiseByAccount = new Map();
+    /* Credits held during this checkout, bound to the order once it exists.
+       A cart can hold prompts from several sellers, so there can be more than
+       one — each is that seller's own credit, spent on their own line. */
+    const reservedCredits = [];
+    let tokunCutPaise = 0;
 
     for (let item of payableItems) {
       const p = item.prompt;
@@ -270,19 +283,68 @@ router.post("/checkout", requireAuth, blockIfSuspended, blockOrgTeamMemberPurcha
       // contribute ₹0 to the order total.
       const split = splitPromptSale(p);
       totalAmount += Math.round(split.buyerPays * 100); // Razorpay in paise
+      /* Tokun's cut across the whole cart, less anything a seller's own waiver
+         has already given away. This is the ceiling for the buyer's discount
+         below — the two rewards share one pot. */
+      tokunCutPaise += Math.round(split.platformCut * 100);
 
       // Attach this seller's share to the order, exactly as single-prompt
       // checkout does. Without this the cart took the buyer's money and left it
       // in Tokun's balance — sellers were never paid for a cart purchase at all.
       if (linkedAccountId) {
+        /* Refer & Earn, same rule as Buy Now.
+           It has to be here too: which checkout a buyer happens to use is not
+           something the seller controls, and "your next sale is commission-free
+           — unless they add it to the cart first" is not a promise anyone can
+           act on. */
+        let sellerReceives = split.sellerNet;
+        try {
+          const credit = await reserveCreditForOrder({
+            sellerId: p.userId,
+            listPrice: split.listPrice,
+          });
+          if (credit) {
+            const waived = Math.min(split.sellerFee, credit.maxAmount);
+            sellerReceives = +(split.sellerNet + waived).toFixed(2);
+            tokunCutPaise -= Math.round(waived * 100);
+            reservedCredits.push({ credit, sellerId: p.userId, waived });
+          }
+        } catch (creditErr) {
+          console.error("Cart referral credit lookup failed (sale unaffected):", creditErr.message);
+        }
+
         const key = String(linkedAccountId);
         transferPaiseByAccount.set(
           key,
-          (transferPaiseByAccount.get(key) || 0) + Math.round(split.sellerNet * 100)
+          (transferPaiseByAccount.get(key) || 0) + Math.round(sellerReceives * 100)
         );
       }
 
       purchasablePrompts.push(p);
+    }
+
+    /* The buyer's Refer & Earn welcome discount, applied once across the whole
+       cart rather than per item — it is one credit, and a cart is one payment.
+       Ceiling is what's left of Tokun's cut after any seller waivers above, so
+       the transfers can never add up to more than the buyer pays. */
+    let cartDiscount = 0;
+    let buyerDiscountCredit = null;
+
+    if (totalAmount > 0) {
+      try {
+        const held = await reserveBuyerDiscount({
+          buyerId: req.user._id,
+          buyerPays: totalAmount / 100,
+          tokunCut: Math.max(0, tokunCutPaise / 100),
+        });
+        if (held) {
+          cartDiscount = held.discount;
+          buyerDiscountCredit = held.credit;
+          totalAmount -= Math.round(cartDiscount * 100);
+        }
+      } catch (discountErr) {
+        console.error("Cart buyer discount failed (checkout unaffected):", discountErr.message);
+      }
     }
 
     // create one Razorpay order for all paid prompts
@@ -312,6 +374,19 @@ router.post("/checkout", requireAuth, blockIfSuspended, blockOrgTeamMemberPurcha
       }
 
       order = await razorpay.orders.create(orderPayload);
+
+      // Bind each held credit to the order that now exists — /verify matches
+      // on it exactly. See the note on reservedForOrderId.
+      for (const { credit } of reservedCredits) {
+        await bindCreditToOrder(credit._id, order.id).catch((e) =>
+          console.error("Cart referral credit bind failed:", e.message)
+        );
+      }
+      if (buyerDiscountCredit) {
+        await bindCreditToOrder(buyerDiscountCredit._id, order.id).catch((e) =>
+          console.error("Cart buyer discount bind failed:", e.message)
+        );
+      }
     }
 
     res.json({
@@ -351,6 +426,27 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
       return res.status(400).json({ success: false, error: "invalid_signature" });
     }
 
+    /* The buyer's welcome discount, if this checkout spent one. Read once here
+       rather than per line: it was applied to the ORDER as a whole, and the
+       loop below shares it out across the lines. */
+    const buyerDiscountCreditDoc = await CommissionRebate.findOne({
+      userId: req.user._id,
+      kind: "buyer_discount",
+      status: "RESERVED",
+      reservedForOrderId: String(razorpayOrderId || ""),
+    }).lean();
+
+    const cartDiscountApplied = buyerDiscountCreditDoc
+      ? Number(buyerDiscountCreditDoc.amountPaid || 0)
+      : 0;
+
+    /* The denominator for that share-out — what the cart came to before the
+       discount, computed the same way checkout computed it. */
+    const cartTotalBeforeDiscount = cart.items.reduce((sum, item) => {
+      const s = splitPromptSale(item.prompt);
+      return sum + Number(s.buyerPays || 0);
+    }, 0);
+
     // Which sellers Razorpay already paid via a Route transfer on this order.
     // Looked up once for the whole payment rather than per item — a cart order
     // carries one transfer per seller, keyed by their linked account id.
@@ -384,6 +480,10 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
     // Nothing in here swallows its error: a failed wallet credit must roll the
     // purchases back, not be logged and forgotten.
     const purchases = [];
+    /* Lines whose commission was waived. Credits are closed out AFTER the
+       transaction commits — marking one spent inside a transaction that then
+       rolls back would burn the reward on a sale that never happened. */
+    const waivedLines = [];
     // Ledger rows are COLLECTED inside the transaction and written after it
     // commits. Writing them inline would either join the transaction (so a
     // bookkeeping failure could abort a paid checkout) or sit outside it (so a
@@ -416,18 +516,52 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
 
             const split = splitPromptSale(p);
 
+            /* Refer & Earn: was this seller's line built commission-free?
+               Matched on the order this checkout created, so a stale hold from
+               somebody's abandoned cart can't be read as this one. The numbers
+               recorded below have to be the ones Razorpay actually transferred
+               — the refund path recovers `pricePaid − platformCommission`. */
+            const waivedCredit = await CommissionRebate.findOne({
+              userId: p.userId,
+              status: "RESERVED",
+              reservedForOrderId: String(razorpayOrderId || ""),
+            })
+              .session(session)
+              .lean();
+
+            const commissionWaived = waivedCredit
+              ? Math.min(split.sellerFee, waivedCredit.maxAmount)
+              : 0;
+            const sellerNet = +(split.sellerNet + commissionWaived).toFixed(2);
+
+            /* The cart-level welcome discount, spread across the lines in
+               proportion to what each one cost.
+
+               It has to be split: a refund gives back one purchase's
+               `pricePaid`, so charging the whole discount to a single line
+               would over-refund every other line in the cart and under-refund
+               that one. */
+            const lineShare = cartTotalBeforeDiscount > 0
+              ? split.buyerPays / cartTotalBeforeDiscount
+              : 0;
+            const lineDiscount = +(cartDiscountApplied * lineShare).toFixed(2);
+            const chargedForLine = +(split.buyerPays - lineDiscount).toFixed(2);
+            const platformCut = +(chargedForLine - sellerNet).toFixed(2);
+
+            if (commissionWaived > 0) waivedLines.push({ sellerId: p.userId, commissionWaived, title: p.title });
+
             const [purchase] = await Purchase.create(
               [
                 {
                   buyer: req.user._id,
                   prompt: p._id,
-                  pricePaid: split.buyerPays,
+                  pricePaid: chargedForLine,
                   // Tokun's total cut (buyer-side fee + seller-side fee). The
                   // refund path recovers `pricePaid − platformCommission` from
                   // the seller, so omitting this — as this route used to — made a
                   // cart refund try to claw back the full amount from a seller
                   // who was only ever paid the net.
-                  platformCommission: split.platformCut,
+                  platformCommission: platformCut,
                   // The non-refundable half of that cut, itemised — a refund
                   // returns the list price and keeps these.
                   platformFee: split.platformFee,
@@ -454,13 +588,13 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
             }
 
             p.salesCount += 1;
-            // Net of Tokun's cut — this is surfaced to the seller as earnings.
-            p.totalRevenue += split.sellerNet;
+            // What was actually transferred, waiver included.
+            p.totalRevenue += sellerNet;
 
             // ── Pay the seller ──────────────────────────────────────────────
             // Free prompts owe nobody anything; everything else is paid exactly
             // once, by whichever of the two paths applies.
-            if (split.sellerNet > 0) {
+            if (sellerNet > 0) {
               const linkedAccountId = linkedAccountBySeller.get(String(p.userId));
               const routeTransferId = linkedAccountId
                 ? transferIdsByAccount.get(String(linkedAccountId))
@@ -483,7 +617,7 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
               // charged on the fee, and that portion is owed to the government
               // rather than withdrawable by Tokun.
               await PlatformWallet.recordCommission(
-                +(split.platformCut - Number(split.platformFeeGst || 0)).toFixed(2),
+                +(platformCut - Number(split.platformFeeGst || 0)).toFixed(2),
                 {
                   source: "prompt_purchase",
                   refId: purchase._id,
@@ -515,7 +649,7 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
             // as ₹900 collected three times. The single payment row is written
             // after the loop; the per-seller rows below are the ones that
             // genuinely differ per item.
-            if (split.sellerNet > 0) {
+            if (sellerNet > 0) {
               // Always a Route transfer now. A missing id means we failed to
               // read it, not that the money didn't move — flagged rather than
               // reclassified as some other kind of payout.
@@ -524,7 +658,7 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
                 kind: "TRANSFER",
                 direction: "OUT",
                 purpose: "PROMPT_PURCHASE",
-                amount: ledger.toPaise(split.sellerNet),
+                amount: ledger.toPaise(sellerNet),
                 occurredAt: new Date(),
                 razorpayTransferId: purchase.routeTransferId || "",
                 razorpayPaymentId,
@@ -569,6 +703,36 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
        staring at Razorpay's spinner. Both already treated their own failures
        as non-fatal, so neither belongs in front of the response. */
     res.json({ success: true, purchases });
+
+    if (cartDiscountApplied > 0) {
+      try {
+        await consumeBuyerDiscount({
+          buyerId: req.user._id,
+          razorpayOrderId,
+          purchaseId: purchases[0]?._id || null,
+          discount: cartDiscountApplied,
+        });
+      } catch (discountErr) {
+        console.error("Cart buyer discount consume failed:", discountErr.message);
+      }
+    }
+
+    /* Close out any Refer & Earn credits this checkout spent. No money moves
+       here — Razorpay already transferred the larger amount to each seller. */
+    for (const line of waivedLines) {
+      try {
+        const bought = purchases.find((pu) => String(pu.prompt) === String(line.sellerId));
+        await consumeReservedCredit({
+          sellerId: line.sellerId,
+          razorpayOrderId,
+          purchaseId: bought?._id || null,
+          amountWaived: line.commissionWaived,
+          promptTitle: line.title,
+        });
+      } catch (creditErr) {
+        console.error("Cart referral credit consume failed:", creditErr.message);
+      }
+    }
 
     settleAfterCheckout().catch((bgErr) => {
       console.error("Post-checkout settlement failed:", bgErr);

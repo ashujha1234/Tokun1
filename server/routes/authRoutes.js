@@ -6,6 +6,7 @@ const {rateLimit , ipKeyGenerator }= require("express-rate-limit");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const { sendEmail } = require("../utils/SendEmail"); // ← make sure filename & path match exactly
+const { attachReferral } = require("../services/referral.service");
 const Organization = require("../models/organization");
 const { requireAuth } = require("../utils/auth");
 const { signUserToken, shouldRenew, USER_TOKEN_TTL } = require("../utils/authTokens");
@@ -524,6 +525,22 @@ if (user.userType === "TM" && user.orgId) {
   await applyUserPlan(user, "free", "monthly");
 } else {
   await user.save();
+}
+
+/* Refer & Earn attribution, once, at the moment the account becomes real.
+
+   Attached here rather than at /signup/initiate because an unverified signup
+   isn't a person yet — half of them never come back, and crediting a referral
+   for one would make the invite count meaningless. Nothing is paid out now
+   either: the invite only earns anything once this account makes a prompt sale
+   that survives the refund window (cron/referralSettlement.js).
+
+   Best-effort by design — a bad code must never fail a signup. */
+try {
+  const refCode = req.body?.referralCode || req.body?.ref;
+  if (refCode) await attachReferral(user._id, refCode);
+} catch (refErr) {
+  console.error("Referral attach failed (signup unaffected):", refErr.message);
 }
 
    // signup/verify mein (line ~180 ke aaspaas):

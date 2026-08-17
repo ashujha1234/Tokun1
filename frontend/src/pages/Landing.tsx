@@ -11978,6 +11978,7 @@ import {
   Linkedin,
   LogOut,
   MessageSquarePlus,
+  Gift,
   Mouse,
   Package,
   Play,
@@ -12012,6 +12013,7 @@ const ROUTES = {
   smartgen: '/smartgen',
   marketplace: '/prompt-marketplace',
   findCreators: '/find-creators',
+  dashboard: '/self-dash',
 }
 
 /* ============================================================
@@ -12215,6 +12217,8 @@ function HeroAccountMenu() {
     // Kept in step with the Header's account menu — same entry, same target:
     // the dashboard's "My Products" tab (purchased + uploaded).
     { label: 'My Products', icon: Package, onClick: () => go('/self-dash?tab=prompts&p=purchased') },
+    // Kept in step with the Header's account menu — same entry, same target.
+    { label: 'Refer & Earn', icon: Gift, onClick: () => go('/refer') },
   ]
 
   const secondaryItems = [
@@ -13162,6 +13166,112 @@ function GradientButton({ children, variant = 'primary', className = '', to }) {
 }
 
 /* ============================================================
+   Landing nav
+   ============================================================
+
+   Same scroll behaviour as the app header in components/Header.tsx, and
+   deliberately the same CLASSES — `.site-header*` in index.css owns the panel,
+   the column ladder and the travel, so the two bars can't drift apart. At the
+   top it's fully transparent so the hero reads as full-bleed; past the
+   threshold a frosted panel fades in and both ends pull towards the middle,
+   leaving a rounded island floating over the page.
+
+   Two differences from the app header, both landing-only and both in
+   landing-page.css:
+     - `fixed`, not `sticky` — see the note on .landing-nav for why a bar in
+       flow put a black band above the hero.
+     - the panel inset and the on-scroll logo scale are tuned for this bar's
+       much taller logo (110px against the app's 56–88px).
+
+   Contents stay just the two things: the mark, and the account dropdown (or
+   the signed-out pair). None of the app header's icon rail belongs here.
+
+   It lives OUTSIDE <Hero>: `.hero` sets `contain: layout`, which makes it the
+   containing block for fixed children — a bar inside it would be anchored to
+   the hero and scroll away with it, which is exactly what the old jump-to-CTA
+   button did.
+   ============================================================ */
+
+/* Mirrors the app header's scroll state. Two thresholds, not one: a scroll
+   that hovers on a single line flips the state every frame and the panel
+   strobes. The gap between them is the dead zone. */
+function useHeaderScrolled() {
+  const [scrolled, setScrolled] = useState(false)
+
+  useEffect(() => {
+    const SHOW_AT = 80
+    const HIDE_AT = 40
+
+    let frame = 0
+    // Mirrors `scrolled` outside React so the rAF callback can read the current
+    // value without the effect depending on it — a dependency there would tear
+    // the listener down and rebuild it on every toggle.
+    let visible = false
+
+    const measure = () => {
+      frame = 0
+      const y = window.scrollY || document.documentElement.scrollTop || 0
+      const next = visible ? y > HIDE_AT : y > SHOW_AT
+      // Scroll fires far more often than the screen refreshes and nearly every
+      // one reads the same answer; only touching state on a real change keeps
+      // React out of the scroll path.
+      if (next !== visible) {
+        visible = next
+        setScrolled(next)
+      }
+    }
+
+    // Coalesce a burst of scroll events into one read per frame.
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(measure)
+    }
+
+    measure() // a reload part-way down the page must not start transparent
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [])
+
+  return scrolled
+}
+
+function LandingNav() {
+  const { isAuthenticated } = useAuth()
+  const scrolled = useHeaderScrolled()
+
+  return (
+    <nav
+      className={`site-header landing-nav${scrolled ? ' site-header--scrolled' : ''}`}
+    >
+      {/* Decorative only, and a SIBLING of the row rather than its parent — so
+          it can clip its own glow without ever clipping the account dropdown,
+          and nothing here can sit between the logo and the pointer. */}
+      <div aria-hidden className="site-header__bg">
+        <span className="site-header__glow" />
+      </div>
+
+      <div className="site-header__inner landing-nav__inner">
+        <div className="site-header__brand">
+          <TokunLogo />
+        </div>
+        <div className="site-header__actions landing-nav__actions">
+          {isAuthenticated ? (
+            <HeroAccountMenu />
+          ) : (
+            <>
+              <Link to={ROUTES.login} className="hero-nav__link">Login</Link>
+              <GradientButton variant="small" to={ROUTES.signup}>Get Started</GradientButton>
+            </>
+          )}
+        </div>
+      </div>
+    </nav>
+  )
+}
+
+/* ============================================================
    Hero
    ============================================================ */
 
@@ -13182,30 +13292,9 @@ const heroFadeUp = {
 }
 
 function Hero() {
-  const { isAuthenticated } = useAuth()
-
   return (
     <section className="hero">
       <HeroBackground />
-
-      <motion.nav
-        className="hero-nav"
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      >
-        <TokunLogo />
-        <div className="hero-nav__actions">
-          {isAuthenticated ? (
-            <HeroAccountMenu />
-          ) : (
-            <>
-              <Link to={ROUTES.login} className="hero-nav__link">Login</Link>
-              <GradientButton variant="small" to={ROUTES.signup}>Get Started</GradientButton>
-            </>
-          )}
-        </div>
-      </motion.nav>
 
       <div className="hero__content">
         <motion.div
@@ -13291,18 +13380,12 @@ function Hero() {
         </a>
       </motion.div>
 
-      <motion.a
-        href="#cta"
-        className="hero__fab"
-        initial={{ opacity: 0, scale: 0 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 1.8, type: 'spring', stiffness: 300 }}
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.95 }}
-        aria-label="Get started"
-      >
-        <ArrowRight size={20} />
-      </motion.a>
+      {/* The round "→" jump-to-CTA used to sit here, bottom-right. It read as a
+          floating action button but never behaved like one: `.hero` sets
+          `contain: layout`, which makes it the containing block for fixed
+          children, so the FAB was anchored to the hero rather than the viewport
+          and slid up out of view the moment you scrolled. The hero already has
+          two CTAs and the scroll cue, so it's gone rather than re-anchored. */}
     </section>
   )
 }
@@ -14947,6 +15030,14 @@ export default function LandingPage() {
   return (
     <>
       <div className="app-shell">
+        {/* Landing's own bar: logo, and either the account dropdown or the two
+            sign-in buttons. Transparent all the way down — no panel, no blur.
+
+            Outside <Hero> because `.hero` sets `contain: layout`, which makes
+            it the containing block for sticky children — a bar inside it would
+            pin to the hero instead of the viewport. */}
+        <LandingNav />
+
         {/* Above-fold — always ready, curtain ke peeche bhi render hota hai */}
         <Hero />
         <WhatWeOffer />

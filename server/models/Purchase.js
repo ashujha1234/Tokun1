@@ -76,6 +76,12 @@ const PurchaseSchema = new mongoose.Schema(
     // don't need a second query — RefundRequest stays the source of truth
     // for the reason/admin note/audit trail.
     refundStatus: {
+
+    /* When the referral job last looked at this sale.
+       The job sweeps every purchase that has outlived the refund window and
+       either qualifies a referral or pays out a rebate against it. Without a
+       marker it would do both again on the next tick, every hour, forever. */
+    referralProcessedAt: { type: Date, default: null },
       type: String,
       enum: ["NONE", "REQUESTED", "APPROVED", "REJECTED", "REFUNDED"],
       default: "NONE",
