@@ -966,6 +966,12 @@ const PromptMarketplacePage = () => {
       }
 
       const order = data.order;
+      /* Set as soon as Razorpay reports a successful payment, and read by
+         releaseHold below: Razorpay closes its own sheet on success and some
+         flows fire ondismiss on the way out. Releasing then would hand the
+         welcome discount back on a sale that DID happen. */
+      let paid = false;
+
       const options: any = {
         // Server's key, so checkout always matches the account the order was
         // created under — see PromptMarketplacePage for the failure this fixes.
@@ -978,6 +984,7 @@ const PromptMarketplacePage = () => {
         notes: { promptId },
         theme: { color: "#1A73E8" },
         handler: async (response: any) => {
+          paid = true; // before anything that can throw — see releaseHold
           try {
             const vr = await fetch(`${PURCHASE_BASE}/verify/${promptId}`, {
               method: "POST",
@@ -1018,8 +1025,10 @@ const PromptMarketplacePage = () => {
          pays, so it has to be. Handed straight back if this never becomes a
          payment, otherwise the coupon is gone from the next attempt until the
          hourly sweeper releases it. */
-      const releaseHold = () =>
+      const releaseHold = () => {
+        if (paid) return; // the sale went through; the credit was spent, not abandoned
         releaseCheckoutHold({ token, orderId: order.id, promptId });
+      };
 
       options.modal = { ...(options.modal || {}), ondismiss: releaseHold };
 

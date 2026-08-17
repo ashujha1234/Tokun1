@@ -4557,11 +4557,19 @@ useEffect(() => {
     />
 
     {/* Cart container */}
+   {/* Fixed height, so the body between the title and the totals is the only
+       part that grows — that is what makes a ten-item cart scroll instead of
+       pushing Checkout off the screen.
+
+       `svh`, not `vh`: on a phone `vh` is measured against the viewport with the
+       URL bar hidden, so a 90vh panel is taller than what you can actually see
+       and the footer sits below the fold until you scroll the page itself. `svh`
+       is the small-viewport height — the one that's always visible. */}
    <div
   className="relative text-white shadow-2xl flex flex-col overflow-hidden"
   style={{
-    width: "min(95vw, 950px)",
-    height: "min(90vh, 750px)",
+    width: "min(96vw, 950px)",
+    height: "min(90svh, 750px)",
     background: "#17171A",
     borderRadius: 16,
     fontFamily: "Inter",
@@ -4576,9 +4584,13 @@ useEffect(() => {
         <X className="w-4 h-4 text-white/90" />
       </button>
 
-      {/* Header */}
-      <div className="p-6 pb-4 flex-shrink-0">
-        <h2 style={{ fontFamily: "Inter", fontWeight: 500, fontSize: "20px" }}>
+      {/* Header. pr-12 leaves room for the close button, which is absolutely
+          positioned over this row — without it a long count ran under it. */}
+      <div className="p-4 sm:p-6 pb-3 sm:pb-4 pr-12 flex-shrink-0">
+        <h2
+          className="text-[17px] sm:text-[20px]"
+          style={{ fontFamily: "Inter", fontWeight: 500 }}
+        >
           Your Prompt Cart ({cart.length} Items)
         </h2>
       </div>
@@ -4599,8 +4611,11 @@ useEffect(() => {
         <span className="text-right">Remove</span>
       </div> */}
 
-     {/* Cart Body */}
-<div className="min-h-0 flex-1 overflow-y-auto px-6 pb-2 space-y-4">
+     {/* Cart Body — the only scrolling region. `min-h-0` is what makes that
+         work: a flex child's default `min-height: auto` refuses to shrink below
+         its content, so without it ten items would stretch the panel instead of
+         scrolling inside it. */}
+<div className="min-h-0 flex-1 overflow-y-auto px-3 sm:px-6 pb-2 space-y-3 sm:space-y-4">
   {cart.length === 0 ? (
     // ---------- EMPTY CART ----------
     <div className="flex flex-col items-center justify-center text-center py-20 space-y-6">
@@ -4630,9 +4645,17 @@ useEffect(() => {
     </div>
   ) : (
     <>
-      {/* ---------- TABLE HEADER (only shows when cart has items) ---------- */}
+      {/* ---------- TABLE HEADER (only shows when cart has items) ----------
+
+          Hidden below sm: three columns of labels can't fit beside a thumbnail
+          on a phone, and the rows there aren't a table anyway.
+
+          Sticky, because it lives INSIDE the scrolling body — with a full cart
+          it used to scroll away with the first item and the remaining nine had
+          unlabelled columns. -top-px hides the seam the rounded corner leaves
+          against the panel above it. */}
       <div
-        className="grid grid-cols-[minmax(0,1fr)_120px_80px] items-center gap-4 text-white/80 text-sm"
+        className="hidden sm:grid sticky -top-px z-10 grid-cols-[minmax(0,1fr)_120px_80px] items-center gap-4 text-white/80 text-sm"
         style={{
           background: "#1C1C1C",
           height: 50,
@@ -4640,7 +4663,7 @@ useEffect(() => {
           width: "100%",
         }}
       >
-        <span className="text-left">Product</span>
+        <span className="text-left pl-4">Product</span>
         <span className="text-center">Price</span>
         <span className="text-center">Remove</span>
       </div>
@@ -4649,17 +4672,26 @@ useEffect(() => {
       {cart
         .filter((item) => item.price !== 0 && item.tag !== "Free")
         .map((item) => (
+          /* Flex, not the header's three fixed columns.
+
+             As a grid of `minmax(0,1fr) 120px 80px` with gap-4 and px-6 either
+             side, 280px of a row was spoken for before the product got any: on a
+             360px phone that left ~60px for a 64px thumbnail AND the title, so
+             the cell overflowed and the title vanished. Here the product takes
+             whatever is left after the price and the X, which is the right way
+             round — and the two of those keep the header's widths from sm up, so
+             the columns still line up on a desktop. */
           <div
             key={item.id}
-            className="grid grid-cols-[minmax(0,1fr)_120px_80px] items-center gap-4 py-4"
+            className="flex items-center gap-3 sm:gap-4 py-3 sm:py-4"
             style={{
               background: "#17171A",
               width: "100%",
             }}
           >
             {/* Prompt info */}
-            <div className="flex items-center gap-4 min-w-0">
-           <div className="relative w-16 h-16 rounded-md overflow-hidden bg-black shrink-0">
+            <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+           <div className="relative w-12 h-12 sm:w-16 sm:h-16 rounded-md overflow-hidden bg-black shrink-0">
   {item.videoUrl ? (
     <>
       <video
@@ -4702,10 +4734,13 @@ useEffect(() => {
   )}
 </div>
               <div className="min-w-0">
-                <p className="text-xs text-white/60 truncate">
+                {/* Hidden on a phone: it is the same fixed line on every row, so
+                    it costs a line of height and tells the buyer nothing, while
+                    the title it pushes around is the one thing they need. */}
+                <p className="hidden sm:block text-xs text-white/60 truncate">
                   Create an engaging product description
                 </p>
-                <p className="text-base text-white font-medium truncate">{item.title}</p>
+                <p className="text-sm sm:text-base text-white font-medium truncate">{item.title}</p>
 
                 {/* Tag */}
                 <div className="flex gap-2 mt-1">
@@ -4722,18 +4757,24 @@ useEffect(() => {
               </div>
             </div>
 
-            {/* Price */}
-            <span className="text-center text-white text-base">
+            {/* Price. Fixed width from sm up so it sits under the header's
+                "Price" column; on a phone it takes only what the amount needs.
+                tabular-nums keeps the digits from shifting the column between
+                rows. */}
+            <span className="shrink-0 sm:w-[120px] text-right sm:text-center text-white text-sm sm:text-base tabular-nums">
               ₹{item.price}
             </span>
 
-            {/* Remove */}
-            <div className="flex justify-center">
+            {/* Remove. h-9 w-9 rather than a bare icon: a 20px tap target is
+                below what a thumb can hit reliably, and this one deletes
+                something. */}
+            <div className="shrink-0 sm:w-[80px] flex justify-end sm:justify-center">
               <button
                 onClick={async () => {
                   await removeFromCart(item.id);
                 }}
-                className="text-red-400 hover:text-red-500"
+                aria-label={`Remove ${item.title} from cart`}
+                className="grid place-items-center h-9 w-9 rounded-md text-red-400 hover:text-red-500 hover:bg-white/5 transition"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -4745,9 +4786,14 @@ useEffect(() => {
 </div>
 
 
-      {/* Footer */}
+      {/* Footer.
+
+          flex-shrink-0 is what keeps the totals and Checkout on screen however
+          many items are in the cart — the scrolling body above absorbs the rest.
+          border-white/10, because border-black/10 is invisible on a #17171A
+          panel. */}
  {cart.length > 0 && (
-  <div className="flex-shrink-0 border-t border-black/10 p-6 space-y-3">
+  <div className="flex-shrink-0 border-t border-white/10 p-4 sm:p-6 space-y-3">
     {/* Cart items carry `price` = what checkout charges (list price + Tokun's
         fee, the same figure shown on the marketplace card) and `listPrice` =
         the seller's own price. The fee is the DIFFERENCE between them.
@@ -4785,9 +4831,12 @@ useEffect(() => {
             {/* The old label here read "Month (inclusive of GST)" — leftover
                 subscription copy on a one-off prompt cart, and it claimed a GST
                 treatment this total doesn't apply. */}
+            {/* Full width on a phone, where a right-aligned pill leaves the
+                primary action of the screen sitting in a corner under the
+                thumb's reach. */}
             <button
               onClick={handleCheckout}
-              className="px-6 h-12 rounded-lg text-white"
+              className="w-full sm:w-auto px-6 h-12 rounded-lg text-white"
               style={{
                 background: "linear-gradient(270deg,#FF14EF 0%, #1A73E8 100%)",
                 fontFamily: "Inter",

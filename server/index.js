@@ -4323,6 +4323,7 @@ require("./utils/passport");
 
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
 const mongoose = require("mongoose");
 const path = require("path");
 const multer = require("multer");
@@ -4490,6 +4491,46 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   optionsSuccessStatus: 204,
 };
+
+/* ===============================
+   Security headers (helmet)
+================================ */
+/* Headers, not code: these tell the BROWSER how to treat a response, switching
+   on protections that are off by default. Registered before everything else so
+   they land on every response, errors and CORS preflights included.
+
+   Two of helmet's defaults are wrong for this server, and both would break the
+   site rather than fail quietly, so they are set explicitly:
+
+   crossOriginResourcePolicy — helmet defaults this to "same-origin", which tells
+   the browser to refuse this response to any other origin. The frontend IS
+   another origin (www.tokun.world against the API's azurewebsites.net host), and
+   it loads prompt thumbnails and previews straight from /uploads below. Left at
+   the default, every one of those images would be blocked.
+
+   contentSecurityPolicy — off here, and deliberately. CSP governs what a
+   DOCUMENT may load, and this server returns JSON; the policy that matters for
+   the app belongs to whatever serves the HTML, which is the Static Web App (see
+   frontend/public/staticwebapp.config.json). The one place CSP earns its keep on
+   this origin is /uploads, where a user-supplied file can be opened as a
+   document — that gets its own, much stricter policy at the mount below.
+
+   crossOriginOpenerPolicy — off, because Google sign-in would stop working.
+   GET /api/auth/google/callback answers a POPUP with a page that calls
+   `window.opener.postMessage(...)` to tell the app it succeeded (see
+   routes/authRoutes.js). helmet defaults COOP to "same-origin", which severs
+   `window.opener` when the popup and its opener are different origins — and they
+   are, the popup being on this host and the app on www. The callback would throw
+   on a null opener and the login would never complete. COOP protects documents
+   from cross-window attacks and this origin serves one document worth speaking
+   of, which is exactly the one that needs its opener. */
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginOpenerPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
 
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
@@ -4884,6 +4925,26 @@ Return JSON ONLY:
    HEALTH + STATIC
 ================================ */
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
+/* Everything under here was uploaded by a user, and it is served from the same
+   origin as the API — so a file that the browser decides to treat as a document
+   runs as this origin. An .html or an .svg with a <script> in it is the whole
+   attack; both are ordinary things to accept from an upload form.
+
+   The global helmet above already sends `X-Content-Type-Options: nosniff`, which
+   stops the browser guessing a type the server didn't declare. These two close
+   what nosniff can't:
+     default-src 'none'  nothing in one of these files may load or execute —
+                         no scripts, no fetch, no frames, whatever the type says
+     sandbox             the document gets an opaque origin, so even inline
+                         script can't reach cookies, storage or the API
+   Neither affects an <img src="/uploads/…"> on the frontend: a subresource is
+   loaded under the PAGE's policy, and these apply only when the file itself is
+   opened as a document. */
+app.use("/uploads", (_req, res, next) => {
+  res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+  next();
+});
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/uploads", express.static("uploads"));

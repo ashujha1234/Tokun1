@@ -432,13 +432,9 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
     const buyerDiscountCreditDoc = await CommissionRebate.findOne({
       userId: req.user._id,
       kind: "buyer_discount",
-      status: "RESERVED",
+      status: { $in: ["RESERVED", "USED"] },
       reservedForOrderId: String(razorpayOrderId || ""),
     }).lean();
-
-    const cartDiscountApplied = buyerDiscountCreditDoc
-      ? Number(buyerDiscountCreditDoc.amountPaid || 0)
-      : 0;
 
     /* The denominator for that share-out — what the cart came to before the
        discount, computed the same way checkout computed it. */
@@ -446,6 +442,32 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
       const s = splitPromptSale(item.prompt);
       return sum + Number(s.buyerPays || 0);
     }, 0);
+
+    /* Taken from the ORDER, with the credit row as the fallback — the same fix
+       as POST /api/purchase/verify, for the same reason.
+
+       Reading it off the credit alone recorded the full price whenever that
+       lookup came back empty, while the card had been charged the discounted
+       amount: the purchase rows said ₹1,030 on a sale paid at ₹978.50. And the
+       lookup can come back empty without the buyer doing anything wrong — the
+       reservation is released when a checkout looks abandoned, and
+       bindCreditToOrder's failure is logged rather than raised. Razorpay was
+       handed the discounted figure at checkout, so its order is the only record
+       that cannot disagree with the card. */
+    let cartDiscountApplied = null;
+    try {
+      const order = await razorpay.orders.fetch(String(razorpayOrderId));
+      const paise = Number(order?.amount_paid) || Number(order?.amount) || 0;
+      if (paise > 0) {
+        cartDiscountApplied = +Math.max(0, cartTotalBeforeDiscount - paise / 100).toFixed(2);
+      }
+    } catch (orderErr) {
+      console.error("Cart order fetch failed at verify:", orderErr?.message || orderErr);
+    }
+
+    if (cartDiscountApplied == null) {
+      cartDiscountApplied = Number(buyerDiscountCreditDoc?.amountPaid || 0);
+    }
 
     // Which sellers Razorpay already paid via a Route transfer on this order.
     // Looked up once for the whole payment rather than per item — a cart order

@@ -61,6 +61,19 @@ const PurchaseSchema = new mongoose.Schema(
     razorpayPaymentId: {
       type: String,
     },
+    /* The order the payment settled against.
+       POST /verify has always passed this to Purchase.create, but the field
+       didn't exist — mongoose drops unknown keys in strict mode, so every
+       purchase on record has no order id at all. That is the link between a
+       sale and the Razorpay order that carries the amount actually charged and
+       the discount in its notes; without it neither a refund nor a support
+       query can be checked against the payment. Absent on rows written before
+       this existed. */
+    razorpayOrderId: {
+      type: String,
+      index: true,
+      default: null,
+    },
     // Set only when the seller had an activated Route Linked Account at
     // purchase time — the order's transfers[] moved money there directly.
     routeTransferId: {

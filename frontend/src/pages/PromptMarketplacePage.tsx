@@ -7910,6 +7910,13 @@ const filteredPrompts = prompts.filter((p) => {
  
       const order = data.order;
 
+      /* Set the moment Razorpay hands us a successful payment, and read by
+         releaseHold below. Razorpay closes its own sheet on success and some
+         flows fire ondismiss on the way out; releasing the welcome discount
+         then would hand it back on a sale that DID happen, leaving verify with
+         nothing reserved for the order. */
+      let paid = false;
+
       // Razorpay Checkout
       const options: any = {
         // The server tells us which key it created this order under. Preferring
@@ -7940,6 +7947,7 @@ const filteredPrompts = prompts.filter((p) => {
           ...(user?.email ? { email: String(user.email) } : {}),
         },
         handler: async (response: any) => {
+          paid = true; // before anything that can throw — see releaseHold
           try {
             // [API #2] VERIFY PAYMENT
             const vr = await fetch(`${PURCHASE_BASE}/verify/${prompt.id}`, {
@@ -7999,8 +8007,10 @@ const filteredPrompts = prompts.filter((p) => {
          before anyone pays, so it has to be. Both are handed straight back if
          this checkout doesn't become a payment, otherwise the coupon is missing
          from the next attempt until the hourly sweeper releases it. */
-      const releaseHold = () =>
+      const releaseHold = () => {
+        if (paid) return; // the sale went through; the credit was spent, not abandoned
         releaseCheckoutHold({ token, orderId: order.id, promptId: prompt.id });
+      };
 
       options.modal = { ...(options.modal || {}), ondismiss: releaseHold };
 

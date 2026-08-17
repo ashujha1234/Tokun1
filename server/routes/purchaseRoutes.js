@@ -771,20 +771,51 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
       ? Math.min(split.sellerFee, waivedCredit.maxAmount)
       : 0;
 
-    /* And the buyer's side: did they spend a welcome discount on this order? */
-    const buyerCredit = await CommissionRebate.findOne({
-      userId: req.user._id,
-      kind: "buyer_discount",
-      status: "RESERVED",
-      reservedForOrderId: String(razorpayOrderId || ""),
-    }).lean();
+    /* And the buyer's side — read off the ORDER, not off the credit.
 
-    const buyerDiscount = buyerCredit ? Number(buyerCredit.amountPaid || 0) : 0;
+       This used to look up the reserved welcome discount and subtract its
+       amount. When that lookup came back empty the discount silently became
+       zero, and the sale was recorded at the full price while the card had been
+       charged the discounted one: a ₹1,030 purchase paid at ₹978.50 went into
+       the books as ₹1,030, which is what "My Products" then showed, and what a
+       refund would have paid back.
+
+       And it CAN come back empty for reasons that have nothing to do with the
+       buyer: the reservation is released if the checkout looks abandoned, and
+       bindCreditToOrder's failure is caught and logged rather than raised. The
+       credit row is a record of a decision, not the decision itself.
+
+       The order is. Razorpay was handed the discounted amount at create-order
+       time and that is what it charged, so fetching the order server-side gives
+       the one figure that cannot disagree with the card. `amount` is in paise.
+       (Fetched rather than taken from the request body, where `pricePaid` also
+       arrives — a client-named price decides what a refund pays out.) */
+    let chargedToBuyer = null;
+    try {
+      const order = await Razorpay.orders.fetch(String(razorpayOrderId));
+      const paise = Number(order?.amount_paid) || Number(order?.amount) || 0;
+      if (paise > 0) chargedToBuyer = +(paise / 100).toFixed(2);
+    } catch (orderErr) {
+      console.error("Order fetch failed at verify:", orderErr?.message || orderErr);
+    }
+
+    /* Falling back to the credit lookup, which is what this did all along, and
+       then to the undiscounted split. A sale must not fail to record because
+       Razorpay's API blinked — but the fallback is now the exception. */
+    if (chargedToBuyer == null) {
+      const buyerCredit = await CommissionRebate.findOne({
+        userId: req.user._id,
+        kind: "buyer_discount",
+        status: { $in: ["RESERVED", "USED"] },
+        reservedForOrderId: String(razorpayOrderId || ""),
+      }).lean();
+
+      chargedToBuyer = +(split.buyerPays - Number(buyerCredit?.amountPaid || 0)).toFixed(2);
+    }
+
+    const buyerDiscount = +Math.max(0, split.buyerPays - chargedToBuyer).toFixed(2);
 
     const sellerNet = +(split.sellerNet + commissionWaived).toFixed(2);
-    /* What the buyer was ACTUALLY charged. Razorpay took the discounted amount,
-       so recording the list figure would refund them more than they paid. */
-    const chargedToBuyer = +(split.buyerPays - buyerDiscount).toFixed(2);
     /* Kept as (what the buyer paid − what the seller got), the same identity
        splitPromptSale maintains. Deriving it any other way breaks refunds:
        the refund path recovers `pricePaid − platformCommission` from the

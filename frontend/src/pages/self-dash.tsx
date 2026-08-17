@@ -3039,7 +3039,13 @@ const handleAcceptRequest = async (item: any) => {
         const imageUrl = att?.type === "image" ? mediaPath : undefined;
         const videoUrl = att?.type === "video" ? mediaPath : undefined;
         const sales = Number(doc.sales ?? doc.purchases ?? doc.totalSales ?? doc.totalPurchases ?? doc.salesCount ?? doc.purchaseCount ?? doc.orderCount ?? 0);
-        const revenue = Number(doc.revenue ?? doc.totalRevenue ?? doc.totalEarning ?? doc.earnings ?? doc.cost ?? doc.totalCost ?? (sales * price) ?? 0);
+        /* No `sales * price` fallback. That was the last one in the chain, and
+           it is not a worse estimate of the seller's earnings — it is a
+           different quantity: what buyers spent, before commission. The server
+           sends `totalRevenue` (what was actually transferred) on every listing,
+           so reaching the fallback means the number is unknown, and 0 says that
+           honestly. */
+        const revenue = Number(doc.revenue ?? doc.totalRevenue ?? doc.totalEarning ?? doc.earnings ?? 0);
         return {
           id, title, description, category, price, rating,
           downloads: doc.downloads || 0, sales, revenue,
@@ -3127,7 +3133,22 @@ const handleAcceptRequest = async (item: any) => {
 
   /* ── Totals ── */
   const totalPurchasedBill = purchaseHistory.reduce((sum, p) => sum + (p.price || 0), 0);
-  const totalEarningsINR = uploadHistory.reduce((sum, p) => sum + ((p.sales ?? 0) * (p.price ?? 0)), 0);
+
+  /* What actually reached the seller's payout account, not what the listings
+     advertise.
+
+     This was `sales × price` — the list price times the number of sales, which
+     is the money the BUYERS spent, before Tokun's seller commission comes off
+     the top. On a ₹1,000 prompt the seller is transferred ₹900, so every sale
+     overstated their earnings by ₹100, and the figure grew further apart the
+     more they sold.
+
+     `revenue` is the right number and was already on the object: the server
+     keeps `Prompt.totalRevenue` as a running sum of exactly what was
+     transferred per sale — net of commission, and INCLUDING a Refer & Earn
+     commission-free sale, where the seller really did keep the full list price.
+     That is not something a multiplication here could ever have worked out. */
+  const totalEarningsINR = uploadHistory.reduce((sum, p) => sum + (p.revenue ?? 0), 0);
 
 
 
