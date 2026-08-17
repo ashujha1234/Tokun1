@@ -86,6 +86,7 @@ router.get("/me", requireAuth, async (req, res) => {
         minSaleAmount: cfg.REBATE_MIN_SALE_AMOUNT,
         expiryDays: cfg.REBATE_EXPIRY_DAYS,
         boostDays: cfg.BOOST_DAYS,
+        attributionDays: cfg.ATTRIBUTION_DAYS,
         monthlyCap: cfg.MAX_REWARDS_PER_MONTH,
         buyerDiscountPercent: cfg.BUYER_DISCOUNT_PERCENT,
         buyerDiscountMax: cfg.BUYER_DISCOUNT_MAX,

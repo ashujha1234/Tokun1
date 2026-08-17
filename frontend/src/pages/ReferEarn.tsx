@@ -34,6 +34,7 @@ type Terms = {
   minSaleAmount: number;
   expiryDays: number;
   boostDays: number;
+  attributionDays: number;
   monthlyCap: number;
   buyerDiscountPercent: number;
   buyerDiscountMax: number;
@@ -145,14 +146,14 @@ export default function ReferEarn() {
 
           <h1 className="mt-4 text-[28px] sm:text-[38px] font-semibold leading-tight tracking-tight">
             Invite a creator.
-            <br className="hidden sm:block" /> You both sell one prompt commission-free.
+            <br className="hidden sm:block" /> Sell your next prompt commission-free.
           </h1>
 
           <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed text-white/55">
-            When someone you invite makes their first sale on Tokun, you each get one prompt sale
-            with no Tokun commission at all — you keep the full list price, paid straight to your
-            bank like any other sale. They also get {t?.boostDays ?? 7} days at the top of the
-            marketplace.
+            When someone you invite makes their first sale on Tokun, your next prompt sale carries
+            no Tokun commission at all — you keep the full list price, paid straight to your bank
+            like any other sale. They get {t?.buyerDiscountPercent ?? 5}% off the moment they join,
+            and {t?.boostDays ?? 7} days at the top of the marketplace once they go live.
           </p>
         </section>
 
@@ -286,15 +287,26 @@ export default function ReferEarn() {
             {[
               {
                 head: "Share your link",
-                body: "Anyone who signs up through it is linked to you for 30 days.",
+                body: `Anyone who signs up through it is linked to you for ${t?.attributionDays ?? 30} days.`,
               },
               {
-                head: "They start selling",
-                body: "They set up their payout account, list a product, and make their first sale.",
+                /* Their side comes first and it is not conditional — this is the
+                   only part of the deal that pays out on the day they join, and
+                   it's what the person clicking your link actually gets. */
+                head: "They get a discount straight away",
+                body: t
+                  ? `${t.buyerDiscountPercent}% off their first purchase, up to ${rupees(t.buyerDiscountMax)}, applied automatically at checkout. Nothing for them to enter, and nothing taken off what any seller earns.`
+                  : "They get a discount on their first purchase, applied automatically at checkout.",
+              },
+              {
+                /* Said plainly, because it is the one condition people miss: an
+                   invite that only ever buys earns the referrer nothing. */
+                head: "They make their first sale",
+                body: "Your side is earned by a sale, not a purchase. They set up their payout account, list a product, and sell it.",
               },
               {
                 head: "The sale settles",
-                body: `24 hours later, once the refund window has passed, you both get a credit. Nothing pays out before that — a sale isn't final until it can't be refunded.`,
+                body: `24 hours later, once the refund window has passed, your credit lands. Nothing pays out before that — a sale isn't final until it can't be refunded.`,
               },
               {
                 head: "Your next sale is commission-free",
@@ -315,11 +327,15 @@ export default function ReferEarn() {
             ))}
           </ol>
 
+          {/* The invitee's side, stated once and completely — including the part
+              that is easy to leave out: their two rewards are alternatives, not
+              a pair, and which one they get is decided by what they do first. */}
           <p className="mt-3 text-[12px] leading-relaxed text-white/35">
-            Whoever you invite also gets {t?.buyerDiscountPercent ?? 5}% off their first purchase,
-            applied automatically at checkout. Prompt sales only — services and hire projects don't count yet. Up to{" "}
-            {t?.monthlyCap ?? 10} rewards a month. Self-referrals and accounts sharing a payout
-            identity don't qualify.
+            Whoever you invite gets one reward, not two — {t?.buyerDiscountPercent ?? 5}% off if they
+            buy first, or a commission-free sale of their own if they sell first. Either way their
+            products are featured for {t?.boostDays ?? 7} days once their first sale lands. Prompt
+            sales only — services and hire projects don't count yet. Up to {t?.monthlyCap ?? 10}{" "}
+            rewards a month. Self-referrals and accounts sharing a payout identity don't qualify.
           </p>
         </section>
 
