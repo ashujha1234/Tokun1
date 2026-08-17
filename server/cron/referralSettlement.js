@@ -67,8 +67,17 @@ cron.schedule("15 * * * *", async () => {
   try {
     const processed = await sweep();
     const expired = await expireOldCredits();
-    /* Checkouts that were opened and walked away from. Razorpay never tells us
-       an order was abandoned, so a held credit is freed on age alone. */
+    /* Checkouts that were opened and walked away from.
+
+       The backstop, not the main path: closing the payment sheet now releases
+       the hold immediately (POST /api/referrals/release-checkout), which is
+       what stops a cancelled purchase hiding the buyer's coupon for the rest
+       of the hour. This catches the tab that was closed mid-payment instead.
+
+       Still on age alone, and still an hour of it: Razorpay never tells us an
+       order was abandoned, and a UPI collect request can sit unanswered for
+       minutes. Release a hold on an order that is then paid and the credit
+       goes back to ACTIVE having already been spent — spendable twice. */
     const released = await releaseStaleReservations(60);
 
     if (processed || expired || released) {

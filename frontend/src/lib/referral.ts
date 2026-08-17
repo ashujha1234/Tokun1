@@ -74,3 +74,41 @@ export function clearStoredReferral() {
     /* nothing to do */
   }
 }
+
+const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/+$/, "");
+
+/**
+ * The buyer opened the payment sheet and closed it without paying.
+ *
+ * Creating the order reserves their welcome discount — that has to happen
+ * before they pay, because the money is already split by then. A reserved
+ * credit is invisible to the next checkout and to the coupon in the review
+ * dialog, so an abandoned attempt used to take the discount away for the hour
+ * it took the sweeper to notice. This gives it straight back.
+ *
+ * Fire-and-forget on purpose: the buyer has just cancelled something, and there
+ * is nothing useful to tell them if the release doesn't land. The hourly sweep
+ * still catches it.
+ */
+export function releaseCheckoutHold(opts: {
+  token?: string | null;
+  orderId?: string | null;
+  promptId?: string | number | null;
+}) {
+  if (!opts.orderId) return;
+
+  fetch(`${API_BASE}/api/referrals/release-checkout`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(opts.token ? { Authorization: `Bearer ${opts.token}` } : {}),
+    },
+    body: JSON.stringify({
+      orderId: String(opts.orderId),
+      promptId: opts.promptId != null ? String(opts.promptId) : undefined,
+    }),
+  }).catch(() => {
+    /* see above */
+  });
+}

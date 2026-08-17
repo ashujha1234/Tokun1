@@ -7,6 +7,7 @@
 // // // const User = require("../models/User");
 // // // const Organization = require("../models/organization");
 // // // const { getISTDateString } = require("../utils/quota");
+const { siteUrl } = require("../utils/siteUrl");
 // // // const { requireAuth } = require("../utils/auth"); // your existing middleware
 
 // // // function orgAssignableRemaining(org) {
@@ -2118,7 +2119,7 @@ router.post("/add", requireAuth, async (req, res) => {
            other consumer of the variable, because emails build their CTAs as
            `${SITE_URL}/self-dash` and were producing "/login/self-dash". The
            page each link wants belongs at the link, not in the variable. */
-        const base = (process.env.SITE_URL || "https://tokun.world").replace(/\/$/, "");
+        const base = siteUrl();
         const inviteUrl = `${base}/login?invite=${member._id}`;
 
         const html = invitationTemplate
@@ -2851,7 +2852,7 @@ router.post("/resend-invite/:memberId", requireAuth, async (req, res) => {
        The old expression also dropped the member id entirely — a template
        literal tagged onto a string, so the invite went to a bare login page
        with nothing identifying who was joining. */
-    const inviteBase = (process.env.SITE_URL || "https://tokun.world").replace(/\/$/, "");
+    const inviteBase = siteUrl();
     const inviteUrl = `${inviteBase}/login?invite=${member._id}`;
 
     // ✅ Build email HTML (use the template we created earlier)

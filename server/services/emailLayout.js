@@ -12,6 +12,7 @@
 // template in htmltemplate/invoiceEmail.html.
 
 const transporter = require("../utils/mailer");
+const { siteUrl } = require("../utils/siteUrl");
 
 /* The accent runs down the top bar, the eyebrow and any CTA. Picked by MEANING,
    not by taste — a creator learns to read the colour before the words:
@@ -28,7 +29,7 @@ const ACCENT = {
   brand: "#FF14EF",
 };
 
-const SITE = (process.env.SITE_URL || "https://tokun.world").replace(/\/$/, "");
+const SITE = siteUrl();
 
 function escapeHtml(str) {
   return String(str ?? "")

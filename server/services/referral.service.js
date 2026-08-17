@@ -237,10 +237,49 @@ async function qualifyReferral(referral, purchase) {
     return block("referred_not_eligible");
   }
 
-  await CommissionRebate.create([
-    rebateDoc(referral.referrerId, referral._id, "referrer"),
-    rebateDoc(referral.referredId, referral._id, "referred"),
-  ]);
+  /* ONE reward for the invited person — whichever they reach first.
+
+     They are handed a welcome discount the moment they sign up, and they reach
+     this line by making their first SALE. Issue the commission-free sale
+     unconditionally and someone who had already spent the discount on a
+     purchase collects twice off a single invite, both halves out of Tokun's cut
+     on sales it never chose.
+
+     So the two are mutually exclusive, resolved by whichever came first:
+       purchase completed (USED)    → no sale-side credit; nothing to revoke
+       anything else                → sale-side credit issued, and the discount
+                                      is revoked so it can't be spent later as
+                                      a second reward
+
+     Only a completed purchase counts as taken. A RESERVED credit is an order
+     that was built and not paid for, which is not a reward anybody received —
+     see UNSPENT above.
+
+     The REFERRER's credit is untouched by any of this: theirs is earned for
+     making the introduction, and it is the only thing they ever get. */
+  const welcome = await CommissionRebate.findOne({
+    userId: referral.referredId,
+    kind: "buyer_discount",
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const welcomeTaken = welcome?.status === "USED";
+
+  const toIssue = [rebateDoc(referral.referrerId, referral._id, "referrer")];
+  if (!welcomeTaken) toIssue.push(rebateDoc(referral.referredId, referral._id, "referred"));
+
+  await CommissionRebate.create(toIssue);
+
+  if (!welcomeTaken && welcome && UNSPENT.includes(welcome.status)) {
+    /* Held-but-unpaid is revoked along with untouched: the sale got there
+       first, so the discount was never theirs to spend. The guard keeps it
+       from stepping on a purchase that settles in the same moment. */
+    await CommissionRebate.updateOne(
+      { _id: welcome._id, status: { $in: UNSPENT } },
+      { $set: { status: "REVOKED", reservedAt: null, reservedForOrderId: "" } }
+    );
+  }
 
   /* The invited creator's other half of the reward. On the User rather than
      each Prompt, so listings they upload during the boost window are covered
@@ -261,13 +300,21 @@ async function qualifyReferral(referral, purchase) {
     `${referred.name || "Someone you invited"} made their first sale — your next prompt sale is commission-free.`,
     { referralId: String(referral._id) }
   );
+  /* Worded from what they actually got. Promising a commission-free sale to
+     someone who spent their reward on a purchase is the kind of message that
+     turns a perk into a support ticket. */
   await notify(
     referral.referredId,
-    `Your first sale is in. Your next one is commission-free, and your products are featured for ${cfg.BOOST_DAYS} days.`,
+    welcomeTaken
+      ? `Your first sale is in, and your products are featured for ${cfg.BOOST_DAYS} days. Your Refer & Earn reward went to your welcome discount.`
+      : `Your first sale is in. Your next one is commission-free, and your products are featured for ${cfg.BOOST_DAYS} days.`,
     { referralId: String(referral._id) }
   );
 
-  console.log(`[Referral] ${referral._id} qualified — two rebates issued.`);
+  console.log(
+    `[Referral] ${referral._id} qualified — ${toIssue.length} rebate(s) issued` +
+      (welcomeTaken ? " (invitee already spent their welcome discount)." : ".")
+  );
   return true;
 }
 
@@ -375,6 +422,101 @@ async function consumeReservedCredit({ sellerId, razorpayOrderId, purchaseId, am
 
 /* ───────────────────── THE BUYER'S SIDE ───────────────────── */
 
+/* The welcome discount belongs to the buyer until they actually spend it.
+ *
+ * "Spent" means one of exactly two things: a purchase completed (USED), or their
+ * first sale settled and the reward went there instead (REVOKED, see
+ * qualifyReferral). Anything else and it is still theirs.
+ *
+ * RESERVED is NOT spent. It only means an order was built with it, which happens
+ * before the buyer has paid or walked away — so treating it as gone made an
+ * abandoned checkout eat the discount: the coupon disappeared from the review
+ * dialog and the next order was billed at full price, for as long as an hour,
+ * over a purchase that never happened.
+ *
+ * So every read that asks "does this buyer still have their discount?" matches
+ * both, and a new checkout simply moves the hold to the new order.
+ */
+const UNSPENT = ["ACTIVE", "RESERVED"];
+
+/**
+ * What a welcome discount is worth on one sale.
+ *
+ * Three ceilings, and the last one is load-bearing.
+ *
+ * The discount comes out of Tokun's cut, never the seller's — the seller's
+ * transfer is built from the undiscounted split and must still fit inside what
+ * the buyer pays. Discount more than Tokun's whole cut and the transfer exceeds
+ * the payment, which Razorpay rejects outright.
+ *
+ * Pulled out into its own function because two callers need the identical
+ * answer: reserveBuyerDiscount, which builds the order, and previewBuyerDiscount,
+ * which is what the checkout modal shows. A second copy of this arithmetic is a
+ * modal that promises one figure and a card that gets charged another.
+ */
+function buyerDiscountAmount({ buyerPays, tokunCut, percent, maxAmount }) {
+  const raw = (Number(buyerPays) * Number(percent)) / 100;
+  return +Math.min(raw, Number(maxAmount), Number(tokunCut)).toFixed(2);
+}
+
+/**
+ * The same answer as reserveBuyerDiscount, with nothing claimed.
+ *
+ * The checkout modal has to name the figure before the buyer commits, and a
+ * preview that reserved the credit would burn it every time somebody opened the
+ * dialog and thought better of it.
+ *
+ * It reads the seller's reward too, because at checkout that one is settled
+ * first and comes out of the same pot — ignore it and the modal would offer a
+ * discount the order can't fund.
+ *
+ * @param {object} split the output of splitPromptSale for this listing
+ * @returns {{discount:number, percent:number, maxAmount:number, expiresAt:Date}|null}
+ */
+async function previewBuyerDiscount({ buyerId, sellerId, split }) {
+  const now = new Date();
+
+  const credit = await CommissionRebate.findOne({
+    userId: buyerId,
+    kind: "buyer_discount",
+    status: { $in: UNSPENT }, // a held-but-unpaid checkout still counts as theirs
+    expiresAt: { $gt: now },
+  })
+    .sort({ expiresAt: 1 }) // the one closest to expiring, as the reserve does
+    .lean();
+
+  if (!credit) return null;
+
+  const sellerCredit = await CommissionRebate.findOne({
+    userId: sellerId,
+    kind: "seller_commission",
+    status: "ACTIVE",
+    expiresAt: { $gt: now },
+    minSaleAmount: { $lte: split.listPrice },
+  })
+    .sort({ expiresAt: 1 })
+    .lean();
+
+  const waived = sellerCredit ? Math.min(split.sellerFee, sellerCredit.maxAmount) : 0;
+  const tokunCut = +(split.platformCut - waived).toFixed(2);
+
+  const discount = buyerDiscountAmount({
+    buyerPays: split.buyerPays,
+    tokunCut,
+    percent: credit.discountPercent,
+    maxAmount: credit.maxAmount,
+  });
+
+  if (discount <= 0) return null;
+
+  return {
+    discount,
+    percent: credit.discountPercent,
+    maxAmount: credit.maxAmount,
+    expiresAt: credit.expiresAt,
+  };
+}
+
 /**
  * Does this buyer have a welcome discount to spend on this order?
  *
@@ -385,11 +527,23 @@ async function consumeReservedCredit({ sellerId, razorpayOrderId, purchaseId, am
 async function reserveBuyerDiscount({ buyerId, buyerPays, tokunCut }) {
   const now = new Date();
 
+  /* Re-holds a credit this buyer already had reserved, rather than passing over
+     it. That reservation is one of their own abandoned checkouts — the hold
+     moves to the new order and the discount is theirs again.
+
+     Unlike the seller's credit, where matching only ACTIVE is what stops TWO
+     DIFFERENT buyers building commission-free orders off one seller's credit,
+     this one is scoped to a single account: the only person who can hold it is
+     the person it belongs to. The cost is a buyer who deliberately keeps two
+     discounted payment sheets open and pays both — the first payment burns the
+     credit (see consumeBuyerDiscount) and the second gets a discount with
+     nothing behind it. One extra discount, capped, and it takes intent. Losing
+     the coupon over a cancelled purchase was hitting everyone, by accident. */
   const credit = await CommissionRebate.findOneAndUpdate(
     {
       userId: buyerId,
       kind: "buyer_discount",
-      status: "ACTIVE",
+      status: { $in: UNSPENT },
       expiresAt: { $gt: now },
     },
     { $set: { status: "RESERVED", reservedAt: now, reservedForOrderId: "" } },
@@ -398,14 +552,13 @@ async function reserveBuyerDiscount({ buyerId, buyerPays, tokunCut }) {
 
   if (!credit) return null;
 
-  /* Three ceilings, and the last one is load-bearing.
-
-     The discount comes out of Tokun's cut, never the seller's — the seller's
-     transfer is built from the undiscounted split and must still fit inside
-     what the buyer pays. Discount more than Tokun's whole cut and the transfer
-     exceeds the payment, which Razorpay rejects outright. */
-  const raw = (Number(buyerPays) * Number(credit.discountPercent)) / 100;
-  const discount = +Math.min(raw, credit.maxAmount, tokunCut).toFixed(2);
+  // Same arithmetic the checkout modal previewed with — see buyerDiscountAmount.
+  const discount = buyerDiscountAmount({
+    buyerPays,
+    tokunCut,
+    percent: credit.discountPercent,
+    maxAmount: credit.maxAmount,
+  });
 
   if (discount > 0) {
     /* Parked on the credit so /verify reads back the exact figure the order was
@@ -428,24 +581,50 @@ async function reserveBuyerDiscount({ buyerId, buyerPays, tokunCut }) {
 
 /** The buyer paid the reduced amount — close the discount out. */
 async function consumeBuyerDiscount({ buyerId, razorpayOrderId, purchaseId, discount }) {
-  const credit = await CommissionRebate.findOneAndUpdate(
+  const spend = {
+    $set: {
+      status: "USED",
+      usedOnPurchaseId: purchaseId,
+      amountPaid: discount,
+      paidAt: new Date(),
+      reservedAt: null,
+    },
+  };
+
+  /* This order's own hold first. */
+  let credit = await CommissionRebate.findOneAndUpdate(
     {
       userId: buyerId,
       kind: "buyer_discount",
       status: "RESERVED",
       reservedForOrderId: String(razorpayOrderId || ""),
     },
-    {
-      $set: {
-        status: "USED",
-        usedOnPurchaseId: purchaseId,
-        amountPaid: discount,
-        paidAt: new Date(),
-        reservedAt: null,
-      },
-    },
+    spend,
     { new: true }
   );
+
+  /* Failing that, whatever unspent discount they still hold.
+
+     Reachable because a later checkout moves the hold (see
+     reserveBuyerDiscount): the buyer opens order A, opens order B, then pays A
+     — the credit is bound to B by then, so matching on the order id alone would
+     find nothing and a discount that WAS given would go unrecorded. Recording
+     it against the sale that actually happened is what makes the next order
+     find no credit, which is the whole point of spending it.
+
+     Safe against double-spend by construction: the update matches only unspent
+     statuses, so the second of two settled orders finds nothing left. */
+  if (!credit) {
+    credit = await CommissionRebate.findOneAndUpdate(
+      {
+        userId: buyerId,
+        kind: "buyer_discount",
+        status: { $in: UNSPENT },
+      },
+      spend,
+      { sort: { expiresAt: 1 }, new: true }
+    );
+  }
 
   if (credit) {
     await notify(
@@ -465,6 +644,55 @@ async function consumeBuyerDiscount({ buyerId, razorpayOrderId, purchaseId, disc
  * anything reserved longer than a checkout could plausibly stay open is free
  * again. Swept by cron/referralSettlement.js.
  */
+/**
+ * The buyer closed the payment sheet without paying — hand their credits back
+ * now instead of waiting for the timer.
+ *
+ * Without this a checkout that was opened and dismissed held the welcome
+ * discount as RESERVED for up to an hour, and RESERVED is invisible to both the
+ * checkout preview and the next order: the coupon vanished from the dialog and
+ * the next attempt was billed at full price. From the buyer's side they had
+ * cancelled a purchase and lost a discount they never spent.
+ *
+ * Scoped to the exact Razorpay order, so it can only ever release what that one
+ * checkout reserved. The buyer's own credit is matched on their user id too;
+ * the seller's is matched through the listing, since a buyer holds no claim on
+ * it beyond having opened this order.
+ *
+ * @returns {number} how many reservations were released
+ */
+async function releaseCheckoutReservations({ buyerId, sellerId, razorpayOrderId }) {
+  const orderId = String(razorpayOrderId || "");
+  if (!orderId) return 0;
+
+  const back = { $set: { status: "ACTIVE", reservedAt: null, reservedForOrderId: "" } };
+
+  const [buyer, seller] = await Promise.all([
+    CommissionRebate.updateMany(
+      {
+        userId: buyerId,
+        kind: "buyer_discount",
+        status: "RESERVED",
+        reservedForOrderId: orderId,
+      },
+      back
+    ),
+    sellerId
+      ? CommissionRebate.updateMany(
+          {
+            userId: sellerId,
+            kind: "seller_commission",
+            status: "RESERVED",
+            reservedForOrderId: orderId,
+          },
+          back
+        )
+      : Promise.resolve({ modifiedCount: 0 }),
+  ]);
+
+  return (buyer.modifiedCount || 0) + (seller.modifiedCount || 0);
+}
+
 async function releaseStaleReservations(minutes = 60) {
   const cutoff = new Date(Date.now() - minutes * 60 * 1000);
 
@@ -521,6 +749,8 @@ module.exports = {
   bindCreditToOrder,
   consumeReservedCredit,
   reserveBuyerDiscount,
+  previewBuyerDiscount,
   consumeBuyerDiscount,
+  releaseCheckoutReservations,
   releaseStaleReservations,
 };

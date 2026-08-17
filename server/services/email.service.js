@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const transporter = require("../utils/mailer");
+const { siteUrl: site } = require("../utils/siteUrl");
 const { getPrivacyPolicyPDF } = require("./privacyPolicyPdf.service");
 const { PLAN_CARD_CONTENT, PLAN_GRADIENTS } = require("../config/planCardContent");
 const { getInvoiceCopy } = require("../config/invoiceCopy");
@@ -55,7 +56,7 @@ function buildPlanCardHtml(planCard) {
   const proGrad = PLAN_GRADIENTS.pro;
   const cycle = planCard.billingCycle === "yearly" ? "year" : "month";
   const price = `₹${Number(planCard.price ?? 0).toLocaleString("en-IN")}`;
-  const siteUrl = process.env.SITE_URL || "https://tokun.world";
+  const siteUrl = site();
 
   const extrasHtml = content.extras
     .map((e) => {

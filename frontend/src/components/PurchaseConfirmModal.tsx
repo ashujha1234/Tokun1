@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { ImageOff, Lock, ShieldCheck, X } from "lucide-react";
+import { Check, ImageOff, Lock, ShieldCheck, Tag, X } from "lucide-react";
+
+import { useAuth } from "@/contexts/AuthContext";
 
 /**
  * The review step between "Buy Now" and Razorpay.
@@ -32,6 +34,29 @@ export type PurchasePreviewPrompt = {
   exclusive?: boolean;
 };
 
+/**
+ * The server's own read of this listing: what it charges, and whether the
+ * buyer's Refer & Earn welcome discount applies to it.
+ *
+ * Priced at live rates, so it is the figure Razorpay will be given — the props
+ * below are whatever the calling page had to hand, and some callers carry no
+ * tokun_price at all.
+ */
+type CheckoutPreview = {
+  available: boolean;
+  listPrice: number;
+  platformFee: number;
+  total: number;
+  payable: number;
+  /** Coupon fields, present only when `available`. */
+  code?: string;
+  percent?: number;
+  /** Rupees off, already capped — the exact figure order creation will use. */
+  discount?: number;
+};
+
+const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/+$/, "");
+
 const inr = (value: number) =>
   `₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -49,13 +74,51 @@ export default function PurchaseConfirmModal({
   /** True while the order is being created, so the button can't be double-fired. */
   busy?: boolean;
 }) {
+  const { token } = useAuth() as any;
   const [agreed, setAgreed] = useState(false);
+  const [quote, setQuote] = useState<CheckoutPreview | null>(null);
+  const [applied, setApplied] = useState(false);
 
   // Consent is per purchase. Carrying a tick over from the last prompt would
   // mean the second thing someone bought was never actually agreed to.
   useEffect(() => {
     if (open) setAgreed(false);
   }, [open, prompt?.id]);
+
+  /* Priced afresh each time the dialog opens.
+
+     Per listing because the discount is capped against Tokun's cut on that one
+     sale, so it genuinely differs between prompts — and live because the credit
+     may have been spent in another tab since the page loaded. */
+  useEffect(() => {
+    if (!open || !prompt?.id) return;
+
+    let cancelled = false;
+    setQuote(null);
+    setApplied(false);
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/referrals/checkout-preview/${prompt.id}`,
+          {
+            credentials: "include",
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          }
+        );
+        const json = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok && json?.success) setQuote(json);
+      } catch {
+        // Falls back to the figures the page passed in, and nothing is blocked.
+        // Order creation applies the credit either way, so the worst case is a
+        // buyer charged less than the dialog quoted — never more.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, prompt?.id, token]);
 
   useEffect(() => {
     if (!open) return;
@@ -68,13 +131,29 @@ export default function PurchaseConfirmModal({
 
   if (!open || !prompt) return null;
 
-  const listPrice = Number(prompt.price || 0);
-  /* Falls back to the list price rather than 0 — a listing saved before the
-     fee existed carries no tokun_price, and it is sold at its list price. */
-  const total = Number(prompt.tokunPrice || 0) > 0 ? Number(prompt.tokunPrice) : listPrice;
+  /* The server's quote wins wherever it arrived: it is priced at live rates and
+     is what Razorpay will be given. The props are the fallback, for the moment
+     before it lands and for the case where it never does.
+
+     tokunPrice falls back to the list price rather than 0 — a listing saved
+     before the fee existed carries no tokun_price and is sold at its list
+     price. */
+  const listPrice = quote ? quote.listPrice : Number(prompt.price || 0);
+  const total = quote
+    ? quote.total
+    : Number(prompt.tokunPrice || 0) > 0
+      ? Number(prompt.tokunPrice)
+      : Number(prompt.price || 0);
   // One line, because that is how it is charged: the fee and the GST on it are
   // never taken apart anywhere the buyer can act on them.
-  const platformFee = Math.max(0, +(total - listPrice).toFixed(2));
+  const platformFee = quote ? quote.platformFee : Math.max(0, +(total - listPrice).toFixed(2));
+
+  // The coupon half of the quote. `couponValue` is what it is worth on this
+  // listing; `discount` is what comes off the bill, which is zero until applied.
+  const coupon = quote?.available ? quote : null;
+  const couponValue = Number(coupon?.discount || 0);
+  const discount = applied && coupon ? couponValue : 0;
+  const payable = applied && coupon ? coupon.payable : total;
 
   const preview = prompt.imageUrl || prompt.videoUrl;
 
@@ -147,6 +226,85 @@ export default function PurchaseConfirmModal({
             </div>
           </div>
 
+          {/* The welcome discount, for a buyer who was invited by someone and
+              hasn't spent it yet.
+
+              Filled in and read only: there is nothing to type. The credit sits
+              on the account, not behind a string somebody could guess, and a box
+              you can edit invites a buyer to try codes that were never going to
+              work. The button is the whole interaction — it's here so the saving
+              is something they DO, and see land on the total, rather than a
+              number that was quietly different from the listing all along. */}
+          {coupon && (
+            <div
+              className={`mt-4 rounded-xl border p-4 transition-colors ${
+                applied
+                  ? "border-emerald-500/30 bg-emerald-500/[0.07]"
+                  : "border-white/10 bg-white/[0.03]"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Tag className={`h-3.5 w-3.5 ${applied ? "text-emerald-300" : "text-white/40"}`} />
+                <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">
+                  {applied ? "Coupon applied" : "You have a coupon"}
+                </p>
+              </div>
+
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <input
+                  readOnly
+                  value={coupon.code}
+                  aria-label="Your welcome coupon"
+                  className={`min-w-0 flex-1 rounded-lg border bg-black/30 px-3 py-2.5 font-mono text-[15px] font-bold tracking-[0.14em] outline-none ${
+                    applied
+                      ? "border-emerald-500/30 text-emerald-300"
+                      : "border-dashed border-white/20 text-white"
+                  }`}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setApplied(true)}
+                  disabled={applied || busy}
+                  className={`h-[42px] shrink-0 rounded-lg px-4 text-[13px] font-semibold transition ${
+                    applied
+                      ? "cursor-default bg-emerald-500/15 text-emerald-300"
+                      : "text-white hover:opacity-90"
+                  }`}
+                  style={
+                    applied
+                      ? undefined
+                      : { background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)" }
+                  }
+                >
+                  {applied ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Check className="h-3.5 w-3.5" /> Applied
+                    </span>
+                  ) : (
+                    "Apply"
+                  )}
+                </button>
+              </div>
+
+              <p className="mt-2 text-[12px] leading-relaxed text-white/45">
+                {applied ? (
+                  <>
+                    <span className="font-semibold text-emerald-300">
+                      {coupon.percent}% off — you save {inr(couponValue)}
+                    </span>{" "}
+                    on this purchase.
+                  </>
+                ) : (
+                  <>
+                    {coupon.percent}% off your first purchase, from the invite you signed up
+                    with. Worth {inr(couponValue)} on this listing.
+                  </>
+                )}
+              </p>
+            </div>
+          )}
+
           <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-2.5">
             <div className="flex items-center justify-between text-[13px]">
               <span className="text-white/60">Product price</span>
@@ -156,10 +314,27 @@ export default function PurchaseConfirmModal({
               <span className="text-white/60">Platform fee (incl. GST)</span>
               <span className="text-white/90">{inr(platformFee)}</span>
             </div>
+
+            {discount > 0 && (
+              <div className="flex items-center justify-between text-[13px]">
+                <span className="text-emerald-300/85">
+                  Welcome discount ({coupon?.percent}%)
+                </span>
+                <span className="font-semibold text-emerald-300">−{inr(discount)}</span>
+              </div>
+            )}
+
             <div className="h-px bg-white/10" />
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold">Total payable</span>
-              <span className="text-lg font-bold">{inr(total)}</span>
+              <span className="flex items-baseline gap-2">
+                {discount > 0 && (
+                  // The old total stays on screen next to the new one — a price
+                  // that simply changes is a price you have to take on trust.
+                  <span className="text-[13px] text-white/35 line-through">{inr(total)}</span>
+                )}
+                <span className="text-lg font-bold">{inr(payable)}</span>
+              </span>
             </div>
           </div>
 
@@ -232,7 +407,7 @@ export default function PurchaseConfirmModal({
             className="flex-1 h-11 rounded-full text-sm font-semibold text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ background: "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)" }}
           >
-            {busy ? "Opening payment…" : `Pay ${inr(total)}`}
+            {busy ? "Opening payment…" : `Pay ${inr(payable)}`}
           </button>
         </div>
       </div>

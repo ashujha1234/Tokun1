@@ -181,6 +181,14 @@ export default function ReferEarn() {
               <p className="text-[14px] text-white/45">
                 Your welcome discount has expired.
               </p>
+            ) : data.welcomeDiscount.status === "REVOKED" ? (
+              /* An invite pays out once. This one's holder sold before they
+                 bought, so the reward went to the sale instead — said plainly,
+                 because a discount that silently stops working reads as a bug. */
+              <p className="text-[14px] text-white/60">
+                You made your first sale before spending this, so your reward went there
+                instead — your next prompt sale is commission-free.
+              </p>
             ) : (
               <>
                 <p className="text-[11px] uppercase tracking-[0.14em] text-emerald-300/70">

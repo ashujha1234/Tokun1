@@ -12,6 +12,8 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import AppNavigation from "@/components/AppNavigation";
 import DetailsPrompt from "@/components/DetailsPrompt";
+import PurchaseConfirmModal from "@/components/PurchaseConfirmModal";
+import { releaseCheckoutHold } from "@/lib/referral";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCart } from "@/contexts/CartContext";
 
@@ -796,6 +798,11 @@ const PromptMarketplacePage = () => {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsPrompt, setDetailsPrompt] = useState<any>(null);
 
+  // The review sheet between Buy Now and Razorpay. `confirmBusy` is what keeps
+  // the button from firing a second create-order while the first is in flight.
+  const [confirmPrompt, setConfirmPrompt] = useState<any>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+
   const [rzpReady, setRzpReady] = useState(false);
 
   /* ---------- Load Razorpay checkout script once ---------- */
@@ -916,6 +923,13 @@ const PromptMarketplacePage = () => {
   };
 
   /* ---------- Purchase flow (same Razorpay create-order/verify pattern as Prompt Marketplace) ---------- */
+
+  /* Buy Now stops here now, at the same review sheet the marketplace shows.
+
+     It used to go straight to Razorpay, so this page charged list price + fee
+     with the fee named nowhere, and an invited buyer's welcome discount came
+     off a total they had never been shown. Same dialog, same component, so the
+     two pages can't drift into quoting different numbers for one listing. */
   const handlePurchase = async (detailsP: any) => {
     const promptId = String(detailsP.id);
     const prompt = prompts.find((p) => p.id === promptId);
@@ -931,6 +945,14 @@ const PromptMarketplacePage = () => {
       toast({ title: "Loading payment…", description: "still initializing." });
       return;
     }
+
+    setConfirmPrompt(detailsP);
+  };
+
+  /* Everything past the review sheet — unchanged, only moved. */
+  const startPayment = async (detailsP: any) => {
+    const promptId = String(detailsP.id);
+    setConfirmBusy(true);
 
     try {
       const res = await fetch(`${PURCHASE_BASE}/create-order/${promptId}`, {
@@ -991,14 +1013,32 @@ const PromptMarketplacePage = () => {
         },
       };
 
+      /* Creating the order reserved the buyer's welcome discount, and the
+         seller's credit if they hold one — the split is fixed before anyone
+         pays, so it has to be. Handed straight back if this never becomes a
+         payment, otherwise the coupon is gone from the next attempt until the
+         hourly sweeper releases it. */
+      const releaseHold = () =>
+        releaseCheckoutHold({ token, orderId: order.id, promptId });
+
+      options.modal = { ...(options.modal || {}), ondismiss: releaseHold };
+
       const rzp = new (window as any).Razorpay(options);
       rzp.on("payment.failed", () => {
+        releaseHold();
         toast({ title: "Payment Failed", description: "Please try again." });
       });
       rzp.open();
+
+      // The sheet is up and owns the screen from here — close the review behind
+      // it, so dismissing Razorpay doesn't drop the buyer back onto a dialog
+      // whose "Pay" button would open a second one.
+      setConfirmPrompt(null);
     } catch (err: any) {
       console.error("Purchase flow error", err);
       toast({ title: "Purchase Error", description: err?.message || "Something went wrong." });
+    } finally {
+      setConfirmBusy(false);
     }
   };
 
@@ -1090,6 +1130,19 @@ const PromptMarketplacePage = () => {
         prompt={detailsPrompt}
         owned={detailsPrompt ? purchasedPrompts.includes(String(detailsPrompt.id)) : false}
         onPurchase={handlePurchase}
+      />
+
+      {/* Review step for Buy Now — the price breakdown, the welcome discount if
+          the buyer has one, and the terms — before any payment sheet opens. */}
+      <PurchaseConfirmModal
+        open={!!confirmPrompt}
+        prompt={confirmPrompt}
+        busy={confirmBusy}
+        onClose={() => {
+          if (confirmBusy) return;
+          setConfirmPrompt(null);
+        }}
+        onConfirm={() => confirmPrompt && startPayment(confirmPrompt)}
       />
     </div>
   );

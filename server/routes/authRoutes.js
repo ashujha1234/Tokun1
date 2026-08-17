@@ -1,6 +1,7 @@
 // routes/authRoutes.js
 const express = require("express");
 const dns = require("dns").promises;
+const { siteUrl } = require("../utils/siteUrl");
 const crypto = require("crypto");
 const {rateLimit , ipKeyGenerator }= require("express-rate-limit");
 const jwt = require("jsonwebtoken");
@@ -183,7 +184,7 @@ await sendEmail({
   html: buildOtpEmailHtml({
     name: user.name,
     otp,                       // e.g., "4821" or "935612"
-    siteUrl: process.env.SITE_URL || "https://tokun.world",
+    siteUrl: siteUrl(),
   }),
 });
 
@@ -360,7 +361,7 @@ if (userType === "ORG" && orgName && !user.orgId) {
       html: buildOtpEmailHtml({
         name: user.name,
         otp,
-        siteUrl: process.env.SITE_URL || "https://tokun.world",
+        siteUrl: siteUrl(),
       }),
     });
 
@@ -639,7 +640,7 @@ await sendEmail({
   html: buildOtpEmailHtml({
     name: user.name,
     otp,
-    siteUrl: process.env.SITE_URL || "https://tokun.world",
+    siteUrl: siteUrl(),
   }),
 
 });

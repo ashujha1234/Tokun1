@@ -1,6 +1,7 @@
 // // const express = require("express");
 // // const router = express.Router();
 // // const Notification = require("../models/Notification");
+const { siteUrl } = require("../utils/siteUrl");
 // // const SharedPrompt = require("../models/SharedPrompt");
 // // const Organization = require("../models/organization");
 // // const Prompt = require("../models/Prompt");
@@ -1102,7 +1103,7 @@ const finalMessage = `${senderName} invited you to collaborate on a prompt in To
     // 3️⃣ Send email invite
     try {
           const inviteUrl =
-  `${process.env.SITE_URL || "https://tokun.world"}/prompt-optimization?sessionId=${encodeURIComponent(sessionId)}`;
+  `${siteUrl()}/prompt-optimization?sessionId=${encodeURIComponent(sessionId)}`;
  // 👈 nice UX: direct collab link
       const html = inviteCollaborativeTemplate
         .replace(/{{Name}}/g, name || receiverUser.name || "there")

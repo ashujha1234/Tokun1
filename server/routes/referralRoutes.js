@@ -8,22 +8,22 @@ const express = require("express");
 const router = express.Router();
 
 const User = require("../models/User");
+const Prompt = require("../models/Prompt");
 const Referral = require("../models/Referral");
 const CommissionRebate = require("../models/CommissionRebate");
 const { requireAuth } = require("../utils/auth");
-const { getOrCreateReferralCode } = require("../services/referral.service");
+const {
+  getOrCreateReferralCode,
+  previewBuyerDiscount,
+  releaseCheckoutReservations,
+} = require("../services/referral.service");
+const { splitPromptSale } = require("../utils/commission");
+const { siteUrl } = require("../utils/siteUrl");
 const cfg = require("../config/referral");
 
-/* The www host, not the apex, and that is not cosmetic.
-   tokun.world 301s to www.tokun.world and the redirect drops the query string:
-       GET https://tokun.world/?ref=ABC1234  →  Location: https://www.tokun.world
-   An invite link built on the apex therefore arrives with no ?ref= at all, the
-   code is never stored (lib/referral.ts reads it on boot), signup sends nothing,
-   and the invited person never appears under "Your invites" — the whole
-   programme fails silently, with every piece of it working.
-   Set SITE_URL to the www host in the backend env; this default only decides
-   what happens when nobody has. */
-const SITE = (process.env.SITE_URL || "https://www.tokun.world").replace(/\/$/, "");
+/* Always the www host — an invite link on the apex is a dead link, and the
+   reason is worth reading once: see utils/siteUrl.js. */
+const SITE = siteUrl();
 
 /* What an invited person's progress looks like from the referrer's side.
    Deliberately vague about the other person's business — "made their first
@@ -133,6 +133,119 @@ router.get("/me", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("GET /api/referrals/me error:", err);
     return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   GET /api/referrals/checkout-preview/:promptId
+
+   What the welcome discount is worth on ONE listing, for the review dialog
+   behind "Buy Now".
+
+   The discount has always been applied — silently, inside order creation, where
+   the buyer met it for the first time as a total that didn't match the listing.
+   This is the same figure, named before they commit.
+
+   Read-only, deliberately: opening a dialog and closing it again must not spend
+   anything. The credit is still claimed at order creation, and it recomputes
+   from the same helper, so the number here is the number charged.
+   ══════════════════════════════════════════════════════════════════════════ */
+router.get("/checkout-preview/:promptId", requireAuth, async (req, res) => {
+  try {
+    const prompt = await Prompt.findById(req.params.promptId)
+      .select("price tokun_price free userId")
+      .lean();
+
+    // Not found, free, or priced at zero. `available: false` rather than a 404:
+    // the dialog asks about every listing and has nothing to say about most.
+    if (!prompt || prompt.free) return res.json({ success: true, available: false });
+
+    const split = splitPromptSale(prompt);
+    if (split.buyerPays <= 0) return res.json({ success: true, available: false });
+
+    /* The breakdown goes back whether or not there's a coupon on it.
+
+       The dialog's own figures come from whatever the page happened to hand it,
+       and some callers don't carry a tokun_price at all — those drew the fee as
+       ₹0 and quoted the list price as the total. These come from splitPromptSale
+       at live rates, which is what order creation charges, so the dialog can
+       show the real numbers to everybody and not just to the invited. */
+    const pricing = {
+      listPrice: split.listPrice,
+      platformFee: +(split.buyerPays - split.listPrice).toFixed(2),
+      total: split.buyerPays,
+    };
+
+    const held = await previewBuyerDiscount({
+      buyerId: req.user._id,
+      sellerId: prompt.userId,
+      split,
+    });
+
+    if (!held) {
+      return res.json({ success: true, available: false, ...pricing, payable: pricing.total });
+    }
+
+    return res.json({
+      success: true,
+      available: true,
+
+      /* A label, not a key. The credit is tied to the account, so there is
+         nothing for the server to look up and nothing a buyer could type in to
+         obtain one — the field in the dialog is filled in for them and read
+         only. It exists because "you have a discount" reads as marketing copy,
+         and a coupon in a box reads as money. */
+      code: `WELCOME${held.percent}`,
+      percent: held.percent,
+      discount: held.discount,
+      maxAmount: held.maxAmount,
+      expiresAt: held.expiresAt,
+
+      ...pricing,
+      payable: +(split.buyerPays - held.discount).toFixed(2),
+    });
+  } catch (err) {
+    console.error("GET /api/referrals/checkout-preview error:", err);
+    // A broken preview must never block a purchase — the dialog just shows the
+    // undiscounted total, and order creation still applies the credit.
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   POST /api/referrals/release-checkout
+
+   Called when the payment sheet is dismissed or the payment fails. Hands back
+   whatever that checkout had reserved, so the buyer's coupon is there again on
+   the next attempt instead of an hour later.
+
+   Body: { orderId, promptId }
+   ══════════════════════════════════════════════════════════════════════════ */
+router.post("/release-checkout", requireAuth, async (req, res) => {
+  try {
+    const orderId = String(req.body?.orderId || "").trim();
+    if (!orderId) return res.json({ success: true, released: 0 });
+
+    // Only to find the seller whose credit this order may hold. A missing or
+    // unknown prompt just means the buyer's own discount is released alone.
+    let sellerId = null;
+    if (req.body?.promptId) {
+      const prompt = await Prompt.findById(req.body.promptId).select("userId").lean();
+      sellerId = prompt?.userId || null;
+    }
+
+    const released = await releaseCheckoutReservations({
+      buyerId: req.user._id,
+      sellerId,
+      razorpayOrderId: orderId,
+    });
+
+    return res.json({ success: true, released });
+  } catch (err) {
+    console.error("POST /api/referrals/release-checkout error:", err);
+    // The hourly sweep is the backstop, so a failure here costs a delay and
+    // nothing else. Never worth surfacing to someone who just closed a dialog.
+    return res.json({ success: true, released: 0 });
   }
 });
 

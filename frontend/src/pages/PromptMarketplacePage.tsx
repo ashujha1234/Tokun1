@@ -5803,6 +5803,7 @@ import ModalComponent from "@/components/ModalComponent";
 import { ShoppingCart, Clock, Info, Lock } from "lucide-react";
 import KycGateModal from "@/components/KycGateModal";
 import PurchaseConfirmModal from "@/components/PurchaseConfirmModal";
+import { releaseCheckoutHold } from "@/lib/referral";
 import { useCart } from "@/contexts/CartContext";
 import SellPromptModal from "@/components/SellPromptModal";
 import SellerLinkedAccountForm from "@/components/SellerLinkedAccountForm";
@@ -7993,8 +7994,19 @@ const filteredPrompts = prompts.filter((p) => {
         },
       };
 
+      /* Creating the order above reserved the buyer's welcome discount (and the
+         seller's commission credit, if either exists) — the split is fixed
+         before anyone pays, so it has to be. Both are handed straight back if
+         this checkout doesn't become a payment, otherwise the coupon is missing
+         from the next attempt until the hourly sweeper releases it. */
+      const releaseHold = () =>
+        releaseCheckoutHold({ token, orderId: order.id, promptId: prompt.id });
+
+      options.modal = { ...(options.modal || {}), ondismiss: releaseHold };
+
       const rzp = new (window as any).Razorpay(options);
       rzp.on("payment.failed", function () {
+        releaseHold();
         toast({ title: "Payment Failed", description: "Please try again." });
       });
 
