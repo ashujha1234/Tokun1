@@ -301,7 +301,7 @@ const LINK_GROUPS: { heading: string; links: { label: string; href: string }[] }
   {
     heading: "Product",
     links: [
-      { label: "Prompt Verse", href: "/prompt-marketplace" },
+      { label: "Product Verse", href: "/prompt-marketplace" },
       // "Product Library" was here and has been removed on request.
       { label: "SmartGen", href: "/smartgen" },
       { label: "Prompt Optimizer", href: "/prompt-optimization" },

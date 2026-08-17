@@ -6376,14 +6376,14 @@ const LibHeroBanner = ({
     <div className="relative z-10 px-6 sm:px-10 py-16 sm:py-24 flex flex-col items-center text-center">
       {/* Now that the image shows through, the copy can't rely on the scrim
           alone — a shadow keeps it legible if it lands on a bright patch. */}
-      {/* "Prompt Verse" — the name this page goes by everywhere else now (the
+      {/* "Product Verse" — the name this page goes by everywhere else now (the
           footer link and the app nav both say it). The gradient stays on the
           second word, matching the treatment this heading already had. */}
       <h1
         className="mt-4 text-white text-[32px] sm:text-[44px] md:text-[52px] font-semibold leading-[1.05]"
         style={{ fontFamily: "Inter", textShadow: "0 2px 24px rgba(0,0,0,0.55)" }}
       >
-        Prompt{" "}
+        Product{" "}
         <span style={{ background: GRADIENT_90, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
           Verse
         </span>

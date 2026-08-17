@@ -11998,6 +11998,7 @@ import { useFreelancerMenu } from '@/hooks/useFreelancerMenu'
 // footer (Refund Policy, Report Policy) never showed up on the landing page.
 import Footer from '@/components/Footer'
 import CookieConsentBanner from '@/components/CookieConsentBanner'
+import CanvasErrorBoundary from '@/components/CanvasErrorBoundary'
 import { prefetchLandingRoutes } from '@/lib/prefetchRoutes'
 import './landing-page.css'
 
@@ -12650,7 +12651,7 @@ function TokunTitle() {
    ============================================================ */
 
 const QUIET = 'Enter the'
-const ACCENT = 'Promptverse'
+const ACCENT = 'Productverse'
 const FULL_TEXT = `${QUIET} ${ACCENT}`
 
 const TYPE_MS = 85
@@ -13341,7 +13342,7 @@ function Hero() {
         >
           <GradientButton variant="primary" to={ROUTES.smartgen}>Try Smartgen</GradientButton>
           <Link to={ROUTES.marketplace} className="hero-btn hero-btn--ghost">
-            <span className="hero-btn__text">Product Marketplace</span>
+            <span className="hero-btn__text">Product Verse</span>
           </Link>
         </motion.div>
 
@@ -13398,7 +13399,7 @@ const OFFERS = [
   {
     num: '01',
     icon: Zap,
-    title: 'Product Optimization',
+    title: 'Prompt Optimization',
     description:
       'Reduce token usage by up to 60% while maintaining meaning and effectiveness across all LLM platforms.',
     accent: '#38bdf8',
@@ -13414,7 +13415,7 @@ const OFFERS = [
   {
     num: '03',
     icon: TrendingUp,
-    title: 'Product Marketplace',
+    title: 'Product Verse',
     description:
       'Built a great product? Trade it. Monetize your creativity and earn from your best product innovations.',
     accent: '#ec4899',
@@ -13516,7 +13517,16 @@ function WhatWeOffer() {
    LaptopDemo
    ============================================================ */
 
-const TABS = ['Smartgen', 'Prompt Optimiser', 'Product Marketplace', 'Product Library']
+/* The mock UI's tab strip. "Product Library" was the fourth one and is gone —
+   the library is a signed-in tool and is already hidden from the app nav and the
+   footer, so advertising it here sent people to something they can't see.
+
+   ACTIVE_TAB is named rather than compared inline because the tab that was
+   removed was ALSO the highlighted one: dropping it from this array left the
+   strip with nothing active at all, and the next person to edit the list would
+   have hit the same thing. */
+const TABS = ['Smartgen', 'Prompt Optimiser', 'Product Verse']
+const ACTIVE_TAB = 'Product Verse'
 
 const SAVED_ITEMS = [
   { title: 'SEO Blog Writer', tag: 'Marketing', tokens: '-42%' },
@@ -13568,7 +13578,7 @@ function LaptopDemo() {
                 {TABS.map((tab) => (
                   <span
                     key={tab}
-                    className={`laptop-ui__tab${tab === 'Product Library' ? ' laptop-ui__tab--active' : ''}`}
+                    className={`laptop-ui__tab${tab === ACTIVE_TAB ? ' laptop-ui__tab--active' : ''}`}
                   >
                     {tab}
                   </span>
@@ -13927,7 +13937,12 @@ const LandingGlobeCanvas = lazy(() => import('./LandingGlobeCanvas'))
    heading and then a hole — indistinguishable from something that had failed.
    A ring that is visibly waiting is not faster, but it is honest, and it stops
    people staring at a gap wondering whether to reload. */
-function GlobeFallback() {
+/* `waiting` is the difference between "not here yet" and "not coming".
+   The globe is skipped outright when the browser has no WebGL, and shown by the
+   error boundary when it fails — in both of those it is never going to arrive, so
+   a pulsing "LOADING GLOBE" would sit there lying about it forever. Same artwork,
+   honest label, and no aria-busy on a thing that has stopped waiting. */
+function GlobeFallback({ waiting = true }: { waiting?: boolean }) {
   return (
     <div
       style={{
@@ -13936,8 +13951,8 @@ function GlobeFallback() {
         display: 'grid',
         placeItems: 'center',
       }}
-      aria-busy="true"
-      aria-label="Loading the 3D globe"
+      aria-busy={waiting || undefined}
+      aria-label={waiting ? 'Loading the 3D globe' : 'Global community'}
     >
       <div
         style={{
@@ -13949,11 +13964,11 @@ function GlobeFallback() {
             'radial-gradient(circle at 50% 40%, rgba(124,58,237,0.14) 0%, rgba(37,99,235,0.06) 55%, transparent 72%)',
           display: 'grid',
           placeItems: 'center',
-          animation: 'globeFallbackPulse 1.8s ease-in-out infinite',
+          animation: waiting ? 'globeFallbackPulse 1.8s ease-in-out infinite' : 'none',
         }}
       >
         <span style={{ fontSize: 11, letterSpacing: '0.14em', color: 'rgba(255,255,255,0.35)' }}>
-          LOADING GLOBE
+          {waiting ? 'LOADING GLOBE' : 'TOKUN.WORLD'}
         </span>
       </div>
     </div>
@@ -14079,6 +14094,32 @@ function GlobeSection() {
      thing left to buy is time, and this buys about four times as much. */
   const globeNear = useInView(canvasHostRef, { once: true, margin: '1200px' })
 
+  /* Can this browser actually give us a WebGL context?
+
+     Asked once, and asked HERE rather than discovered by the renderer throwing
+     inside the canvas. A context is refused more often than it sounds: Chrome
+     caps how many one process may hold at around sixteen, so somebody with
+     enough tabs open gets nothing; hardware acceleration may be off; a driver
+     may be blocklisted. The probe context is thrown away immediately (`loseContext`)
+     so the check itself doesn't spend one of that budget.
+     `useState` with an initialiser, not an effect, so the first render already
+     knows and we never mount a canvas we're about to tear down. */
+  const [webglOk] = useState(() => {
+    if (typeof document === 'undefined') return false
+    try {
+      const canvas = document.createElement('canvas')
+      const gl =
+        canvas.getContext('webgl2') ||
+        canvas.getContext('webgl') ||
+        canvas.getContext('experimental-webgl')
+      if (!gl) return false
+      ;(gl as any).getExtension?.('WEBGL_lose_context')?.loseContext?.()
+      return true
+    } catch {
+      return false
+    }
+  })
+
   /* Fetch and parse the 3D chunk during idle time, long before the reader gets
      here — the render itself still waits for `globeNear`, so no WebGL context
      is created early.
@@ -14091,6 +14132,8 @@ function GlobeSection() {
      Skipped on Save-Data, where a megabyte of optional 3D is the wrong call. */
   useEffect(() => {
     if (navigator.connection?.saveData) return
+    // Nothing to warm up if the globe is never going to mount.
+    if (!webglOk) return
 
     const warm = () => {
       import('./LandingGlobeCanvas').catch(() => {
@@ -14106,7 +14149,7 @@ function GlobeSection() {
 
     const timer = window.setTimeout(warm, 1500)
     return () => window.clearTimeout(timer)
-  }, [])
+  }, [webglOk])
 
   useEffect(() => {
     const sync = () => setIsMobile(window.innerWidth <= 640)
@@ -14145,9 +14188,30 @@ function GlobeSection() {
         <div className="globe-wrap__glow" />
 
         <div className="globe-canvas-box" ref={canvasHostRef}>
-          <Suspense fallback={<GlobeFallback />}>
-            {globeNear ? <LandingGlobeCanvas isMobile={isMobile} /> : <GlobeFallback />}
-          </Suspense>
+          {/* Two guards, and they catch different things.
+
+              The boundary catches a throw from anywhere in the 3D subtree — a
+              context that couldn't be created, a model that wouldn't parse, an
+              HDR that didn't arrive — and swaps in the same artwork the loading
+              state uses. Without it, React had no boundary above this point and
+              a failed globe unmounted the entire page from here down: FAQ, CTA,
+              testimonials, footer, all of it, leaving a black screen.
+
+              `webglOk` stops us even getting that far when the browser has no
+              context to give — which also spares those visitors the ~600 KB of
+              three.js and the 8 MB model they could never have rendered.
+
+              Suspense stays for what it is actually for: the lazy chunk and the
+              model still loading. */}
+          <CanvasErrorBoundary label="LandingGlobe" fallback={<GlobeFallback waiting={false} />}>
+            <Suspense fallback={<GlobeFallback />}>
+              {globeNear && webglOk ? (
+                <LandingGlobeCanvas isMobile={isMobile} />
+              ) : (
+                <GlobeFallback waiting={webglOk} />
+              )}
+            </Suspense>
+          </CanvasErrorBoundary>
 
           <AnimatePresence mode="wait">
             {activeUser && (
@@ -14249,7 +14313,7 @@ const PROMPT_STEPS = [
   'Analyzing token patterns…',
   'Optimizing neural pathways…',
   'Compressing context window…',
-  'Entering the Promptverse…',
+  'Entering the Productverse…',
 ]
 
 // How long the curtain is guaranteed to stay up. It's a floor, not a timer —

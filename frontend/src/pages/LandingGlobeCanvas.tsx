@@ -107,8 +107,31 @@ export default function LandingGlobeCanvas({ isMobile }: { isMobile: boolean }) 
     <Canvas
       camera={{ position: isMobile ? [0, 0.18, 7.2] : [0, 0.22, 7.0], fov: isMobile ? 26 : 24 }}
       dpr={[1, 2]}
-      gl={{ alpha: true }}
+      /* failIfMajorPerformanceCaveat: false — the browser is allowed to hand us a
+         software renderer rather than refuse. A slow globe beats no globe, and
+         refusing is what triggered the throw this whole section used to die on. */
+      gl={{ alpha: true, failIfMajorPerformanceCaveat: false, powerPreference: 'default' }}
       style={{ background: 'transparent' }}
+      onCreated={({ gl }) => {
+        /* A context can be taken away after it was granted: the GPU process
+           crashes or resets, or the browser reclaims one because too many tabs
+           are holding contexts (Chrome allows roughly sixteen per process).
+
+           The default behaviour on that event is for WebGL calls to start
+           failing, which surfaces as a throw out of the render loop — and that
+           is exactly what used to take the page down. preventDefault() marks the
+           loss as handled and lets the browser restore the context if it can;
+           either way the boundary in Landing.tsx now catches whatever follows,
+           so the worst case is the static globe artwork. */
+        gl.domElement.addEventListener(
+          'webglcontextlost',
+          (event) => {
+            event.preventDefault()
+            console.warn('[LandingGlobe] WebGL context lost — falling back to the static globe.')
+          },
+          { passive: false }
+        )
+      }}
     >
       <GlobeScene />
     </Canvas>
