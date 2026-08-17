@@ -17,9 +17,9 @@ import DetailsPrompt, { MarketplacePrompt } from "./historyDetail";
 import { useAuth } from "@/contexts/AuthContext";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import RefundReasonPicker from "@/components/RefundReasonPicker";
 // Shared with the second refund dialog in pages/self-dash.tsx — see that module.
 import {
-  REFUND_REASON_PRESETS,
   composeRefundReason,
   hasRefundReason,
 } from "@/lib/refundReasons";
@@ -1757,34 +1757,15 @@ useEffect(() => {
       before any refund is processed.
     </p>
 
-    {/* Tick list first, free text second. Asking for a written reason and
+    {/* Preset reasons first, free text second. Asking for a written reason and
         nothing else meant every request arrived phrased differently, so the
         common cases could not be counted or triaged — and a buyer who just
         wanted their money back typed one word and hoped. These are the cases
-        that actually recur; anything else goes in the box below. */}
-    <div className="space-y-2 max-h-[240px] overflow-y-auto pr-1">
-      {REFUND_REASON_PRESETS.map((preset) => {
-        const checked = refundReasonTicks.includes(preset);
-        return (
-          <label
-            key={preset}
-            className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${
-              checked
-                ? "border-white/25 bg-white/[0.07]"
-                : "border-white/10 bg-white/[0.02] hover:bg-white/[0.05]"
-            }`}
-          >
-            <input
-              type="checkbox"
-              checked={checked}
-              onChange={() => toggleRefundReason(preset)}
-              className="mt-0.5 h-4 w-4 shrink-0 accent-[#FF14EF]"
-            />
-            <span className="text-sm text-white/85 leading-snug">{preset}</span>
-          </label>
-        );
-      })}
-    </div>
+        that actually recur; anything else goes in the box below.
+
+        Markup lives in RefundReasonPicker, shared with the identical dialog in
+        pages/self-dash.tsx. */}
+    <RefundReasonPicker selected={refundReasonTicks} onToggle={toggleRefundReason} />
 
     <div>
       <label className="block text-xs uppercase tracking-wider text-white/45 mb-2">

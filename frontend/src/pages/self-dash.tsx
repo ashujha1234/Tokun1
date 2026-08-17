@@ -1135,10 +1135,10 @@ import SubmitWorkModal from "@/components/escrow/SubmitWorkModal";
 import { deadlineLabel } from "@/lib/escrowApi";
 // Shared with the refund dialog in components/PromptHistory.tsx.
 import {
-  REFUND_REASON_PRESETS,
   composeRefundReason,
   hasRefundReason,
 } from "@/lib/refundReasons";
+import RefundReasonPicker from "@/components/RefundReasonPicker";
 
 const GRADIENT = "linear-gradient(270deg,#FF14EF 0%, #1A73E8 100%)";
 const GRAD = "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)";
@@ -4877,32 +4877,10 @@ const RequestCard = ({ item }: { item: any }) => {
             Tell us why "{refundTarget?.title}" isn't what you expected. An admin will review
             this before any refund is processed.
           </p>
-          {/* Tick list first, free text second — same as the dialog in
-              PromptHistory. Presets come from lib/refundReasons so the two
-              screens always offer the identical set. */}
-          <div className="space-y-2 max-h-[240px] overflow-y-auto pr-1">
-            {REFUND_REASON_PRESETS.map((preset) => {
-              const checked = refundReasonTicks.includes(preset);
-              return (
-                <label
-                  key={preset}
-                  className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${
-                    checked
-                      ? "border-white/25 bg-white/[0.07]"
-                      : "border-white/10 bg-white/[0.02] hover:bg-white/[0.05]"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => toggleRefundReason(preset)}
-                    className="mt-0.5 h-4 w-4 shrink-0 accent-[#FF14EF]"
-                  />
-                  <span className="text-sm text-white/85 leading-snug">{preset}</span>
-                </label>
-              );
-            })}
-          </div>
+          {/* Preset reasons first, free text second — same as the dialog in
+              PromptHistory, and now literally the same component, so the two
+              screens can't offer the same choice in two different shapes. */}
+          <RefundReasonPicker selected={refundReasonTicks} onToggle={toggleRefundReason} />
 
           <div>
             <label className="block text-xs uppercase tracking-wider text-white/45 mb-2">

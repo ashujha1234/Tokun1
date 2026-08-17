@@ -194,6 +194,79 @@ function stripEmoji(label?: string | null) {
   return label.replace(/^[\p{Extended_Pictographic}‍️\s]+/gu, "").trim();
 }
 
+/* ── The downloaded .md file ────────────────────────────────────────────────
+   The converted Markdown used to be written to disk exactly as the model
+   returned it: no title, no date, and nothing saying where it came from. That
+   file then travels — into a repo, a Notion page, someone's Downloads folder
+   six months later — and at that point it is an anonymous block of text.
+
+   So the download gets a header. Everything in it renders as ordinary Markdown
+   (no YAML front matter, which most viewers show as raw junk at the top of the
+   file) and reads as a document rather than a stamp: what it is, what it was
+   made from, when, and by whom.
+
+   The COPY button is deliberately left alone — copying is for pasting straight
+   into something the person is already writing, and a banner is the last thing
+   they want in the middle of it.
+   ─────────────────────────────────────────────────────────────────────────── */
+const TOKUN_SITE = "https://www.tokun.world";
+
+/** Trailing spaces, runs of blank lines, and a missing final newline — the
+    three things that make a generated file look machine-made. */
+function tidyMarkdown(md: string) {
+  return md
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** A filename that survives every OS: no slashes, colons or trailing dots. */
+function safeFileStem(name: string) {
+  const stem = name.replace(/\.[^.]+$/, "").trim();
+  const cleaned = stem
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/^[.\s]+|[.\s]+$/g, "")
+    .slice(0, 80);
+  return cleaned || "document";
+}
+
+function buildMarkdownFile(result: { filename: string; format: string; markdown: string }) {
+  const body = tidyMarkdown(result.markdown);
+  const stem = safeFileStem(result.filename);
+
+  const when = new Date().toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+  /* The body often opens with its own H1 — the document's real title, and a
+     better one than the filename. Where it has one, that heading is lifted out
+     and the attribution goes UNDER it: title, then where it came from, then the
+     content. Otherwise the note would sit above the document's own title, and
+     the file would read as a Tokun notice that happens to contain a document.
+
+     Lifting it also avoids the alternative, which is adding a second H1 of our
+     own and leaving the file with two competing titles. */
+  const lines = body.split("\n");
+  const hasOwnTitle = /^#\s+\S/.test(lines[0] || "");
+  const title = hasOwnTitle ? lines[0] : `# ${stem}`;
+  const rest = hasOwnTitle ? lines.slice(1).join("\n").trim() : body;
+
+  const contents =
+    `${title}\n\n` +
+    `> Converted to Markdown by **[Tokun](${TOKUN_SITE})** — ${TOKUN_SITE}  \n` +
+    `> Source: \`${result.filename}\` (${result.format.toUpperCase()}) · ${when}\n\n` +
+    `---\n\n` +
+    `${rest}\n\n` +
+    `---\n\n` +
+    `<sub>Made with Tokun · [${TOKUN_SITE.replace(/^https?:\/\//, "")}](${TOKUN_SITE})</sub>\n`;
+
+  return { name: `${stem}.md`, contents };
+}
+
 function unwrapJson(raw: string): string {
   const s = raw.replace(/^```json\s*/i,"").replace(/^```\s*/i,"").replace(/```\s*$/i,"").trim();
   if (s.startsWith("{")) { try { const p = JSON.parse(s); if (p.optimizedText) return p.optimizedText; } catch {} }
@@ -1003,11 +1076,13 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
 
   function handleDownloadMarkdown() {
     if (!markdownResult) return;
-    const blob = new Blob([markdownResult.markdown], { type: "text/markdown;charset=utf-8" });
+
+    const file = buildMarkdownFile(markdownResult);
+    const blob = new Blob([file.contents], { type: "text/markdown;charset=utf-8" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     a.href = url;
-    a.download = markdownResult.filename.replace(/\.[^.]+$/, "") + ".md";
+    a.download = file.name;
     document.body.appendChild(a);
     a.click();
     a.remove();
