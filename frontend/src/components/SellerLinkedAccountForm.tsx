@@ -169,6 +169,11 @@ export default function SellerLinkedAccountForm({
       : "checking"
   );
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  /* Which fields the seller has left, so a "too short" complaint waits until
+     they're done with the box rather than arriving on the second keystroke.
+     Submit adds every field at once, which is what makes one press surface all
+     the remaining problems instead of the first one only. */
+  const [touched, setTouched] = useState<Set<string>>(new Set());
   // Set from the backend's `field` when Razorpay pinned the failure to one
   // input. Null for errors that aren't about a specific value.
   const [errField, setErrField] = useState<string | null>(null);
@@ -335,40 +340,165 @@ export default function SellerLinkedAccountForm({
         } PAN normally has "${allowedPanLetters.join('" or "')}" as its 4th character.`
       : null;
 
-  /* Live hints for the three fields a typo is easiest to make in and costliest
-     to discover late. Shown only once there's enough typed to judge, so the
-     form isn't scolding someone mid-keystroke. */
   const cleanIfsc = ifscCode.trim().toUpperCase();
-  const ifscWarning =
-    cleanIfsc.length >= 11 && !IFSC_REGEX.test(cleanIfsc)
-      ? "That doesn't look like an IFSC — 11 characters, like HDFC0001234."
-      : null;
-
   const cleanAccountNumber = stripSeparators(accountNumber);
-  const accountNumberWarning =
-    accountNumber.trim() && !ACCOUNT_NUMBER_REGEX.test(cleanAccountNumber)
-      ? "An account number is digits only."
-      : null;
 
-  // Only once the shorter one has caught up, otherwise every confirm field
-  // reads as "mismatched" while it's being typed.
-  const confirmMismatch =
-    confirmAccountNumber.trim().length >= accountNumber.trim().length &&
-    accountNumber.trim().length > 0 &&
-    stripSeparators(confirmAccountNumber) !== cleanAccountNumber
-      ? "The two account numbers don't match."
-      : null;
+  /* ── One table of what's wrong, used by both the inline notes and submit ──
+     The first version of this had the live hints and the submit checks written
+     out separately, which is how it ended up warning about the account number
+     while an IFSC of "JDHJDHD" and a phone number of "dddhdhdh" sat there
+     unremarked. Same rules, two places, and only one of them was thorough.
+
+     Every issue is also tagged with WHEN it may be shown:
+
+       certain — no further typing can make this input valid, so say it now.
+                 A letter in a digits-only field. Two account numbers that have
+                 already diverged. An IFSC whose 5th character isn't 0.
+
+       shape   — only judgeable once the field is finished, so it waits for
+                 blur. "Too short" is the whole category: nagging someone that
+                 4 digits isn't a phone number while they type the 5th is how a
+                 form becomes something people fight. */
+  type Issue = { message: string; certain: boolean } | null;
+  const certain = (message: string): Issue => ({ message, certain: true });
+  const shape = (message: string): Issue => ({ message, certain: false });
+
+  const hasLetters = (v: string) => /[A-Za-z]/.test(v);
+  /* Diverged, not merely shorter — "1234" against "12345" is someone still
+     typing, while "1234" against "9876" can never come good. */
+  const diverged = (a: string, b: string) =>
+    !a.startsWith(b) && !b.startsWith(a);
+
+  const issueFor = (name: string): Issue => {
+    switch (name) {
+      case "accountHolderName": {
+        const v = accountHolderName.trim();
+        if (!v) return null;
+        if (!hasLetters(v)) return certain("A name needs letters.");
+        return looksLikeName(v)
+          ? null
+          : shape("Enter the account holder's full name, exactly as the bank has it.");
+      }
+      case "accountNumber": {
+        if (!accountNumber.trim()) return null;
+        if (hasLetters(accountNumber) || /[^\d\s\-()]/.test(accountNumber))
+          return certain("An account number is digits only.");
+        return ACCOUNT_NUMBER_REGEX.test(cleanAccountNumber)
+          ? null
+          : shape("An account number is 6–18 digits.");
+      }
+      case "confirmAccountNumber": {
+        const b = stripSeparators(confirmAccountNumber);
+        if (!b || !cleanAccountNumber) return null;
+        if (diverged(cleanAccountNumber, b))
+          return certain("The two account numbers don't match.");
+        return b === cleanAccountNumber
+          ? null
+          : shape("The two account numbers don't match.");
+      }
+      case "ifscCode": {
+        if (!cleanIfsc) return null;
+        const hint = "An IFSC is 4 letters, then 0, then 6 characters — e.g. HDFC0001234.";
+        // Judged character by character, so a wrong shape is caught at the 5th
+        // keystroke instead of the 11th — which is the whole reason "JDHJDHD"
+        // used to pass without a word.
+        if (/[^A-Z]/.test(cleanIfsc.slice(0, 4))) return certain(hint);
+        if (cleanIfsc.length >= 5 && cleanIfsc[4] !== "0") return certain(hint);
+        if (cleanIfsc.length > 11) return certain(hint);
+        return IFSC_REGEX.test(cleanIfsc) ? null : shape(hint);
+      }
+      case "phone": {
+        if (!phone.trim()) return null;
+        if (hasLetters(phone)) return certain("A phone number is digits only.");
+        const mobile = normalizeMobile(phone);
+        if (mobile.length > 10) return certain("An Indian mobile number is 10 digits.");
+        if (mobile.length === 10 && !MOBILE_REGEX.test(mobile))
+          return certain("An Indian mobile number starts with 6, 7, 8 or 9.");
+        return MOBILE_REGEX.test(mobile)
+          ? null
+          : shape("Enter a 10-digit Indian mobile number, e.g. 9000090000.");
+      }
+      case "postalCode": {
+        const v = postalCode.trim();
+        // Guarded on country so this stays correct if payouts ever open up
+        // outside India — a 6-digit rule is wrong for every other postal system.
+        if (!v || country.trim().toUpperCase() !== "IN") return null;
+        if (/\D/.test(v)) return certain("A PIN code is digits only.");
+        if (v.length > 6) return certain("An Indian PIN code is 6 digits.");
+        return PIN_REGEX.test(v) ? null : shape("Enter a 6-digit PIN code, e.g. 560001.");
+      }
+      case "panNumber": {
+        const v = panNumber.trim().toUpperCase();
+        if (!v) return null;
+        const hint = isOrganization
+          ? "Authorised signatory PAN looks invalid — e.g. ABCPE1234F."
+          : "PAN looks invalid — e.g. ABCPE1234F.";
+        if (v.length >= 10 && !PAN_REGEX.test(v)) return certain(hint);
+        return PAN_REGEX.test(v) ? null : shape(hint);
+      }
+      case "businessPan": {
+        const v = businessPan.trim().toUpperCase();
+        if (!v || !isOrganization) return null;
+        const hint = "Business PAN looks invalid — e.g. AAACA1234A.";
+        if (v.length >= 10 && !PAN_REGEX.test(v)) return certain(hint);
+        return PAN_REGEX.test(v) ? null : shape(hint);
+      }
+      case "gstin": {
+        const v = gstin.trim().toUpperCase();
+        if (!v || !isOrganization) return null;
+        const hint = "GSTIN looks invalid — e.g. 27AAACA1234A1Z5.";
+        if (v.length >= 15 && !GSTIN_REGEX.test(v)) return certain(hint);
+        if (!GSTIN_REGEX.test(v)) return shape(hint);
+        /* Characters 3-12 of every GSTIN are the entity's PAN, so a mismatch
+           means one of the two fields belongs to a different entity. Only
+           comparable when a business PAN was given — a proprietorship may
+           legitimately supply a GSTIN without one. */
+        if (businessPan.trim() && v.slice(2, 12) !== businessPan.trim().toUpperCase())
+          return certain("The PAN inside this GSTIN doesn't match the Business PAN you entered.");
+        return null;
+      }
+      case "percentageOwnership": {
+        const v = percentageOwnership.trim();
+        if (!v || !isOrganization) return null;
+        const n = Number(v);
+        return n > 0 && n <= 100
+          ? null
+          : certain("Ownership % should be a number between 1 and 100.");
+      }
+      default:
+        return null;
+    }
+  };
+
+  /* The order submit walks, so the seller is sent to the topmost problem rather
+     than whichever rule happened to be written first. */
+  const VALIDATED_FIELDS = [
+    "accountHolderName",
+    "accountNumber",
+    "confirmAccountNumber",
+    "ifscCode",
+    "panNumber",
+    "phone",
+    "postalCode",
+    "businessPan",
+    "gstin",
+    "percentageOwnership",
+  ];
+
+  const visibleIssue = (name: string): string | null => {
+    const issue = issueFor(name);
+    if (!issue) return null;
+    return issue.certain || touched.has(name) ? issue.message : null;
+  };
+
+  const markTouched = (name: string) =>
+    setTouched((prev) => (prev.has(name) ? prev : new Set(prev).add(name)));
 
   const handleSubmit = async () => {
-    /* Every rejection below names its field as well as the message, so the box
-       to fix is outlined — the panel at the bottom of the form already says
-       "The field to correct is outlined above", but until now only the
-       BACKEND's replies ever set it, so a client-side error left the seller
-       re-reading the whole form. */
-    const reject = (field: string, message: string) => {
-      setErrField(field);
-      setErrMsg(message);
-    };
+    /* Marks the whole form touched first, so one press reveals EVERY remaining
+       problem inline. The old version returned on the first failing rule, which
+       on a form this long meant fix-one, press, fix-one, press. */
+    setTouched(new Set(VALIDATED_FIELDS));
 
     if (requiredMissing) {
       setErrField(null);
@@ -376,83 +506,14 @@ export default function SellerLinkedAccountForm({
       return;
     }
 
-    if (!looksLikeName(accountHolderName)) {
-      reject(
-        "accountHolderName",
-        "Enter the account holder's full name, exactly as the bank has it."
-      );
+    /* Walked top-to-bottom, so the banner names the topmost problem — the same
+       one the seller's eye lands on first — while the rest are already outlined
+       below it. The rules live in issueFor; there is no second copy here. */
+    const firstBad = VALIDATED_FIELDS.find((name) => issueFor(name));
+    if (firstBad) {
+      setErrField(firstBad);
+      setErrMsg(issueFor(firstBad)!.message);
       return;
-    }
-
-    if (!ACCOUNT_NUMBER_REGEX.test(cleanAccountNumber)) {
-      reject(
-        "accountNumber",
-        "The account number should be 6–18 digits, with no letters or spaces."
-      );
-      return;
-    }
-    // Compared on digits, so one field having a pasted space isn't a "mismatch".
-    if (cleanAccountNumber !== stripSeparators(confirmAccountNumber)) {
-      reject("confirmAccountNumber", "Account number and confirmation don't match.");
-      return;
-    }
-
-    if (!IFSC_REGEX.test(cleanIfsc)) {
-      reject("ifscCode", "IFSC looks invalid — 11 characters, e.g. HDFC0001234.");
-      return;
-    }
-
-    if (!MOBILE_REGEX.test(normalizeMobile(phone))) {
-      reject("phone", "Enter a 10-digit Indian mobile number, e.g. 9000090000.");
-      return;
-    }
-
-    // Guarded on country so this stays correct if payouts ever open up outside
-    // India — a 6-digit rule would be wrong for every other postal system.
-    if (country.trim().toUpperCase() === "IN" && !PIN_REGEX.test(postalCode.trim())) {
-      reject("postalCode", "Postal code should be a 6-digit Indian PIN, e.g. 560001.");
-      return;
-    }
-
-    // Format is checked only on what was actually filled in — requiredMissing
-    // above has already caught anything mandatory that's blank, so a PAN that
-    // is empty here is one the matrix says may be left empty.
-    if (panNumber.trim() && !PAN_REGEX.test(panNumber.trim().toUpperCase())) {
-      reject(
-        "panNumber",
-        isOrganization
-          ? "Authorised signatory PAN looks invalid — e.g. ABCPE1234F."
-          : "PAN looks invalid — e.g. ABCPE1234F."
-      );
-      return;
-    }
-
-    if (isOrganization) {
-      if (businessPan.trim() && !PAN_REGEX.test(businessPan.trim().toUpperCase())) {
-        reject("businessPan", "Business PAN looks invalid — e.g. AAACA1234A.");
-        return;
-      }
-      // Optional, but a shareholding of 0 or 140 is a typo either way.
-      const ownership = percentageOwnership.trim();
-      if (ownership && !(Number(ownership) > 0 && Number(ownership) <= 100)) {
-        reject("percentageOwnership", "Ownership % should be a number between 1 and 100.");
-        return;
-      }
-      // Whether a GSTIN was required is already settled above; a malformed one
-      // is always a typo either way.
-      const cleanGstin = gstin.trim().toUpperCase();
-      if (cleanGstin && !GSTIN_REGEX.test(cleanGstin)) {
-        reject("gstin", "GSTIN looks invalid — e.g. 27AAACA1234A1Z5.");
-        return;
-      }
-      // Characters 3-12 of every GSTIN are the entity's PAN, so a mismatch
-      // means one of the two fields belongs to a different entity. Only
-      // comparable when a business PAN was given — a proprietorship may
-      // legitimately supply a GSTIN without one.
-      if (cleanGstin && businessPan.trim() && cleanGstin.slice(2, 12) !== businessPan.trim().toUpperCase()) {
-        reject("gstin", "The PAN inside this GSTIN doesn't match the Business PAN you entered.");
-        return;
-      }
     }
 
     setPhase("submitting");
@@ -547,8 +608,23 @@ export default function SellerLinkedAccountForm({
   // Same box, outlined in red — applied to whichever field the backend named.
   const errorInputClass =
     "w-full rounded-lg bg-white/5 border border-red-500/60 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-red-400";
-  const fieldClass = (name: string) => (errField === name ? errorInputClass : inputClass);
+  // Red for whichever field the backend named, and now also for any field whose
+  // own note is showing — an outline and a message under the same box.
+  const fieldClass = (name: string) =>
+    errField === name || visibleIssue(name) ? errorInputClass : inputClass;
   const labelClass = "text-xs text-white/60 mb-1 block";
+
+  /* The note under a field, plus the blur that lets "too short" complaints
+     appear. Spread onto the input so every validated field gets both without
+     each one repeating it. */
+  const validated = (name: string) => ({
+    className: fieldClass(name),
+    onBlur: () => markTouched(name),
+  });
+  const FieldNote = ({ name }: { name: string }) => {
+    const message = visibleIssue(name);
+    return message ? <p className="text-[11px] text-amber-300/90 mt-1">{message}</p> : null;
+  };
 
   return (
     <div className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-sm overflow-hidden">
@@ -742,11 +818,13 @@ export default function SellerLinkedAccountForm({
                       <div>
                         <label className={labelClass}>Business PAN{star(kycRule.businessPan)}</label>
                         <input
-                          className={fieldClass("businessPan")}
+                          {...validated("businessPan")}
                           value={businessPan}
                           onChange={(e) => setBusinessPan(e.target.value.toUpperCase())}
                           placeholder="AAACA1234A"
+                          maxLength={10}
                         />
+                        <FieldNote name="businessPan" />
                         {businessType === "proprietorship" && (
                           <p className="text-[11px] text-white/40 mt-1">
                             A proprietorship has no PAN of its own — leave this blank and enter the
@@ -763,11 +841,13 @@ export default function SellerLinkedAccountForm({
                       <div>
                         <label className={labelClass}>GSTIN{star(kycRule.gst)}</label>
                         <input
-                          className={fieldClass("gstin")}
+                          {...validated("gstin")}
                           value={gstin}
                           onChange={(e) => setGstin(e.target.value.toUpperCase())}
                           placeholder="27AAACA1234A1Z5"
+                          maxLength={15}
                         />
+                        <FieldNote name="gstin" />
                         <p className="text-[11px] text-white/40 mt-1">
                           {req(kycRule.gst)
                             ? "Razorpay requires a GSTIN for this business type."
@@ -789,12 +869,13 @@ export default function SellerLinkedAccountForm({
                     <div>
                       <label className={labelClass}>Their ownership % (optional)</label>
                       <input
-                        className={fieldClass("percentageOwnership")}
+                        {...validated("percentageOwnership")}
                         value={percentageOwnership}
                         onChange={(e) => setPercentageOwnership(e.target.value)}
                         placeholder="e.g. 60"
                         inputMode="numeric"
                       />
+                      <FieldNote name="percentageOwnership" />
                     </div>
                   </div>
                 )}
@@ -804,7 +885,8 @@ export default function SellerLinkedAccountForm({
                     <label className={labelClass}>
                       {isOrganization ? "Bank account holder name *" : "Account holder name *"}
                     </label>
-                    <input className={fieldClass("accountHolderName")} value={accountHolderName} onChange={(e) => setAccountHolderName(e.target.value)} />
+                    <input {...validated("accountHolderName")} value={accountHolderName} onChange={(e) => setAccountHolderName(e.target.value)} />
+                    <FieldNote name="accountHolderName" />
                     {isOrganization && (
                       <p className="text-[11px] text-white/40 mt-1">
                         Use your <span className="text-white/60">current account</span> in the
@@ -817,45 +899,39 @@ export default function SellerLinkedAccountForm({
                   <div>
                     <label className={labelClass}>Bank account number *</label>
                     <input
-                      className={fieldClass("accountNumber")}
+                      {...validated("accountNumber")}
                       value={accountNumber}
                       onChange={(e) => setAccountNumber(e.target.value)}
                       inputMode="numeric"
                       autoComplete="off"
                       maxLength={24}
                     />
-                    {accountNumberWarning && (
-                      <p className="text-[11px] text-amber-300/80 mt-1">{accountNumberWarning}</p>
-                    )}
+                    <FieldNote name="accountNumber" />
                   </div>
                   <div>
                     <label className={labelClass}>Confirm account number *</label>
                     <input
-                      className={fieldClass("confirmAccountNumber")}
+                      {...validated("confirmAccountNumber")}
                       value={confirmAccountNumber}
                       onChange={(e) => setConfirmAccountNumber(e.target.value)}
                       inputMode="numeric"
                       autoComplete="off"
                       maxLength={24}
                     />
-                    {confirmMismatch && (
-                      <p className="text-[11px] text-amber-300/80 mt-1">{confirmMismatch}</p>
-                    )}
+                    <FieldNote name="confirmAccountNumber" />
                   </div>
 
                   <div>
                     <label className={labelClass}>IFSC code *</label>
                     <input
-                      className={fieldClass("ifscCode")}
+                      {...validated("ifscCode")}
                       value={ifscCode}
                       onChange={(e) => setIfscCode(e.target.value.toUpperCase())}
                       placeholder="HDFC0001234"
                       autoComplete="off"
                       maxLength={11}
                     />
-                    {ifscWarning && (
-                      <p className="text-[11px] text-amber-300/80 mt-1">{ifscWarning}</p>
-                    )}
+                    <FieldNote name="ifscCode" />
                   </div>
                   <div>
                     <label className={labelClass}>Bank name *</label>
@@ -867,7 +943,8 @@ export default function SellerLinkedAccountForm({
                       {isOrganization ? "Authorised signatory PAN" : "PAN number"}
                       {star(kycRule.signatoryPan)}
                     </label>
-                    <input className={fieldClass("panNumber")} value={panNumber} onChange={(e) => setPanNumber(e.target.value.toUpperCase())} placeholder="ABCPE1234F" />
+                    <input {...validated("panNumber")} value={panNumber} onChange={(e) => setPanNumber(e.target.value.toUpperCase())} placeholder="ABCPE1234F" maxLength={10} />
+                    <FieldNote name="panNumber" />
                     {isOrganization && (
                       <p className="text-[11px] text-white/40 mt-1">
                         {businessType === "proprietorship"
@@ -881,13 +958,14 @@ export default function SellerLinkedAccountForm({
                   <div>
                     <label className={labelClass}>Phone number *</label>
                     <input
-                      className={fieldClass("phone")}
+                      {...validated("phone")}
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="9000090000"
                       inputMode="tel"
                       autoComplete="tel"
                     />
+                    <FieldNote name="phone" />
                   </div>
 
                   <div className="sm:col-span-2">
@@ -919,7 +997,7 @@ export default function SellerLinkedAccountForm({
                   <div>
                     <label className={labelClass}>Postal code *</label>
                     <input
-                      className={fieldClass("postalCode")}
+                      {...validated("postalCode")}
                       value={postalCode}
                       onChange={(e) => setPostalCode(e.target.value)}
                       placeholder="560001"
@@ -927,6 +1005,7 @@ export default function SellerLinkedAccountForm({
                       autoComplete="postal-code"
                       maxLength={10}
                     />
+                    <FieldNote name="postalCode" />
                   </div>
                   <div>
                     <label className={labelClass}>Country *</label>

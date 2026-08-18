@@ -26,17 +26,22 @@
    panel carrying the logo and price summary, i.e. the largest surface on the
    screen and the one that has to look like Tokun.
 
-   This was Tokun blue (#1A73E8) first, which was a real change and a pointless
-   one: Razorpay's default is #3395FF, so blue became a slightly deeper blue and
-   the panel still read as Razorpay's, not ours. The app is near-black
-   everywhere, so that is what the panel should be.
+   IT CANNOT BE A GRADIENT. This field takes one solid hex; Checkout renders in
+   an iframe on Razorpay's own origin, so there is no stylesheet of ours that
+   reaches it and no way to hand it `linear-gradient(...)`. The only route to a
+   real gradient on that panel is the "Sidebar Graphic" image in the Razorpay
+   dashboard (Account & Settings → Checkout Settings → Branding), which is a
+   picture you upload, not a value this code can send.
 
-   #17171A is the card surface used throughout the app, sitting just off the
-   #000 backdrop below so the modal's edge stays visible instead of dissolving
-   into the page. Anything Razorpay also tints with this — the CTA, the title
-   underline — lands dark on their white pane, which is white-on-#17171A at
-   about 18:1. */
-const ACCENT = "#17171A";
+   So the panel gets the ONE colour closest to Tokun's gradient: #A855F7, the
+   50% stop of `#FF14EF → #A855F7 → #1A73E8` as the app itself declares it —
+   the middle of the same pink-to-blue run the logo is drawn in.
+
+   Two colours came before it and both were wrong. Tokun blue (#1A73E8) landed
+   almost exactly on Razorpay's own default #3395FF, so the panel still read as
+   theirs. Near-black (#17171A) matched the app but not the brand — the whole
+   point of that panel is that it carries the mark. */
+const ACCENT = "#A855F7";
 
 /** Pure black, so the panel above reads as a surface lifted off it. Only a
  *  solid hex is accepted here, so this is opaque — the page behind is covered
