@@ -67,7 +67,7 @@
 
 //       {/* LEFT - Artwork (desktop only) */}
 //       <aside className="hidden lg:block basis-[58%] relative overflow-hidden">
-//         <img src="/icons/signup.png" alt="" className="absolute inset-0 w-full h-full object-cover" />
+//         <img src="/icons/signup.jpg" alt="" className="absolute inset-0 w-full h-full object-cover" />
 //         <div className="absolute inset-0 bg-black/35" />
 //       </aside>
 
@@ -89,7 +89,7 @@
 //                 <div style={{ width:"100%", height:"100%", borderRadius:"9999px", background:"#000" }} />
 //               </div>
 //               <div style={{ position:"absolute", inset:4, borderRadius:"9999px", overflow:"hidden", animation:"spin-img 8s linear infinite" }}>
-//                 <img src="/icons/signup.png" alt="Tokun AI" className="w-full h-full object-cover pointer-events-none select-none" />
+//                 <img src="/icons/signup.jpg" alt="Tokun AI" className="w-full h-full object-cover pointer-events-none select-none" />
 //               </div>
 //               <div style={{ position:"absolute", inset:0, borderRadius:"9999px", pointerEvents:"none", boxShadow:"0 0 32px rgba(255,20,239,0.45), 0 0 60px rgba(26,115,232,0.3)" }} />
 //             </div>
@@ -472,7 +472,7 @@ const AdminLogin = () => {
 
         {/* LEFT - Artwork (desktop only) */}
         <aside className="hidden lg:block basis-[58%] relative overflow-hidden">
-          <img src="/icons/signup.png" alt="" className="absolute inset-0 w-full h-full object-cover" />
+          <img src="/icons/signup.jpg" alt="" className="absolute inset-0 w-full h-full object-cover" />
           <div className="absolute inset-0 bg-black/35" />
         </aside>
 
@@ -494,7 +494,7 @@ const AdminLogin = () => {
                   <div style={{ width:"100%", height:"100%", borderRadius:"9999px", background:"#000" }} />
                 </div>
                 <div style={{ position:"absolute", inset:4, borderRadius:"9999px", overflow:"hidden", animation:"spin-img 8s linear infinite" }}>
-                  <img src="/icons/signup.png" alt="Tokun AI" className="w-full h-full object-cover pointer-events-none select-none" />
+                  <img src="/icons/signup.jpg" alt="Tokun AI" className="w-full h-full object-cover pointer-events-none select-none" />
                 </div>
                 <div style={{ position:"absolute", inset:0, borderRadius:"9999px", pointerEvents:"none", boxShadow:"0 0 32px rgba(255,20,239,0.45), 0 0 60px rgba(26,115,232,0.3)" }} />
               </div>

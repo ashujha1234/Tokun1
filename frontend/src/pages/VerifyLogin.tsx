@@ -258,7 +258,7 @@ import { authError } from "@/lib/authErrors";
 // //     <div className="min-h-screen w-full bg-[#030406] text-white flex font-inter">
 // //       <aside className="hidden lg:block basis-[60%] relative" aria-hidden>
 // //         <img
-// //           src="/icons/signup.png"
+// //           src="/icons/signup.jpg"
 // //           alt=""
 // //           className="absolute inset-0 w-full h-full object-cover"
 // //         />
@@ -588,7 +588,7 @@ import { authError } from "@/lib/authErrors";
 //       {/* Desktop left image */}
 //       <aside className="hidden lg:block basis-[60%] relative" aria-hidden>
 //         <img
-//           src="/icons/signup.png"
+//           src="/icons/signup.jpg"
 //           alt=""
 //           className="absolute inset-0 w-full h-full object-cover"
 //         />
@@ -1080,7 +1080,7 @@ setSecondsLeft(50);
     {/* Desktop left image */}
     <aside className="hidden lg:block basis-[60%] relative" aria-hidden>
       <img
-        src="/icons/signup.png"
+        src="/icons/signup.jpg"
         alt=""
         className="absolute inset-0 w-full h-full object-cover"
       />
@@ -1133,7 +1133,7 @@ setSecondsLeft(50);
         }}
       >
         <img
-          src="/icons/signup.png"
+          src="/icons/signup.jpg"
           alt="Tokun AI"
           className="w-full h-full object-cover pointer-events-none select-none"
         />

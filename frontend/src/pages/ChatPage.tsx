@@ -3102,6 +3102,7 @@ import NdaButton from "@/components/NdaCard";
 import { toast } from "@/components/ui/use-toast";
 import { SERVICE_LINK_LABELS, resolveDeliverableUrl } from "@/lib/serviceDeliverables";
 import { openBriefAttachment } from "@/lib/escrowApi";
+import { withTokunBranding } from "@/lib/razorpayTheme";
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 const GRADIENT = "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)";
 
@@ -4347,14 +4348,12 @@ const CARD_BG = "#161A18";
       const { key, order } = orderData;
 
       // Step 2: Open Razorpay checkout
-      const rzp = new (window as any).Razorpay({
+      const rzp = new (window as any).Razorpay(withTokunBranding({
         key,
         amount: order.amount,
         currency: order.currency || "INR",
-        name: "Tokun",
         description: `Payment for: ${data?.title || "Project"}`,
         order_id: order.id,
-        theme: { color: "#19E66C" },
 
         handler: async (response: any) => {
           try {
@@ -4391,7 +4390,7 @@ const CARD_BG = "#161A18";
         modal: {
           ondismiss: () => setPayState("idle"),
         },
-      });
+      }));
 
       rzp.open();
     } catch (err: any) {
@@ -4834,14 +4833,12 @@ function ServiceOrderCard({
 
       const { key, order } = orderData;
 
-      const rzp = new (window as any).Razorpay({
+      const rzp = new (window as any).Razorpay(withTokunBranding({
         key,
         amount: order.amount,
         currency: order.currency || "INR",
-        name: "Tokun",
         description: `Booking: ${data?.title || data?.serviceTitle || "Service"}`,
         order_id: order.id,
-        theme: { color: ACCENT },
 
         handler: async (response: any) => {
           try {
@@ -4871,7 +4868,7 @@ function ServiceOrderCard({
         modal: {
           ondismiss: () => setPayState("idle"),
         },
-      });
+      }));
 
       rzp.open();
     } catch (err: any) {

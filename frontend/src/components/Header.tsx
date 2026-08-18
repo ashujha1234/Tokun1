@@ -2601,6 +2601,9 @@ import SellerLinkedAccountForm from "@/components/SellerLinkedAccountForm";
 import { primeSellerData, peekPayoutStatus, getPayoutStatus } from "@/lib/sellerPrefetch";
 import { isTeamMember, canManageTeam, TEAM_MEMBER_SELL_TOAST } from "@/lib/orgRoles";
 import { userInitials, userAvatarUrl } from "@/lib/userInitials";
+import DetailsPrompt, { type MarketplacePrompt } from "@/components/DetailsPrompt";
+import { fetchPromptDetails } from "@/lib/promptDetails";
+import { withTokunBranding } from "@/lib/razorpayTheme";
 // import { useAuth } from "@/contexts/AuthContext";
 // import { toast } from "@/components/ui/use-toast";
 
@@ -2670,6 +2673,18 @@ const userPlanColor =
  
   const [theme, setTheme] = useState<ThemeMode>("system");
    const [cartOpen, setCartOpen] = useState(false);
+   /* A cart row is a product, and until now the only thing you could do to one
+      was delete it — the buyer had no way back to what they were about to pay
+      for. Clicking a row opens the same details panel the marketplace uses.
+
+      The cart closes while the panel is open and reopens behind it on dismiss:
+      the drawer sits at z-[1100], exactly the rung DetailsPrompt's own content
+      uses, so leaving both up puts the panel's backdrop *under* the cart and
+      clicks near its edge land on the cart's scrim. */
+   const [detailsPrompt, setDetailsPrompt] = useState<MarketplacePrompt | null>(null);
+   const [detailsOpen, setDetailsOpen] = useState(false);
+   /** Which row is being fetched — so a slow network shows on that row alone. */
+   const [detailsLoadingId, setDetailsLoadingId] = useState<string | null>(null);
    const [screenPermOpen, setScreenPermOpen] = useState(false);
    const [sellOpen, setSellOpen] = useState(false);
    const [headerToast, setHeaderToast] = useState<{
@@ -3687,10 +3702,9 @@ navigate("/self-dash?tab=prompts&p=purchased", {
   state: { refreshPurchases: true },
 });
       },
-      theme: { color: "#1A73E8" },
     };
 
-    const razorpayInstance = new (window as any).Razorpay(options);
+    const razorpayInstance = new (window as any).Razorpay(withTokunBranding(options));
     razorpayInstance.open();
   } catch (err: any) {
     console.error("[Checkout] ❌ FAILED:", err?.message || err);
@@ -3724,6 +3738,29 @@ const handleCheckout = async () => {
   // SellerLinkedAccountForm), and buying was never meant to require identity
   // verification at all. It was still blocking checkout for every buyer.
   await doCheckout();
+};
+
+/* Opens the details panel for a cart row.
+   The row itself only knows title/price/thumbnail, so the full listing is
+   fetched — see lib/promptDetails. If it can't be loaded the cart stays exactly
+   as it was rather than dropping the buyer into an empty panel. */
+const openCartItemDetails = async (promptId: string) => {
+  if (detailsLoadingId) return;
+  setDetailsLoadingId(promptId);
+  const full = await fetchPromptDetails(promptId);
+  setDetailsLoadingId(null);
+
+  if (!full) {
+    toast({
+      title: "Couldn't open this product",
+      description: "It may no longer be listed. Try refreshing your cart.",
+    });
+    return;
+  }
+
+  setCartOpen(false);
+  setDetailsPrompt(full);
+  setDetailsOpen(true);
 };
 
 const [notifications, setNotifications] = useState<any[]>([]);
@@ -4717,8 +4754,20 @@ useEffect(() => {
               width: "100%",
             }}
           >
-            {/* Prompt info */}
-            <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+            {/* Prompt info — the row's clickable half, opening the same details
+                panel the marketplace uses.
+
+                A <button> rather than an onClick on the row: Remove is itself a
+                button and nesting one inside another is invalid HTML, and this
+                way the destructive control is simply outside the hit area
+                instead of relying on a stopPropagation that is easy to lose. */}
+            <button
+              type="button"
+              onClick={() => openCartItemDetails(String(item.id))}
+              aria-label={`View details for ${item.title}`}
+              disabled={!!detailsLoadingId}
+              className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1 text-left rounded-md -m-1 p-1 transition hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25 disabled:opacity-60"
+            >
            <div className="relative w-12 h-12 sm:w-16 sm:h-16 rounded-md overflow-hidden bg-black shrink-0">
   {item.videoUrl ? (
     <>
@@ -4783,7 +4832,7 @@ useEffect(() => {
                   )}
                 </div>
               </div>
-            </div>
+            </button>
 
             {/* Price. Fixed width from sm up so it sits under the header's
                 "Price" column; on a phone it takes only what the amount needs.
@@ -5532,8 +5581,31 @@ style={{
   />
 )}
 
+{/* Details for a product opened from the cart.
 
+    Closing it puts the buyer back in the cart they came from rather than on
+    whatever page is behind — the cart is mid-task, and dropping them out of it
+    would mean re-opening and re-finding their place.
 
+    Buy Now hands off to the marketplace instead of starting a payment here: the
+    cart's own Checkout is the paid path in this component, and a second one
+    running beside it is two ways to be charged for the same row. */}
+<DetailsPrompt
+  open={detailsOpen}
+  onOpenChange={(next) => {
+    setDetailsOpen(next);
+    if (!next) {
+      setDetailsPrompt(null);
+      setCartOpen(true);
+    }
+  }}
+  prompt={detailsPrompt}
+  onPurchase={(p) => {
+    setDetailsOpen(false);
+    setDetailsPrompt(null);
+    navigate(`/prompt-marketplace?prompt=${encodeURIComponent(String(p.id))}`);
+  }}
+/>
 
 
 

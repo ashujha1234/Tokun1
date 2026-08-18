@@ -669,6 +669,7 @@ import { Switch } from "@/components/ui/switch";
 import { Check, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { withTokunBranding } from "@/lib/razorpayTheme";
 
 type PlanKey = "Free" | "Pro" | "Enterprise";
 type ServerPlanKey = "free" | "pro";
@@ -755,10 +756,9 @@ export default function Subscription() {
       razorpay_order_id: string;
       razorpay_signature: string;
     }>((resolve, reject) => {
-      const rzp = new (window as any).Razorpay({
+      const rzp = new (window as any).Razorpay(withTokunBranding({
         key,
         order_id: order.id,
-        name: "Tokun.world",
         description: "Subscription Payment",
         /* No contact here, deliberately. This block used to be three hardcoded
            placeholders — "Static User" / user@example.com / 9999999999 — which
@@ -777,7 +777,7 @@ export default function Subscription() {
           resolve(response);
         },
         modal: { ondismiss: () => reject(new Error("checkout_dismissed")) },
-      });
+      }));
 
       rzp.open();
     });

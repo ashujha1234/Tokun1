@@ -110,7 +110,7 @@ import { authError } from "@/lib/authErrors";
 // //   return (
 // //     <div className="min-h-screen w-full bg-[#030406] text-white flex font-inter">
 // //       <aside className="hidden lg:block basis-[60%] relative" aria-hidden>
-// //         <img src="/icons/signup.png" alt="" className="absolute inset-0 w-full h-full object-cover" />
+// //         <img src="/icons/signup.jpg" alt="" className="absolute inset-0 w-full h-full object-cover" />
 // //       </aside>
 
 // //       <main className="flex-1 lg:basis-[40%] min-h-screen flex items-center justify-center px-5 sm:px-8 md:px-10">
@@ -256,7 +256,7 @@ import { authError } from "@/lib/authErrors";
 //       {/* DESKTOP LEFT IMAGE */}
 //       <aside className="hidden lg:block basis-[60%] relative" aria-hidden>
 //         <img
-//           src="/icons/signup.png"
+//           src="/icons/signup.jpg"
 //           alt=""
 //           className="absolute inset-0 w-full h-full object-cover"
 //         />
@@ -558,7 +558,7 @@ const Login = () => {
       {/* DESKTOP LEFT IMAGE */}
       <aside className="hidden lg:block basis-[60%] relative" aria-hidden>
         <img
-          src="/icons/signup.png"
+          src="/icons/signup.jpg"
           alt=""
           className="absolute inset-0 w-full h-full object-cover"
         />
@@ -610,7 +610,7 @@ const Login = () => {
         }}
       >
         <img
-          src="/icons/signup.png"
+          src="/icons/signup.jpg"
           alt="Tokun AI"
           className="w-full h-full object-cover pointer-events-none select-none"
         />

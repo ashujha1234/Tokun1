@@ -14,6 +14,7 @@ import AppNavigation from "@/components/AppNavigation";
 import DetailsPrompt from "@/components/DetailsPrompt";
 import PurchaseConfirmModal from "@/components/PurchaseConfirmModal";
 import { releaseCheckoutHold } from "@/lib/referral";
+import { withTokunBranding } from "@/lib/razorpayTheme";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCart } from "@/contexts/CartContext";
 
@@ -1032,7 +1033,7 @@ const PromptMarketplacePage = () => {
 
       options.modal = { ...(options.modal || {}), ondismiss: releaseHold };
 
-      const rzp = new (window as any).Razorpay(options);
+      const rzp = new (window as any).Razorpay(withTokunBranding(options));
       rzp.on("payment.failed", () => {
         releaseHold();
         toast({ title: "Payment Failed", description: "Please try again." });

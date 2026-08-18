@@ -1140,6 +1140,7 @@ import {
   hasRefundReason,
 } from "@/lib/refundReasons";
 import RefundReasonPicker from "@/components/RefundReasonPicker";
+import { withTokunBranding } from "@/lib/razorpayTheme";
 
 const GRADIENT = "linear-gradient(270deg,#FF14EF 0%, #1A73E8 100%)";
 const GRAD = "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)";
@@ -1814,18 +1815,28 @@ function HistoryGridCard({
           }}
         />
 
+        {/* Play / pause.
+
+            This used to be `absolute inset-0` — an invisible button stretched
+            over the whole card. It swallowed the Card's own onClick, so tapping
+            a video product toggled playback instead of opening its details, and
+            the Details pill was the only way in. It also meant that while a clip
+            was playing nothing was drawn at all, so the pause target was an
+            invisible full-card hit area.
+
+            Now it is the control it looks like: a circle in the middle, with a
+            real pause state. Everything around it belongs to the card again. */}
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onToggleVideo(prompt.id); }}
-          className="absolute inset-0 flex items-center justify-center"
+          aria-label={`${isPlaying ? "Pause" : "Play"} ${prompt.title}`}
+          className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 rounded-full grid place-items-center text-white transition-colors ${
+            isPlaying ? "bg-black/35 hover:bg-black/60" : "bg-black/55 hover:bg-black/70"
+          }`}
         >
-          {!isPlaying && (
-            <span className="w-12 h-12 rounded-full bg-black/55 hover:bg-black/70 grid place-items-center text-white transition-colors">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M8 5v14l11-7-11-7z" />
-              </svg>
-            </span>
-          )}
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            {isPlaying ? <path d="M8 5h3v14H8zm5 0h3v14h-3z" /> : <path d="M8 5v14l11-7-11-7z" />}
+          </svg>
         </button>
 
         {/* Category pill */}
@@ -2308,10 +2319,9 @@ const openCheckout = ({
     razorpay_order_id: string;
     razorpay_signature: string;
   }>((resolve, reject) => {
-    const rzp = new (window as any).Razorpay({
+    const rzp = new (window as any).Razorpay(withTokunBranding({
       key,
       order_id: order.id,
-      name: "Tokun.world",
       description: "Subscription Payment",
       /* `contact: user?.phone || "9999999999"` was here. User has no phone
          field, so that fallback fired every single time and shipped a fake
@@ -2328,7 +2338,7 @@ const openCheckout = ({
       modal: {
         ondismiss: () => reject(new Error("checkout_dismissed")),
       },
-    });
+    }));
 
     rzp.open();
   });
@@ -3886,6 +3896,9 @@ const RequestCard = ({ item }: { item: any }) => {
     // that opens the upload modal has to go with it.
     const canStillDeliver = (p: any) => canSubmit(p?.status) && !p?.deliveryOverdue;
 
+    const hasRequests = !!summary?.requests?.length;
+    const hasProjects = !!summary?.projects?.length;
+
     return (
       <div className="flex h-full flex-col overflow-hidden">
         <div className="shrink-0">
@@ -3918,12 +3931,29 @@ const RequestCard = ({ item }: { item: any }) => {
         <div className="mt-6 min-h-0 flex-1 overflow-y-auto pr-1">
           {loading ? (
             <p className="text-white/45 text-sm">Loading bookings…</p>
+          ) : !hasRequests && !hasProjects ? (
+            /* One empty state for the whole tab.
+
+               A seller with no bookings used to read three pieces of furniture —
+               a "New Requests" heading, an "Active Bookings" heading, and a
+               placeholder box under each — all to be told the same single thing.
+               A section header over an empty grid also reads as a promise of
+               content that isn't there. */
+            <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-6 text-center">
+              <p className="text-white/70 text-sm font-medium">No bookings yet</p>
+              <p className="mt-1.5 text-[13px] text-white/40">
+                When a client books one of the services you sell, their request lands here.
+              </p>
+            </div>
           ) : (
             <>
-              <h2 style={{ fontFamily: "Inter, sans-serif", fontWeight: 700, fontSize: 16, color: "#FFFFFF", margin: "0 0 12px" }}>New Requests</h2>
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 mb-8">
-                {summary?.requests?.length ? (
-                  summary.requests.map((r) => (
+              {/* Heading and grid travel together, so a section only appears
+                  once it has something in it. */}
+              {hasRequests && (
+                <>
+                  <h2 style={{ fontFamily: "Inter, sans-serif", fontWeight: 700, fontSize: 16, color: "#FFFFFF", margin: "0 0 12px" }}>New Requests</h2>
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 mb-8">
+                    {summary?.requests?.map((r) => (
                     <button
                       key={r._id}
                       type="button"
@@ -3944,16 +3974,16 @@ const RequestCard = ({ item }: { item: any }) => {
                         </p>
                       )}
                     </button>
-                  ))
-                ) : (
-                  <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-5 text-white/45">No new booking requests yet.</div>
-                )}
-              </div>
+                    ))}
+                  </div>
+                </>
+              )}
 
-              <h2 style={{ fontFamily: "Inter, sans-serif", fontWeight: 700, fontSize: 16, color: "#FFFFFF", margin: "0 0 12px" }}>Active Bookings</h2>
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                {summary?.projects?.length ? (
-                  summary.projects.map((p) => (
+              {hasProjects && (
+                <>
+                  <h2 style={{ fontFamily: "Inter, sans-serif", fontWeight: 700, fontSize: 16, color: "#FFFFFF", margin: "0 0 12px" }}>Active Bookings</h2>
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                    {summary?.projects?.map((p) => (
                     <div
                       key={p._id}
                       onClick={() => setDetailForId(p._id)}
@@ -4057,11 +4087,10 @@ const RequestCard = ({ item }: { item: any }) => {
                         )}
                       </div>
                     </div>
-                  ))
-                ) : (
-                  <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-5 text-white/45">No active bookings yet.</div>
-                )}
-              </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>

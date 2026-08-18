@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
+import { withTokunBranding } from "@/lib/razorpayTheme";
 
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
@@ -95,7 +96,6 @@ export default function HirePaymentPopup({
         key: data.key,
         amount: data.order.amount,
         currency: data.order.currency,
-        name: "Tokun",
         description: notification.meta?.title || "Hire Payment",
         order_id: data.order.id,
 
@@ -134,12 +134,9 @@ export default function HirePaymentPopup({
           },
         },
 
-        theme: {
-          color: "#1A73E8",
-        },
       };
 
-      const razorpay = new (window as any).Razorpay(options);
+      const razorpay = new (window as any).Razorpay(withTokunBranding(options));
       razorpay.open();
     } catch (err: any) {
       toast({

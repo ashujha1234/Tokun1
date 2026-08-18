@@ -37,6 +37,32 @@
     <meta name="twitter:site" content="@tokun_app" />
     <meta name="twitter:image" content="https://tokun.app/opengraph-image.png" />
 
+    <!-- The auth pages' left-hand panel.
+
+         Its request could not start until the app bundle had downloaded and
+         parsed, React had resolved /pages/Login's lazy chunk, and that chunk had
+         rendered as far as the <img> — four steps deep, which is why the panel
+         arrived visibly after the form it sits beside. This starts the download
+         alongside the bundle instead of after it.
+
+         Injected by path rather than written as a plain <link>: this one HTML
+         file is served for every route, and none of the other pages want an
+         image they will never show. -->
+    <script>
+      if (
+        /^\/(login|signup|verify-login|verify-signup|admin-login|admin-forgot-password)\/?$/.test(
+          location.pathname
+        )
+      ) {
+        var authArt = document.createElement("link");
+        authArt.rel = "preload";
+        authArt.as = "image";
+        authArt.href = "/icons/signup.jpg";
+        authArt.setAttribute("fetchpriority", "high");
+        document.head.appendChild(authArt);
+      }
+    </script>
+
     <!-- JetBrains Mono, the one family this app doesn't self-host (Inter lives
          in /Fonts/inter). Moved out of an @import in landing-page.css, where it
          could only start after that stylesheet had been fetched and parsed —

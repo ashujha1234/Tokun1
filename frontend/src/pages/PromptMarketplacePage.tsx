@@ -5814,6 +5814,7 @@ import {
   TEAM_MEMBER_SELL_TOAST,
 } from "@/lib/orgRoles";
 import "./PromptMarketplace.css";
+import { withTokunBranding } from "@/lib/razorpayTheme";
 
 type Prompt = {
   id: string;
@@ -8108,7 +8109,7 @@ const filteredPrompts = prompts.filter((p) => {
 
       options.modal = { ...(options.modal || {}), ondismiss: releaseHold };
 
-      const rzp = new (window as any).Razorpay(options);
+      const rzp = new (window as any).Razorpay(withTokunBranding(options));
       rzp.on("payment.failed", function () {
         releaseHold();
         toast({ title: "Payment Failed", description: "Please try again." });

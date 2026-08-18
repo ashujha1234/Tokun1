@@ -61,6 +61,54 @@ const BUSINESS_TYPE_PAN_LETTERS: Record<string, string[] | null> = {
 const PAN_REGEX = /^[A-Z]{3}[PCHFATBJGL][A-Z]\d{4}[A-Z]$/;
 const GSTIN_REGEX = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
+/* The bank fields had no format checks at all — only "is it blank" and "do the
+   two account numbers match". So a transposed IFSC or a phone number with a
+   letter in it went through this form, through our own /api/bankaccount/add
+   (which checks presence and nothing else), and only failed at Razorpay, whose
+   reply comes back as "Your bank account rejected this settlement" — days later,
+   on a payout, about a field the seller can no longer see.
+
+   These are shape checks only. Whether the account actually exists is the bank's
+   answer to give, and Razorpay's penny-drop asks it. */
+
+// RBI format: 4 bank letters, a literal 0, then a 6-character branch code.
+const IFSC_REGEX = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+
+/* Digits only. The upper bound is India's longest account number; the lower is
+   deliberately loose rather than the usual 9 — a handful of old accounts are
+   shorter, and blocking a real seller is worse than letting the penny-drop
+   catch a number that is too short to be real. What this does catch is the
+   common damage: letters, dashes and pasted spaces. */
+const ACCOUNT_NUMBER_REGEX = /^\d{6,18}$/;
+
+// Indian mobile: 10 digits starting 6-9, after +91/0 and separators are stripped.
+const MOBILE_REGEX = /^[6-9]\d{9}$/;
+
+// Indian PIN: 6 digits, never starting with 0. Only applied when country is IN.
+const PIN_REGEX = /^[1-9]\d{5}$/;
+
+/* Only the characters people use to group digits — NOT every non-digit.
+   Stripping \D would delete letters too, and then "123456abc" reduces to a
+   perfectly valid six-digit account number instead of being rejected. Spaces
+   and dashes come from pasting; letters are a mistake worth reporting. */
+const stripSeparators = (value: string) => value.replace(/[\s\-()]/g, "");
+
+/* Accepts what people actually type — "+91 90000 90000", "091-9000090000" —
+   and reduces it to the 10 digits Razorpay wants, without hiding a typo. */
+const normalizeMobile = (value: string) => {
+  const compact = stripSeparators(value).replace(/^\+/, "");
+  if (compact.length === 12 && compact.startsWith("91")) return compact.slice(2);
+  if (compact.length === 11 && compact.startsWith("0")) return compact.slice(1);
+  return compact;
+};
+
+/* A beneficiary name has to match what the bank has on file, so the only thing
+   worth rejecting here is input that cannot be a name at all. Digits are left
+   alone on purpose: an organization's account is in its registered name, and
+   "24x7 Logistics Pvt Ltd" is a real one. */
+const looksLikeName = (value: string) =>
+  value.trim().length >= 3 && (value.match(/[A-Za-z]/g) || []).length >= 2;
+
 // Razorpay's business categories are fetched rather than hardcoded like
 // BUSINESS_TYPES above — there are ~340 sub-categories and they have to match
 // Razorpay's enum exactly, so the backend serves the one copy it also
@@ -287,20 +335,91 @@ export default function SellerLinkedAccountForm({
         } PAN normally has "${allowedPanLetters.join('" or "')}" as its 4th character.`
       : null;
 
+  /* Live hints for the three fields a typo is easiest to make in and costliest
+     to discover late. Shown only once there's enough typed to judge, so the
+     form isn't scolding someone mid-keystroke. */
+  const cleanIfsc = ifscCode.trim().toUpperCase();
+  const ifscWarning =
+    cleanIfsc.length >= 11 && !IFSC_REGEX.test(cleanIfsc)
+      ? "That doesn't look like an IFSC — 11 characters, like HDFC0001234."
+      : null;
+
+  const cleanAccountNumber = stripSeparators(accountNumber);
+  const accountNumberWarning =
+    accountNumber.trim() && !ACCOUNT_NUMBER_REGEX.test(cleanAccountNumber)
+      ? "An account number is digits only."
+      : null;
+
+  // Only once the shorter one has caught up, otherwise every confirm field
+  // reads as "mismatched" while it's being typed.
+  const confirmMismatch =
+    confirmAccountNumber.trim().length >= accountNumber.trim().length &&
+    accountNumber.trim().length > 0 &&
+    stripSeparators(confirmAccountNumber) !== cleanAccountNumber
+      ? "The two account numbers don't match."
+      : null;
+
   const handleSubmit = async () => {
+    /* Every rejection below names its field as well as the message, so the box
+       to fix is outlined — the panel at the bottom of the form already says
+       "The field to correct is outlined above", but until now only the
+       BACKEND's replies ever set it, so a client-side error left the seller
+       re-reading the whole form. */
+    const reject = (field: string, message: string) => {
+      setErrField(field);
+      setErrMsg(message);
+    };
+
     if (requiredMissing) {
+      setErrField(null);
       setErrMsg("Please fill all required (*) fields.");
       return;
     }
-    if (accountNumber.trim() !== confirmAccountNumber.trim()) {
-      setErrMsg("Account number and confirmation don't match.");
+
+    if (!looksLikeName(accountHolderName)) {
+      reject(
+        "accountHolderName",
+        "Enter the account holder's full name, exactly as the bank has it."
+      );
       return;
     }
+
+    if (!ACCOUNT_NUMBER_REGEX.test(cleanAccountNumber)) {
+      reject(
+        "accountNumber",
+        "The account number should be 6–18 digits, with no letters or spaces."
+      );
+      return;
+    }
+    // Compared on digits, so one field having a pasted space isn't a "mismatch".
+    if (cleanAccountNumber !== stripSeparators(confirmAccountNumber)) {
+      reject("confirmAccountNumber", "Account number and confirmation don't match.");
+      return;
+    }
+
+    if (!IFSC_REGEX.test(cleanIfsc)) {
+      reject("ifscCode", "IFSC looks invalid — 11 characters, e.g. HDFC0001234.");
+      return;
+    }
+
+    if (!MOBILE_REGEX.test(normalizeMobile(phone))) {
+      reject("phone", "Enter a 10-digit Indian mobile number, e.g. 9000090000.");
+      return;
+    }
+
+    // Guarded on country so this stays correct if payouts ever open up outside
+    // India — a 6-digit rule would be wrong for every other postal system.
+    if (country.trim().toUpperCase() === "IN" && !PIN_REGEX.test(postalCode.trim())) {
+      reject("postalCode", "Postal code should be a 6-digit Indian PIN, e.g. 560001.");
+      return;
+    }
+
     // Format is checked only on what was actually filled in — requiredMissing
     // above has already caught anything mandatory that's blank, so a PAN that
     // is empty here is one the matrix says may be left empty.
     if (panNumber.trim() && !PAN_REGEX.test(panNumber.trim().toUpperCase())) {
-      setErrMsg(
+      reject(
+        "panNumber",
         isOrganization
           ? "Authorised signatory PAN looks invalid — e.g. ABCPE1234F."
           : "PAN looks invalid — e.g. ABCPE1234F."
@@ -310,14 +429,20 @@ export default function SellerLinkedAccountForm({
 
     if (isOrganization) {
       if (businessPan.trim() && !PAN_REGEX.test(businessPan.trim().toUpperCase())) {
-        setErrMsg("Business PAN looks invalid — e.g. AAACA1234A.");
+        reject("businessPan", "Business PAN looks invalid — e.g. AAACA1234A.");
+        return;
+      }
+      // Optional, but a shareholding of 0 or 140 is a typo either way.
+      const ownership = percentageOwnership.trim();
+      if (ownership && !(Number(ownership) > 0 && Number(ownership) <= 100)) {
+        reject("percentageOwnership", "Ownership % should be a number between 1 and 100.");
         return;
       }
       // Whether a GSTIN was required is already settled above; a malformed one
       // is always a typo either way.
       const cleanGstin = gstin.trim().toUpperCase();
       if (cleanGstin && !GSTIN_REGEX.test(cleanGstin)) {
-        setErrMsg("GSTIN looks invalid — e.g. 27AAACA1234A1Z5.");
+        reject("gstin", "GSTIN looks invalid — e.g. 27AAACA1234A1Z5.");
         return;
       }
       // Characters 3-12 of every GSTIN are the entity's PAN, so a mismatch
@@ -325,7 +450,7 @@ export default function SellerLinkedAccountForm({
       // comparable when a business PAN was given — a proprietorship may
       // legitimately supply a GSTIN without one.
       if (cleanGstin && businessPan.trim() && cleanGstin.slice(2, 12) !== businessPan.trim().toUpperCase()) {
-        setErrMsg("The PAN inside this GSTIN doesn't match the Business PAN you entered.");
+        reject("gstin", "The PAN inside this GSTIN doesn't match the Business PAN you entered.");
         return;
       }
     }
@@ -360,12 +485,17 @@ export default function SellerLinkedAccountForm({
           businessCategory,
           businessSubcategory,
           accountHolderName: accountHolderName.trim(),
-          accountNumber: accountNumber.trim(),
-          confirmAccountNumber: confirmAccountNumber.trim(),
-          ifscCode: ifscCode.trim(),
+          /* Sent as validated, not as typed. A pasted "1234 5678 9012" passed
+             the check above on its digits but used to go to Razorpay with the
+             spaces still in it, and "+91 90000 90000" went as a 13-character
+             contact. Normalising here is what makes the validation mean
+             something downstream. */
+          accountNumber: cleanAccountNumber,
+          confirmAccountNumber: stripSeparators(confirmAccountNumber),
+          ifscCode: cleanIfsc,
           bankName: bankName.trim(),
-          panNumber: panNumber.trim(),
-          phone: phone.trim(),
+          panNumber: panNumber.trim().toUpperCase(),
+          phone: normalizeMobile(phone),
           addresses: {
             registered: {
               street1: street1.trim(),
@@ -686,16 +816,46 @@ export default function SellerLinkedAccountForm({
 
                   <div>
                     <label className={labelClass}>Bank account number *</label>
-                    <input className={fieldClass("accountNumber")} value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} />
+                    <input
+                      className={fieldClass("accountNumber")}
+                      value={accountNumber}
+                      onChange={(e) => setAccountNumber(e.target.value)}
+                      inputMode="numeric"
+                      autoComplete="off"
+                      maxLength={24}
+                    />
+                    {accountNumberWarning && (
+                      <p className="text-[11px] text-amber-300/80 mt-1">{accountNumberWarning}</p>
+                    )}
                   </div>
                   <div>
                     <label className={labelClass}>Confirm account number *</label>
-                    <input className={fieldClass("confirmAccountNumber")} value={confirmAccountNumber} onChange={(e) => setConfirmAccountNumber(e.target.value)} />
+                    <input
+                      className={fieldClass("confirmAccountNumber")}
+                      value={confirmAccountNumber}
+                      onChange={(e) => setConfirmAccountNumber(e.target.value)}
+                      inputMode="numeric"
+                      autoComplete="off"
+                      maxLength={24}
+                    />
+                    {confirmMismatch && (
+                      <p className="text-[11px] text-amber-300/80 mt-1">{confirmMismatch}</p>
+                    )}
                   </div>
 
                   <div>
                     <label className={labelClass}>IFSC code *</label>
-                    <input className={fieldClass("ifscCode")} value={ifscCode} onChange={(e) => setIfscCode(e.target.value.toUpperCase())} />
+                    <input
+                      className={fieldClass("ifscCode")}
+                      value={ifscCode}
+                      onChange={(e) => setIfscCode(e.target.value.toUpperCase())}
+                      placeholder="HDFC0001234"
+                      autoComplete="off"
+                      maxLength={11}
+                    />
+                    {ifscWarning && (
+                      <p className="text-[11px] text-amber-300/80 mt-1">{ifscWarning}</p>
+                    )}
                   </div>
                   <div>
                     <label className={labelClass}>Bank name *</label>
@@ -720,7 +880,14 @@ export default function SellerLinkedAccountForm({
                   </div>
                   <div>
                     <label className={labelClass}>Phone number *</label>
-                    <input className={fieldClass("phone")} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="9000090000" />
+                    <input
+                      className={fieldClass("phone")}
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="9000090000"
+                      inputMode="tel"
+                      autoComplete="tel"
+                    />
                   </div>
 
                   <div className="sm:col-span-2">
@@ -751,7 +918,15 @@ export default function SellerLinkedAccountForm({
 
                   <div>
                     <label className={labelClass}>Postal code *</label>
-                    <input className={fieldClass("postalCode")} value={postalCode} onChange={(e) => setPostalCode(e.target.value)} />
+                    <input
+                      className={fieldClass("postalCode")}
+                      value={postalCode}
+                      onChange={(e) => setPostalCode(e.target.value)}
+                      placeholder="560001"
+                      inputMode="numeric"
+                      autoComplete="postal-code"
+                      maxLength={10}
+                    />
                   </div>
                   <div>
                     <label className={labelClass}>Country *</label>

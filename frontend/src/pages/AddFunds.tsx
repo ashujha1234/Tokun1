@@ -10782,6 +10782,7 @@ import {
   RefreshCcw,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { withTokunBranding } from "@/lib/razorpayTheme";
 
 declare global {
   interface Window {
@@ -11198,22 +11199,17 @@ const TXN_PER_PAGE = 5;
       const options: any = {
         key: razorpayKey,
         order_id: orderId,
-        name: "Tokun",
         description:
           selectedMethod === "upi"
             ? "Add funds via UPI"
             : selectedMethod === "netbanking"
             ? "Add funds via Net Banking"
             : "Add funds via Card",
-        image: "/favicon.ico",
         prefill,
         notes: {
           purpose: "wallet_topup",
           selectedMethod,
           walletAmount: String(addAmount),
-        },
-        theme: {
-          color: "#1A73E8",
         },
         ...(methodRestriction !== undefined && {
           method: methodRestriction,
@@ -11255,7 +11251,7 @@ const TXN_PER_PAGE = 5;
         },
       };
 
-      const razorpay = new window.Razorpay(options);
+      const razorpay = new window.Razorpay(withTokunBranding(options));
 
       razorpay.on("payment.failed", (response: any) => {
         setPaymentError(
