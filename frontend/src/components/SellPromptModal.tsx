@@ -2660,11 +2660,24 @@ export default function SellPromptModal({
           )}
 
           <div className="flex items-center justify-end gap-3 pt-2">
+            {/* hover:text-white is load-bearing, not decoration.
+
+                `variant="outline"` carries `hover:text-accent-foreground`, and
+                nothing in this app ever puts `.dark` on <html> — so that token
+                resolves to its light value, a near-black navy. On this modal's
+                #0E0F12 panel the word "Cancel" simply vanished under the cursor.
+
+                `text-white/90` didn't stop it: tailwind-merge only dedupes
+                classes sharing a modifier, and an unprefixed `text-*` never
+                conflicts with a `hover:text-*`. The background survived for the
+                opposite reason — `hover:bg-white/5` DOES share `hover:` with the
+                variant's `hover:bg-accent`, so it won. Overriding the hover text
+                colour explicitly is what closes it. */}
             <Button
               type="button"
               variant="outline"
               onClick={() => setOpen(false)}
-              className="rounded-xl border border-white/15 bg-transparent px-4 py-2.5 text-sm text-white/90 hover:bg-white/5"
+              className="rounded-xl border border-white/15 bg-transparent px-4 py-2.5 text-sm text-white/90 hover:bg-white/5 hover:text-white"
             >
               Cancel
             </Button>
