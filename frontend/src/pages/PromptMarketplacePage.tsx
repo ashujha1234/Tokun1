@@ -5846,7 +5846,12 @@ type Prompt = {
   reviewCount?: number;
   downloads?: number;
   imageUrl?: string;
+  /** The preview cut when one exists, else the original — see mapPromptDoc. */
   videoUrl?: string;
+  /** One JPEG frame, so a card paints before any video arrives. */
+  posterUrl?: string;
+  /** The seller's original file. What a buyer gets; not what a card plays. */
+  originalVideoUrl?: string;
   preview?: string;
   isFree?: boolean;
   createdAt?: string;
@@ -6537,6 +6542,12 @@ const LibOldStyleCard = ({
   // listing that was previously blocked quietly becomes purchasable.
   const comingSoon = !!prompt.sellerVerificationPending || hasPayoutSetup === false;
 
+  /* From the cart context, so this card and every other surface answer the same
+     question the same way — see the note on isInCart in CartContext. Read here,
+     above the early return, so the hook order stays fixed. */
+  const { isInCart } = useCart();
+  const inCart = isInCart(prompt.id);
+
   if (mediaKind === "video") {
     return (
       // Same width as the image card below, and the rail stretches both to the
@@ -6657,14 +6668,24 @@ const LibOldStyleCard = ({
                   Same for a listing awaiting verification: the cart route
                   rejects it, so offering the button would only fail later. */}
               {!isOwn && !teamMember && !comingSoon && (
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onAddToCart(prompt.id); }}
-                  className="mp-card__pill mp-card__pill--cart"
-                >
-                  <ShoppingCart className="h-4 w-4" />
-                  Cart
-                </button>
+                inCart ? (
+                  /* Adding it twice is not a thing the cart supports — the route
+                     rejects a duplicate — so offering the button again could only
+                     produce an error toast. */
+                  <span className="mp-card__pill mp-card__pill--in-cart">
+                    <Check className="h-4 w-4" />
+                    In cart
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onAddToCart(prompt.id); }}
+                    className="mp-card__pill mp-card__pill--cart"
+                  >
+                    <ShoppingCart className="h-4 w-4" />
+                    Cart
+                  </button>
+                )
               )}
 
               {!isOwn && !isPurchased && !(prompt.exclusive && prompt.sold) && (
@@ -7108,6 +7129,10 @@ const LibCategoriesRow = ({
     railRef.current?.scrollBy({ left: dir === "left" ? -280 : 280, behavior: "smooth" });
 
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
+  /* Where to draw the hover panel. It is rendered in a portal at these
+     coordinates rather than inside the rail — see the note on the rail's
+     overflow below for why it cannot live in there. */
+  const [panelAt, setPanelAt] = useState<{ left: number; top: number } | null>(null);
   /* Fetched per category the first time it's hovered and kept for the life of
      the page. 23 categories × ~5 children is small, and the alternative — one
      request every time the pointer crosses a pill — would fire dozens of times
@@ -7146,15 +7171,29 @@ const LibCategoriesRow = ({
         <LibEyebrow icon={<Sparkles className="h-4 w-4" />}>BROWSE BY CATEGORY</LibEyebrow>
         <LibArrowNav onLeft={() => scroll("left")} onRight={() => scroll("right")} />
       </div>
-      {/* overflow-x-auto would clip the hover panel, so the rail only scrolls
-          when nothing is open. Hidden behind a pointer check: on a touch screen
-          hover fires on tap and sticks, which would leave a panel covering the
-          grid with no way to dismiss it. */}
+      {/* Always `overflow-x-auto`. It used to switch to `overflow-x-visible`
+          while a panel was open, so the hover panel wouldn't be clipped — and
+          that switch is what made the rail jump.
+
+          Toggling overflow destroys and rebuilds the scroll container, which
+          throws away its scrollLeft: a rail scrolled halfway along snapped back
+          to the start the moment a pill was hovered, and snapped again on the
+          way out. Moving the pointer across the row, each pill's enter/leave
+          fired that pair over and over — the shaking.
+
+          (Two further reasons it could not stay: `overflow-y` is unset here, so
+          `overflow-x: auto` makes the used value of BOTH axes scrollable, and
+          `scroll-smooth` then animates the snap-back rather than doing it
+          instantly.)
+
+          The panel now renders in a portal, positioned over the page, so
+          nothing needs to clip and the rail is left alone. */}
       <div
         ref={railRef}
-        className={`flex gap-3 scroll-smooth pb-2 no-scrollbar ${
-          hoveredCategory ? "overflow-x-visible" : "overflow-x-auto"
-        }`}
+        className="flex gap-3 scroll-smooth pb-2 no-scrollbar overflow-x-auto"
+        /* A panel pinned to a pill goes stale the moment the rail moves under
+           it, so it closes on scroll rather than drifting away from its pill. */
+        onScroll={() => { setHoveredCategory(null); setPanelAt(null); }}
       >
         {pills.map((c) => {
           const subs = subsByCategory[c];
@@ -7176,8 +7215,12 @@ const LibCategoriesRow = ({
             <div
               key={c}
               className="relative shrink-0"
-              onMouseEnter={() => handleCategoryHover(c)}
-              onMouseLeave={() => setHoveredCategory(null)}
+              onMouseEnter={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                setPanelAt({ left: r.left, top: r.bottom });
+                handleCategoryHover(c);
+              }}
+              onMouseLeave={() => { setHoveredCategory(null); setPanelAt(null); }}
             >
               <button
                 onClick={() => onSelect(c)}
@@ -7213,14 +7256,43 @@ const LibCategoriesRow = ({
                 )}
               </button>
 
-              {showPanel && (
+              {showPanel && panelAt && createPortal(
                 <div
-                  className="absolute left-0 top-full pt-2 z-30 min-w-[220px]"
-                  /* The pt-2 above is inside the hoverable area on purpose —
-                     as a margin it would be a dead gap that closes the panel
-                     while the pointer travels down to it. */
+                  className="fixed pt-2 z-[60]"
+                  /* Sized and clamped here rather than left to grow.
+
+                     Design has seventeen children now, and one column of those
+                     came out around 700px tall — taller than most of the window,
+                     running off the bottom with no way to reach the end of it.
+                     Three rules keep every category the same shape:
+
+                       two columns past eight children, so a long list gets wider
+                       instead of endlessly taller;
+                       a height capped to what is actually below the pill, with
+                       the list scrolling inside it;
+                       a left edge pulled back from the window's right side, since
+                       a fixed panel opened from the last pill in the rail would
+                       otherwise hang off the screen. */
+                  style={{
+                    left: Math.max(
+                      12,
+                      Math.min(panelAt.left, window.innerWidth - (subs.length > 8 ? 440 : 250) - 12)
+                    ),
+                    top: panelAt.top,
+                    width: subs.length > 8 ? 440 : 250,
+                  }}
+                  /* Fixed and in a portal, so no ancestor can clip it and the
+                     rail keeps its own scrolling. The pt-2 is inside the
+                     hoverable area on purpose — as a margin it would be a dead
+                     gap that closes the panel while the pointer travels down
+                     to it. */
+                  onMouseEnter={() => setHoveredCategory(c)}
+                  onMouseLeave={() => { setHoveredCategory(null); setPanelAt(null); }}
                 >
-                  <div className="rounded-xl border border-white/10 bg-[#131419] shadow-[0_16px_48px_rgba(0,0,0,0.6)] p-1.5">
+                  <div
+                    className="rounded-xl border border-white/10 bg-[#131419] shadow-[0_16px_48px_rgba(0,0,0,0.6)] p-1.5 overflow-y-auto no-scrollbar"
+                    style={{ maxHeight: Math.max(220, window.innerHeight - panelAt.top - 24) }}
+                  >
                     {/* First row is the parent itself. Every child used to call
                         onSelect(c) — the PARENT — so clicking "Logo & Branding"
                         silently filtered by "Design" and the whole category came
@@ -7233,18 +7305,25 @@ const LibCategoriesRow = ({
                       All of {c}
                     </button>
                     <div className="my-1 h-px bg-white/10" />
-                    {subs.map((sub) => (
-                      <button
-                        key={sub._id || sub.name}
-                        onClick={() => onSelect(sub.name)}
-                        className="w-full text-left px-3 py-2 rounded-lg text-[13px] transition-colors hover:bg-white/[0.07] hover:text-white"
-                        style={{ color: sub.name === selected ? "#fff" : "rgba(255,255,255,0.75)" }}
-                      >
-                        {sub.name}
-                      </button>
-                    ))}
+                    <div className={subs.length > 8 ? "grid grid-cols-2 gap-x-1" : ""}>
+                      {subs.map((sub) => (
+                        <button
+                          key={sub._id || sub.name}
+                          onClick={() => onSelect(sub.name)}
+                          /* truncate, not wrap: a two-line row in a two-column
+                             grid makes the rows different heights and the whole
+                             menu looks ragged. title carries the full name. */
+                          title={sub.name}
+                          className="w-full text-left px-3 py-1.5 rounded-lg text-[13px] leading-5 truncate transition-colors hover:bg-white/[0.07] hover:text-white"
+                          style={{ color: sub.name === selected ? "#fff" : "rgba(255,255,255,0.75)" }}
+                        >
+                          {sub.name}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                </div>,
+                document.body
               )}
             </div>
           );
@@ -7262,11 +7341,22 @@ const LibCategoriesRow = ({
  */
 const mapPromptDoc = (doc: any): Prompt => {
   const att = doc?.attachment || null;
-  const mediaPath = att?.path
-    ? att.path.startsWith("http")
-      ? att.path
-      : `${API_BASE}${att.path}`
-    : undefined;
+  const abs = (u?: string | null) =>
+    u ? (u.startsWith("http") ? u : `${API_BASE}${u}`) : undefined;
+
+  const mediaPath = abs(att?.path);
+
+  /* What the marketplace should actually play.
+
+     `att.path` is the seller's original — the 4K listing is 56 MB at 7.9 Mbps,
+     which a viewer on 4 Mbps cannot play in real time and no card should be
+     pulling at all. `previewUrl` is an 8-second 720p cut of it, around 0.45 MB,
+     generated at upload; `posterUrl` is one frame, ~50 KB.
+
+     Both fall back to the original, so a video uploaded before this existed
+     behaves exactly as it did. The original is still what a buyer downloads. */
+  const previewPath = abs(att?.previewUrl) || mediaPath;
+  const posterPath = abs(att?.posterUrl);
 
   return {
     id: String(doc._id),
@@ -7314,7 +7404,11 @@ const mapPromptDoc = (doc: any): Prompt => {
     // prompts, which until now copied an empty string because nothing set it.
     fullPrompt: doc.promptText || undefined,
     imageUrl: att?.type === "image" ? mediaPath : undefined,
-    videoUrl: att?.type === "video" ? mediaPath : undefined,
+    videoUrl: att?.type === "video" ? previewPath : undefined,
+    posterUrl: att?.type === "video" ? posterPath : undefined,
+    /* Kept separately for anything that needs the real file rather than the
+       preview — a purchased download, for instance. */
+    originalVideoUrl: att?.type === "video" ? mediaPath : undefined,
     preview:
       (doc.description && String(doc.description).slice(0, 140)) ||
       (doc.promptText && String(doc.promptText).slice(0, 140)) ||

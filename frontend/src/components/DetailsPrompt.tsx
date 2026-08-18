@@ -1101,7 +1101,13 @@ export default function DetailsPrompt({
   showImages = false,
 }: DetailsPromptProps) {
   const { user } = useAuth();
-  const { addToCart } = useCart();
+  /* Cleared whenever the panel opens on a different product, so a second
+     video doesn't inherit the first one's "ready". */
+  const [videoReady, setVideoReady] = useState(false);
+  useEffect(() => { setVideoReady(false); }, [prompt?.id, open]);
+
+  const { addToCart, isInCart } = useCart();
+  const inCart = isInCart(prompt?.id ?? "");
 
   // A team member's userType is "TM"; "ORG" is the Owner's own type. Deriving
   // this as `isOrg && !isOwner` (as this did) never matched a real TM, so the
@@ -1354,14 +1360,45 @@ const comingSoon = !!prompt?.sellerVerificationPending || sellerHasPayout === fa
                   }}
                 />
               ) : (
+                /* preload + poster, because these files are large.
+
+                   The attachments are the seller's originals — the 4K one on the
+                   marketplace is 56 MB — and with no poster and no preload hint
+                   this panel was a black rectangle for as long as the download
+                   took. Nothing was broken; there was simply nothing to show
+                   yet, and no way to tell that apart from a failure.
+
+                   poster paints the listing's image immediately where there is
+                   one, preload="auto" starts fetching on open rather than
+                   waiting, and onLoadedData clears the "Loading video…" line
+                   below so the wait is at least legible. */
                 <video
                   src={media?.url}
+                  /* The generated frame first: it comes from this very video,
+                     so it matches what plays. prompt.imageUrl is the fallback,
+                     and only some listings have one at all. */
+                  poster={(prompt as any).posterUrl || prompt.imageUrl || undefined}
                   className="w-full h-full object-cover"
                   loop
                   muted
                   autoPlay
                   playsInline
+                  preload="auto"
+                  onLoadedData={() => setVideoReady(true)}
                 />
+              )}
+
+              {/* Says what's happening while a large file streams in. Without
+                  it the panel looked broken rather than busy. */}
+              {media?.type === "video" && !videoReady && (
+                <div className="absolute inset-0 grid place-items-center pointer-events-none" style={{ zIndex: 25 }}>
+                  <span
+                    className="rounded-full px-3 py-1.5 text-[12px] text-white/85"
+                    style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)" }}
+                  >
+                    Loading video…
+                  </span>
+                </div>
               )}
 
               {/* Watermark overlay — visible only when not purchased */}
@@ -1586,7 +1623,28 @@ const comingSoon = !!prompt?.sellerVerificationPending || sellerHasPayout === fa
               </div>
             )}
 
-            {!isOwnPrompt && !owned && !isTeamMember && !comingSoon && Number(prompt.price || 0) > 0 && (
+            {/* Already in the cart — the button is replaced, not dropped.
+
+                Dropping it would leave the panel with only Buy Now and nothing
+                saying why the cart option vanished, and the add could not
+                succeed anyway: the route rejects a duplicate, which is what the
+                "Already in your cart" toast below exists to catch. Saying so up
+                front beats letting someone press it to find out. */}
+            {!isOwnPrompt && !owned && !isTeamMember && !comingSoon && Number(prompt.price || 0) > 0 && inCart && (
+              <div
+                className="w-full h-12 flex items-center justify-center gap-2 rounded-[10px] border text-[15px] font-medium"
+                style={{
+                  background: "rgba(25,230,108,0.10)",
+                  borderColor: "rgba(25,230,108,0.22)",
+                  color: "#19E66C",
+                }}
+              >
+                <CheckCircle2 className="w-5 h-5" />
+                In your cart
+              </div>
+            )}
+
+            {!isOwnPrompt && !owned && !isTeamMember && !comingSoon && Number(prompt.price || 0) > 0 && !inCart && (
               <button
                 /* Awaits the result before saying anything. It used to fire and
                    forget, so a refusal (already in the cart, already purchased,

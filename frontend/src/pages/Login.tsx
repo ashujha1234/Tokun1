@@ -4,6 +4,7 @@
 
 
 // // import { useState } from "react";
+import { authError } from "@/lib/authErrors";
 // // import { Link, useNavigate } from "react-router-dom";
 // // import { Input } from "@/components/ui/input";
 // // import { toast } from "@/components/ui/use-toast";
@@ -516,7 +517,12 @@ const Login = () => {
       console.log("[LOGIN] ← json:", data);
 
       if (!res.ok || !data?.success) {
-        throw new Error(data?.error || "Could not send OTP. Please try again.");
+        {
+          const e: any = new Error(String(data?.error || "network"));
+          e.code = data?.error;
+          e.suggestion = data?.suggestion;
+          throw e;
+        }
       }
 
       toast({
@@ -537,10 +543,9 @@ const Login = () => {
       navigate(navTo);
     } catch (err: any) {
       console.error("[LOGIN] error:", err);
-      toast({
-        title: "Login failed",
-        description: err?.message || "Unexpected error. Please try again.",
-      });
+      /* The server's code, translated — this used to put "no_account_or_not_verified"
+         straight into the description. */
+      toast(authError(err?.code, err?.suggestion));
     } finally {
       const t1 = performance.now();
       console.log(`[LOGIN] completed in ${(t1 - t0).toFixed(1)}ms`);

@@ -2221,7 +2221,7 @@ const startCollaboration = async (): Promise<string | null> => {
 
         <div className="relative flex-1">
         <textarea
-  placeholder="Enter your product here..."
+  placeholder="Enter your prompt here..."
   className="min-h-[180px] h-full w-full bg-transparent resize-none border-0 outline-none focus:ring-0 pr-10 text-white placeholder:text-white/40 text-sm p-0"
   value={text}
   onChange={handleTextChange}

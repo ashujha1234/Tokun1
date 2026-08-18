@@ -56,6 +56,29 @@ let cachedEligible = true;
 let cachedProfile: FreelancerProfile | null | undefined = undefined;
 let inflight: Promise<void> | null = null;
 
+/* Every mounted copy of this hook, so a cache change reaches all of them.
+
+   The cache is module-level but `status` is per-instance React state, and this
+   hook is mounted more than once at a time — the app header's account menu and
+   the landing page's both use it. So activating a profile in one updated that
+   one's state and the module cache, and left the OTHER menu rendering whatever
+   it had read when it mounted.
+
+   That is how a live profile kept offering "Finish Super Creator profile":
+   nothing was wrong with the activation, the second menu just never heard about
+   it. Clicking it then routed on the stale DRAFT — into the wizard instead of
+   the profile page — and the wizard, which does re-fetch, answered with "your
+   profile is live".
+
+   A Set of setters is the smallest thing that fixes it without a store. */
+const listeners = new Set<(s: FreelancerStatus | null, e: boolean) => void>();
+
+function publishStatus(next: FreelancerStatus | null, nextEligible = cachedEligible) {
+  cachedStatus = next;
+  cachedEligible = nextEligible;
+  listeners.forEach((fn) => fn(next, nextEligible));
+}
+
 function readToken(): string {
   return (
     localStorage.getItem("token") ||
@@ -131,9 +154,10 @@ export function useFreelancerMenu(): FreelancerMenuState {
         const res = await getMyFreelancerProfile(token);
         if (res.ok) {
           cachedToken = token;
-          cachedStatus = res.data.profile?.status ?? null;
-          cachedEligible = res.data.eligible !== false;
           cachedProfile = res.data.profile;
+          // Published so a refetch here corrects every mounted menu, not just
+          // the one that happened to ask.
+          publishStatus(res.data.profile?.status ?? null, res.data.eligible !== false);
         } else {
           // Left uncached so the next mount retries. Falling back to "not a
           // freelancer yet" shows the plain "Become a Freelancer" row, and the
@@ -158,6 +182,16 @@ export function useFreelancerMenu(): FreelancerMenuState {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Kept in step with the other mounted menus for as long as this one lives.
+  useEffect(() => {
+    const onChange = (s: FreelancerStatus | null, e: boolean) => {
+      setStatus(s);
+      setEligible(e);
+    };
+    listeners.add(onChange);
+    return () => { listeners.delete(onChange); };
+  }, []);
 
   const meta = useMemo(() => {
     if (!eligible) {
@@ -223,6 +257,21 @@ export function useFreelancerMenu(): FreelancerMenuState {
       });
       return;
     }
+
+    /* Revalidated, but NOT awaited.
+
+       The broadcast above fixes the case that actually bites — two menus mounted
+       in one tab, one of them stale. What it can't know about is a profile
+       activated somewhere else entirely: a second tab, or an admin. This catches
+       that, a moment late.
+
+       Deliberately not awaited: making the click wait on a request would put a
+       dead half-second on every press of this item to guard a rare case that
+       already self-corrects. If the cache was wrong, the wizard re-fetches on
+       open and lands on its "live" phase — the same safety net this relied on
+       before — and the label behind it is right by the time the dialog closes. */
+    void load(true);
+
     // A live profile is managed on the user's own profile page — there is one
     // profile page, and it's the same URL buyers see, so the owner is always
     // editing the thing being looked at.
@@ -231,7 +280,7 @@ export function useFreelancerMenu(): FreelancerMenuState {
       return;
     }
     setWizardOpen(true);
-  }, [token, eligible, status, navigate, ownProfilePath]);
+  }, [token, eligible, status, navigate, ownProfilePath, load]);
 
   const openPayouts = useCallback(() => setPayoutOpen(true), []);
 
@@ -248,12 +297,12 @@ export function useFreelancerMenu(): FreelancerMenuState {
         initialProfile={cachedProfile}
         onStatusChange={(next) => {
           cachedToken = token;
-          cachedStatus = next;
           // The cached profile is now stale in at least its status. Reset to
           // "unknown" rather than "none", so the next open re-fetches the truth
           // instead of showing a freelancer an empty first step.
           cachedProfile = undefined;
-          setStatus(next);
+          // publish, not setStatus: every other mounted menu needs this too.
+          publishStatus(next);
         }}
         // Onboarding ends with the profile live, so they go straight to their
         // profile — the same page buyers see, where the Profile Strength list

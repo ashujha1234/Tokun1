@@ -7,6 +7,22 @@ const AttachmentSchema = new mongoose.Schema({
   mimetype: { type: String, required: true },
   size: { type: Number, required: true },
   type: { type: String, enum: ["image", "video","other"], required: true }, // only image or video
+
+  /* Video listings only, and both derived from `path` at upload time.
+
+     `path` is the seller's original — the 4K clip on the marketplace is 56 MB at
+     7.9 Mbps, which no card and no preview panel has any business downloading:
+     a viewer on 4 Mbps cannot even play it in real time. These two are what the
+     marketplace shows instead, and `path` is what the buyer gets after paying.
+
+     posterUrl   a single JPEG frame, ~40 KB — paints instantly
+     previewUrl  a short, silent, 720p loop, ~1 MB — plays anywhere
+
+     Absent on every video uploaded before this existed, so both readers fall
+     back to `path` and behave exactly as they did. Services already work this
+     way; see utils/videoPoster.js for the same reasoning. */
+  posterUrl: { type: String, default: "" },
+  previewUrl: { type: String, default: "" },
 });
 
 

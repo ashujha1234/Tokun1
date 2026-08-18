@@ -1,6 +1,7 @@
 
 
 // // import { useEffect, useState } from "react";
+import { authError } from "@/lib/authErrors";
 // // import { Link, useNavigate, useSearchParams } from "react-router-dom";
 // // import { Button } from "@/components/ui/button";
 // // import { Input } from "@/components/ui/input";
@@ -921,7 +922,7 @@ const [devOtp, setDevOtp] = useState<string | null>(null);
       console.groupEnd();
 
       if (!resp.ok || !json?.success) {
-        const errMsg = json?.error || "Verification failed";
+        const errMsg = json?.error || "network";
         console.error("[LOGIN/VERIFY] ❌ Error:", errMsg);
         throw new Error(errMsg);
       }
@@ -1036,8 +1037,7 @@ const [devOtp, setDevOtp] = useState<string | null>(null);
     } catch (err: any) {
       console.error("[LOGIN/VERIFY] ❌ Exception:", err?.message || err);
       toast({
-        title: "Verification failed",
-        description: err?.message || "Unknown error",
+        ...authError(err?.code || err?.message),
       });
     } finally {
       setIsLoading(false);
@@ -1059,7 +1059,11 @@ const [devOtp, setDevOtp] = useState<string | null>(null);
       });
       const json = await resp.json();
       if (!resp.ok || !json?.success) {
-        throw new Error(json?.error || "Failed to resend");
+        {
+          const e: any = new Error(String(json?.error || "network"));
+          e.code = json?.error;
+          throw e;
+        }
       }
        toast({ title: "Code resent", description: "Check your inbox." });
       //  isko badalana padega tetsing ke liye use kar rhe hain bs 
@@ -1067,10 +1071,7 @@ const [devOtp, setDevOtp] = useState<string | null>(null);
 setSecondsLeft(50);
       setSecondsLeft(50);
     } catch (err: any) {
-      toast({
-        title: "Could not resend",
-        description: err?.message,
-      });
+      toast(authError(err?.code));
     }
   };
 

@@ -63,8 +63,19 @@ export default function TagPicker({
 
   const full = tags.length >= max;
 
+  /* Nothing until something is typed.
+
+     Focusing the field used to drop the whole 24-tag catalog over the form —
+     and what sits directly under this field is the attachment dropzone, a div
+     whose onClick opens a file picker. A list that long, unasked for, covering
+     a file trigger is how a click on "Photorealistic" ended up opening Finder.
+
+     It was also the wrong list: "Popular tags" led with Photorealistic,
+     Cinematic, Portrait — image words — to a seller who might be listing an SEO
+     or a coding prompt. Suggestions are only useful once there's something to
+     match against. */
   const suggestions = useMemo(
-    () => (full ? [] : searchPromptTags(query, tags)),
+    () => (full || !query.trim() ? [] : searchPromptTags(query, tags)),
     [query, tags, full]
   );
 
@@ -216,12 +227,6 @@ export default function TagPicker({
             }}
             role="listbox"
           >
-            {!trimmed && suggestions.length > 0 && (
-              <p className="px-3 pt-2.5 pb-1 text-[10px] uppercase tracking-wide text-white/35">
-                Popular tags
-              </p>
-            )}
-
             {suggestions.map((tag, i) => (
               <button
                 key={tag}
@@ -229,7 +234,12 @@ export default function TagPicker({
                 role="option"
                 aria-selected={i === highlight}
                 onMouseEnter={() => setHighlight(i)}
-                onClick={() => add(tag)}
+                /* mousedown, not click, and preventDefault with it. A click is
+                   two events: by the time the second arrives the input may have
+                   blurred and this list unmounted, and the click then lands on
+                   whatever was underneath — here, the file dropzone. Committing
+                   on the first event makes that impossible. */
+                onMouseDown={(e) => { e.preventDefault(); add(tag); }}
                 className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors"
                 style={{ background: i === highlight ? "rgba(255,255,255,0.07)" : "transparent" }}
               >
@@ -246,7 +256,7 @@ export default function TagPicker({
                 role="option"
                 aria-selected={highlight === suggestions.length}
                 onMouseEnter={() => setHighlight(suggestions.length)}
-                onClick={() => add(trimmed)}
+                onMouseDown={(e) => { e.preventDefault(); add(trimmed); }}
                 className="w-full flex items-center gap-2 px-3 py-2.5 text-left border-t border-white/10"
                 style={{
                   background:

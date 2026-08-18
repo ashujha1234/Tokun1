@@ -1,4 +1,5 @@
 // import { useEffect, useState } from "react";
+import { authError } from "@/lib/authErrors";
 // import { Link, useNavigate, useSearchParams } from "react-router-dom";
 // import { Button } from "@/components/ui/button";
 // import { Input } from "@/components/ui/input";
@@ -654,7 +655,11 @@ export default function VerifySignup() {
       console.log("[VERIFY] Response json:", json);
 
       if (!resp.ok || !json?.success) {
-        throw new Error(json?.error || "Verification failed");
+        {
+          const e: any = new Error(String(json?.error || "network"));
+          e.code = json?.error;
+          throw e;
+        }
       }
 
       // Attribution is recorded server-side now; the code has done its job.
@@ -670,10 +675,9 @@ export default function VerifySignup() {
       navigate("/smartgen", { replace: true });
     } catch (err: any) {
       console.error("[VERIFY] Error:", err);
-      toast({
-        title: "Verification failed",
-        description: err?.message,
-      });
+      /* Translated — the description used to be the raw code, so a wrong digit
+         read "invalid_or_expired_otp". */
+      toast(authError(err?.code));
     } finally {
       setIsLoading(false);
     }
@@ -699,7 +703,11 @@ export default function VerifySignup() {
       console.log("[RESEND] Response json:", json);
 
       if (!resp.ok || !json?.success) {
-        throw new Error(json?.error || "Failed to resend");
+        {
+          const e: any = new Error(String(json?.error || "network"));
+          e.code = json?.error;
+          throw e;
+        }
       }
 
       // toast({ title: "Code resent", description: "Check your inbox." });
@@ -716,10 +724,9 @@ setSecondsLeft(50);
 
     } catch (err: any) {
       console.error("[RESEND] Error:", err);
-      toast({
-        title: "Could not resend",
-        description: err?.message,
-      });
+      // Translated, and the title stays specific to resending — "Too many code
+      // requests" after a Resend tap is exactly the right thing to read.
+      toast(authError(err?.code));
     }
   };
 

@@ -52,7 +52,7 @@
 
 
 // src/contexts/CartContext.tsx
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useCallback, useContext, useState, useEffect, ReactNode } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 
 type CartItem = {
@@ -93,6 +93,8 @@ type CartContextType = {
   addToCart: (promptId: string) => Promise<AddToCartResult>;
   removeFromCart: (promptId: string) => Promise<void>;
   clearCart: () => void;
+  /** Is this product already in the cart? */
+  isInCart: (promptId: string | number) => boolean;
 };
 
 /* The server's error codes, in the buyer's words. Anything unmapped falls back
@@ -230,8 +232,20 @@ const removeFromCart = async (promptId: string) => {
     if (token) fetchCart();
   }, [token]);
 
+  /* Asked here rather than written out per screen.
+
+     Five screens offer "Add to Cart" — the marketplace card, the details panel,
+     the library, the profile grid and the reel card — so five copies of
+     `cart.some(...)` is five chances to compare a number id against a string
+     one and quietly always answer false. The ids arrive as both: a card passes
+     `prompt.id` straight through, and the cart stores what the API returned. */
+  const isInCart = useCallback(
+    (promptId: string | number) => cart.some((i) => String(i.id) === String(promptId)),
+    [cart]
+  );
+
   return (
-    <CartContext.Provider value={{ cart, loading, fetchCart, addToCart, removeFromCart, clearCart }}>
+    <CartContext.Provider value={{ cart, loading, fetchCart, addToCart, removeFromCart, clearCart, isInCart }}>
       {children}
     </CartContext.Provider>
   );

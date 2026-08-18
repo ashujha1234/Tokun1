@@ -6,7 +6,8 @@
 // The styles come from pages/PromptMarketplace.css (.reel-card*), which both
 // pages already import.
 import React, { useEffect, useRef, useState } from "react";
-import { ShoppingCart, Lock } from "lucide-react";
+import { useCart } from "@/contexts/CartContext";
+import { ShoppingCart, Lock, Check } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { isTeamMember } from "@/lib/orgRoles";
 import { StarRating } from "@/components/StarRating";
@@ -74,7 +75,9 @@ export default function VideoReelCard({
      only the cards on screen are playing (the observer below), and a card the
      viewer has deliberately paused stays paused even as it scrolls in and out. */
   const [inView, setInView] = useState(false);
-  const [pausedByUser, setPausedByUser] = useState(false);
+  /* No pause state. Reels autoplay whenever they're on screen and stop when
+     they scroll off — there is no longer any way to pause one, because the tap
+     that used to do it now opens the product. */
 
   useEffect(() => {
     const el = videoRef.current;
@@ -101,11 +104,10 @@ export default function VideoReelCard({
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
-    if (inView && !pausedByUser) el.play().catch(() => {});
+    if (inView) el.play().catch(() => {});
     else el.pause();
-  }, [inView, pausedByUser]);
+  }, [inView]);
 
-  const playing = inView && !pausedByUser;
 
   // Listed but not purchasable — the seller is still going through Route payout
   // onboarding. Same rule the image cards use.
@@ -116,21 +118,31 @@ export default function VideoReelCard({
   // image cards.
   const showActions = !isPurchased && !isOwn && !prompt.isFree;
 
+  // Same question, same answer as the image cards — see isInCart in CartContext.
+  const { isInCart } = useCart();
+  const inCart = isInCart(prompt.id);
+
   return (
     <div
       className="reel-card"
       onClick={() => {
-        // Tapping a reel now pauses/resumes that one card. The parent is still
-        // told, because pages keep their own "which reel was last touched"
-        // state, but playback is decided here.
-        setPausedByUser((v) => !v);
+        /* Opens the details panel. It used to toggle pause on the card, which
+           made the whole tile a play/pause button — so the one thing a tap on a
+           product is expected to do (open it) was only available on the small
+           "Details ›" link, and tapping the video itself just froze it.
+           The parent is still told which reel was touched; pages keep that. */
         onVideoPlay(prompt.id);
+        onOpenDetails(prompt);
       }}
     >
       {/* Video */}
       <video
         ref={videoRef}
         src={prompt.videoUrl}
+        /* The poster paints before a single byte of video arrives. Without it a
+           card is a black rectangle for as long as the file takes — and these
+           are the seller's originals unless a preview was generated. */
+        poster={prompt.posterUrl || undefined}
         className="reel-card__video"
         loop
         muted
@@ -144,13 +156,6 @@ export default function VideoReelCard({
       {/* Watermark */}
       {!isPurchased && (
         <span className="reel-card__wm-center" aria-hidden="true">Tokun.world</span>
-      )}
-
-      {/* Play / Pause hint */}
-      {!playing && (
-        <div className="reel-card__play-hint">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
-        </div>
       )}
 
       {/* Top badges */}
@@ -209,14 +214,21 @@ export default function VideoReelCard({
               </div>
 
               {showActions && !teamMember && !comingSoon && (
-                <button
-                  type="button"
-                  className="mp-card__pill mp-card__pill--cart"
-                  onClick={(e) => { e.stopPropagation(); onAddToCart(prompt.id); }}
-                >
-                  <ShoppingCart />
-                  Cart
-                </button>
+                inCart ? (
+                  <span className="mp-card__pill mp-card__pill--in-cart">
+                    <Check />
+                    In cart
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="mp-card__pill mp-card__pill--cart"
+                    onClick={(e) => { e.stopPropagation(); onAddToCart(prompt.id); }}
+                  >
+                    <ShoppingCart />
+                    Cart
+                  </button>
+                )
               )}
 
               {showActions && (

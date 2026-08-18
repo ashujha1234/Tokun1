@@ -927,6 +927,23 @@
   border-color: rgba(255, 255, 255, 0.14);
   color: #fff;
 }
+/* Already in the cart.
+
+   The Cart button is replaced rather than simply removed: a card that quietly
+   loses one of its two actions reads as a card missing a button, and the buyer's
+   next move is to press Cart again on the card beside it to check. This says the
+   answer instead, in the space the button already occupied.
+
+   Not a button — there is nothing to press. The cart itself is one click away in
+   the header, which is where someone who wants to act on it is going anyway. */
+.mp-card__pill--in-cart {
+  flex: 0 0 auto;
+  background: rgba(25, 230, 108, 0.10);
+  border: 1px solid rgba(25, 230, 108, 0.22);
+  color: #19e66c;
+  cursor: default;
+}
+
 .mp-card__pill--buy {
   flex: 1 1 auto;
   background: var(--mp-grad-buy);

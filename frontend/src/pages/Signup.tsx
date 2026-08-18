@@ -1,4 +1,5 @@
 // // import { useState } from "react";
+import { authError } from "@/lib/authErrors";
 // // import { Link, useNavigate } from "react-router-dom";
 // // import { Button } from "@/components/ui/button";
 // // import { Input } from "@/components/ui/input";
@@ -1350,7 +1351,12 @@ const Signup = () => {
       }
 
       if (!res.ok || !data?.success) {
-        throw new Error(data?.error || "Could not send OTP. Please try again.");
+        {
+          const e: any = new Error(String(data?.error || "network"));
+          e.code = data?.error;
+          e.suggestion = data?.suggestion;
+          throw e;
+        }
       }
 
       if (data.otp) {
@@ -1392,10 +1398,9 @@ const Signup = () => {
       navigate(navTo);
     } catch (err: any) {
       console.error("[SIGNUP] Error:", err);
-      toast({
-        title: "Signup failed",
-        description: err?.message || "Unexpected error. Please try again.",
-      });
+      /* Translated — this used to show the raw code, so someone who had asked
+         for too many codes was told "too_many_requests". */
+      toast(authError(err?.code, err?.suggestion));
       console.groupEnd();
     } finally {
       setIsLoading(false);
