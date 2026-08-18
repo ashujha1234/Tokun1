@@ -1,5 +1,6 @@
 // // // // src/pages/admin/Dashboard.tsx
 // // // import React, { useEffect, useMemo, useState } from "react";
+import { avatarFor, avatarFallback } from "@/lib/avatar";
 // // // import {
 // // //   Bell,
 // // //   ChevronDown,
@@ -1594,7 +1595,7 @@
 
 // // //             <div className="mt-5 flex items-center gap-3">
 // // //               <img
-// // //                 src="https://i.pravatar.cc/70?img=33"
+// // //                 src={avatarFallback(null)}
 // // //                 className="h-11 w-11 rounded-full border border-white/10 object-cover"
 // // //                 alt="reporter"
 // // //               />
@@ -1906,7 +1907,7 @@
 // // //           <div className="flex items-start justify-between gap-3">
 // // //             <div className="flex items-center gap-3 min-w-0">
 // // //               <img
-// // //                 src={r.avatar || "https://i.pravatar.cc/80?img=12"}
+// // //                 src={avatarFor(r)}
 // // //                 className="h-12 w-12 rounded-full object-cover border border-white/10"
 // // //                 alt={r.name}
 // // //               />
@@ -2354,7 +2355,7 @@
 // // //                 <div className="flex items-start justify-between gap-3">
 // // //                   <div className="flex items-center gap-3 min-w-0">
 // // //                     <img
-// // //                       src={r.avatar || "https://i.pravatar.cc/80?img=12"}
+// // //                       src={avatarFor(r)}
 // // //                       className="h-12 w-12 rounded-full object-cover border border-white/10"
 // // //                       alt={r.name}
 // // //                     />
@@ -2483,7 +2484,7 @@
 // // //                     >
 // // //                       <div className="col-span-4 flex items-center gap-4 min-w-0">
 // // //                         <img
-// // //                           src={r.avatar || "https://i.pravatar.cc/80?img=12"}
+// // //                           src={avatarFor(r)}
 // // //                           alt={r.name}
 // // //                           className={[
 // // //                             "h-12 w-12 rounded-full object-cover border border-white/10",
@@ -3170,7 +3171,7 @@
 // // //       <div className={`${kpiCardBase} mt-6 p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5`}>
 // // //         <div className="flex items-center gap-4">
 // // //           <img
-// // //             src={seller.avatar || "https://i.pravatar.cc/100?img=11"}
+// // //             src={avatarFor(seller)}
 // // //             className="h-14 w-14 rounded-full object-cover border border-white/10"
 // // //             alt={seller.name}
 // // //           />
@@ -3394,7 +3395,7 @@
 // // //         <div className="flex flex-col lg:flex-row gap-6 lg:items-start">
 // // //           <div className="flex items-center gap-4">
 // // //             <img
-// // //               src={"https://i.pravatar.cc/120?img=12"}
+// // //               src={avatarFallback(null)}
 // // //               alt={adminName}
 // // //               className="h-16 w-16 rounded-full object-cover border border-white/10"
 // // //             />
@@ -4015,7 +4016,7 @@
 // // //     {/* Seller */}
 // // //     <div className="md:col-span-4 flex items-center gap-3 min-w-0">
 // // //       <img
-// // //         src={r.avatar || "https://i.pravatar.cc/80?img=12"}
+// // //         src={avatarFor(r)}
 // // //         alt={r.name}
 // // //         className="h-10 w-10 rounded-full object-cover border border-white/10 shrink-0"
 // // //       />
@@ -4384,7 +4385,7 @@
 // // //     {/* User Name */}
 // // //     <div className="md:col-span-3 flex items-center gap-3 min-w-0">
 // // //       <img
-// // //         src={u.avatar || "https://i.pravatar.cc/80?img=12"}
+// // //         src={avatarFor(u)}
 // // //         alt={u.name}
 // // //         className="h-10 w-10 rounded-full object-cover border border-white/10 shrink-0"
 // // //       />
@@ -6183,7 +6184,7 @@
 
 // //             <div className="mt-5 flex items-center gap-3">
 // //               <img
-// //                 src="https://i.pravatar.cc/70?img=33"
+// //                 src={avatarFallback(null)}
 // //                 className="h-11 w-11 rounded-full border border-white/10 object-cover"
 // //                 alt="reporter"
 // //               />
@@ -6495,7 +6496,7 @@
 // //           <div className="flex items-start justify-between gap-3">
 // //             <div className="flex items-center gap-3 min-w-0">
 // //               <img
-// //                 src={r.avatar || "https://i.pravatar.cc/80?img=12"}
+// //                 src={avatarFor(r)}
 // //                 className="h-12 w-12 rounded-full object-cover border border-white/10"
 // //                 alt={r.name}
 // //               />
@@ -6943,7 +6944,7 @@
 // //                 <div className="flex items-start justify-between gap-3">
 // //                   <div className="flex items-center gap-3 min-w-0">
 // //                     <img
-// //                       src={r.avatar || "https://i.pravatar.cc/80?img=12"}
+// //                       src={avatarFor(r)}
 // //                       className="h-12 w-12 rounded-full object-cover border border-white/10"
 // //                       alt={r.name}
 // //                     />
@@ -7072,7 +7073,7 @@
 // //                     >
 // //                       <div className="col-span-4 flex items-center gap-4 min-w-0">
 // //                         <img
-// //                           src={r.avatar || "https://i.pravatar.cc/80?img=12"}
+// //                           src={avatarFor(r)}
 // //                           alt={r.name}
 // //                           className={[
 // //                             "h-12 w-12 rounded-full object-cover border border-white/10",
@@ -7759,7 +7760,7 @@
 // //       <div className={`${kpiCardBase} mt-6 p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5`}>
 // //         <div className="flex items-center gap-4">
 // //           <img
-// //             src={seller.avatar || "https://i.pravatar.cc/100?img=11"}
+// //             src={avatarFor(seller)}
 // //             className="h-14 w-14 rounded-full object-cover border border-white/10"
 // //             alt={seller.name}
 // //           />
@@ -7983,7 +7984,7 @@
 // //         <div className="flex flex-col lg:flex-row gap-6 lg:items-start">
 // //           <div className="flex items-center gap-4">
 // //             <img
-// //               src={"https://i.pravatar.cc/120?img=12"}
+// //               src={avatarFallback(null)}
 // //               alt={adminName}
 // //               className="h-16 w-16 rounded-full object-cover border border-white/10"
 // //             />
@@ -8604,7 +8605,7 @@
 // //     {/* Seller */}
 // //     <div className="md:col-span-4 flex items-center gap-3 min-w-0">
 // //       <img
-// //         src={r.avatar || "https://i.pravatar.cc/80?img=12"}
+// //         src={avatarFor(r)}
 // //         alt={r.name}
 // //         className="h-10 w-10 rounded-full object-cover border border-white/10 shrink-0"
 // //       />
@@ -8973,7 +8974,7 @@
 // //     {/* User Name */}
 // //     <div className="md:col-span-3 flex items-center gap-3 min-w-0">
 // //       <img
-// //         src={u.avatar || "https://i.pravatar.cc/80?img=12"}
+// //         src={avatarFor(u)}
 // //         alt={u.name}
 // //         className="h-10 w-10 rounded-full object-cover border border-white/10 shrink-0"
 // //       />
@@ -11275,7 +11276,7 @@
 //           <div className="flex items-start justify-between gap-3">
 //             <div className="flex items-center gap-3 min-w-0">
 //               <img
-//                 src={r.avatar || "https://i.pravatar.cc/80?img=12"}
+//                 src={avatarFor(r)}
 //                 className="h-12 w-12 rounded-full object-cover border border-white/10"
 //                 alt={r.name}
 //               />
@@ -11723,7 +11724,7 @@
 //                 <div className="flex items-start justify-between gap-3">
 //                   <div className="flex items-center gap-3 min-w-0">
 //                     <img
-//                       src={r.avatar || "https://i.pravatar.cc/80?img=12"}
+//                       src={avatarFor(r)}
 //                       className="h-12 w-12 rounded-full object-cover border border-white/10"
 //                       alt={r.name}
 //                     />
@@ -11852,7 +11853,7 @@
 //                     >
 //                       <div className="col-span-4 flex items-center gap-4 min-w-0">
 //                         <img
-//                           src={r.avatar || "https://i.pravatar.cc/80?img=12"}
+//                           src={avatarFor(r)}
 //                           alt={r.name}
 //                           className={[
 //                             "h-12 w-12 rounded-full object-cover border border-white/10",
@@ -12539,7 +12540,7 @@
 //       <div className={`${kpiCardBase} mt-6 p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5`}>
 //         <div className="flex items-center gap-4">
 //           <img
-//             src={seller.avatar || "https://i.pravatar.cc/100?img=11"}
+//             src={avatarFor(seller)}
 //             className="h-14 w-14 rounded-full object-cover border border-white/10"
 //             alt={seller.name}
 //           />
@@ -13384,7 +13385,7 @@
 //     {/* Seller */}
 //     <div className="md:col-span-4 flex items-center gap-3 min-w-0">
 //       <img
-//         src={r.avatar || "https://i.pravatar.cc/80?img=12"}
+//         src={avatarFor(r)}
 //         alt={r.name}
 //         className="h-10 w-10 rounded-full object-cover border border-white/10 shrink-0"
 //       />
@@ -13753,7 +13754,7 @@
 //     {/* User Name */}
 //     <div className="md:col-span-3 flex items-center gap-3 min-w-0">
 //       <img
-//         src={u.avatar || "https://i.pravatar.cc/80?img=12"}
+//         src={avatarFor(u)}
 //         alt={u.name}
 //         className="h-10 w-10 rounded-full object-cover border border-white/10 shrink-0"
 //       />
@@ -14683,7 +14684,7 @@ const AccountView = ({
         <div className="flex flex-col lg:flex-row gap-6 lg:items-start">
           <div className="flex items-center gap-4">
             <img
-              src={"https://i.pravatar.cc/120?img=12"}
+              src={avatarFallback(null)}
               alt={adminName}
               className="h-16 w-16 rounded-full object-cover border border-white/10"
             />
@@ -18886,7 +18887,7 @@ useEffect(() => {
 
             <div className="mt-5 flex items-center gap-3">
               <img
-                src="https://i.pravatar.cc/70?img=33"
+                src={avatarFallback(null)}
                 className="h-11 w-11 rounded-full border border-white/10 object-cover"
                 alt="reporter"
               />
@@ -19287,7 +19288,7 @@ const SellersMobileCards = ({
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <img
-                src={r.avatar || "https://i.pravatar.cc/80?img=12"}
+                src={avatarFor(r)}
                 className="h-12 w-12 rounded-full object-cover border border-white/10"
                 alt={r.name}
               />
@@ -19773,7 +19774,7 @@ setSelectedSeller({
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <img
-                      src={r.avatar || "https://i.pravatar.cc/80?img=12"}
+                      src={avatarFor(r)}
                       className="h-12 w-12 rounded-full object-cover border border-white/10"
                       alt={r.name}
                     />
@@ -19900,7 +19901,7 @@ setSelectedSeller({
                     >
                       <div className="col-span-3 flex items-center gap-4 min-w-0">
                         <img
-                          src={r.avatar || "https://i.pravatar.cc/80?img=12"}
+                          src={avatarFor(r)}
                           alt={r.name}
                           className={[
                             "h-12 w-12 rounded-full object-cover border border-white/10",
@@ -20897,7 +20898,7 @@ const SellerProfileView = ({
       <div className={`${kpiCardBase} mt-6 p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5`}>
         <div className="flex items-center gap-4">
           <img
-            src={seller.avatar || "https://i.pravatar.cc/100?img=11"}
+            src={avatarFor(seller)}
             className="h-14 w-14 rounded-full object-cover border border-white/10"
             alt={seller.name}
           />
@@ -21144,7 +21145,7 @@ const UserProfileView = ({
       <div className={`${kpiCardBase} mt-6 p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5`}>
         <div className="flex items-center gap-4">
           <img
-            src={user.avatar || "https://i.pravatar.cc/100?img=12"}
+            src={avatarFor(user)}
             className="h-14 w-14 rounded-full object-cover border border-white/10"
             alt={user.name}
           />
@@ -21503,7 +21504,7 @@ const OrgProfileView = ({
                 <div key={m.userId} className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-3 px-4 md:px-5 py-4 md:items-center bg-white/[0.02]">
                   <div className="md:col-span-5 flex items-center gap-3 min-w-0">
                     <img
-                      src={m.avatar || "https://i.pravatar.cc/60?img=15"}
+                      src={avatarFor(m)}
                       alt={m.name}
                       className="h-8 w-8 rounded-full object-cover border border-white/10 shrink-0"
                     />
@@ -22220,8 +22221,7 @@ const WithdrawalsView = () => {
                         <div className="mt-2 flex min-w-0 items-center gap-2">
                           <img
                             src={
-                              r.userAvatar ||
-                              "https://i.pravatar.cc/80?img=12"
+                              avatarFor({ avatarUrl: r.userAvatar })
                             }
                             alt={r.userName}
                             className="h-8 w-8 shrink-0 rounded-full border border-white/10 object-cover"
@@ -22433,7 +22433,7 @@ const WithdrawalsView = () => {
               <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
                   <img
-                    src={r.userAvatar || "https://i.pravatar.cc/80?img=12"}
+                    src={avatarFor({ avatarUrl: r.userAvatar })}
                     alt={r.userName}
                     className="h-10 w-10 shrink-0 rounded-full border border-white/10 object-cover"
                   />
@@ -23302,7 +23302,7 @@ const WithdrawalsView = () => {
     {/* Seller */}
     <div className="col-span-2 md:col-span-3 flex items-center gap-3 min-w-0">
       <img
-        src={r.avatar || "https://i.pravatar.cc/80?img=12"}
+        src={avatarFor(r)}
         alt={r.name}
         className="h-10 w-10 rounded-full object-cover border border-white/10 shrink-0"
       />
@@ -23685,7 +23685,7 @@ const WithdrawalsView = () => {
     {/* User Name */}
     <div className="col-span-2 md:col-span-3 flex items-center gap-3 min-w-0">
       <img
-        src={u.avatar || "https://i.pravatar.cc/80?img=12"}
+        src={avatarFor(u)}
         alt={u.name}
         className="h-10 w-10 rounded-full object-cover border border-white/10 shrink-0"
       />

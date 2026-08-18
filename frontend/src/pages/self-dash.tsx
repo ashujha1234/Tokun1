@@ -1,4 +1,5 @@
 // import { useState } from "react";
+import { avatarFor } from "@/lib/avatar";
 // import Header from "@/components/Header";
 // import { useAuth } from "@/contexts/AuthContext";
 // import { X, Clock3 } from "lucide-react";
@@ -2216,12 +2217,13 @@ const SelfDash = () => {
   const { user, token, persistAuth, refreshQuota } = useAuth() as any;
 
   const displayName = user?.name?.trim() || user?.email?.split("@")?.[0] || "User";
-  const avatar =
-    user?.avatar?.startsWith("http")
-      ? user.avatar
-      : user?.avatar
-      ? `${import.meta.env.VITE_API_URL || ""}${user.avatar}`
-      : `https://i.pravatar.cc/160?u=${encodeURIComponent(displayName)}`;
+  /* Was reading `user.avatar` — a field the auth payload has never contained —
+     so it always fell through to a stranger's photo from i.pravatar.cc. That is
+     the "different picture in the dashboard" everyone saw: not their upload, not
+     even a placeholder of theirs.
+     avatarFor() reads avatarUrl (the schema's field), resolves relative paths,
+     and falls back to the same initials mark used everywhere else. */
+  const avatar = avatarFor(user);
 
   const location = useLocation();
   const initialParams = useMemo(() => new URLSearchParams(location.search), [location.search]);

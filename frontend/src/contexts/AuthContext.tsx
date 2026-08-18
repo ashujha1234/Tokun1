@@ -10,7 +10,10 @@ interface User {
   _id: string;           // 🔥 use _id consistently
   email: string;
   name?: string;
-  avatar?: string;       // ✅ ADD THIS
+  /* The schema field, and what every screen should read. `avatar` is kept only
+     because the upload route still answers with that key. */
+  avatarUrl?: string | null;
+  avatar?: string;
   userType?: string;
   role?: string;
   orgId?: string | null;

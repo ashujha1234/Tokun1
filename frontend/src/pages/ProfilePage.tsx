@@ -2,6 +2,7 @@
 
 
 // import { useNavigate } from "react-router-dom";
+import { uploadedAvatar, avatarFallback } from "@/lib/avatar";
 // import { ShieldCheck } from "lucide-react";
 
 // import { useEffect, useState , useRef } from "react";
@@ -1066,7 +1067,7 @@
 //       <div className="p-4 border-b border-white/10">
 //         <div className="flex items-start gap-3">
 //           <img
-//             src={avatar || "https://i.pravatar.cc/100"}
+//             src={avatar || avatarFallback(user)}
 //             className="w-10 h-10 rounded-full object-cover"
 //             alt={userName || "User"}
 //           />
@@ -1469,7 +1470,7 @@
 //       {/* HEADER */}
 //       <div className="flex items-start gap-3 p-4 border-b border-white/10">
 //         <img
-//           src="https://i.pravatar.cc/100"
+//           src={avatarFallback(user)}
 //           className="w-10 h-10 rounded-full"
 //         />
 //         <div className="flex-1">
@@ -3162,9 +3163,12 @@ useEffect(() => {
   // photo instead of the profile owner's (see the prompts-fetch effect
   // below for how another user's avatar gets loaded instead).
   if (userId !== user?._id) return;
-  if (user?.avatar) {
-    setAvatar(user.avatar.startsWith("http") ? user.avatar : API_BASE + user.avatar);
-  }
+  /* `user.avatar` was never in the auth payload — only `avatarUrl` is — so this
+     branch never ran and "My Account" showed an empty frame no matter how many
+     times the picture was uploaded. uploadedAvatar() takes the whole user and
+     checks both names, so it works whichever one an endpoint sends. */
+  const own = uploadedAvatar(user);
+  if (own) setAvatar(own);
 }, [user, userId]);
  
 const [messagePopupTab, setMessagePopupTab] = useState<
@@ -3593,12 +3597,16 @@ const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
 
     // 🔐 VERIFY OWNER
     if (data.success && data.avatar && data.userId === user._id) {
-      setAvatar(data.avatar.startsWith("http") ? data.avatar : API_BASE + data.avatar);
+      setAvatar(uploadedAvatar({ avatarUrl: data.avatar }));
 
+      /* Written under `avatarUrl`, the name the rest of the app reads and the
+         name the auth payload now carries — the upload route calls its response
+         key `avatar` for backwards compatibility, and storing it under that name
+         meant the new picture was invisible to every other screen.
+         Spread over the current user so this stays a field update: persistAuth
+         merges, but passing a lone key still types as a whole user. */
       persistAuth({
-        user: {
-          avatar: data.avatar,
-        },
+        user: { ...(user as any), avatarUrl: data.avatar },
       });
     }
   } catch (err) {
@@ -4588,7 +4596,7 @@ const sendMessage = () => {
       <div className="px-4 py-3 border-b border-white/10">
         <div className="flex items-start gap-3">
           <img
-            src={avatar || "https://i.pravatar.cc/100"}
+            src={avatar || avatarFallback(user)}
             className="w-9 h-9 rounded-full object-cover"
             alt={userName || "User"}
           />
@@ -4916,7 +4924,7 @@ const sendMessage = () => {
       {/* HEADER */}
       <div className="flex items-start gap-3 p-4 border-b border-white/10">
         <img
-          src="https://i.pravatar.cc/100"
+          src={avatarFallback(user)}
           className="w-10 h-10 rounded-full"
         />
         <div className="flex-1">

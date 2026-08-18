@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type InputHTMLAttributes } from "react";
 import { Check, Loader2, Plus, Search, Trash2, X } from "lucide-react";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { COUNTRIES, LANGUAGES } from "@/lib/referenceData";
@@ -26,6 +26,35 @@ import {
 export const inputClass =
   "w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2.5 text-sm text-white placeholder:text-white/30 outline-none focus:border-[#1A73E8] transition-colors";
 export const labelClass = "text-xs text-white/60 mb-1.5 block";
+
+/* Date and month fields.
+
+   `color-scheme: dark` is the whole point. A native <input type="month"> is
+   painted by the browser, not by us: on a light color-scheme it draws a white
+   calendar icon and a white picker panel, which is what sat glowing on these
+   dark dialogs. Telling the control it lives on a dark surface makes the
+   browser render its own furniture to match — one declaration instead of
+   inverting the icon with a filter and still getting a white dropdown.
+
+   The min-width matters too: an empty month field renders as "--------- ----"
+   plus the icon, which needs about 150px. Below that the browser clips it, and
+   in a half-width grid cell it overlapped whatever sat beside it. */
+export const dateInputClass = `${inputClass} [color-scheme:dark] min-w-[150px]`;
+
+/* A labelled date cell. The fields carried only an aria-label, so on screen two
+   identical empty boxes sat side by side with nothing saying which was the start
+   and which the end. */
+export function DateField({
+  label,
+  ...props
+}: { label: string } & InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <label className="flex flex-col gap-1 min-w-0">
+      <span className="text-[11px] uppercase tracking-[0.08em] text-white/40">{label}</span>
+      <input type="month" className={dateInputClass} aria-label={label} {...props} />
+    </label>
+  );
+}
 
 const ACCENT = "#1A73E8";
 

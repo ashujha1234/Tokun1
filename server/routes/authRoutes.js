@@ -220,9 +220,34 @@ await sendEmail({
 
 router.post("/signup/initiate", otpLimiter, async (req, res) => {
   try {
-    const { name, email, userType = "IND", orgName } = req.body || {};
-    if (!name || !email) {
-      return res.status(400).json({ success: false, error: "name_and_email_required" });
+    const { email, userType = "IND", orgName } = req.body || {};
+    let { name } = req.body || {};
+
+    if (!email) {
+      return res.status(400).json({ success: false, error: "email_required" });
+    }
+
+    /* A name is needed to CREATE an account. It is not needed to re-send a code
+       to one that already exists, and insisting on it broke "Resend code": that
+       button re-runs this endpoint with just the email, so every resend came
+       back 400 name_and_email_required.
+
+       So the stored name is reused when the caller doesn't send one. Scoped to
+       accounts that have not verified yet, which is the only state a resend can
+       happen in — this must never let someone re-trigger an OTP for a live
+       account by knowing nothing but the address. */
+    if (!name) {
+      const existing = await User.findOne({
+        email: String(email).toLowerCase().trim(),
+        isVerified: false,
+      })
+        .select("name")
+        .lean();
+
+      if (!existing?.name) {
+        return res.status(400).json({ success: false, error: "name_and_email_required" });
+      }
+      name = existing.name;
     }
     const emailCheck = await checkEmailDeliverable(email);
     if (!emailCheck.ok) {
@@ -593,6 +618,10 @@ if (user.orgId) {
         orgId: user.orgId,
         plan: user.plan,
         tokensRemaining,
+        // The profile photo — see the note on the same field in login/verify.
+        // Without it the auth context has no picture, and every screen that
+        // draws the signed-in person's own avatar shows an empty frame.
+        avatarUrl: user.avatarUrl || null,
         // you can add other safe fields as needed
       },
       user1:user,
@@ -778,6 +807,8 @@ return res.json({
     orgId: user.orgId,
     plan: user.plan,
     monthlyTokensRemaining: user.monthlyTokensRemaining,
+    // See the note on the same field in signup/verify above.
+    avatarUrl: user.avatarUrl || null,
     verified: user.isVerified,
   },
   user1:user,

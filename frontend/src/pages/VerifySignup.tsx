@@ -590,6 +590,12 @@ export default function VerifySignup() {
   const { persistAuth } = useAuth();
 
   const email = (params.get("email") || "").trim();
+  /* Signup already puts these in the URL it navigates here with (see Signup.tsx),
+     and this page read only the email — so "Resend code" posted `{ email }` to an
+     endpoint that requires a name too, and got a flat 400 every time. */
+  const signupName = (params.get("name") || "").trim();
+  const signupUserType = (params.get("userType") || "IND").trim();
+  const signupOrgName = (params.get("orgName") || "").trim();
   const [otp, setOtp] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(50);
@@ -675,7 +681,11 @@ export default function VerifySignup() {
 
   const handleResend = async () => {
     try {
-      const body = { email };
+      /* The same shape the signup step sent, because this hits the same endpoint
+         — it re-issues the OTP by re-running signup/initiate. */
+      const body: Record<string, string> = { email, userType: signupUserType };
+      if (signupName) body.name = signupName;
+      if (signupOrgName) body.orgName = signupOrgName;
       console.log("[RESEND] POST body →", body);
 
       const resp = await fetch(`${API_BASE}/api/auth/signup/initiate`, {

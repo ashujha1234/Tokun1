@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { avatarFor, avatarFallback } from "@/lib/avatar";
 import { X, Image as ImageIcon, Paperclip, Send, Sparkles } from "lucide-react";
 import { io, Socket } from "socket.io-client";
 
@@ -281,7 +282,7 @@ export default function AdminSellerMessageModal({
         <div className="h-[76px] px-5 md:px-7 border-b border-white/10 bg-[#121212] flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
             <img
-              src={seller.avatar || "https://i.pravatar.cc/100?img=12"}
+              src={avatarFor(seller)}
               alt={titleSeller}
               className="h-11 w-11 rounded-full object-cover border border-white/10"
             />
@@ -340,7 +341,7 @@ const mine =
                       <div key={m._id || m.id} className={["flex gap-3", mine ? "justify-end" : "justify-start"].join(" ")}>
                         {!mine && (
                           <img
-                            src={seller.avatar || "https://i.pravatar.cc/80?img=15"}
+                            src={avatarFor(seller)}
                             className="h-8 w-8 rounded-full object-cover border border-white/10 mt-1"
                             alt="seller"
                           />

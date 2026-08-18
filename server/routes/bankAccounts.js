@@ -977,6 +977,10 @@ router.post("/add", requireAuth, async (req, res) => {
     const registeredAddr = addresses?.registered;
     if (
       !registeredAddr?.street1 ||
+      // Razorpay requires street2 too — it answers "The street2 field is
+      // required." and the seller sees an error from an API they never called.
+      // Caught here so the message comes from us, in our own words.
+      !registeredAddr?.street2 ||
       !registeredAddr?.city ||
       !registeredAddr?.state ||
       !registeredAddr?.postal_code ||
@@ -985,7 +989,7 @@ router.post("/add", requireAuth, async (req, res) => {
       return res.status(400).json({
         success: false,
         error: "invalid_or_missing_address",
-        message: "street1, city, state, postal_code, and country are required (street2 is optional).",
+        message: "street1, street2, city, state, postal_code and country are all required.",
       });
     }
 

@@ -149,7 +149,7 @@ export default function SellerLinkedAccountForm({
   const [panNumber, setPanNumber] = useState("");
   const [phone, setPhone] = useState("");
   const [street1, setStreet1] = useState("");
-  const [street2, setStreet2] = useState(""); // only optional field
+  const [street2, setStreet2] = useState(""); // required by Razorpay — see the submit guard
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [postalCode, setPostalCode] = useState("");
@@ -244,6 +244,12 @@ export default function SellerLinkedAccountForm({
     !bankName.trim() ||
     !phone.trim() ||
     !street1.trim() ||
+    /* Razorpay requires street2 on a linked account's registered address, and
+       rejects the whole submission with "The street2 field is required." Our
+       form called it optional and left it out when blank, so people filled the
+       form correctly by our own labelling and were bounced by an error from an
+       API they've never heard of. */
+    !street2.trim() ||
     !city.trim() ||
     !state.trim() ||
     !postalCode.trim() ||
@@ -363,7 +369,7 @@ export default function SellerLinkedAccountForm({
           addresses: {
             registered: {
               street1: street1.trim(),
-              ...(street2.trim() ? { street2: street2.trim() } : {}),
+              street2: street2.trim(),
               city: city.trim(),
               state: state.trim(),
               postal_code: postalCode.trim(),
@@ -730,7 +736,7 @@ export default function SellerLinkedAccountForm({
                     <input className={fieldClass("street1")} value={street1} onChange={(e) => setStreet1(e.target.value)} />
                   </div>
                   <div className="sm:col-span-2">
-                    <label className={labelClass}>Address line 2 (optional)</label>
+                    <label className={labelClass}>Address line 2 *</label>
                     <input className={fieldClass("street2")} value={street2} onChange={(e) => setStreet2(e.target.value)} />
                   </div>
 

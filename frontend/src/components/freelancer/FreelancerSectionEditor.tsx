@@ -18,6 +18,7 @@ import {
   SkillsPicker,
   SpecializationsPicker,
   inputClass,
+  DateField,
   labelClass,
 } from "@/components/freelancer/pickers";
 import {
@@ -772,24 +773,22 @@ export default function FreelancerSectionEditor({
                   onChange={(e) => update({ company: e.target.value })}
                   placeholder="Company"
                 />
-                <div className="flex items-center gap-2">
-                  <input
-                    type="month"
-                    className={inputClass}
-                    value={item.from || ""}
-                    onChange={(e) => update({ from: e.target.value || null })}
-                    aria-label="From"
-                  />
-                  <input
-                    type="month"
-                    className={inputClass}
-                    value={item.to || ""}
-                    onChange={(e) => update({ to: e.target.value || null })}
-                    disabled={!!item.current}
-                    aria-label="To"
-                  />
-                </div>
-                <label className="flex items-center gap-2 text-xs text-white/70 select-none">
+                {/* Both dates used to share ONE grid cell, so each got a quarter
+                    of the dialog — narrower than a month field can render — and
+                    the second one spilled over the checkbox beside it. They now
+                    take a cell each, and the checkbox gets its own line. */}
+                <DateField
+                  label="From"
+                  value={item.from || ""}
+                  onChange={(e) => update({ from: e.target.value || null })}
+                />
+                <DateField
+                  label="To"
+                  value={item.to || ""}
+                  onChange={(e) => update({ to: e.target.value || null })}
+                  disabled={!!item.current}
+                />
+                <label className="sm:col-span-2 flex items-center gap-2 text-xs text-white/70 select-none">
                   <input
                     type="checkbox"
                     checked={!!item.current}
@@ -851,22 +850,16 @@ export default function FreelancerSectionEditor({
                   onChange={(e) => update({ fieldOfStudy: e.target.value })}
                   placeholder="Field of study"
                 />
-                <div className="flex items-center gap-2">
-                  <input
-                    type="month"
-                    className={inputClass}
-                    value={item.from || ""}
-                    onChange={(e) => update({ from: e.target.value || null })}
-                    aria-label="From"
-                  />
-                  <input
-                    type="month"
-                    className={inputClass}
-                    value={item.to || ""}
-                    onChange={(e) => update({ to: e.target.value || null })}
-                    aria-label="To"
-                  />
-                </div>
+                <DateField
+                  label="From"
+                  value={item.from || ""}
+                  onChange={(e) => update({ from: e.target.value || null })}
+                />
+                <DateField
+                  label="To"
+                  value={item.to || ""}
+                  onChange={(e) => update({ to: e.target.value || null })}
+                />
               </div>
             )}
           />
@@ -894,12 +887,10 @@ export default function FreelancerSectionEditor({
                   onChange={(e) => update({ issuer: e.target.value })}
                   placeholder="Issued by"
                 />
-                <input
-                  type="month"
-                  className={inputClass}
+                <DateField
+                  label="Issued"
                   value={item.issuedAt || ""}
                   onChange={(e) => update({ issuedAt: e.target.value || null })}
-                  aria-label="Issued"
                 />
                 <input
                   className={inputClass}
