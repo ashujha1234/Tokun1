@@ -118,16 +118,55 @@ export default function TagPicker({
     };
   }, [open, measure]);
 
+  /* Committing on mousedown fixed one bug and left a subtler one behind.
+     mousedown tears this list down, and Chrome then dispatches the click on
+     whatever the pointer has become — with the list gone, that is the
+     attachment dropzone sitting directly beneath this field, a div whose
+     onClick opens the OS file picker. Picking "Logo" opened Finder.
+
+     So the picker swallows exactly one click, in the capture phase on window,
+     right after it commits: nothing downstream ever sees the stray event. */
+  const armedRef = useRef<((e: MouseEvent) => void) | null>(null);
+
+  const disarm = useCallback(() => {
+    if (!armedRef.current) return;
+    window.removeEventListener("click", armedRef.current, true);
+    armedRef.current = null;
+  }, []);
+
+  const swallowNextClick = useCallback(() => {
+    disarm();
+    const kill = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      disarm();
+    };
+    armedRef.current = kill;
+    window.addEventListener("click", kill, true);
+    // A mousedown doesn't always produce a click — drag off the row and none
+    // arrives — so the trap is never left armed for the user's next real one.
+    window.setTimeout(disarm, 400);
+  }, [disarm]);
+
+  useEffect(() => disarm, [disarm]);
+
   const add = (tag: string) => {
     const value = tag.trim();
     if (!value || tags.length >= max) return;
-    // Case-insensitive, so "ui design" can't be added next to "UI Design".
-    if (tags.some((t) => sameTag(t, value))) {
-      setQuery("");
-      return;
-    }
-    onChange([...tags, value]);
     setQuery("");
+    /* The chip above the field is the whole confirmation. An empty list left
+       hovering over the dropzone is just a lid over the next control. */
+    setOpen(false);
+    // Case-insensitive, so "ui design" can't be added next to "UI Design".
+    if (tags.some((t) => sameTag(t, value))) return;
+    onChange([...tags, value]);
+  };
+
+  /** Pointer path into `add` — commits before mouseup, then eats the click. */
+  const pick = (e: React.MouseEvent, tag: string) => {
+    e.preventDefault();
+    swallowNextClick();
+    add(tag);
   };
 
   const remove = (tag: string) => onChange(tags.filter((t) => t !== tag));
@@ -213,8 +252,13 @@ export default function TagPicker({
           <div
             ref={listRef}
             className="rounded-xl border border-white/10 overflow-hidden shadow-2xl"
-            /* z above the upload dialog (1100), the same rung the category
-               dropdowns in this form already use. */
+            /* Radix's modal Dialog parks `pointer-events: none` on <body> and
+               re-enables it only inside DialogContent. This list is portalled to
+               <body>, a sibling of the dialog — so it inherited "none", and a
+               cursor click sailed straight THROUGH it into the attachment
+               dropzone below, which is why the mouse selected nothing and the OS
+               file picker opened instead. Keyboard Enter worked all along
+               because it never consults pointer-events. */
             style={{
               position: "fixed",
               left: rect.left,
@@ -223,8 +267,15 @@ export default function TagPicker({
               background: "#131419",
               maxHeight: rect.maxHeight,
               overflowY: "auto",
+              // z above the upload dialog (1100), the same rung the category
+              // dropdowns in this form already use.
               zIndex: 1200,
+              pointerEvents: "auto",
             }}
+            /* Radix decides "clicked outside, dismiss" from a document-level
+               pointerdown, and by DOM position this list IS outside the dialog.
+               Without this, picking a tag would close the whole upload form. */
+            onPointerDown={(e) => e.stopPropagation()}
             role="listbox"
           >
             {suggestions.map((tag, i) => (
@@ -234,12 +285,9 @@ export default function TagPicker({
                 role="option"
                 aria-selected={i === highlight}
                 onMouseEnter={() => setHighlight(i)}
-                /* mousedown, not click, and preventDefault with it. A click is
-                   two events: by the time the second arrives the input may have
-                   blurred and this list unmounted, and the click then lands on
-                   whatever was underneath — here, the file dropzone. Committing
-                   on the first event makes that impossible. */
-                onMouseDown={(e) => { e.preventDefault(); add(tag); }}
+                /* mousedown, not click: by the time a click arrives the input
+                   may have blurred and this list unmounted. See `pick`. */
+                onMouseDown={(e) => pick(e, tag)}
                 className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors"
                 style={{ background: i === highlight ? "rgba(255,255,255,0.07)" : "transparent" }}
               >
@@ -256,7 +304,7 @@ export default function TagPicker({
                 role="option"
                 aria-selected={highlight === suggestions.length}
                 onMouseEnter={() => setHighlight(suggestions.length)}
-                onMouseDown={(e) => { e.preventDefault(); add(trimmed); }}
+                onMouseDown={(e) => pick(e, trimmed)}
                 className="w-full flex items-center gap-2 px-3 py-2.5 text-left border-t border-white/10"
                 style={{
                   background:
