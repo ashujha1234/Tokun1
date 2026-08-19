@@ -5657,6 +5657,15 @@ function notifyRecipients(recipientIds, payload) {
 // the socket handlers do.
 app.set("notifyChatRecipients", notifyRecipients);
 
+/* Live membership of every collab room: sessionId -> Map(socket.id -> member).
+   See the note where it's used, inside the connection handler below.
+
+   Declared HERE, at module scope, and not inside that handler — one map shared
+   by every socket is the entire point. A `new Map()` inside the handler would
+   give each connection its own private copy, so nobody would ever see anybody
+   else in the room. */
+const collabRooms = new Map();
+
 // --- REAL-TIME SOCKET LOGIC ---
 io.on("connection", (socket) => {
 
@@ -5892,6 +5901,51 @@ io.on("connection", (socket) => {
      COLLAB SESSION SOCKETS
   ================================ */
 
+  /* WHO is in each collab room, not just how many.
+     `session-peers` used to carry a bare count, taken from the socket.io room
+     size — enough to decide "is anyone else here", and useless for telling the
+     person on screen WHO turned up. There was nowhere to look it up either: the
+     room is a set of socket ids, and CollabSession.participants only ever gets
+     the creator appended.
+
+     So membership is tracked here: sessionId -> Map(socket.id -> {userId, name}).
+     Keyed by socket rather than by user because the same person can have two
+     tabs open, and closing one must not remove them from the room.
+
+     In memory on purpose. It describes who is connected RIGHT NOW, which is a
+     fact about live sockets — on a restart every socket reconnects and rebuilds
+     it, and a database row would just be a stale copy to clean up.
+
+     Declared at module scope, above this connection handler: one map shared by
+     every socket is the whole point. */
+
+  /** The participant list for a room, in join order, deduped per person. */
+  const peersOf = (sessionId) => {
+    const members = collabRooms.get(String(sessionId));
+    if (!members) return [];
+
+    const byUser = new Map();
+    for (const info of members.values()) {
+      // Two tabs from one person are one participant. An anonymous socket (no
+      // userId) is keyed by its own socket id so it still shows up as someone.
+      const key = info.userId || `socket:${info.socketId}`;
+      if (!byUser.has(key)) byUser.set(key, { userId: info.userId, name: info.name });
+    }
+    return [...byUser.values()];
+  };
+
+  /** Tell everyone in the room who is in it. */
+  const broadcastPeers = (sessionId) => {
+    const participants = peersOf(sessionId);
+    io.to(String(sessionId)).emit("session-peers", {
+      sessionId,
+      // `count` is the number of PEOPLE now, not of sockets — two tabs used to
+      // read as two collaborators and flip the session to "active" on its own.
+      count: participants.length,
+      participants,
+    });
+  };
+
   socket.on("join-session", async ({ sessionId, userId }) => {
     try {
       if (!sessionId) return;
@@ -5908,22 +5962,64 @@ io.on("connection", (socket) => {
         });
       }
 
+      /* The name to show. Looked up once per socket, here, rather than sent by
+         the client — a client-supplied display name is a client-supplied claim,
+         and this one appears next to what the person types. */
+      let name = "Someone";
+      if (userId) {
+        try {
+          const u = await User.findById(userId).select("name email").lean();
+          if (u) name = u.name || u.email || "Someone";
+        } catch {
+          /* Falls back to "Someone" — a missing name must not stop a join. */
+        }
+      }
+
+      if (!collabRooms.has(String(sessionId))) collabRooms.set(String(sessionId), new Map());
+      collabRooms.get(String(sessionId)).set(socket.id, {
+        socketId: socket.id,
+        userId: userId ? String(userId) : null,
+        name,
+      });
+
+      // Recorded on the session too, so it survives a restart and a later join
+      // can see who has been in it. addToSet-style guard: the same person
+      // rejoining must not stack up duplicate rows.
+      if (userId && !session.participants?.some((p) => String(p.userId) === String(userId))) {
+        session.participants.push({ userId });
+        await session.save();
+      }
+
       socket.emit("prompt-initial", {
         sessionId,
         text: session.text,
       });
 
-      socket.to(String(sessionId)).emit("user-joined", { userId });
+      socket.to(String(sessionId)).emit("user-joined", { userId, name });
 
-      // Broadcast the live participant count so clients only mark the session
-      // "active" once a second person actually joins (count >= 2) — not the
-      // moment the inviter opens the session.
-      const room = io.sockets.adapter.rooms.get(String(sessionId));
-      const count = room ? room.size : 1;
-      io.to(String(sessionId)).emit("session-peers", { sessionId, count });
+      // Everyone gets the full list, including the socket that just joined —
+      // it needs to see whoever was already here.
+      broadcastPeers(sessionId);
     } catch (err) {
       console.error("join-session error:", err);
     }
+  });
+
+  /* An optimised result, shared with the room.
+     Optimising was purely local: the person who pressed the button saw the
+     result and the person they were collaborating with saw nothing at all, on a
+     screen whose entire purpose is that both of them are looking at the same
+     prompt. Relayed rather than recomputed, so the two sides can't come back
+     with different text — and only relayed, since the tokens were already
+     charged to whoever ran it. */
+  socket.on("prompt-optimized", ({ sessionId, userId, name, result }) => {
+    if (!sessionId || !result) return;
+    socket.to(String(sessionId)).emit("prompt-optimized", {
+      sessionId,
+      userId,
+      name,
+      result,
+    });
   });
 
   socket.on("prompt-change", async ({ sessionId, text, userId }) => {
@@ -5950,33 +6046,57 @@ io.on("connection", (socket) => {
     if (!sessionId) return;
 
     socket.leave(String(sessionId));
+    collabRooms.get(String(sessionId))?.delete(socket.id);
     socket.to(String(sessionId)).emit("user-left", { userId });
 
-    // Recompute count for those still in the room (leaving socket already left).
-    const room = io.sockets.adapter.rooms.get(String(sessionId));
-    const count = room ? room.size : 0;
-    socket.to(String(sessionId)).emit("session-peers", { sessionId, count });
+    // Who is left, by name — same payload shape as the join, so the client has
+    // one handler for both.
+    broadcastPeers(sessionId);
   });
 
   socket.on("end-session", async ({ sessionId, userId }) => {
     try {
       if (!sessionId) return;
 
-
       await CollabSession.deleteOne({ sessionId });
 
+      /* io.to(...), not socket.to(...): the person who pressed End Session has
+         to be told too. They are the one waiting to see the session close. */
       io.to(String(sessionId)).emit("session-ended", {
         sessionId,
         endedBy: userId,
       });
 
       io.in(String(sessionId)).socketsLeave(String(sessionId));
+      // The room is gone — drop its membership rather than leaving a map entry
+      // that nothing will ever read or clean up.
+      collabRooms.delete(String(sessionId));
     } catch (err) {
       console.error("end-session error:", err);
     }
   });
 
   socket.on("disconnect", () => {
+    /* Collab rooms first, and OUTSIDE the `if (!userId)` below.
+
+       "leave-session" only fires from the React cleanup — i.e. when the
+       component unmounts. Closing the tab, losing the network or a browser
+       crash never sends it, so without this the person stayed in the
+       participant list forever and the other side kept showing them as present
+       in a session they had left. This is the only signal that always arrives.
+
+       It runs before the early return because an anonymous socket (no userId)
+       is still a member that has to be removed. */
+    for (const [sessionId, members] of collabRooms) {
+      if (!members.delete(socket.id)) continue;
+
+      if (members.size === 0) {
+        collabRooms.delete(sessionId);
+        continue;
+      }
+      broadcastPeers(sessionId);
+    }
+
     if (!userId) return;
 
     // Only announce when this was the user's LAST socket — otherwise a closed

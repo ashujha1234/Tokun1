@@ -85,6 +85,17 @@ const PromptSchema = new mongoose.Schema(
      sold: { type: Boolean, default: false },  
      promptHash: { type: String, default: "", index: true },
      attachmentHash: { type: String, default: "", index: true },
+
+     /* Perceptual hash of the image — what it LOOKS like, where attachmentHash
+        above is what its bytes are. The byte hash only ever catches a re-upload
+        of the same FILE; a screenshot of a listing is new bytes and sailed
+        straight past it. See utils/imageProvenance.js.
+
+        Not indexed: near-duplicates are found by Hamming distance, which no
+        B-tree can answer — the lookup reads the column and compares in memory.
+        Empty on videos (nothing to hash) and on everything uploaded before this
+        existed, and both are simply skipped rather than treated as matching. */
+     attachmentPhash: { type: String, default: "" },
      mediaValidation: { type: MediaValidationSchema, default: () => ({}) },
 
 

@@ -12012,6 +12012,7 @@ const ROUTES = {
   app: '/app',
   promptLibrary: '/prompt-library',
   smartgen: '/smartgen',
+  optimizer: '/prompt-optimization',
   marketplace: '/prompt-marketplace',
   findCreators: '/find-creators',
   dashboard: '/self-dash',
@@ -13431,10 +13432,11 @@ const OFFERS = [
   {
     num: '01',
     icon: Zap,
-    title: 'Prompt Optimization',
+    title: 'Prompt Optimiser',
     description:
       'Reduce token usage by up to 60% while maintaining meaning and effectiveness across all LLM platforms.',
     accent: '#38bdf8',
+    href: ROUTES.optimizer,
   },
   {
     num: '02',
@@ -13443,6 +13445,7 @@ const OFFERS = [
     description:
       'Transform simple ideas into powerful, optimized products with our AI-powered generation system.',
     accent: '#a855f7',
+    href: ROUTES.smartgen,
   },
   {
     num: '03',
@@ -13518,9 +13521,18 @@ function WhatWeOffer() {
                 <p className="offer-card__desc">{offer.description}</p>
 
                 {/* Driven by the offer's own `href` rather than a title match,
-                    so adding a card is one entry in OFFERS. The rest still fall
-                    back to #explore — a dead anchor, but that's what they
-                    pointed at before and those pages need a sign-in first. */}
+                    so adding a card is one entry in OFFERS.
+
+                    All four now carry one. The Optimiser and Smartgen cards used
+                    to fall through to the #explore branch below — an anchor with
+                    no element of that name anywhere on the page, so "Explore" was
+                    a button that did nothing at all. They were left that way
+                    because both pages need a sign-in, but that is what RequireAuth
+                    is for: it sends a signed-out visitor to /login instead of the
+                    card silently ignoring the click.
+
+                    The #explore fallback stays only to catch a future card added
+                    without an href — it should not be reached today. */}
                 {offer.href ? (
                   <Link to={offer.href} className="offer-card__link">
                     Explore
@@ -13749,10 +13761,17 @@ function CtaSection() {
           custom={2}
         >
           <div className="cta-section__btn-glow" aria-hidden="true" />
+          {/* To the Optimiser, which is what the button says it does.
+
+              It pointed at ROUTES.app — and /app renders THIS PAGE again, in its
+              signed-in variant (see pages/AppPage.tsx). So "Start Optimizing Now"
+              scrolled you back to a landing page that looks identical to the one
+              you were already on, which reads as a button that does nothing at
+              all rather than one that navigated. */}
           <motion.button
             type="button"
             className="cta-btn"
-            onClick={() => navigate(ROUTES.app)}
+            onClick={() => navigate(ROUTES.optimizer)}
             whileHover={{ scale: 1.03, y: -2 }}
             whileTap={{ scale: 0.98 }}
             transition={{ type: 'spring', stiffness: 400, damping: 17 }}

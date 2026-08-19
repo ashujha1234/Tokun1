@@ -5,6 +5,18 @@ const { STOP_WORDS, UNIVERSAL_FALLBACK_DOMAIN, DEEP_QUESTIONS } = require("./con
 const { detectTutorialIntent, detectWebsiteBuildIntent } = require("./detection");
 const { extractConstraints, perfStart, perfEnd } = require("./utils");
 
+/* The model every OpenAI call in this file uses.
+
+   It was written out as a "gpt-4o-mini" literal at each of the four call sites —
+   the only place in the server where the model name isn't behind an env var (see
+   memoryExtractor.js, memoryRetriever.js, promptMediaValidation.js, and the
+   OPENAI_STREAM_MODEL calls in index.js). Switching models meant remembering
+   these four existed, so a switch would quietly have left the skill engine on
+   the old one.
+
+   Same default as before, so nothing changes until the var is set. */
+const DOMAIN_MODEL = process.env.OPENAI_SKILL_MODEL || "gpt-4o-mini";
+
 // perfStart/perfEnd imported from utils.js â single source of truth
 
 // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
@@ -138,7 +150,7 @@ async function getDynamicDomain(userText) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
         signal: controller.signal,
         body: JSON.stringify({
-          model: "gpt-4o-mini",
+          model: DOMAIN_MODEL,
           temperature: 0.2,
           max_tokens: 500,
           messages: [
@@ -224,7 +236,7 @@ async function generateDynamicSubcategories(domainName, userText) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
         signal: controller.signal,
         body: JSON.stringify({
-          model: "gpt-4o-mini",
+          model: DOMAIN_MODEL,
           temperature: 0.3,
           max_tokens: 300,
           messages: [
@@ -288,7 +300,7 @@ async function generateDynamicCriticalUnknowns(domainName, userText) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
         signal: controller.signal,
         body: JSON.stringify({
-          model: "gpt-4o-mini",
+          model: DOMAIN_MODEL,
           temperature: 0.3,
           max_tokens: 400,
           messages: [
@@ -443,7 +455,7 @@ Return JSON ARRAY ONLY (no wrapper, no markdown fences):
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
         signal:  controller.signal,
         body: JSON.stringify({
-          model: "gpt-4o-mini", temperature: 0.3, max_tokens: 800,
+          model: DOMAIN_MODEL, temperature: 0.3, max_tokens: 800,
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user",   content: userText },

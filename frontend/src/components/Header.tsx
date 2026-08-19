@@ -4090,16 +4090,21 @@ useEffect(() => {
    </button>
  )}
 
- {/* ORDERS — everything bought and sold, both sides of the marketplace.
+ {/* ORDERS — service bookings and hire projects, both sides of them.
+     NOT product purchases: those are delivered the instant they're paid for and
+     live in My Products with their bill and refund flow. What's here is work
+     with a lifecycle, which is why the tooltip talks about hiring rather than
+     buying — it used to say "what you've bought and sold", naming the one thing
+     the page doesn't list.
      Sits in the top-level action row on purpose: a client who has just paid
      for something needs one obvious place to see what they paid for, and a
      creator needs the same for what they've been hired to do. Previously both
-     were buried — prompt purchases under a dashboard tab, service bookings
-     four clicks inside Service Bookings, hire deals only inside their chat. */}
+     were buried — service bookings four clicks inside Service Bookings, hire
+     deals only inside their chat. */}
  <button
    type="button"
    onClick={() => navigate("/orders")}
-   title="Orders — what you've bought and sold"
+   title="Orders — work you've hired for, and work you've been hired for"
    aria-label="Orders"
    className="relative flex items-center gap-1.5 rounded-full px-2 py-2 sm:px-3 hover:bg-white/10 transition"
  >

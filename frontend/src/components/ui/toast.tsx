@@ -20,11 +20,16 @@ const ToastViewport = React.forwardRef<
          z-[9999999]. So the one message telling you whether an action worked
          was the one thing you couldn't see. This sits above all of them.
 
-         top-16 offsets it below the header rather than over the logo; on pages
-         with no fixed header that reads as ordinary breathing room. */
-      "fixed top-16 left-1/2 -translate-x-1/2 z-[10000000] flex max-h-screen w-full flex-col p-4 sm:max-w-[420px] items-center",
+         The offset comes from --toast-top (index.css), which tracks the header's
+         own height across the breakpoints. It was a flat `top-16` — 64px — which
+         is INSIDE the header on every screen above a phone, so the toast landed
+         across the top bar rather than below it. On pages with no fixed header
+         the same offset reads as ordinary breathing room.
+         Sonner reads the same variable, so the two systems can't drift. */
+      "fixed left-1/2 -translate-x-1/2 z-[10000000] flex max-h-screen w-full flex-col p-4 sm:max-w-[420px] items-center",
       className
     )}
+    style={{ top: "var(--toast-top)" }}
     {...props}
   />
 ))

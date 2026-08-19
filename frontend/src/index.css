@@ -423,6 +423,55 @@ body {
   background-color: #030406 !important;
 }
 
+/* ============================================================
+   TOAST POSITION
+   ============================================================ */
+
+/* How far below the top of the window a toast sits.
+
+   One variable because TWO toast systems render here — the Radix viewport in
+   ui/toast.tsx and Sonner in ui/sonner.tsx — and they each carried their own
+   hardcoded `4rem`. Two numbers meaning the same thing is how they end up
+   disagreeing, and a message appearing at a different height depending on which
+   library happened to raise it reads as a glitch.
+
+   It tracks the header, because the header is the thing a toast must not cover:
+   .site-header's height is set by its logo (3.5 / 4.5 / 5.5rem at these same
+   breakpoints) plus its padding. 4rem sat inside that on every size above a
+   phone, so toasts landed across the top bar. These clear it and leave a little
+   air, without pushing the message so far down that it reads as page content. */
+:root {
+  --toast-top: 5.5rem;
+}
+@media (min-width: 640px)  { :root { --toast-top: 6.5rem; } }
+@media (min-width: 1024px) { :root { --toast-top: 7.5rem; } }
+
+/* ============================================================
+   IN-PAGE ANCHOR SCROLLING
+   ============================================================ */
+
+/* Anchor jumps glide instead of teleporting. It has to live on the scrolling
+   element — the document — which is why a page-level rule is doing something
+   that looks like a component's job.
+
+   Safe to make global: every JS scroll in this app names its own `behavior`
+   (grep `scrollTo(` / `scrollIntoView(` — there is no bare call), and an
+   explicit behavior beats this property. In particular ScrollToTop passes
+   "instant" on every route change, so navigation still lands at the top at
+   once rather than animating the whole page height. */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Honour the OS setting: for a lot of people a page that slides under them is
+   the thing that triggers motion sickness, and "reduce motion" is how they ask
+   for it to stop. The jump still happens — it just happens instantly. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
 /* -------- Gilroy -------- */
 @font-face {
   font-family: 'Gilroy';

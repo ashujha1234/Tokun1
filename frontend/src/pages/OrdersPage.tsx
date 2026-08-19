@@ -106,10 +106,20 @@ export default function OrdersPage() {
     };
   }, [token, side]);
 
+  /* Named for the ROLE, not for a transaction.
+     These were "Bought" and "Sold", which is the vocabulary of the product
+     marketplace — and products are the one thing this page deliberately does not
+     list (see the note at the top). What's here is service bookings and hire
+     projects: work someone commissioned and work someone is delivering, both of
+     which have a life after the payment. "Sold" on a project still being worked
+     on says the opposite of what's true.
+
+     The keys stay `buying`/`selling` — that's the server's own vocabulary in
+     /api/my-orders, and renaming labels is not a reason to churn an API. */
   const tabs: { key: Side; label: string; count: number }[] = [
     { key: "all", label: "All", count: counts.total },
-    { key: "buying", label: "Bought", count: counts.buying },
-    { key: "selling", label: "Sold", count: counts.selling },
+    { key: "buying", label: "As client", count: counts.buying },
+    { key: "selling", label: "As creator", count: counts.selling },
   ];
 
   return (
@@ -118,8 +128,11 @@ export default function OrdersPage() {
 
       <div className="mx-auto w-full max-w-4xl px-4 sm:px-6 py-8">
         <h1 className="text-2xl sm:text-3xl font-extrabold">Orders</h1>
+        {/* Was "Everything you've bought and sold — products, services and
+            projects", which named the one thing this page doesn't show. */}
         <p className="mt-1.5 text-sm text-white/45">
-          Everything you've bought and sold — products, services and projects.
+          Service bookings and hire projects — work you've commissioned, and work
+          you're delivering.
         </p>
 
         {counts.needsAction > 0 && (
@@ -200,8 +213,11 @@ export default function OrdersPage() {
                           {kind.label}
                           {" · "}
                           {/* Says which side of the deal this is, because the
-                              same order type appears in both directions. */}
-                          {o.side === "buying" ? "You bought" : "You sold"}
+                              same order type appears in both directions. In the
+                              same words as the tabs above — "You bought" / "You
+                              sold" described a finished transaction, while these
+                              rows are mostly work still in progress. */}
+                          {o.side === "buying" ? "You hired" : "You were hired"}
                           {o.counterpartyName ? ` · ${o.counterpartyName}` : ""}
                           {" · "}
                           {formatDate(o.createdAt)}

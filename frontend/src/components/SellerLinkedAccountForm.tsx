@@ -774,8 +774,22 @@ export default function SellerLinkedAccountForm({
             {(phase === "form" || phase === "submitting") && (
               <>
                 <h3 className="text-white text-lg font-semibold mb-1">Set up your payout account</h3>
-                <p className="text-white/50 text-sm mb-4">
+                <p className="text-white/50 text-sm mb-3">
                   Required before you can sell on Tokun — this is how you'll get paid.
+                </p>
+
+                {/* WHERE to copy the details from, said once, at the top.
+                    Individual fields carried hints about their own format (what a
+                    PAN looks like, what an IFSC looks like) but nothing said what
+                    the answers should be COPIED FROM — so people typed their name
+                    the way they write it rather than the way the bank has it, and
+                    found out days later from a verification failure. Every one of
+                    these is checked against the bank and against government
+                    records, so "as printed" is the actual rule. */}
+                <p className="text-[12px] leading-relaxed text-amber-200/80 mb-4 rounded-lg border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2">
+                  {isOrganization
+                    ? "Enter every detail exactly as it appears on your official records — the bank account in your registered business name, and the PAN/GST exactly as issued. These are verified against your bank and government records, so even a spelling or spacing difference will fail verification."
+                    : "Enter every detail exactly as it appears on your bank passbook/cheque and your PAN card. These are verified against your bank and government records, so even a spelling difference between the two will fail verification."}
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5 rounded-xl border border-white/10 bg-white/[0.03] p-4">

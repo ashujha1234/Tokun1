@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, ChevronDown, Search } from "lucide-react";
 
 /*
@@ -15,6 +16,8 @@ import { Check, ChevronDown, Search } from "lucide-react";
  *    matters because no country or language list we ship covers everyone.
  *  - The panel is capped and scrolls internally, so a long list never pushes the
  *    rest of the form down the page.
+ *  - It is rendered in a portal and positioned `fixed`, so no scrolling or
+ *    `overflow-hidden` ancestor can clip it — see the note on `placement`.
  *  - Filtering is prefix-first: typing "in" offers India before Argentina, even
  *    though both contain "in".
  */
@@ -59,29 +62,40 @@ export default function SearchableSelect({
   const [highlight, setHighlight] = useState(0);
 
   const wrapRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  /* How the panel is placed: below the field, or above it, and how tall the list
-     may be.
+  /* Where the panel goes: above or below the field, how wide, and how tall the
+     list may be.
 
-     It always opened downward at a fixed height — search box plus a 220px list,
-     roughly 270px. On the last field of a dialog step (Languages, which sits at
-     the bottom of the onboarding form) that put the list far below the fold: you
-     had to scroll the dialog to reach the option you were picking, and the panel
-     ran past the end of the card.
+     THE PANEL IS RENDERED IN A PORTAL, POSITIONED `fixed`. That is the whole
+     reason the Languages list stopped being cut off at the bottom.
 
-     Now it measures the room on each side of the field and takes the better one,
-     capping the list to what actually fits. */
-  const [placement, setPlacement] = useState<{ dropUp: boolean; listMax: number }>({
-    dropUp: false,
-    listMax: LIST_MAX,
-  });
+     It used to be an `absolute` child of the field. Every dialog this component
+     appears in scrolls its own body (`p-6 overflow-y-auto`) inside a card that
+     is `overflow-hidden` — and an absolutely-positioned child is clipped by any
+     scrolling or hidden ancestor, no matter how much room the window has. So on
+     the last field of a step the list was sliced off at the edge of the card:
+     the rows were there, drawn, and unreachable.
+
+     A fixed element in a portal has no such ancestor — the viewport is the only
+     thing that can clip it, which is exactly what `measure` below accounts for.
+     (The marketplace's category rail solves the identical problem the same way;
+     see the note on the hover panel in PromptMarketplacePage.) */
+  const [placement, setPlacement] = useState<{
+    dropUp: boolean;
+    listMax: number;
+    left: number;
+    top: number;
+    bottom: number;
+    width: number;
+  } | null>(null);
 
   const measure = useCallback(() => {
     const el = wrapRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    // Gap left for the dialog's own padding, so the panel never touches the edge.
+    // Gap left for the window's own edge, so the panel never touches it.
     const below = window.innerHeight - r.bottom - 16;
     const above = r.top - 16;
 
@@ -90,23 +104,44 @@ export default function SearchableSelect({
     const dropUp = below < SEARCH_ROW + MIN_LIST && above > below;
     const room = (dropUp ? above : below) - SEARCH_ROW;
 
-    setPlacement({ dropUp, listMax: Math.max(MIN_LIST, Math.min(LIST_MAX, room)) });
+    setPlacement({
+      dropUp,
+      listMax: Math.max(MIN_LIST, Math.min(LIST_MAX, room)),
+      /* Viewport coordinates, because the panel is `fixed`. Width is copied from
+         the field so the two still line up — a portalled panel can't inherit it
+         from `left-0 right-0` any more. */
+      left: r.left,
+      top: r.bottom + 6,
+      bottom: window.innerHeight - r.top + 6,
+      width: r.width,
+    });
   }, []);
 
   useEffect(() => {
-    if (!open) return;
-    // Focus lands in the search box, not the trigger, so opening and typing is
-    // one motion.
-    searchRef.current?.focus();
+    if (!open) {
+      // Dropped so a stale rect can't flash the panel in the wrong place on the
+      // next open — measure() fills it in again before anything is drawn.
+      setPlacement(null);
+      return;
+    }
+
     setQuery("");
     setHighlight(0);
     measure();
 
+    /* Focus lands in the search box, not the trigger, so opening and typing is
+       one motion. Deferred a frame: measure() above is what causes the panel to
+       render at all, so the input this is reaching for does not exist yet on
+       this pass. */
+    const frame = requestAnimationFrame(() => searchRef.current?.focus());
+
     /* Capture phase: the element that scrolls is the dialog body, and a scroll
-       event on it does not bubble to window. */
+       event on it does not bubble to window. The panel is `fixed`, so if the
+       field moves under it and this doesn't re-run, the two come apart. */
     window.addEventListener("scroll", measure, true);
     window.addEventListener("resize", measure);
     return () => {
+      cancelAnimationFrame(frame);
       window.removeEventListener("scroll", measure, true);
       window.removeEventListener("resize", measure);
     };
@@ -114,7 +149,12 @@ export default function SearchableSelect({
 
   useEffect(() => {
     const onClickOutside = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      // Both, because the panel is portalled to <body> and so is NOT inside
+      // wrapRef any more — testing the wrapper alone would treat every click on
+      // an option as a click outside and close the list before it registered.
+      if (wrapRef.current?.contains(target) || panelRef.current?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
@@ -195,12 +235,22 @@ export default function SearchableSelect({
         />
       </button>
 
-      {open && (
+      {open && placement && createPortal(
         <div
-          className={`absolute z-30 left-0 right-0 rounded-xl border border-white/10 overflow-hidden shadow-2xl ${
-            placement.dropUp ? "bottom-full mb-1.5" : "mt-1.5"
-          }`}
-          style={{ background: "#0D1017" }}
+          ref={panelRef}
+          /* z-index above the dialogs this opens inside (they sit at z-[9999]),
+             because in a portal it is a sibling of them rather than a
+             descendant — the field's own stacking context no longer carries it
+             along. */
+          className="fixed z-[10000] rounded-xl border border-white/10 overflow-hidden shadow-2xl"
+          style={{
+            background: "#0D1017",
+            left: placement.left,
+            width: placement.width,
+            ...(placement.dropUp
+              ? { bottom: placement.bottom }
+              : { top: placement.top }),
+          }}
         >
           <div className="relative border-b border-white/8">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/35 pointer-events-none" />
@@ -268,7 +318,8 @@ export default function SearchableSelect({
               <p className="px-3 py-4 text-sm text-white/40">No matches.</p>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

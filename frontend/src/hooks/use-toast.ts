@@ -5,8 +5,21 @@ import type {
   ToastProps,
 } from "@/components/ui/toast"
 
-const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+/* How many toasts can be on screen together.
+   Was 1, so two things happening close together — "Added to Cart" landing while
+   a "Code resent" was still up — meant the second silently replaced the first
+   and you never saw one of them. Three is enough to stack a burst without
+   turning the top of the screen into a wall. */
+const TOAST_LIMIT = 3
+
+/* How long a CLOSED toast lingers in state before being dropped from the array.
+   Not the visible duration — that's TOAST_DURATION in components/ui/toaster.tsx.
+   This only has to outlast the close animation.
+
+   It was 1000000ms — sixteen minutes. Harmless while TOAST_LIMIT was 1 (a new
+   toast pushed the old one out), but with a limit of 3 those invisible corpses
+   would have taken the slots and stopped real toasts from ever rendering. */
+const TOAST_REMOVE_DELAY = 1000
 
 type ToasterToast = ToastProps & {
   id: string

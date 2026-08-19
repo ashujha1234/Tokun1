@@ -474,6 +474,41 @@ body.is-loading { overflow: hidden; }
   background: transparent;
 }
 
+/* HOW TALL THE BAR ACTUALLY IS.
+   Set by the logo, not by any height declared on the row: the mark plus the
+   row's 16px of padding either side. The three values below track the three
+   logo sizes (110 / 88 / 72px) at the same breakpoints they change at.
+
+   It exists because the number was already written out by hand in two places
+   for the same reason, and is now needed in a third — see the scroll offset
+   below and the hero's mobile padding at the end of this file. A fixed bar
+   reserves no space, so anything that has to clear it has to know how tall it
+   is, and three hand-copied numbers is three chances to update two of them. */
+:root {
+  --landing-nav-h: 142px;
+}
+@media (max-width: 768px) { :root { --landing-nav-h: 120px; } }
+@media (max-width: 480px) { :root { --landing-nav-h: 104px; } }
+
+/* WHERE AN ANCHOR JUMP STOPS.
+   Without this the browser puts the target's top edge at the top of the
+   VIEWPORT — and the bar is fixed over that, so "Capabilities" and the "What We
+   Offer" heading landed underneath it and the section looked like it started at
+   its cards. `scroll-margin-top` moves the resting place down by the height of
+   the bar, plus a little air so the heading isn't touching it.
+
+   On the element rather than `scroll-padding-top` on the document, so it
+   applies to exactly the sections that sit under the landing bar. It is honoured
+   by both routes in: clicking `#what-we-offer` in the page, and arriving at
+   `/#what-we-offer` from elsewhere (ScrollToTop calls scrollIntoView, which
+   respects it too). */
+#what-we-offer,
+#how-it-works,
+#testimonials,
+#cta {
+  scroll-margin-top: calc(var(--landing-nav-h) + 24px);
+}
+
 /* How far the panel sits inside the row, top and bottom. Overridden from the
    shared value (12–20px) because this bar is much taller than the app's: the
    logo scales to ~68px on scroll but the ROW keeps its full 142px, since
@@ -834,16 +869,19 @@ body.is-loading { overflow: hidden; }
      has nothing left to centre — so the top of it rode up UNDER the bar and
      "TOKUN" sat level with the logo and the account pill.
 
-     The number is the bar's real height, which the logo sets: 88px of mark plus
-     16px of padding either side. `box-sizing: border-box` is global here, so
-     this comes out of the 100svh rather than adding to it. */
-  .hero { padding-top: 120px; }
+     The reserve is the bar's real height, which the logo sets: 88px of mark plus
+     16px of padding either side. That is what --landing-nav-h holds (declared
+     with the nav, and already narrowed to 120px by this breakpoint), so the
+     figure is stated once instead of being copied here and kept in step by
+     hand. `box-sizing: border-box` is global here, so this comes out of the
+     100svh rather than adding to it. */
+  .hero { padding-top: var(--landing-nav-h); }
 }
 
 @media (max-width: 480px) {
-  /* 72px logo at this width, so the bar is 104px and the reserve shrinks with
-     it — see the 768px block above. */
-  .hero { padding-top: 104px; }
+  /* 72px logo at this width, so --landing-nav-h is 104px and the reserve
+     shrinks with it — see the 768px block above. */
+  .hero { padding-top: var(--landing-nav-h); }
   .hero-nav__link { display: none; }
   .hero__subtitle-line { display: none; }
   .hero__subtitle-text { text-align: center; }

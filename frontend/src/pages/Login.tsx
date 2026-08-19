@@ -483,15 +483,36 @@ import { toast } from "@/components/ui/use-toast";
 const API_BASE = import.meta.env.VITE_API_URL ;
 console.log("[ENV] API_BASE =", API_BASE);
 
+/* One definition of "this is an email", used by the button's enabled state, the
+   message under the field, and the submit guard.
+
+   It was written inline in exactly one of those three places — the hint under
+   the mobile field — while the button only ever checked `!email`. So typing a
+   single letter enabled Request OTP with the error text sitting right underneath
+   it: the page said the address was wrong and offered to send a code to it at
+   the same time. Pressing it spent a round-trip to be told the same thing by the
+   server.
+
+   Deliberately loose. Anything stricter rejects addresses that genuinely
+   deliver, and the OTP itself is the real proof the mailbox exists — this only
+   has to catch what obviously cannot be one. */
+const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
 const Login = () => {
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  
+
+  // Whether Request OTP may be pressed at all. Both layouts below read this, so
+  // the phone and the desktop can't disagree about what counts as fillable.
+  const canRequestOtp = !isLoading && isValidEmail(email);
+
   const navigate = useNavigate();
 
   const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || isLoading) return;
+    // Belt and braces: a form can still be submitted with Enter, and the guard
+    // has to agree with the button rather than being the looser `!email`.
+    if (!canRequestOtp) return;
 
     const emailNorm = email.trim().toLowerCase();
 
@@ -670,7 +691,7 @@ const Login = () => {
         placeholder="you@example.com"
         className="h-[44px] w-full rounded-[12px] bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)] border border-white/20 text-white text-[14px] placeholder:text-white/30 placeholder:text-[13px] px-4 focus-visible:ring-0 focus:border-white/50"
       />
-      {email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && (
+      {email && !isValidEmail(email) && (
         <p className="text-[11px] text-red-400 pl-1">
           Please enter a valid email address
         </p>
@@ -679,7 +700,7 @@ const Login = () => {
 
     <button
       type="submit"
-      disabled={isLoading || !email}
+      disabled={!canRequestOtp}
       className="w-full h-[44px] rounded-[12px] text-[14px] font-semibold text-white disabled:opacity-40 transition-opacity"
       style={{
         background: "linear-gradient(90deg, #FF14EF 0%, #A855F7 50%, #1A73E8 100%)",
@@ -770,11 +791,19 @@ const Login = () => {
                     focus-visible:ring-0 focus:border-[#7D4DFF]/60
                   "
                 />
+                {/* The same message the mobile layout has shown all along. It
+                    was missing here, so on a desktop a malformed address just
+                    left the button dead with nothing saying why. */}
+                {email && !isValidEmail(email) && (
+                  <p className="text-[12px] text-red-400">
+                    Please enter a valid email address
+                  </p>
+                )}
               </div>
 
               <button
                 type="submit"
-                disabled={isLoading || !email}
+                disabled={!canRequestOtp}
                 className="
                   w-full md:w-[350px] h-[50px] rounded-[6px]
                   text-[16px] font-normal text-white

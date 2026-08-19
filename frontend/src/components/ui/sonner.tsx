@@ -1,5 +1,6 @@
 import { useTheme } from "next-themes"
 import { Toaster as Sonner, toast } from "sonner"
+import { TOAST_DURATION } from "@/components/ui/toaster"
 
 type ToasterProps = React.ComponentProps<typeof Sonner>
 
@@ -15,9 +16,15 @@ const Toaster = ({ ...props }: ToasterProps) => {
          z-[9999999]), and offset clear of the header. Sonner's default z-index
          left toasts rendering behind the header — the one message telling you
          whether something worked was the one you couldn't read.
-         Matches the Radix toast viewport in ui/toast.tsx so the two systems
-         can't disagree about where a toast belongs. */
-      style={{ zIndex: 10000000, top: "4rem" }}
+         --toast-top is shared with the Radix viewport in ui/toast.tsx (declared
+         in index.css) so the two systems can't disagree about where a toast
+         belongs — they used to hold the same 4rem as two separate literals. */
+      style={{ zIndex: 10000000, top: "var(--toast-top)" }}
+      /* Same visible lifetime as the Radix toasts — the two systems both render
+         at the top of the same screen, and a message that outlives the one next
+         to it for no reason reads as a bug. Sonner's own default is 4s too, but
+         stating it means the two move together when the number changes. */
+      duration={TOAST_DURATION}
       toastOptions={{
         classNames: {
           toast:

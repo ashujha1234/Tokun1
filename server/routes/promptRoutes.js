@@ -659,11 +659,77 @@ const { requireAuth, blockIfSuspended } = require("../utils/auth");
 const { logActivity } = require("../utils/activityLogger");
 const { runPromptMediaValidation } = require("../utils/promptMediaValidation");
 const { applyPublicPromptFilter } = require("../utils/promptVisibility");
+const {
+  perceptualHash,
+  looksLikeDuplicate,
+  hasTokunWatermark,
+} = require("../utils/imageProvenance");
 const crypto = require("crypto");
 const sharp = require("sharp");
 
 function makePromptHash(text) {
   return crypto.createHash("sha256").update(text || "", "utf8").digest("hex");
+}
+
+/**
+ * The already-listed prompt whose image LOOKS like this one, if there is one.
+ *
+ * Reads every stored perceptual hash and compares in memory, because "within N
+ * bits of this value" is not a question an index can answer — there is no
+ * ordering of hashes in which near-duplicates are neighbours. It's one small
+ * string per listing, which is nothing at this catalogue size; if the marketplace
+ * grows into the hundreds of thousands this becomes a BK-tree or a bucketed
+ * prefix index rather than a full scan.
+ *
+ * Rows with no hash — videos, and everything uploaded before this shipped — are
+ * excluded by the query rather than compared, since a missing hash is "unknown",
+ * not "different".
+ */
+async function findLookalikePrompt(phash, excludeId) {
+  if (!phash) return null;
+
+  const filter = { attachmentPhash: { $nin: ["", null] } };
+  if (excludeId) filter._id = { $ne: excludeId };
+
+  const listed = await Prompt.find(filter).select("_id title attachmentPhash").lean();
+  return listed.find((p) => looksLikeDuplicate(phash, p.attachmentPhash)) || null;
+}
+
+/**
+ * Every "is this actually yours?" check for an uploaded image, in one place so
+ * the create and resubmit routes can't drift apart on it.
+ *
+ * Returns `{ phash, rejection }` — `rejection` is the response body to send back
+ * with a 409, or null when the image is clear. Cheap check first: the perceptual
+ * hash is milliseconds and names the listing that was copied, so OCR (seconds)
+ * only runs on images that got past it.
+ */
+async function screenImageUpload(buffer, { excludeId } = {}) {
+  const phash = await perceptualHash(buffer);
+
+  const lookalike = await findLookalikePrompt(phash, excludeId);
+  if (lookalike) {
+    return {
+      phash,
+      rejection: {
+        error: "duplicate_image",
+        message: `This image is already listed on the marketplace as "${lookalike.title}". Re-uploading an existing listing — including a screenshot of one — isn't allowed.`,
+      },
+    };
+  }
+
+  if (await hasTokunWatermark(buffer)) {
+    return {
+      phash,
+      rejection: {
+        error: "watermarked_image",
+        message:
+          "This image carries the Tokun.world watermark, which means it was taken from a listing on this marketplace rather than created by you. Upload your own image instead — if you believe this is a mistake, contact support.",
+      },
+    };
+  }
+
+  return { phash, rejection: null };
 }
 
 async function watermarkImage(buffer) {
@@ -785,6 +851,25 @@ router.post(
               ? "This exact prompt text has already been listed on the marketplace."
               : "This exact image/video has already been listed on the marketplace.",
         });
+      }
+
+      /* The byte hash above only catches the same FILE. Screenshot a listing off
+         the marketplace and every byte is different — new dimensions, re-encoded
+         by the OS — so it passed straight through, watermark and all, and went
+         up as an original.
+
+         This asks the two questions that actually matter: does it look like
+         something already listed, and is our own watermark still visible in it.
+         Both run BEFORE the Azure upload, same as the hash check, so a rejected
+         upload doesn't leave a file behind. */
+      let attachmentPhash = "";
+
+      if (fileType === "image") {
+        const screened = await screenImageUpload(file.buffer);
+        if (screened.rejection) {
+          return res.status(409).json({ success: false, ...screened.rejection });
+        }
+        attachmentPhash = screened.phash || "";
       }
 
       // Image → tokun.world text watermark
@@ -926,6 +1011,7 @@ router.post(
         uploadCode,
         promptHash,
         attachmentHash,
+        attachmentPhash,
         // New uploads only stay hidden from the marketplace until the
         // seller's Route Linked Account is verified — older prompts (this
         // flag defaults false) are grandfathered in and unaffected.
@@ -1044,6 +1130,21 @@ router.put(
         });
       }
 
+      /* Same screening as a fresh upload — see the note there. A resubmit is a
+         replacement attachment, so it is exactly as good a way in as the create
+         route, and this one is reached with an admin already asking for changes.
+         excludeId so a resubmit that keeps the original image isn't rejected for
+         matching itself. */
+      let newAttachmentPhash = prompt.attachmentPhash;
+
+      if (file && file.mimetype.startsWith("image/")) {
+        const screened = await screenImageUpload(file.buffer, { excludeId: prompt._id });
+        if (screened.rejection) {
+          return res.status(409).json({ success: false, ...screened.rejection });
+        }
+        newAttachmentPhash = screened.phash || "";
+      }
+
       prompt.promptHash = newPromptHash;
 
       if (file) {
@@ -1072,6 +1173,9 @@ router.put(
           type: fileType,
         };
         prompt.attachmentHash = newAttachmentHash;
+        // "" on a video, which is correct — the old image's hash must not stay
+        // attached to a listing whose media is now something else entirely.
+        prompt.attachmentPhash = fileType === "image" ? newAttachmentPhash : "";
       }
 
       // Back to square one — a full fresh validation pass on whatever changed.

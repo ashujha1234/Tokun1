@@ -2285,7 +2285,19 @@ export default function SellPromptModal({
         if (code === "attachment_required") msg = "Please attach an image or video.";
         if (code === "only_image_or_video_allowed") msg = "Attachment must be image or video.";
         if (code === "invalid_categories") msg = `Invalid categories: ${data?.invalid?.join(", ")}`;
-        if (code === "duplicate_content") msg = data?.message || "Sorry, this has already been uploaded. You can't upload it again.";
+        if (code === "duplicate_content") msg = "Sorry, this has already been uploaded. You can't upload it again.";
+
+        /* Applied last, so the server's own sentence always wins.
+
+           This used to be a closed list: every rejection the server could send
+           needed a matching line here, and anything without one — a screenshot
+           of an existing listing, an image still carrying the Tokun watermark —
+           came out as "Something went wrong.", which tells the seller nothing
+           about what to fix. The server writes a specific reason for exactly
+           these cases; the list above is now the fallback for codes that don't
+           carry one. */
+        if (data?.message) msg = data.message;
+
         setUploading(false);
         toast({ title: "Upload failed", description: msg });
         return;

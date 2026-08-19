@@ -1500,6 +1500,9 @@ const setStorage = (key: string, value: any): void => {
   }
 };
 
+/** One person in a live collab session, as the server reports them. */
+type CollabPeer = { userId: string | null; name: string };
+
 const PromptInput = ({ onTokensChange, onOptimize, initialText = "" }: PromptInputProps) => {
      const location = useLocation();   // <-- MUST COME FIRST
   const navigate = useNavigate();
@@ -1511,7 +1514,22 @@ const PromptInput = ({ onTokensChange, onOptimize, initialText = "" }: PromptInp
    const collabSessionId = searchParams.get("sessionId");
   // realtime sync helpers
   const textRef = useRef<string>("");
-  const isRemoteUpdateRef = useRef<boolean>(false);
+
+  /* The last text this client and the server agreed on — whatever we last SENT
+     or last RECEIVED. The debounced emit below fires only when the box differs
+     from it.
+
+     This replaces an `isRemoteUpdateRef` boolean, and that boolean is what made
+     typing spring back. It was set true, setText was called, and it was set
+     false again on the very next line — but setText is asynchronous, so by the
+     time the 400ms debounce actually ran the flag had long since gone back to
+     false. The receiver therefore echoed the text it had just been given
+     straight back to the sender, and if the sender had typed anything in that
+     window, the echo landed on top of it and the new characters vanished.
+
+     A value comparison can't have that problem: text applied from a peer is by
+     definition equal to what we just recorded, so there is nothing to echo. */
+  const lastSyncedTextRef = useRef<string>("");
 
   //inivite
   // const [inviteModal, setInviteModal] = useState(false);
@@ -1519,6 +1537,13 @@ const [inviteEmail, setInviteEmail] = useState("");
 
   const [isCollabActive, setIsCollabActive] = useState<boolean>(false);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
+
+  /* Everyone currently in the session, by name.
+     There was no way to see this: the server only ever sent a participant COUNT,
+     so the screen could say a session was live but never who you were in it
+     with — you had invited someone by email and then had to take it on trust
+     that the person typing was them. */
+  const [collabPeers, setCollabPeers] = useState<CollabPeer[]>([]);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [optimizationOption, setOptimizationOption] = useState<OptimizationOption | null>(null);
@@ -1667,21 +1692,21 @@ useEffect(() => {
   const handleInitial = (payload: { sessionId: string; text: string }) => {
     if (payload.sessionId !== collabSessionId) return;
 
-    isRemoteUpdateRef.current = true;
-    setText(payload.text || "");
-    textRef.current = payload.text || "";
-    isRemoteUpdateRef.current = false;
+    const incoming = payload.text || "";
+    setText(incoming);
+    textRef.current = incoming;
+    // Recorded as agreed, so the debounced effect below doesn't turn the text we
+    // were just handed into an outgoing edit.
+    lastSyncedTextRef.current = incoming;
   };
 
   const handleRemoteChange = (payload: { sessionId: string; text: string }) => {
     if (payload.sessionId !== collabSessionId) return;
+    if (payload.text === textRef.current) return;
 
-    if (payload.text !== textRef.current) {
-      isRemoteUpdateRef.current = true;
-      setText(payload.text);
-      textRef.current = payload.text;
-      isRemoteUpdateRef.current = false;
-    }
+    setText(payload.text);
+    textRef.current = payload.text;
+    lastSyncedTextRef.current = payload.text;
   };
 
   const handleSessionEnded = ({ sessionId }: { sessionId: string }) => {
@@ -1692,23 +1717,72 @@ useEffect(() => {
     });
 
     setIsCollabActive(false);
+    setCollabPeers([]);
     setText("");
     textRef.current = "";
+    lastSyncedTextRef.current = "";
 
-    const url = new URL(window.location.href);
-    url.searchParams.delete("sessionId");
-    window.history.replaceState({}, "", url.pathname);
+    /* navigate(), NOT window.history.replaceState().
+
+       THIS is why End Session left you looking at "Waiting to join…".
+       collabSessionId is read from useLocation().search, and replaceState
+       changes the address bar WITHOUT telling React Router — so useLocation
+       never updated, collabSessionId stayed set, and with isCollabActive now
+       false the button row fell into its middle branch: the session is over, and
+       the screen says it is waiting for someone to arrive.
+
+       navigate goes through the router, so the param actually disappears from
+       the component's view and the row goes back to "Invite Collaborator". */
+    navigate(location.pathname, { replace: true });
   };
 
-  // Live participant count → session is only "active" once a peer joins (>= 2).
-  const handlePeers = (payload: { sessionId: string; count: number }) => {
+  /* Who is in the session. The server sends the list, not just a number — see
+     the note on collabRooms in server/index.js.
+     The session is "active" once there are at least two PEOPLE in it (the count
+     is deduped per person server-side, so a second tab no longer counts as a
+     collaborator arriving). */
+  const handlePeers = (payload: {
+    sessionId: string;
+    count: number;
+    participants?: CollabPeer[];
+  }) => {
     if (payload.sessionId !== collabSessionId) return;
+    setCollabPeers(payload.participants || []);
     setIsCollabActive((payload.count || 0) >= 2);
   };
 
-  // A collaborator joined our room → collaboration is now live.
-  const handleUserJoined = () => {
+  // A collaborator joined our room → collaboration is now live. The peers event
+  // above carries the full list right behind this; this just flips the state
+  // immediately rather than waiting for it.
+  const handleUserJoined = ({ name }: { name?: string }) => {
     setIsCollabActive(true);
+    sonnerToast.success(`${name || "A collaborator"} joined`, {
+      description: "You're both editing the same prompt now.",
+    });
+  };
+
+  /* An optimised result from the other side.
+     Applied, not recomputed — the peer already paid the tokens for this run, and
+     recomputing would both charge twice and risk the two of us ending up with
+     different text on a screen whose whole point is that we see the same thing. */
+  const handleRemoteOptimized = (payload: {
+    sessionId: string;
+    name?: string;
+    result: { text: string; tokens: number; words: number; description?: string; suggestions?: string[] };
+  }) => {
+    if (payload.sessionId !== collabSessionId) return;
+    const r = payload.result;
+    if (!r?.text) return;
+
+    setOptimizationOption({
+      text: r.text,
+      tokens: r.tokens,
+      words: r.words,
+      description: r.description || "Optimized for clarity and conciseness",
+    } as OptimizationOption);
+    onOptimize(r.text, r.tokens, r.words, r.suggestions || [], undefined);
+
+    sonnerToast.info(`${payload.name || "Your collaborator"} optimised this prompt`);
   };
 
   socket.on("prompt-initial", handleInitial);
@@ -1716,6 +1790,7 @@ useEffect(() => {
   socket.on("session-ended", handleSessionEnded);
   socket.on("session-peers", handlePeers);
   socket.on("user-joined", handleUserJoined);
+  socket.on("prompt-optimized", handleRemoteOptimized);
 
   return () => {
     socket.emit("leave-session", {
@@ -1728,6 +1803,7 @@ useEffect(() => {
     socket.off("session-ended", handleSessionEnded);
     socket.off("session-peers", handlePeers);
     socket.off("user-joined", handleUserJoined);
+    socket.off("prompt-optimized", handleRemoteOptimized);
   };
 }, [collabSessionId, user?.id]);
 
@@ -1784,7 +1860,12 @@ useEffect(() => {
     setOptimizerInput(text);
     countTokens(text); // yeh onTokensChange call karta hai
 
-    if (!isRemoteUpdateRef.current && collabSessionId) {
+    /* Send only what the other side hasn't got. The old guard asked "was the
+       last update remote?", which was already stale by the time this ran — see
+       lastSyncedTextRef. This asks "is this different from what we agreed on?",
+       which is still true 400ms later. */
+    if (collabSessionId && text !== lastSyncedTextRef.current) {
+      lastSyncedTextRef.current = text;
       socket.emit("prompt-change", {
         sessionId: collabSessionId,
         text,
@@ -1881,6 +1962,33 @@ const handleConfirmEndSession = () => {
       setOptimizationOption({ ...option, tokens, words });
       setOptimizerDocId(saved?.id ?? null);
       onOptimize(option.text, tokens, words, uniq.slice(0, 3), undefined);
+
+      /* 6) And to whoever we're collaborating with.
+
+         Optimising was entirely local: the person who pressed the button saw a
+         result and the person sharing the session with them saw nothing at all
+         — on a screen whose only purpose is that the two of them are working on
+         the same prompt. Sent AFTER the save, so nothing is shared that the
+         server refused to charge for.
+
+         The result travels rather than the instruction to recompute: the peer
+         must not be billed a second time for a run they didn't ask for, and two
+         separate model calls would leave the two of them looking at different
+         text. */
+      if (collabSessionId) {
+        socket.emit("prompt-optimized", {
+          sessionId: collabSessionId,
+          userId: user?.id || null,
+          name: user?.name || null,
+          result: {
+            text: option.text,
+            tokens,
+            words,
+            description: option.description,
+            suggestions: uniq.slice(0, 3),
+          },
+        });
+      }
 
       // 🚨 ADD THIS: Refresh token counts after optimization
       try {
@@ -2328,13 +2436,36 @@ const startCollaboration = async (): Promise<string | null> => {
       </Button>
     </>
   ) : (
-    <Button
-      onClick={() => setShowEndConfirm(true)}
-      className="rounded-2xl w-[180px] h-[40px] px-4 text-sm text-white border-0 bg-red-600 hover:bg-red-700 inline-flex items-center justify-center gap-2"
-    >
-      <X className="h-4 w-4" />
-      End Session
-    </Button>
+    <>
+      {/* WHO you're in here with. The row could say a session was live but never
+          name anyone in it — you invited someone by email and then had to take
+          it on trust that the person typing was them. The server sends the list
+          (see collabRooms in server/index.js); this is it. */}
+      {collabPeers.length > 0 && (
+        <div
+          className="flex items-center gap-2 h-[40px] px-3 rounded-2xl border border-white/10 bg-[#252525]"
+          title={`In this session: ${collabPeers.map((p) => p.name).join(", ")}`}
+        >
+          <span className="relative flex h-2 w-2 shrink-0">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60 animate-ping" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+          </span>
+          <span className="text-xs text-white/75 max-w-[190px] truncate">
+            {/* Names, not "2 people" — the count was the thing that was already
+                there and wasn't enough. */}
+            {collabPeers.map((p) => p.name).join(", ")}
+          </span>
+        </div>
+      )}
+
+      <Button
+        onClick={() => setShowEndConfirm(true)}
+        className="rounded-2xl w-[180px] h-[40px] px-4 text-sm text-white border-0 bg-red-600 hover:bg-red-700 inline-flex items-center justify-center gap-2"
+      >
+        <X className="h-4 w-4" />
+        End Session
+      </Button>
+    </>
   )}
 
   {/* Right: Optimize */}

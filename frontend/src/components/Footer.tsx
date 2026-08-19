@@ -304,7 +304,10 @@ const LINK_GROUPS: { heading: string; links: { label: string; href: string }[] }
       { label: "Product Verse", href: "/prompt-marketplace" },
       // "Product Library" was here and has been removed on request.
       { label: "SmartGen", href: "/smartgen" },
-      { label: "Prompt Optimizer", href: "/prompt-optimization" },
+      // "Optimiser", not "Optimizer" — every other place the product is named
+      // for a reader spells it with an s (the app nav, History, Saved
+      // collections, the landing page's tabs). The footer was the one z.
+      { label: "Prompt Optimiser", href: "/prompt-optimization" },
       { label: "Hire Creators", href: "/find-creators" },
       { label: "Pricing", href: "/subscription" },
     ],
@@ -412,7 +415,7 @@ export default function Footer() {
 
             <p className="mt-4 text-sm leading-relaxed text-white/55">
               Buy, sell and sharpen AI products. Generate with SmartGen, refine with
-              the Optimizer, and hire creators when you need a human in the loop.
+              the Optimiser, and hire creators when you need a human in the loop.
             </p>
 
             {/* Newsletter */}
