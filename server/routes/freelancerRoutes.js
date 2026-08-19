@@ -792,7 +792,7 @@ router.post(
         return res.status(404).json({
           success: false,
           error: "no_profile",
-          message: "Create your freelancer profile before adding an intro video.",
+          message: "Create your creator profile before adding an intro video.",
         });
       }
 
@@ -867,7 +867,7 @@ router.post(
       try {
         await notifyAdmins({
           type: "ADMIN_FREELANCER_VIDEO_REVIEW_NEEDED",
-          message: `${profile.displayName || req.user.name || "A freelancer"} uploaded an intro video for review${
+          message: `${profile.displayName || req.user.name || "A creator"} uploaded an intro video for review${
             profile.introVideo.submissionCount > 1
               ? ` (attempt ${profile.introVideo.submissionCount})`
               : ""

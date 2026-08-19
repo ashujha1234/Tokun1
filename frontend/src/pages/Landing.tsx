@@ -13462,7 +13462,7 @@ const OFFERS = [
     icon: Users,
     title: 'Find Creators',
     description:
-      'Hire the people behind the products. Browse verified creators and freelancers, see their work, and book them with payment held safely.',
+      'Hire the people behind the products. Browse verified creators, see their work, and book them with payment held safely.',
     accent: '#22d3ee',
     href: ROUTES.findCreators,
   },

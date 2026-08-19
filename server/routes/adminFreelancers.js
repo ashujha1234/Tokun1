@@ -355,7 +355,7 @@ router.patch("/:id/video/approve", async (req, res) => {
       return res.status(409).json({
         success: false,
         error: "no_video_to_review",
-        message: "This freelancer hasn't uploaded a video.",
+        message: "This creator hasn't uploaded a video.",
       });
     }
     if (!video.url) {

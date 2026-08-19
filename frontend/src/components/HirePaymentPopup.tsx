@@ -170,11 +170,11 @@ export default function HirePaymentPopup({
 
         <div className="rounded-2xl bg-white/5 border border-white/10 p-4 space-y-3">
           <div className="flex justify-between gap-4">
-            <span className="text-white/60">Freelancer</span>
+            <span className="text-white/60">Creator</span>
             <span className="font-medium text-right">
               {notification.meta?.freelancerName ||
                 notification.senderName ||
-                "Freelancer"}
+                "Creator"}
             </span>
           </div>
 
@@ -212,7 +212,7 @@ export default function HirePaymentPopup({
         </div>
 
         <div className="mt-4 rounded-2xl bg-blue-500/10 border border-blue-400/20 p-4 text-sm text-white/75">
-          Payment Tokun ke paas safely hold rahegi. Work complete hone ke baad hi freelancer ko release hogi.
+          Payment Tokun ke paas safely hold rahegi. Work complete hone ke baad hi creator ko release hogi.
         </div>
 
         <button

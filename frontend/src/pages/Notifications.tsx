@@ -1765,7 +1765,7 @@ export default function NotificationsPage() {
         ...base,
         message: n.message || "Hire proposal accepted. Payment required to start work.",
         title: n.meta?.title,
-        senderName: base.senderName || n.meta?.freelancerName || "Freelancer",
+        senderName: base.senderName || n.meta?.freelancerName || "Creator",
         senderEmail: base.senderEmail || n.meta?.freelancerEmail,
         prompt: null,
         actionButton: actionBtn("View & Pay", () => openHirePaymentPopup(n)),

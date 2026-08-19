@@ -847,7 +847,7 @@ router.post("/:dealId/accept", requireAuth, async (req, res) => {
         amount: deal.amount,
         targetDate: deal.deliveryDate,
         status: "ACCEPTED",
-        message: `${deal.freelancerId.name || "Freelancer"} accepted your hire proposal. Please make payment to begin.`,
+        message: `${deal.freelancerId.name || "The creator"} accepted your hire proposal. Please make payment to begin.`,
       })}`,
       readBy: [req.user._id],
     });
@@ -862,7 +862,7 @@ router.post("/:dealId/accept", requireAuth, async (req, res) => {
       hireDealId: deal._id,
       chatId: deal.chatId,
       amount: deal.amount,
-      message: `${deal.freelancerId.name || "Freelancer"} accepted your hire proposal. Make payment to start work.`,
+      message: `${deal.freelancerId.name || "The creator"} accepted your hire proposal. Make payment to start work.`,
       meta: {
         title: deal.title,
         freelancerName: deal.freelancerId.name,
@@ -1299,6 +1299,17 @@ router.get("/:dealId/deliverables/:index/download", requireAuth, async (req, res
         kind: "file",
         name: deliverable.name,
         url: getWorkFileDownloadUrl(deliverable.blobName),
+        /* Whether the client is looking at this while their money is still
+           held. Images answer the same question with the X-Tokun-Watermarked
+           header, because for them the server can stamp the bytes on the way
+           out. It can't do that to a video in the time a request has — so the
+           fact travels instead, and the player draws the mark over it.
+
+           Said plainly: that overlay is on the PLAYER, not burned into the
+           file. It stops a casual screen-recording from being clean; it does
+           not stop someone who reads the network tab. Burning it in properly
+           needs an ffmpeg pass at upload time. */
+        heldInEscrow: isClient && !isSettled(deal.fundsStatus),
       });
     }
 
@@ -1319,7 +1330,7 @@ router.get("/:dealId/deliverables/:index/download", requireAuth, async (req, res
     return res.status(404).json({
       success: false,
       error: "file_missing",
-      message: "This file is no longer available. Ask the freelancer to re-upload it.",
+      message: "This file is no longer available. Ask the creator to re-upload it.",
     });
   } catch (err) {
     console.error("download hire deliverable error:", err);
@@ -1433,7 +1444,7 @@ router.post("/:dealId/submit-work", requireAuth, async (req, res) => {
       hireDealId: deal._id,
       chatId: deal.chatId,
 
-      message: `${deal.freelancerId.name || "Freelancer"} submitted the project work. Review it and approve or request revision.`,
+      message: `${deal.freelancerId.name || "The creator"} submitted the project work. Review it and approve or request revision.`,
       meta: {
         title: deal.title,
         note: note || "",
@@ -1485,7 +1496,7 @@ router.post("/:dealId/submit-work", requireAuth, async (req, res) => {
           url: d.kind === "link" ? d.url : "",
         })),
         status: "WORK_SUBMITTED",
-        message: `${deal.freelancerId.name || "Freelancer"} submitted the project work. Please review the attached files.`,
+        message: `${deal.freelancerId.name || "The creator"} submitted the project work. Please review the attached files.`,
       })}`,
       readBy: [req.user._id],
     });
@@ -1631,14 +1642,14 @@ router.post("/:dealId/approve-work", requireAuth, async (req, res) => {
         title: deal.title,
         amount: payoutAmount,
         status: "COMPLETED",
-        message: `✅ Payment released! ₹${payoutAmount} has been credited to freelancer's Tokun Wallet.`,
+        message: `✅ Payment released! ₹${payoutAmount} has been credited to the creator's Tokun Wallet.`,
       })}`,
       readBy: [req.user._id],
     });
  
     return res.json({
       success: true,
-      message: `₹${payoutAmount} credited to freelancer's Tokun Wallet`,
+      message: `₹${payoutAmount} credited to the creator's Tokun Wallet`,
       deal,
       // null once the money goes out over Route instead of the internal
       // ledger — there is no Tokun-side balance to report, Razorpay settles it

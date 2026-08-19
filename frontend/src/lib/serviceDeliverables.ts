@@ -49,7 +49,16 @@ export async function resolveDeliverableUrl(
   // Hire deals and service bookings gate their deliverables the same way; only
   // the path differs. Defaulted so existing service call sites are unchanged.
   orderKind: "service" | "hire" = "service"
-): Promise<{ url: string; name?: string; isObjectUrl: boolean; watermarked?: boolean }> {
+): Promise<{
+  url: string;
+  name?: string;
+  isObjectUrl: boolean;
+  watermarked?: boolean;
+  /* True while the payment is still held in escrow and the server could NOT
+     stamp the bytes — a video, in practice. The player draws the watermark
+     itself in that case; see DeliverablePreviewModal. */
+  heldInEscrow?: boolean;
+}> {
   const path =
     orderKind === "hire"
       ? `/api/hire/${orderId}/deliverables/${index}/download`
@@ -64,7 +73,12 @@ export async function resolveDeliverableUrl(
     if (!res.ok || !data?.success || !data?.url) {
       throw new Error(data?.message || data?.error || "This file is no longer available.");
     }
-    return { url: data.url, name: data.name, isObjectUrl: false };
+    return {
+      url: data.url,
+      name: data.name,
+      isObjectUrl: false,
+      heldInEscrow: !!data.heldInEscrow,
+    };
   }
 
   if (!res.ok) throw new Error("Download failed");
@@ -83,6 +97,16 @@ export function isPreviewableImage(name?: string, mimeType?: string) {
   if (String(mimeType || "").startsWith("image/")) return true;
   return /\.(jpe?g|png|webp|gif|tiff|bmp|svg)$/i.test(String(name || ""));
 }
+
+/** Can this deliverable play in a <video>? */
+export function isPreviewableVideo(name?: string, mimeType?: string) {
+  if (String(mimeType || "").startsWith("video/")) return true;
+  return /\.(mp4|webm|mov|m4v|ogv)$/i.test(String(name || ""));
+}
+
+/** Anything the browser can show in place rather than only hand to the disk. */
+export const isPreviewable = (name?: string, mimeType?: string) =>
+  isPreviewableImage(name, mimeType) || isPreviewableVideo(name, mimeType);
 
 /**
  * Resolves a deliverable for on-screen preview.

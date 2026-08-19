@@ -324,7 +324,7 @@ router.post("/:dealId/release", async (req, res) => {
 
     return res.json({
       success: true,
-      message: `₹${payoutAmount} freelancer ke wallet mein credit ho gaya`,
+      message: `₹${payoutAmount} creator ke wallet mein credit ho gaya`,
       deal,
       // null once the money goes out over Route instead of the internal
       // ledger — there is no Tokun-side balance to report, Razorpay settles it

@@ -636,7 +636,7 @@ export default function ServiceDetailPage() {
           {/* Seller facts, when they have a freelancer profile behind them. */}
           {seller.isFreelancer && (
             <section className="mt-5 rounded-2xl border border-white/10 bg-[#101012] p-5 sm:p-6">
-              <h2 className="text-white font-semibold text-[15px] mb-4">About the freelancer</h2>
+              <h2 className="text-white font-semibold text-[15px] mb-4">About the creator</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 {seller.freelancerLocation && (
                   <div>

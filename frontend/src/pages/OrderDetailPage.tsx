@@ -33,7 +33,7 @@ import {
 } from "@/lib/escrowApi";
 import {
   downloadDeliverable,
-  isPreviewableImage,
+  isPreviewable,
   formatBytes,
   SERVICE_LINK_LABELS,
 } from "@/lib/serviceDeliverables";
@@ -470,10 +470,11 @@ export default function OrderDetailPage() {
                     >
                       Open
                     </a>
-                  ) : isPreviewableImage(d.name, d.mimeType) ? (
-                    // Images open in place. The server already watermarks them
-                    // while the money is held; downloading first just to look
-                    // at the work defeated the point of that.
+                  ) : isPreviewable(d.name, d.mimeType) ? (
+                    // Images and video open in place. The server watermarks the
+                    // image bytes while the money is held, and the player marks
+                    // its own surface for video; downloading first just to look
+                    // at the work defeated the point of either.
                     <button
                       type="button"
                       onClick={() => setPreviewIndex(i)}
@@ -812,6 +813,7 @@ export default function OrderDetailPage() {
           orderKind={kind}
           index={previewIndex}
           name={order.deliverables[previewIndex].name}
+          mimeType={order.deliverables[previewIndex].mimeType}
           token={token}
           onClose={() => setPreviewIndex(null)}
         />

@@ -75,7 +75,7 @@ const STEP_TITLES: Record<StepId, string> = {
 const STEP_SUBTITLES: Record<StepId, string> = {
   basics: "This is the first thing a buyer reads about you.",
   skills: "Start typing — pick from the list so buyers searching that skill can find you.",
-  specializations: "Pick everything that applies. Most freelancers do more than one thing.",
+  specializations: "Pick everything that applies. Most creators do more than one thing.",
   credentials:
     "All optional, but profiles with these get hired noticeably more often. You can add them later from your profile.",
   review: "Your profile goes live straight away. You can add more to it any time.",

@@ -1,6 +1,7 @@
 // src/components/NdaCard.tsx
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { NDA_SIGNED_EVENT } from "@/hooks/useDealRecord";
 
 const GRADIENT = "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)";
 
@@ -40,7 +41,7 @@ export function buildNdaHtml(nda: NdaData, sigs?: { client?: string; freelancer?
   const target = nda.targetDate ? esc(formatDate(nda.targetDate)) : "As mutually agreed";
   const dealId = esc(nda.dealId || "—");
   const client = esc(nda.clientName || "Client (Disclosing Party)");
-  const freelancer = esc(nda.freelancerName || "Freelancer (Receiving Party)");
+  const freelancer = esc(nda.freelancerName || "Creator (Receiving Party)");
   const today = esc(formatDate(nda.effectiveDate));
 
   const sigBox = (dataUrl?: string) =>
@@ -82,7 +83,7 @@ export function buildNdaHtml(nda: NdaData, sigs?: { client?: string; freelancer?
     <div><div class="k">Effective Date</div><div class="v">${today}</div></div>
     <div><div class="k">Agreement / Deal ID</div><div class="v">${dealId}</div></div>
     <div><div class="k">Disclosing Party (Client)</div><div class="v">${client}</div></div>
-    <div><div class="k">Receiving Party (Freelancer)</div><div class="v">${freelancer}</div></div>
+    <div><div class="k">Receiving Party (Creator)</div><div class="v">${freelancer}</div></div>
     <div><div class="k">Project Budget (Escrow)</div><div class="v">${budget}</div></div>
     <div><div class="k">Target Delivery</div><div class="v">${target}</div></div>
     <div class="full"><div class="k">Project Title</div><div class="v">${title}</div></div>
@@ -336,6 +337,17 @@ function NdaModal({ nda, onClose, dealId, token, apiBase, resource = "hire" }: {
           : "Your signed NDA has been submitted. Waiting for the other party to sign.");
         pendingFileRef.current = null;
         fetchDealStatus();
+        /* The Pay button lives on a card in the chat behind this dialog, which
+           is not an ancestor of it — there is no prop to hand the result back
+           through. It listens for this instead, so a client who has just signed
+           doesn't sit in front of a disabled button until they reload. */
+        try {
+          window.dispatchEvent(
+            new CustomEvent(NDA_SIGNED_EVENT, {
+              detail: { dealId, resource, bothSigned: !!data.bothSigned },
+            })
+          );
+        } catch {}
       } else {
         setUploadError(data.error || "Submission failed. Try again.");
       }
@@ -371,11 +383,11 @@ function NdaModal({ nda, onClose, dealId, token, apiBase, resource = "hire" }: {
   const roleLabel =
     resource === "service"
       ? role === "client" ? "Buyer (Disclosing Party)" : "Creator (Receiving Party)"
-      : role === "client" ? "Client (Disclosing Party)" : "Freelancer (Receiving Party)";
+      : role === "client" ? "Client (Disclosing Party)" : "Creator (Receiving Party)";
   const otherLabel =
     resource === "service"
       ? role === "client" ? "Creator" : "Buyer"
-      : role === "client" ? "Freelancer" : "Client";
+      : role === "client" ? "Creator" : "Client";
 
   const tabBtn = (t: "preview" | "sign") => ({
     flex: 1, height: 34, borderRadius: 8, border: "none",

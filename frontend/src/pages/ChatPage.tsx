@@ -3095,14 +3095,19 @@ import Header from "@/components/Header";
 import { socket } from "@/lib/socket";
 import { useAuth } from "@/contexts/AuthContext";
 import { FiVideo, FiInfo, FiSend } from "react-icons/fi";
-import { Search, X, Plus, ArrowLeft, ShieldAlert, Check } from "lucide-react";
+import { Search, X, Plus, ArrowLeft, Check } from "lucide-react";
 import { useAgoraCall } from "@/hooks/useAgoraCall";
-import { ReportModal } from "@/components/ReportModal";
+import DeliverablePreviewModal from "@/components/escrow/DeliverablePreviewModal";
 import NdaButton from "@/components/NdaCard";
 import { toast } from "@/components/ui/use-toast";
-import { SERVICE_LINK_LABELS, resolveDeliverableUrl } from "@/lib/serviceDeliverables";
+import {
+  SERVICE_LINK_LABELS,
+  resolveDeliverableUrl,
+  isPreviewable,
+} from "@/lib/serviceDeliverables";
 import { openBriefAttachment } from "@/lib/escrowApi";
 import { withTokunBranding } from "@/lib/razorpayTheme";
+import { useDealRecord, ndaFullySigned, sideOf } from "@/hooks/useDealRecord";
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 const GRADIENT = "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)";
 
@@ -3342,7 +3347,7 @@ function RevisionReasonPopup({
                 color: "#F3EAF9",
               }}
             >
-              Tell freelancer what to change
+              Tell the creator what to change
             </h2>
           </div>
 
@@ -3441,7 +3446,7 @@ function RevisionReasonPopup({
             color: "rgba(255,255,255,0.42)",
           }}
         >
-          Ye reason freelancer ko notification mein jayega aur project status revision requested ho jayega.
+          Ye reason creator ko notification mein jayega aur project status revision requested ho jayega.
         </p>
 
         <div className="mt-6 flex items-center justify-center gap-3">
@@ -3504,7 +3509,10 @@ function WorkSubmittedCard({
   >("idle");
   const [result, setResult] = useState<"approved" | "revision" | null>(null);
   const [revisionOpen, setRevisionOpen] = useState(false);
-  const [reportOpen, setReportOpen] = useState(false);
+  /** Which deliverable the preview modal is showing, if any. */
+  const [previewFile, setPreviewFile] = useState<
+    { index: number; name: string; mimeType?: string } | null
+  >(null);
   // ── Load real deal status on mount so refresh works correctly ─────────────
   const dealId = data?.hireDealId || data?.dealId;
 
@@ -3623,9 +3631,24 @@ function WorkSubmittedCard({
     }
   };
 
-  const handlePreview = async (e: React.MouseEvent, index: number) => {
+  /* Opens in place for anything the browser can render.
+
+     This used to hand the resolved url to `window.open` for every type, and for
+     a video that is a signed blob URL carrying an attachment disposition — so
+     the browser saved it. Clicking the eye on a delivered video downloaded the
+     unwatermarked original before the client had approved a thing.
+
+     Non-renderable types (zip, doc) still open in a tab, which is the browser's
+     own download and the honest behaviour for them. */
+  const handlePreview = async (e: React.MouseEvent, index: number, file?: any) => {
     e.preventDefault();
     e.stopPropagation();
+
+    if (isPreviewable(file?.name, file?.mimeType)) {
+      setPreviewFile({ index, name: file?.name || "file", mimeType: file?.mimeType });
+      return;
+    }
+
     try {
       const { url, isObjectUrl } = await resolveDeliverableUrl(dealId, index, token, "hire");
       window.open(url, "_blank", "noopener,noreferrer");
@@ -3862,7 +3885,7 @@ function WorkSubmittedCard({
 
                         {/* ── PREVIEW — always available for everyone ── */}
                         <button
-                          onClick={(e) => handlePreview(e, fileIndex)}
+                          onClick={(e) => handlePreview(e, fileIndex, d)}
                           title="Preview file"
                           style={{
                             display: "inline-flex",
@@ -3882,7 +3905,7 @@ function WorkSubmittedCard({
                           👁
                         </button>
 
-                        {/* ── DOWNLOAD — only after approve OR for freelancer ── */}
+                        {/* ── DOWNLOAD — only after approve OR for the creator ── */}
                         {isApproved || isMine ? (
                           <button
                             onClick={(e) =>
@@ -3966,7 +3989,7 @@ function WorkSubmittedCard({
                     lineHeight: "17px",
                   }}
                 >
-                  ⏱ Payment auto-releases to freelancer in{" "}
+                  ⏱ Payment auto-releases to the creator in{" "}
                   <strong style={{ color: "rgba(255,255,255,0.65)" }}>
                     72 hours
                   </strong>{" "}
@@ -4060,7 +4083,7 @@ function WorkSubmittedCard({
                 fontSize: 14,
               }}
             >
-              ↺ Revision requested — Freelancer will resubmit
+              ↺ Revision requested — Creator will resubmit
             </div>
           )}
 
@@ -4086,45 +4109,25 @@ function WorkSubmittedCard({
         </div>
 
 
-{/* Report button */}
-          {dealId && (
-            <>
-              <button
-                type="button"
-                onClick={() => setReportOpen(true)}
-                style={{
-                  marginTop: 10,
-                  width: "100%",
-                  height: 36,
-                  borderRadius: 8,
-                  border: "1px solid rgba(239,68,68,0.25)",
-                  background: "rgba(239,68,68,0.06)",
-                  color: "rgba(239,68,68,0.70)",
-                  fontWeight: 500,
-                  fontSize: 12,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 7,
-                }}
-              >
-                <ShieldAlert size={13} />
-                Report an Issue
-              </button>
-
-              <ReportModal
-                open={reportOpen}
-                onClose={() => setReportOpen(false)}
-                dealId={dealId}
-                token={token}
-              />
-            </>
-          )}
+          {/* "Report an Issue" used to sit here, under every deal card. Removed
+              on request. ReportModal itself is untouched and still reachable
+              wherever else it's mounted — only this entry point is gone. */}
 
 
 
       </div>
+
+      {previewFile && dealId && (
+        <DeliverablePreviewModal
+          orderId={String(dealId)}
+          orderKind="hire"
+          index={previewFile.index}
+          name={previewFile.name}
+          mimeType={previewFile.mimeType}
+          token={token}
+          onClose={() => setPreviewFile(null)}
+        />
+      )}
 
       <RevisionReasonPopup
         open={revisionOpen}
@@ -4148,7 +4151,7 @@ function EscrowReleasedCard({ data }: { data: any }) {
         <div>
           <h3 style={{ margin: 0, fontWeight: 700, fontSize: 16, color: "#19E66C" }}>Payment Released!</h3>
           <p style={{ margin: "4px 0 0", fontSize: 13, color: "rgba(255,255,255,0.55)", lineHeight: "18px" }}>
-            ₹{Number(data?.amount || 0).toLocaleString("en-IN")} has been transferred from Tokun Escrow to freelancer's bank account.
+            ₹{Number(data?.amount || 0).toLocaleString("en-IN")} has been transferred from Tokun Escrow to the creator's bank account.
           </p>
         </div>
       </div>
@@ -4292,8 +4295,6 @@ const CARD_BG = "#161A18";
   const [declined, setDeclined] = useState(false);
   const [declining, setDeclining] = useState(false);
 
-  if (declined) return null;
-
   // ✅ FIXED: dealId extraction — handles string, object, or nested _id
   const rawId = data?.hireDealId || data?.dealId || data?._id;
   const dealId =
@@ -4302,6 +4303,13 @@ const CARD_BG = "#161A18";
       : rawId
       ? String(rawId)
       : null;
+
+  /* Above the `declined` early-return on purpose: this is a hook, and a hook
+     after a conditional return runs on some renders and not others. */
+  const { record: liveDeal } = useDealRecord("hire", dealId, token);
+  const ndaSigned = ndaFullySigned(liveDeal, "hire");
+
+  if (declined) return null;
 
   const handlePayNow = async () => {
     if (!token) {
@@ -4637,21 +4645,29 @@ border: "1px solid rgba(74,222,128,0.10)",
               </div>
             ) : (
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                {/* Pay Now */}
+                {/* Pay Now — held shut until the NDA carries both signatures.
+
+                    The server has always refused this payment without them
+                    (create-payment-order answers NDA_NOT_SIGNED), but the button
+                    looked ready, so the client pressed it and got an error toast
+                    for a rule nothing on screen had mentioned. Now the button
+                    states the condition instead of failing on it. */}
                 <button
                   onClick={handlePayNow}
-                  disabled={payState === "loading"}
+                  disabled={payState === "loading" || !ndaSigned}
+                  title={ndaSigned ? undefined : "Both parties must sign the NDA before payment."}
                   style={{
                     flex: "1 1 150px",
                     height: 48,
                     border: "none",
                     borderRadius: 8,
                     background:
-                      payState === "loading"
+                      payState === "loading" || !ndaSigned
                         ? "rgba(25,230,108,0.5)"
                         : GREEN_GRADIENT,
                     color: "#FFFFFF",
-                    cursor: payState === "loading" ? "not-allowed" : "pointer",
+                    cursor: payState === "loading" || !ndaSigned ? "not-allowed" : "pointer",
+                    opacity: ndaSigned ? 1 : 0.55,
                     fontWeight: 600,
                     fontSize: 14,
                     display: "flex",
@@ -4682,6 +4698,24 @@ border: "1px solid rgba(74,222,128,0.10)",
                     </>
                   )}
                 </button>
+
+                {/* Says why the button won't move. A disabled control with no
+                    reason beside it reads as broken, and this one can stay shut
+                    on the other party's inaction — which the client can't fix
+                    and needs to be told about rather than left guessing. */}
+                {!ndaSigned && (
+                  <p
+                    style={{
+                      flexBasis: "100%",
+                      margin: 0,
+                      fontSize: 12,
+                      lineHeight: "16px",
+                      color: "#FABC4E",
+                    }}
+                  >
+                    Payment unlocks once both of you have signed the NDA above.
+                  </p>
+                )}
               {/* Escrow info div ke baad */}
 
                 {/* Decline — cancels the deal for real and tells the thread.
@@ -4796,6 +4830,11 @@ function ServiceOrderCard({
   const rawId = data?.serviceOrderId || data?.orderId || data?._id;
   const orderId =
     rawId && typeof rawId === "object" && rawId._id ? String(rawId._id) : rawId ? String(rawId) : null;
+
+  /* Same gate as the hire card: services/orders/:id/create-payment-order
+     refuses without both signatures, so the button says so rather than failing. */
+  const { record: liveOrder } = useDealRecord("service", orderId, token);
+  const ndaSigned = ndaFullySigned(liveOrder, "service");
 
   const handlePayNow = async () => {
     if (!token) {
@@ -5043,47 +5082,56 @@ function ServiceOrderCard({
               ✓ Payment Successful — Booking confirmed!
             </div>
           ) : (
-            <button
-              onClick={handlePayNow}
-              disabled={payState === "loading"}
-              style={{
-                width: "100%",
-                height: 48,
-                border: "none",
-                borderRadius: 8,
-                background: payState === "loading" ? "rgba(26,115,232,0.5)" : ACCENT,
-                color: "#FFFFFF",
-                cursor: payState === "loading" ? "not-allowed" : "pointer",
-                fontWeight: 600,
-                fontSize: 14,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-              }}
-            >
-              {payState === "loading" ? (
-                "Opening..."
-              ) : (
-                <>
-                  <span
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: "50%",
-                      background: "rgba(255,255,255,0.25)",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 11,
-                    }}
-                  >
-                    ₹
-                  </span>
-                  Pay Now — ₹{Number(data?.amount || data?.basePrice || 0).toLocaleString("en-IN")}
-                </>
+            <>
+              <button
+                onClick={handlePayNow}
+                disabled={payState === "loading" || !ndaSigned}
+                title={ndaSigned ? undefined : "Both parties must sign the NDA before payment."}
+                style={{
+                  width: "100%",
+                  height: 48,
+                  border: "none",
+                  borderRadius: 8,
+                  background: payState === "loading" || !ndaSigned ? "rgba(26,115,232,0.5)" : ACCENT,
+                  color: "#FFFFFF",
+                  cursor: payState === "loading" || !ndaSigned ? "not-allowed" : "pointer",
+                  opacity: ndaSigned ? 1 : 0.55,
+                  fontWeight: 600,
+                  fontSize: 14,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+              >
+                {payState === "loading" ? (
+                  "Opening..."
+                ) : (
+                  <>
+                    <span
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: "50%",
+                        background: "rgba(255,255,255,0.25)",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 11,
+                      }}
+                    >
+                      ₹
+                    </span>
+                    Pay Now — ₹{Number(data?.amount || data?.basePrice || 0).toLocaleString("en-IN")}
+                  </>
+                )}
+              </button>
+              {!ndaSigned && (
+                <p style={{ margin: "8px 0 0", fontSize: 12, lineHeight: "16px", color: "#FABC4E" }}>
+                  Payment unlocks once both of you have signed the NDA above.
+                </p>
               )}
-            </button>
+            </>
           )
         ) : (
           <div
@@ -5157,6 +5205,10 @@ function ServiceWorkSubmittedCard({
   const [actionState, setActionState] = useState<"idle" | "approving" | "revising" | "done">("idle");
   const [result, setResult] = useState<"approved" | "revision" | null>(null);
   const [revisionOpen, setRevisionOpen] = useState(false);
+  /** Which deliverable the preview modal is showing, if any. */
+  const [previewFile, setPreviewFile] = useState<
+    { index: number; name: string; mimeType?: string } | null
+  >(null);
   // How many revisions this booking actually includes. The chat message is a
   // snapshot from submit time, so the live order is the source of truth once
   // the buyer has already sent one back.
@@ -5264,9 +5316,17 @@ function ServiceWorkSubmittedCard({
     }
   };
 
-  const handlePreview = async (e: React.MouseEvent, index: number) => {
+  /* Same as the hire card's: renderable types open in place, everything else
+     falls through to the browser. See the note there. */
+  const handlePreview = async (e: React.MouseEvent, index: number, file?: any) => {
     e.preventDefault();
     e.stopPropagation();
+
+    if (isPreviewable(file?.name, file?.mimeType)) {
+      setPreviewFile({ index, name: file?.name || "file", mimeType: file?.mimeType });
+      return;
+    }
+
     try {
       const { url, isObjectUrl } = await resolveDeliverableUrl(orderId, index, token);
       window.open(url, "_blank", "noopener,noreferrer");
@@ -5364,7 +5424,7 @@ function ServiceWorkSubmittedCard({
                           </a>
                         ) : (
                           <>
-                            <button onClick={(e) => handlePreview(e, i)} title="Preview file" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 6, border: "1px solid rgba(26,115,232,0.22)", color: "#63A6F2", fontSize: 13, cursor: "pointer", background: "none" }}>
+                            <button onClick={(e) => handlePreview(e, i, d)} title="Preview file" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 6, border: "1px solid rgba(26,115,232,0.22)", color: "#63A6F2", fontSize: 13, cursor: "pointer", background: "none" }}>
                               👁
                             </button>
                             {isApproved || isMine ? (
@@ -5454,6 +5514,18 @@ function ServiceWorkSubmittedCard({
           )}
         </div>
       </div>
+
+      {previewFile && orderId && (
+        <DeliverablePreviewModal
+          orderId={String(orderId)}
+          orderKind="service"
+          index={previewFile.index}
+          name={previewFile.name}
+          mimeType={previewFile.mimeType}
+          token={token}
+          onClose={() => setPreviewFile(null)}
+        />
+      )}
 
       <RevisionReasonPopup
         open={revisionOpen}
@@ -5640,29 +5712,26 @@ function HireCard({
   const [declining, setDeclining] = useState(false);
   const dealId = data?.hireDealId || data?.dealId || data?._id;
  
-  // ── On mount, check real deal status from API ──
+  /* The real deal, for two things the chat message can't tell us: its current
+     status, and which side of it the viewer is on. `senderId` here is the
+     VIEWER's own id — the prop is named for the message, not the person. */
+  const { record: liveDeal } = useDealRecord("hire", dealId, token);
+  const viewerSide = sideOf(liveDeal, senderId, "hire");
+
   useEffect(() => {
-    if (!dealId || !token) return;
-    fetch(`${API_BASE}/api/hire/${dealId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
-      .then((d) => {
-        if (!d?.success || !d?.deal) return;
-        const s = d.deal.status;
-        if (
-          s === "ACCEPTED_WAITING_PAYMENT" ||
-          s === "FUNDED" ||
-          s === "IN_PROGRESS" ||
-          s === "WORK_SUBMITTED" ||
-          s === "COMPLETED"
-        ) {
-          setStatus("ACCEPTED");
-        }
-      })
-      .catch(() => {});
-  }, [dealId, token]);
- 
+    const s = liveDeal?.status;
+    if (!s) return;
+    if (
+      s === "ACCEPTED_WAITING_PAYMENT" ||
+      s === "FUNDED" ||
+      s === "IN_PROGRESS" ||
+      s === "WORK_SUBMITTED" ||
+      s === "COMPLETED"
+    ) {
+      setStatus("ACCEPTED");
+    }
+  }, [liveDeal]);
+
   const handleAcceptProposal = async () => {
     try {
       if (acceptLoading || status === "ACCEPTED") return;
@@ -5753,8 +5822,19 @@ function HireCard({
             </div>
           </div>
  
-          {/* ── Buttons only while the proposal is still open ── */}
-          {!isAccepted && !isRejected && (
+          {/* ── Answering the proposal belongs to the freelancer alone ──
+
+              Accept / Counter / Decline all showed on both sides, and for the
+              client every one of them was a dead button: POST /accept refuses
+              anyone who isn't the freelancer ("You cannot accept this proposal"),
+              so a client pressing it got a 403 for an action that was never
+              theirs. The client's move on this deal is to pay, once it's been
+              accepted.
+
+              `viewerSide` comes from the fetched deal, so it is null until that
+              lands — and null hides the row. Hiding is the safe direction: a
+              missing button for a moment beats a button that 403s. */}
+          {!isAccepted && !isRejected && viewerSide === "worker" && (
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
               <button
                 disabled={acceptLoading}
@@ -5785,6 +5865,16 @@ function HireCard({
             </div>
           )}
  
+          {/* What the client sees in place of that row. The proposal is still
+              open, it just isn't theirs to answer — and a card that simply ended
+              after the budget tiles left them wondering whether anything had
+              been sent at all. */}
+          {!isAccepted && !isRejected && viewerSide === "payer" && (
+            <div style={{ marginTop: 16, height: 44, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(250,188,78,0.07)", border: "1px solid rgba(250,188,78,0.18)", color: "#FABC4E", fontWeight: 600, fontSize: 13 }}>
+              ⏳ Waiting for them to accept
+            </div>
+          )}
+
           {/* Terminal state, shown to both sides — the card stops offering
               actions and says what happened instead. */}
           {isRejected && (

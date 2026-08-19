@@ -109,6 +109,39 @@ const normalizeMobile = (value: string) => {
 const looksLikeName = (value: string) =>
   value.trim().length >= 3 && (value.match(/[A-Za-z]/g) || []).length >= 2;
 
+/* ── Input filters ────────────────────────────────────────────────────────────
+   These run in onChange, so a character that can't belong in a field never
+   appears in it. That is a different job from the checks above, which report on
+   a value that already exists: you cannot type a letter into the account number
+   at all now, and the "digits only" message beneath it stays as the backstop for
+   any value that arrives some other way.
+
+   Filters, never validators. None of them enforces a minimum, because a filter
+   that did would fight the person typing — deleting their 4th digit because 4
+   isn't 6 yet. Length is capped only where the maximum is exact. */
+
+/** Digits, capped. */
+const digitsUpTo = (value: string, max: number) => value.replace(/\D/g, "").slice(0, max);
+
+/* Phone needs the country code understood BEFORE the cap, not after. Stripping
+   to digits and then cutting at 10 turns a pasted "+91 98765 43210" into
+   "9198765432" — a wrong number, silently, from a correct paste. */
+const phoneInput = (value: string) => {
+  const digits = value.replace(/\D/g, "");
+  const local =
+    digits.length >= 12 && digits.startsWith("91")
+      ? digits.slice(2)
+      : digits.length >= 11 && digits.startsWith("0")
+        ? digits.slice(1)
+        : digits;
+  return local.slice(0, 10);
+};
+
+/* Letters and the punctuation real names carry — "St. Thomas Mount",
+   "Jammu & Kashmir Bank". Digits are dropped: no Indian bank or city has one in
+   its name, and a digit here is a typo or a wrong field. */
+const lettersOnly = (value: string) => value.replace(/[^A-Za-z\s.&'\-]/g, "");
+
 // Razorpay's business categories are fetched rather than hardcoded like
 // BUSINESS_TYPES above — there are ~340 sub-categories and they have to match
 // Razorpay's enum exactly, so the backend serves the one copy it also
@@ -276,6 +309,36 @@ export default function SellerLinkedAccountForm({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  /* The page behind must not scroll while this is over it.
+
+     This form is a hand-rolled `fixed inset-0` overlay rather than a Radix
+     Dialog, so it gets none of Radix's scroll locking for free — a wheel or
+     trackpad gesture anywhere outside the card scrolled the marketplace behind
+     it, and the seller lost their place on a page they weren't looking at.
+
+     The scrollbar's width is handed back as padding: removing the bar without
+     it shifts the whole layout underneath by ~15px, which is visible as a jump
+     the moment the dialog opens and again when it closes. Same shape as the
+     lock in components/freelancer/FreelancerSectionEditor.tsx. */
+  useEffect(() => {
+    if (!open) return;
+
+    const { body, documentElement: html } = document;
+    const previousOverflow = body.style.overflow;
+    const previousPadding = body.style.paddingRight;
+    const scrollbar = window.innerWidth - html.clientWidth;
+
+    body.style.overflow = "hidden";
+    if (scrollbar > 0) {
+      body.style.paddingRight = `${scrollbar}px`;
+    }
+
+    return () => {
+      body.style.overflow = previousOverflow;
+      body.style.paddingRight = previousPadding;
+    };
   }, [open]);
 
   if (!open) return null;
@@ -901,10 +964,10 @@ export default function SellerLinkedAccountForm({
                     <input
                       {...validated("accountNumber")}
                       value={accountNumber}
-                      onChange={(e) => setAccountNumber(e.target.value)}
+                      onChange={(e) => setAccountNumber(digitsUpTo(e.target.value, 18))}
                       inputMode="numeric"
                       autoComplete="off"
-                      maxLength={24}
+                      maxLength={18}
                     />
                     <FieldNote name="accountNumber" />
                   </div>
@@ -913,10 +976,10 @@ export default function SellerLinkedAccountForm({
                     <input
                       {...validated("confirmAccountNumber")}
                       value={confirmAccountNumber}
-                      onChange={(e) => setConfirmAccountNumber(e.target.value)}
+                      onChange={(e) => setConfirmAccountNumber(digitsUpTo(e.target.value, 18))}
                       inputMode="numeric"
                       autoComplete="off"
-                      maxLength={24}
+                      maxLength={18}
                     />
                     <FieldNote name="confirmAccountNumber" />
                   </div>
@@ -935,7 +998,7 @@ export default function SellerLinkedAccountForm({
                   </div>
                   <div>
                     <label className={labelClass}>Bank name *</label>
-                    <input className={fieldClass("bankName")} value={bankName} onChange={(e) => setBankName(e.target.value)} />
+                    <input className={fieldClass("bankName")} value={bankName} onChange={(e) => setBankName(lettersOnly(e.target.value))} placeholder="HDFC Bank" />
                   </div>
 
                   <div>
@@ -960,10 +1023,11 @@ export default function SellerLinkedAccountForm({
                     <input
                       {...validated("phone")}
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={(e) => setPhone(phoneInput(e.target.value))}
                       placeholder="9000090000"
                       inputMode="tel"
                       autoComplete="tel"
+                      maxLength={10}
                     />
                     <FieldNote name="phone" />
                   </div>
@@ -987,7 +1051,7 @@ export default function SellerLinkedAccountForm({
 
                   <div>
                     <label className={labelClass}>City *</label>
-                    <input className={fieldClass("city")} value={city} onChange={(e) => setCity(e.target.value)} />
+                    <input className={fieldClass("city")} value={city} onChange={(e) => setCity(lettersOnly(e.target.value))} />
                   </div>
                   <div>
                     <label className={labelClass}>State *</label>
@@ -999,11 +1063,11 @@ export default function SellerLinkedAccountForm({
                     <input
                       {...validated("postalCode")}
                       value={postalCode}
-                      onChange={(e) => setPostalCode(e.target.value)}
+                      onChange={(e) => setPostalCode(digitsUpTo(e.target.value, 6))}
                       placeholder="560001"
                       inputMode="numeric"
                       autoComplete="postal-code"
-                      maxLength={10}
+                      maxLength={6}
                     />
                     <FieldNote name="postalCode" />
                   </div>

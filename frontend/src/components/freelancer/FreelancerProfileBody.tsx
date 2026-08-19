@@ -371,7 +371,7 @@ export default function FreelancerProfileBody({
         isOwn={isOwn}
         onEdit={onEdit}
         isEmpty={!profile.specializations?.length}
-        emptyPrompt="Pick what you sell — most freelancers do more than one thing."
+        emptyPrompt="Pick what you sell — most creators do more than one thing."
       >
         <div className="flex flex-wrap gap-2">
           {profile.specializations?.map((spec) => (

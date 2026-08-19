@@ -1417,6 +1417,10 @@ router.get("/orders/:orderId/deliverables/:index/download", requireAuth, async (
         kind: "file",
         name: deliverable.name,
         url: getWorkFileDownloadUrl(deliverable.blobName),
+        // See the matching note on the hire route: images get watermarked
+        // bytes, everything else gets told the money is still held so the
+        // player can mark its own surface.
+        heldInEscrow: isBuyer && !isSettled(order.fundsStatus),
       });
     }
 

@@ -15887,7 +15887,7 @@ const PaymentsView = () => {
               ? "Every webhook Razorpay has sent us, and what we did with it."
               : view === "sources"
               ? "Which part of the product earned the money — subscriptions, product sales, or paid work. Read the note on each card: subscriptions are the whole payment, the other two are only our cut."
-              : "Money leaving the platform — what Creators, creators and freelancers were actually paid, and what went back to buyers."}
+              : "Money leaving the platform — what Creators were actually paid, and what went back to buyers."}
           </p>
         </div>
         {/* The date range only applies to the two money views; the delivery log

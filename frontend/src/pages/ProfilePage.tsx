@@ -3476,7 +3476,7 @@ const confirmHire = async () => {
     }
 
     if (!userId) {
-      alert("Freelancer not found.");
+      alert("Creator not found.");
       return;
     }
 
@@ -4682,7 +4682,7 @@ const sendMessage = () => {
                   onChange={setHireBriefFiles}
                   token={token}
                   label="Attach reference files"
-                  hint="Briefs, mockups, brand assets — images, PDFs, docs or a zip. The freelancer sees these with the proposal."
+                  hint="Briefs, mockups, brand assets — images, PDFs, docs or a zip. The creator sees these with the proposal."
                 />
               </div>
             </div>

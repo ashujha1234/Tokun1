@@ -101,7 +101,7 @@ const SECTION_META: Record<EditableSection, { title: string; subtitle: string }>
   },
   specializations: {
     title: "Specializations",
-    subtitle: "What you sell. Most freelancers pick more than one.",
+    subtitle: "What you sell. Most creators pick more than one.",
   },
   portfolio: {
     title: "Portfolio",

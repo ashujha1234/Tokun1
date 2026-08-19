@@ -252,8 +252,8 @@ export function useFreelancerMenu(): FreelancerMenuState {
     }
     if (!eligible) {
       toast({
-        title: "Freelancing is handled by your organization",
-        description: "Ask your org owner to set up the freelancer profile.",
+        title: "Creator work is handled by your organization",
+        description: "Ask your org owner to set up the creator profile.",
       });
       return;
     }

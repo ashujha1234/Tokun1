@@ -292,9 +292,9 @@ function ReleaseModal({ deal, onConfirm, onClose, loading }: any) {
       >
         {[
           ["Deal", deal?.title],
-          ["Freelancer", deal?.freelancerId?.name],
+          ["Creator", deal?.freelancerId?.name],
           ["Total held", fmt(deal?.amount || 0)],
-          ["Freelancer receives", fmt(deal?.freelancerAmount || 0)],
+          ["Creator receives", fmt(deal?.freelancerAmount || 0)],
           ["Platform fee", fmt((deal?.amount || 0) - (deal?.freelancerAmount || 0))],
         ].map(([k, v], i) => (
           <div
@@ -321,7 +321,7 @@ function ReleaseModal({ deal, onConfirm, onClose, loading }: any) {
           }}
         >
           <span>⚠️</span>
-          <span>Freelancer has no bank account linked. Release will fail on Razorpay.</span>
+          <span>Creator has no bank account linked. Release will fail on Razorpay.</span>
         </div>
       )}
 
@@ -1071,7 +1071,7 @@ export default function EscrowAdminDashboard() {
           >
             <StatCard icon="💰" label="Total Volume" value={fmt(stats.totalVolume || 0)} sub="All deals" accent="#6366F1" />
             <StatCard icon="🔒" label="Held in Escrow" value={fmt(stats.heldFunds || 0)} sub="Awaiting release" accent="#F59E0B" />
-            <StatCard icon="✅" label="Released" value={fmt(stats.releasedFunds || 0)} sub="To freelancers" accent="#10B981" />
+            <StatCard icon="✅" label="Released" value={fmt(stats.releasedFunds || 0)} sub="To creators" accent="#10B981" />
             <StatCard icon="⏳" label="Pending Review" value={stats.pendingReview || 0} sub="Work submitted" accent="#EF4444" />
           </div>
         )}
@@ -1147,7 +1147,7 @@ export default function EscrowAdminDashboard() {
                 >🔍</span>
                 <input
                   type="text"
-                  placeholder="Search deals, clients, freelancers..."
+                  placeholder="Search deals, clients, creators..."
                   value={search}
                   onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                   style={{
@@ -1223,7 +1223,7 @@ export default function EscrowAdminDashboard() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 900 }}>
                   <thead>
                     <tr style={{ background: "#0D1117" }}>
-                      {["Deal ID", "Title", "Client", "Freelancer", "Amount", "Deal Status", "Funds", "Actions"].map((h) => (
+                      {["Deal ID", "Title", "Client", "Creator", "Amount", "Deal Status", "Funds", "Actions"].map((h) => (
                         <th
                           key={h}
                           style={{
