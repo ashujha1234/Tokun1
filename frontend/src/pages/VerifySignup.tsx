@@ -227,7 +227,7 @@ import { authError } from "@/lib/authErrors";
 // import { Button } from "@/components/ui/button";
 // import { Input } from "@/components/ui/input";
 // import { toast } from "@/components/ui/use-toast";
-// import { ArrowLeft, ChevronLeft } from "lucide-react";
+// import { ChevronLeft } from "lucide-react";
 // import { useAuth } from "@/contexts/AuthContext";
 
 // const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -582,6 +582,7 @@ import { toast } from "@/components/ui/use-toast";
 import { ArrowLeft, ChevronLeft } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { getStoredReferral, clearStoredReferral } from "@/lib/referral";
+import BackLink from "@/components/ui/BackLink";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -830,14 +831,7 @@ return (
   </div>
 
   {/* Back */}
-  <Link
-    to="/signup"
-    className="inline-flex items-center gap-2 text-white/90 text-[16px] mb-4"
-    style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
-  >
-    <ArrowLeft className="w-5 h-5" />
-    <span>Back</span>
-  </Link>
+  <BackLink to="/signup" className="mb-4" />
 
   {/* Text */}
   <div className="text-center px-2 mb-6">
@@ -936,12 +930,7 @@ return (
       <div className="hidden lg:flex min-h-screen items-center justify-center px-5 sm:px-8 md:px-10">
         <div className="w-full max-w-[520px]">
           <div className="mb-6">
-            <Link
-              to="/signup"
-              className="inline-flex items-center gap-2 text-white/70 hover:text-white"
-            >
-              <ChevronLeft className="h-4 w-4" /> Back
-            </Link>
+            <BackLink to="/signup" />
           </div>
 
           <p className="text-[16px] font-normal text-white">

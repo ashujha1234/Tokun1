@@ -188,8 +188,7 @@ import { authError } from "@/lib/authErrors";
 
 // import { useState } from "react";
 // import { Link, useNavigate } from "react-router-dom";
-// import { ArrowLeft } from "lucide-react";
-// import { Input } from "@/components/ui/input";
+// // import { Input } from "@/components/ui/input";
 // import { toast } from "@/components/ui/use-toast";
 
 // const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -479,6 +478,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/use-toast";
+import BackLink from "@/components/ui/BackLink";
 
 const API_BASE = import.meta.env.VITE_API_URL ;
 console.log("[ENV] API_BASE =", API_BASE);
@@ -650,13 +650,7 @@ const Login = () => {
   </div>
 
   {/* Back */}
-  <Link
-    to="/"
-    className="inline-flex items-center gap-2 text-white/90 text-[16px] mb-4"
-  >
-    <ArrowLeft className="w-5 h-5" />
-    <span>Back</span>
-  </Link>
+  <BackLink to="/" className="mb-4" />
 
   {/* Text */}
   <div className="text-center px-2 mb-5">
@@ -745,13 +739,7 @@ const Login = () => {
         <div className="hidden lg:flex min-h-screen items-center justify-center px-5 sm:px-8 md:px-10">
           <div className="w-full max-w-[520px]">
             <div className="mb-6">
-             <Link
-  to="/"
-  className="inline-flex items-center gap-2 text-white/70 hover:text-white"
->
-  <ArrowLeft className="w-5 h-5" />
-  <span>Back</span>
-</Link>
+             <BackLink to="/" />
             </div>
 
             <h1 className="text-[36px] leading-[1] font-normal text-white">

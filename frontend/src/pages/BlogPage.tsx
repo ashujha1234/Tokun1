@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
+import NewsletterSubscribe from "@/components/NewsletterSubscribe";
 
 const featuredPost = {
   title: "How to Write Better AI Products for Consistent Results",
@@ -298,23 +299,12 @@ export default function BlogPage() {
                 delivered to your inbox.
               </p>
 
-              <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3 max-w-xl mx-auto">
-                <input
-                  type="email"
-                  placeholder="Enter your email"
-                  className="w-full sm:flex-1 h-12 px-5 rounded-full bg-transparent border border-white/20 text-white placeholder:text-white/45 outline-none focus:border-white/40"
-                />
-
-                <Button
-                  className="w-full sm:w-auto h-12 px-6 rounded-full text-white"
-                  style={{
-                    background:
-                      "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)",
-                  }}
-                >
-                  Subscribe
-                </Button>
-              </div>
+              {/* This was an input and a button with no state and no handler —
+                  Subscribe did nothing at all, and said nothing either, so
+                  anyone who used it left believing they had signed up. It is the
+                  same component the footer uses now, so both actually subscribe
+                  you and both confirm it the same way. */}
+              <NewsletterSubscribe source="blog" layout="hero" className="mt-8" />
             </div>
           </div>
         </section>

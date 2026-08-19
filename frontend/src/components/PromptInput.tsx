@@ -1506,7 +1506,16 @@ type CollabPeer = { userId: string | null; name: string };
 const PromptInput = ({ onTokensChange, onOptimize, initialText = "" }: PromptInputProps) => {
      const location = useLocation();   // <-- MUST COME FIRST
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isReady: authReady } = useAuth();
+
+  /* WHO WE ARE, for the collab sockets.
+     `_id` first, because that is what the auth user actually carries — see
+     AuthContext, which reads `parsed?._id || parsed?.id` everywhere. Every
+     collab emit below sent `user?.id`, which is undefined on that object, so the
+     server received `userId: null`, skipped the name lookup entirely, and every
+     participant came back as the fallback "Someone" — hence the participant
+     strip reading "Someone, Someone". */
+  const currentUserId = (user as any)?._id || (user as any)?.id || null;
 
   // ❗ Use sessionId from URL: /prompt-optimizer?sessionId=abc123
   const searchParams = new URLSearchParams(location.search);
@@ -1530,6 +1539,80 @@ const PromptInput = ({ onTokensChange, onOptimize, initialText = "" }: PromptInp
      A value comparison can't have that problem: text applied from a peer is by
      definition equal to what we just recorded, so there is nothing to echo. */
   const lastSyncedTextRef = useRef<string>("");
+
+  /* The editor itself, and when it was last typed into.
+
+     A remote update replaces the WHOLE value of the textarea, and a textarea
+     whose value is reassigned puts the caret at the end. So an edit arriving
+     while you were mid-sentence threw your cursor to the bottom of the box —
+     the next character you typed landed in the wrong place, and it read as the
+     text jumping backwards and eating your spaces.
+
+     These two let the remote apply be careful about it: hold the update while
+     the person is actually typing, and put the caret back where it was when it
+     does land. */
+  const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  const lastLocalEditRef = useRef<number>(0);
+  const pendingRemoteRef = useRef<string | null>(null);
+  /** Drains pendingRemoteRef once the typing grace expires. */
+  const pendingTimerRef = useRef<number | null>(null);
+
+  /* The newest edit we've seen, in the server's numbering.
+     Anything older than this is a message that overtook a newer one on the way
+     here, and applying it would drag the editor backwards. See the rev note in
+     the server's prompt-change handler. */
+  const lastRevRef = useRef<number>(-1);
+
+  /** Milliseconds after a keystroke during which a remote update waits its turn. */
+  const TYPING_GRACE_MS = 900;
+
+  /**
+   * Put a collaborator's text into the editor without moving the caret.
+   *
+   * React reassigns the textarea's whole `value`, and the browser answers that
+   * by dropping the caret at the end. Restoring the offset is not quite enough
+   * on its own — if the edit landed BEFORE the caret the text after it has
+   * shifted, so the offset is nudged by the change in length. That keeps the
+   * cursor on the same character rather than at the same index.
+   */
+  const applyRemoteText = (incoming: string) => {
+    const el = editorRef.current;
+    const hadFocus = el && document.activeElement === el;
+    const before = textRef.current;
+    const start = el?.selectionStart ?? 0;
+    const end = el?.selectionEnd ?? 0;
+
+    setText(incoming);
+    textRef.current = incoming;
+    // Recorded as agreed, so the debounced emit doesn't send this straight back.
+    lastSyncedTextRef.current = incoming;
+
+    if (!hadFocus || !el) return;
+
+    /* Where the two versions first differ decides whether the caret moves.
+
+       An edit BELOW the caret changes nothing above it, so the offset still
+       points at the same character and is left alone. An edit ABOVE it pushes
+       everything down by the change in length, so the offset has to move with
+       it — otherwise the cursor slides backwards through the text by however
+       many characters the collaborator added. */
+    let firstDiff = 0;
+    const shortest = Math.min(before.length, incoming.length);
+    while (firstDiff < shortest && before[firstDiff] === incoming[firstDiff]) firstDiff++;
+
+    const delta = incoming.length - before.length;
+    const shift = firstDiff < start ? delta : 0;
+
+    requestAnimationFrame(() => {
+      const node = editorRef.current;
+      if (!node) return;
+      const max = node.value.length;
+      node.setSelectionRange(
+        Math.max(0, Math.min(max, start + shift)),
+        Math.max(0, Math.min(max, end + shift)),
+      );
+    });
+  };
 
   //inivite
   // const [inviteModal, setInviteModal] = useState(false);
@@ -1572,15 +1655,50 @@ const [inviteEmail, setInviteEmail] = useState("");
     }
   };
 
-  // hydrate on mount/when nav state changes; prefer preCount if provided
+  /* SEEDS THE BOX ONCE. It never re-applies a value afterwards.
+     ═══════════════════════════════════════════════════════════════════════════
+     THIS IS THE ONE THAT WAS EATING YOUR SPACES, and it had nothing to do with
+     collaboration — which is why it happened with no session open too.
+
+     There is a feedback loop between this component and the optimiser page:
+
+       you type                          → `text` changes
+       400ms later the debounce runs     → setOptimizerInput(text)   (context)
+       the page re-renders               → <PromptInput initialText={optimizerInput} />
+       `initialText` has changed         → THIS EFFECT RUNS AGAIN
+
+     …and it then did `setText((initialText && initialText.trim()) || …)`.
+
+     The `.trim()` is the whole bug. The component's own text came back in as its
+     input, got trimmed, and was written back over the live box — so roughly
+     400ms after you stopped typing, a TRAILING SPACE was silently deleted. Type
+     "I am Ashutosh", press space, wait a beat: the space is gone. Press space
+     again and macOS turns the two into a full stop, which is where the stray "."
+     came from. Only the trailing space, because trim only touches the ends.
+
+     Two changes. It seeds ONCE — this exists to fill an empty box from
+     navigation state, not to keep re-asserting a value the component itself
+     produced — and the candidate is no longer trimmed, so what gets seeded is
+     what was actually passed. The trim is kept only as the "is this blank?"
+     test it was really being used for. */
+  const seededRef = useRef(false);
+
   useEffect(() => {
     // ⛔ Skip restoring if user cleared the input
     if (hasCleared) return;
+    if (seededRef.current) return;
 
-    const candidate = (initialText && initialText.trim()) || navInitialText;
+    // Blank-check with trim, but seed the ORIGINAL — trimming here is what
+    // silently removed characters the user had typed.
+    const candidate = initialText?.trim() ? initialText : navInitialText;
     if (!candidate) return;
 
-    if (candidate !== text) setText(candidate);
+    seededRef.current = true;
+
+    if (candidate !== textRef.current) {
+      setText(candidate);
+      textRef.current = candidate;
+    }
 
     if (navPreCount && Number.isFinite(navPreCount.tokens)) {
       onTokensChange(navPreCount.tokens, navPreCount.words ?? 0);
@@ -1679,6 +1797,17 @@ useEffect(() => {
     return;
   }
 
+  /* Wait for auth before joining at all.
+
+     currentUserId is null until AuthContext has finished loading, and it is a
+     dependency of this effect — so without this guard the page joined once as
+     nobody, then auth resolved, the effect tore that down (telling every peer we
+     had LEFT) and joined again as ourselves. Peers saw us flicker out of the
+     participant list, and the server named the first join "Someone".
+
+     One join, once we know who we are. */
+  if (!authReady) return;
+
   // We joined the session room, but DON'T mark it "active" yet — stay in a
   // "waiting for collaborator" state until a second participant actually joins
   // (driven by the session-peers / user-joined events below).
@@ -1686,13 +1815,48 @@ useEffect(() => {
 
   socket.emit("join-session", {
     sessionId: collabSessionId,
-    userId: user?.id || null,
+    userId: currentUserId,
   });
 
-  const handleInitial = (payload: { sessionId: string; text: string }) => {
+  /* prompt-initial SEEDS AN EMPTY EDITOR. It never overwrites one.
+
+     THIS is what was pulling your typing backwards.
+
+     The server sends it in reply to every `join-session`, carrying the text as
+     stored in the database. It used to `setText` unconditionally — so any time
+     that event arrived while you were mid-sentence, whatever you had typed was
+     replaced by the last value the server happened to have saved. The saved
+     value lags by up to the 400ms debounce, so the replacement was usually a
+     slightly OLDER version of your own sentence: type "i am ashutosh", press
+     space, and the box snaps back a character or two. Press space again and
+     macOS turns the double space into a full stop, which is where the stray "."
+     came from.
+
+     And join-session fires more often than "once, at the start": this effect
+     re-runs whenever collabSessionId or currentUserId changes — currentUserId
+     goes null → real id as soon as auth resolves — and again on every hot
+     reload in development. Every one of those was a chance to be pushed back.
+
+     So: if there is already text in the box, it is the newer thing and it wins.
+     The debounce is what pushes it to the server; nothing here needs to pull.
+     An empty box has nothing to lose and gets seeded, which is the case this
+     event actually exists for — opening someone's invite link and finding the
+     prompt they have already written. */
+  const handleInitial = (payload: { sessionId: string; text: string; rev?: number }) => {
     if (payload.sessionId !== collabSessionId) return;
 
     const incoming = payload.text || "";
+    // Where the session is up to, so a broadcast already in flight can be
+    // recognised as older than what we were just handed.
+    lastRevRef.current = Math.max(lastRevRef.current, payload.rev ?? 0);
+
+    if (textRef.current.trim()) {
+      // Keep what's here, and treat the server's copy as the baseline only if
+      // it already matches — otherwise the debounce will send ours next tick.
+      if (incoming === textRef.current) lastSyncedTextRef.current = incoming;
+      return;
+    }
+
     setText(incoming);
     textRef.current = incoming;
     // Recorded as agreed, so the debounced effect below doesn't turn the text we
@@ -1700,13 +1864,57 @@ useEffect(() => {
     lastSyncedTextRef.current = incoming;
   };
 
-  const handleRemoteChange = (payload: { sessionId: string; text: string }) => {
+  const handleRemoteChange = (payload: { sessionId: string; text: string; rev?: number }) => {
     if (payload.sessionId !== collabSessionId) return;
-    if (payload.text === textRef.current) return;
 
-    setText(payload.text);
-    textRef.current = payload.text;
-    lastSyncedTextRef.current = payload.text;
+    /* Out-of-order or already-seen edits are dropped rather than applied.
+       Sockets do not guarantee that a message sent later arrives later, and an
+       older text landing on top of a newer one is precisely how a sentence
+       jumps backwards under you. */
+    const rev = payload.rev ?? Number.MAX_SAFE_INTEGER;
+    if (rev <= lastRevRef.current) return;
+    lastRevRef.current = rev;
+
+    if (payload.text === textRef.current) {
+      /* The newest edit in the session is what we're already showing — normally
+         our own, coming back as its own acknowledgement.
+
+         Anything we were holding is by definition older than this, so it has to
+         be thrown away rather than allowed to land. Without this, two people
+         typing at once simply SWAPPED sentences: each held the other's earlier
+         edit, learned a moment later that its own was the newer one, and then
+         let the stale held copy overwrite it anyway. */
+      if (pendingTimerRef.current) window.clearTimeout(pendingTimerRef.current);
+      pendingTimerRef.current = null;
+      pendingRemoteRef.current = null;
+      return;
+    }
+
+    /* Mid-sentence? Wait. Replacing the box's value under someone's fingers
+       throws their caret to the end and swallows whatever they type next — the
+       edit is applied the moment they pause (see the debounce effect), so
+       nothing is lost, it just doesn't happen ON them. */
+    if (Date.now() - lastLocalEditRef.current < TYPING_GRACE_MS) {
+      pendingRemoteRef.current = payload.text;
+
+      /* And a timer to actually land it.
+
+         Holding it was only half the job: the debounce that used to drain this
+         runs on local text CHANGES, and by definition the person has stopped
+         typing — so if they never touch the keyboard again, nothing ever came
+         along to apply the edit and their collaborator's change was silently
+         dropped. This is the alarm clock for it. */
+      if (pendingTimerRef.current) window.clearTimeout(pendingTimerRef.current);
+      pendingTimerRef.current = window.setTimeout(() => {
+        const held = pendingRemoteRef.current;
+        pendingRemoteRef.current = null;
+        if (held !== null && held !== textRef.current) applyRemoteText(held);
+      }, TYPING_GRACE_MS);
+
+      return;
+    }
+
+    applyRemoteText(payload.text);
   };
 
   const handleSessionEnded = ({ sessionId }: { sessionId: string }) => {
@@ -1793,9 +2001,15 @@ useEffect(() => {
   socket.on("prompt-optimized", handleRemoteOptimized);
 
   return () => {
+    // A held edit belongs to the session we're leaving; firing it into the next
+    // one would drop a stranger's text into the box.
+    if (pendingTimerRef.current) window.clearTimeout(pendingTimerRef.current);
+    pendingTimerRef.current = null;
+    pendingRemoteRef.current = null;
+
     socket.emit("leave-session", {
       sessionId: collabSessionId,
-      userId: user?.id || null,
+      userId: currentUserId,
     });
 
     socket.off("prompt-initial", handleInitial);
@@ -1805,7 +2019,7 @@ useEffect(() => {
     socket.off("user-joined", handleUserJoined);
     socket.off("prompt-optimized", handleRemoteOptimized);
   };
-}, [collabSessionId, user?.id]);
+}, [collabSessionId, currentUserId, authReady]);
 
   const [isSaveOpen, setIsSaveOpen] = useState(false);
   const saveAnchorRef = useRef<HTMLButtonElement | null>(null);
@@ -1839,6 +2053,11 @@ const [inviteMessage, setInviteMessage] = useState("");
 const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
   const newText = e.target.value;
 
+  // When the last keystroke was. A remote update arriving inside the grace
+  // window after this waits rather than yanking the caret away — see
+  // handleRemoteChange.
+  lastLocalEditRef.current = Date.now();
+
   // ✅ SEEDHA setState — koi bhi heavy kaam nahi
   setText(newText);
   textRef.current = newText;
@@ -1869,8 +2088,17 @@ useEffect(() => {
       socket.emit("prompt-change", {
         sessionId: collabSessionId,
         text,
-        userId: user?.id || null,
+        userId: currentUserId,
       });
+      // We just typed, so anything held back is older than what we're sending.
+      pendingRemoteRef.current = null;
+    } else if (pendingRemoteRef.current !== null) {
+      /* Typing has stopped and there was nothing of ours to send — so the
+         collaborator's edit that was held during the grace window lands now,
+         which is the whole reason holding it was safe. */
+      const held = pendingRemoteRef.current;
+      pendingRemoteRef.current = null;
+      if (held !== textRef.current) applyRemoteText(held);
     }
   }, 400);
 
@@ -1881,7 +2109,7 @@ useEffect(() => {
 const handleConfirmEndSession = () => {
   socket.emit("end-session", {
     sessionId: collabSessionId,
-    userId: user?.id,
+    userId: currentUserId,
   });
 
   setShowEndConfirm(false);
@@ -1978,7 +2206,7 @@ const handleConfirmEndSession = () => {
       if (collabSessionId) {
         socket.emit("prompt-optimized", {
           sessionId: collabSessionId,
-          userId: user?.id || null,
+          userId: currentUserId,
           name: user?.name || null,
           result: {
             text: option.text,
@@ -2329,6 +2557,7 @@ const startCollaboration = async (): Promise<string | null> => {
 
         <div className="relative flex-1">
         <textarea
+  ref={editorRef}
   placeholder="Enter your prompt here..."
   className="min-h-[180px] h-full w-full bg-transparent resize-none border-0 outline-none focus:ring-0 pr-10 text-white placeholder:text-white/40 text-sm p-0"
   value={text}
@@ -2361,7 +2590,19 @@ const startCollaboration = async (): Promise<string | null> => {
             </span>
           </div>
 
-          <div className="flex flex-wrap sm:flex-nowrap justify-center sm:justify-end gap-3 w-full">
+          {/* WRAPS AT EVERY SIZE. It was `sm:flex-nowrap`, and every button in
+              here carries a hard width (140px, 180px). Below `sm` that was fine
+              because the row wrapped; from `sm` up the row was forbidden to
+              wrap, so the moment a fourth button appeared the fixed widths added
+              up to more than the container and the last one — Optimize — was
+              pushed straight out the side.
+
+              A fourth button is not an edge case: it is exactly what happens the
+              instant you optimise anything (Clear appears beside History), and
+              again when a collaborator joins and the participants strip takes a
+              slot. So the row wraps now, and a second line is what a row that
+              doesn't fit is supposed to do. */}
+          <div className="flex flex-wrap justify-center sm:justify-end gap-3 w-full">
   <Button
     variant="outline"
     className="rounded-2xl w-[140px] h-[40px] bg-#252525/40 border-white/10 text-white"
@@ -2419,13 +2660,40 @@ const startCollaboration = async (): Promise<string | null> => {
     </Button>
   ) : !isCollabActive ? (
     <>
+      {/* You ARE in — you're the only one in.
+
+          This said "Waiting to join…", which reads as though YOU are still
+          waiting to get in. You're not: you joined, and what the session is
+          short of is a second person. Someone who had just opened an invite
+          link saw it and reasonably concluded the join had failed.
+
+          The strip beside it says so plainly by naming who is here, which is
+          the same strip the live session shows — it used to appear only once a
+          second person arrived, so in exactly the state that needed explaining
+          there was nothing on screen to explain it. */}
+      {collabPeers.length > 0 && (
+        <div
+          className="flex items-center gap-2 h-[40px] px-3 rounded-2xl border border-white/10 bg-[#252525]"
+          title={`In this session: ${collabPeers.map((p) => p.name).join(", ")}`}
+        >
+          <span className="relative flex h-2 w-2 shrink-0">
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-400" />
+          </span>
+          <span className="text-xs text-white/75 max-w-[190px] truncate">
+            {collabPeers.length === 1
+              ? "Just you so far"
+              : collabPeers.map((p) => p.name).join(", ")}
+          </span>
+        </div>
+      )}
+
       <Button
         onClick={() => setInviteModal(true)}
-        className="rounded-2xl w-[180px] h-[40px] text-white border border-white/15 bg-[#252525] inline-flex items-center justify-center gap-2"
-        title="Waiting for your collaborator to join — click to resend the invite"
+        className="rounded-2xl w-[200px] h-[40px] text-white border border-white/15 bg-[#252525] inline-flex items-center justify-center gap-2"
+        title="Nobody else has opened the invite yet — click to send it again"
       >
         <Loader2 className="h-4 w-4 animate-spin" />
-        <span className={BTN_TEXT_CLS}>Waiting to join…</span>
+        <span className={BTN_TEXT_CLS}>Waiting for others…</span>
       </Button>
       <Button
         onClick={() => setShowEndConfirm(true)}

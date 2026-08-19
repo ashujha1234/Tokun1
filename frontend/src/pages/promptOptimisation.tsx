@@ -259,6 +259,13 @@ export default function PromptOptimizationPage() {
 
   const [isLoading, setIsLoading] = useState(true);
 
+  /* What the box should START with, captured once.
+     A useState initialiser runs on the first render only, so this holds whatever
+     had been typed before you navigated here and then stops changing — which is
+     the point. See the note on the PromptInput below for what feeding the live
+     value back in was doing. */
+  const [initialOptimizerText] = useState(() => optimizerInput || navState?.initialText || "");
+
   const [originalTokens, setOriginalTokens] = useState(0);
   const [originalWords, setOriginalWords] = useState(0);
   const [optimizedTokens, setOptimizedTokens] = useState(0);
@@ -353,10 +360,23 @@ export default function PromptOptimizationPage() {
           <div className="lg:col-span-2 space-y-6">
 
             {/* Prompt Input — its own panel, a peer of the one on the right. */}
+            {/* initialText is a SEED, and seeds don't change.
+
+                This passed `optimizerInput` live — the very context value that
+                PromptInput writes to on a 400ms debounce as you type. So the
+                component's own output came straight back in as its input on
+                every keystroke, and whatever PromptInput did with `initialText`
+                it did to text the user was in the middle of writing. (It
+                trimmed it, which is how trailing spaces were disappearing —
+                see the seeding effect in PromptInput.)
+
+                Frozen at mount instead: restoring what was typed before is a
+                thing that happens once, on arrival. Ongoing edits belong to the
+                component, and it already keeps the context up to date. */}
             <PromptInput
               onTokensChange={handleTokensChange}
               onOptimize={handleOptimize}
-              initialText={optimizerInput}
+              initialText={initialOptimizerText}
             />
 
             {/* Suggestions (Desktop only) */}

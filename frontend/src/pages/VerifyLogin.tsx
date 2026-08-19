@@ -827,8 +827,9 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/use-toast";
-import { ArrowLeft, ChevronLeft } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import BackLink from "@/components/ui/BackLink";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -1176,14 +1177,7 @@ const [devOtp, setDevOtp] = useState<string | null>(null);
   </div>
 
   {/* Back */}
-  <Link
-    to="/login"
-    className="inline-flex items-center gap-2 text-white/90 text-[16px] mb-4"
-    style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
-  >
-    <ArrowLeft className="w-5 h-5" />
-    <span>Back</span>
-  </Link>
+  <BackLink to="/login" className="mb-4" />
 
   {/* Text */}
   <div className="text-center px-2 mb-6">
@@ -1304,13 +1298,7 @@ const [devOtp, setDevOtp] = useState<string | null>(null);
       <div className="hidden lg:flex min-h-screen items-center justify-center px-5 sm:px-8 md:px-10">
         <div className="w-full max-w-[520px]">
           <div className="mb-6">
-            <Link
-  to="/login"
-  className="inline-flex items-center gap-2 text-white/90 hover:text-white"
->
-  <ArrowLeft className="w-5 h-5" />
-  <span>Back</span>
-</Link>
+            <BackLink to="/login" />
           </div>
 
           <p className="text-[16px] font-normal text-white">

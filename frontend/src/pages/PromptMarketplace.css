@@ -6,7 +6,21 @@
    head requests 500/600, and a browser synthesises 400 from those, which is
    invisible at 16% opacity behind the grid. */
 
-.marketplace {
+/* THE CARD TOKENS LIVE ON :root, NOT ON .marketplace.
+
+   They were declared on `.marketplace` — the marketplace page's own wrapper —
+   back when that page was the only thing rendering these cards. It isn't any
+   more: the Saved page renders .mp-card and .reel-card too, and its root is a
+   plain page container with no `.marketplace` on it. So every `var(--mp-…)`
+   inside those cards resolved to nothing there, and the most visible casualty
+   was Buy Now: `background: var(--mp-grad-buy)` with no value at all, which is
+   why the button came out flat instead of purple→magenta. Its shadow was gone
+   for the same reason.
+
+   On :root they are what they always were — design tokens — and any page that
+   uses the card classes gets them. `.marketplace` still picks them up by
+   inheritance, so nothing about that page changes. */
+:root {
   --mp-bg: #06040f;
   --mp-grad: linear-gradient(135deg, #a855f7 0%, #4f7ef5 100%);       /* primary purple→blue */
   --mp-grad-buy: linear-gradient(135deg, #9333ea 0%, #d926ff 100%);   /* buy now purple→magenta */
@@ -14,7 +28,9 @@
   --mp-btn-shadow-hover: 0 12px 40px rgba(168, 85, 247, 0.42);
   --mp-font: "Inter", ui-sans-serif, system-ui, sans-serif;
   --mp-mono: "JetBrains Mono", ui-monospace, monospace;
+}
 
+.marketplace {
   position: relative;
   min-height: 100svh;
   background: var(--mp-bg);

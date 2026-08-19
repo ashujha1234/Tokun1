@@ -1749,7 +1749,13 @@ function HistoryGridCard({
   onShare?: (p: Prompt) => void;
   onRequestRefund?: (p: Prompt) => void;
 }) {
-  const isPlaying = playingVideo === prompt.id;
+  /* The <video> for this card, driven straight by the hover handlers below.
+     Held as a ref rather than through the playingVideo/onToggleVideo state the
+     play button used: hover is a per-card, per-pointer thing, and routing it
+     through shared state would make one card's hover a re-render of the whole
+     grid. Those props stay on the component for the image cards and the other
+     callers that still pass them. */
+  const videoElRef = useRef<HTMLVideoElement | null>(null);
   const priceLabel = prompt.isFree ? "FREE" : `₹${(prompt.price ?? 0).toFixed(2)}`;
   const isVideo = !showImages && !!prompt.videoUrl;
   const needsEdit = isUploaded && prompt.mediaValidation?.status === "edit_requested";
@@ -1810,45 +1816,53 @@ function HistoryGridCard({
     return (
       <Card
         onClick={() => onPreview(prompt)}
-        className="relative overflow-hidden cursor-pointer hover:scale-[1.01] transition-transform"
+        /* HOVER PLAYS IT. There was a play/pause circle sitting in the middle of
+           every video product, and it was the wrong control for this card: the
+           card's own job is to open the product, so the one obvious thing in the
+           middle of it did something else, and a wall of these showed a row of
+           identical black circles over the artwork.
+
+           Hovering is what the marketplace already does with a video listing
+           (see LibPromptMedia there), so a creator looking at their own products
+           gets the same behaviour buyers get. On a touch screen there is no
+           hover — tapping opens the product, which is the useful action anyway
+           and is what the card was always for. */
+        onMouseEnter={() => {
+          const el = videoElRef.current;
+          if (el) el.play().catch(() => {});
+        }}
+        onMouseLeave={() => {
+          const el = videoElRef.current;
+          if (!el) return;
+          el.pause();
+          // Back to the first frame, so the card looks the same next time round
+          // rather than freezing on wherever the pointer happened to leave.
+          el.currentTime = 0;
+        }}
+        className="group relative overflow-hidden cursor-pointer hover:scale-[1.01] transition-transform"
         style={{ width: 260, height: 460, background: "#0B0B0B", borderRadius: 24 }}
       >
         <video
+          ref={videoElRef}
           className="absolute inset-0 w-full h-full object-cover"
           src={prompt.videoUrl}
           loop
           muted
           playsInline
-          ref={(el) => {
-            if (!el) return;
-            if (isPlaying) el.play().catch(() => {});
-            else el.pause();
-          }}
+          preload="metadata"
         />
 
-        {/* Play / pause.
-
-            This used to be `absolute inset-0` — an invisible button stretched
-            over the whole card. It swallowed the Card's own onClick, so tapping
-            a video product toggled playback instead of opening its details, and
-            the Details pill was the only way in. It also meant that while a clip
-            was playing nothing was drawn at all, so the pause target was an
-            invisible full-card hit area.
-
-            Now it is the control it looks like: a circle in the middle, with a
-            real pause state. Everything around it belongs to the card again. */}
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onToggleVideo(prompt.id); }}
-          aria-label={`${isPlaying ? "Pause" : "Play"} ${prompt.title}`}
-          className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 rounded-full grid place-items-center text-white transition-colors ${
-            isPlaying ? "bg-black/35 hover:bg-black/60" : "bg-black/55 hover:bg-black/70"
-          }`}
+        {/* The only thing left over the artwork: a small mark saying there IS
+            video here, which fades out as soon as it starts playing. */}
+        <div
+          className="absolute bottom-3 right-3 w-7 h-7 rounded-full grid place-items-center transition-opacity duration-300 opacity-100 group-hover:opacity-0"
+          style={{ background: "rgba(0,0,0,0.55)" }}
+          aria-hidden
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-            {isPlaying ? <path d="M8 5h3v14H8zm5 0h3v14h-3z" /> : <path d="M8 5v14l11-7-11-7z" />}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="white">
+            <path d="M8 5v14l11-7-11-7z" />
           </svg>
-        </button>
+        </div>
 
         {/* Category pill */}
         <div
@@ -4871,6 +4885,11 @@ const RequestCard = ({ item }: { item: any }) => {
         (!!(detailsPrompt as any).purchasedAt ||
           !!(detailsPrompt as any).isUploadedByMe)
       }
+      /* Everything reachable from this dashboard is either your own upload or
+         something you've already bought. Saving either to your own collection
+         is a bookmark to a page you already own — so the control is dropped
+         rather than left there doing nothing useful. */
+      hideSave
       onPurchase={() => {}}
     />
 

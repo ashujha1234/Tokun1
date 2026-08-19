@@ -279,9 +279,10 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Facebook, Instagram, Linkedin } from "lucide-react";
 import { FaXTwitter } from "react-icons/fa6";
-import { Button } from "@/components/ui/button";
+import NewsletterSubscribe from "@/components/NewsletterSubscribe";
 
-const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+/* The Button import and API_BASE that stood here went with the newsletter form
+   — the only things in this file that used either. */
 
 // Fill in the real profile URLs and the icons appear. Left empty on purpose:
 // these were all `href: "#"`, which renders four buttons that look clickable and
@@ -337,10 +338,6 @@ export default function Footer() {
   // "puck" behind the row. Only the configured links take part.
   const [active, setActive] = useState<number | null>(null);
 
-  const [email, setEmail] = useState("");
-  const [subState, setSubState] = useState<"idle" | "sending" | "done" | "error">("idle");
-  const [subMsg, setSubMsg] = useState("");
-
   const socials = useMemo(() => SOCIAL_LINKS.filter((s) => s.href.trim().length > 0), []);
 
   const ICON_SIZE = 44;
@@ -350,38 +347,8 @@ export default function Footer() {
     [active]
   );
 
-  // Real submit. This was a styled input next to a styled button with no state
-  // and no handler at all — the email went nowhere and the user got no feedback
-  // either way. A <form> also makes Enter work, which a bare button never did.
-  const handleSubscribe = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const value = email.trim();
-    if (!value) return;
-
-    setSubState("sending");
-    setSubMsg("");
-    try {
-      const res = await fetch(`${API_BASE}/api/newsletter/subscribe`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: value, source: "footer" }),
-      });
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok || !data?.success) {
-        setSubState("error");
-        setSubMsg(data?.message || "Couldn't subscribe you. Please try again.");
-        return;
-      }
-
-      setSubState("done");
-      setSubMsg(data.message || "You're subscribed.");
-      setEmail("");
-    } catch {
-      setSubState("error");
-      setSubMsg("Network error — please try again.");
-    }
-  };
+  /* The subscribe handler that used to live here now lives in
+     NewsletterSubscribe, along with the form it belonged to. */
 
   const linkClass =
     "group relative inline-block text-sm text-white/65 hover:text-white transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF14EF]/60 rounded";
@@ -418,50 +385,11 @@ export default function Footer() {
               the Optimiser, and hire creators when you need a human in the loop.
             </p>
 
-            {/* Newsletter */}
-            <form onSubmit={handleSubscribe} className="mt-7" noValidate>
-              <label
-                htmlFor="footer-newsletter-email"
-                className="block text-[11px] uppercase tracking-wide text-white/45 mb-2"
-              >
-                Get product updates
-              </label>
-              <div className="flex flex-col sm:flex-row gap-2.5">
-                <input
-                  id="footer-newsletter-email"
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    if (subState !== "idle") setSubState("idle");
-                  }}
-                  placeholder="you@example.com"
-                  aria-invalid={subState === "error"}
-                  aria-describedby={subMsg ? "footer-newsletter-msg" : undefined}
-                  className="w-full sm:flex-1 h-11 px-4 rounded-full bg-white/[0.04] border border-white/15 text-sm text-white placeholder:text-white/35 outline-none transition-colors focus:border-[#FF14EF]/60 focus:bg-white/[0.06]"
-                />
-                <Button
-                  type="submit"
-                  disabled={subState === "sending" || !email.trim()}
-                  className="w-full sm:w-auto h-11 px-6 rounded-full bg-white text-black font-medium hover:bg-white/90 disabled:opacity-45 disabled:cursor-not-allowed"
-                >
-                  {subState === "sending" ? "Subscribing…" : "Subscribe"}
-                </Button>
-              </div>
-
-              {subMsg && (
-                <p
-                  id="footer-newsletter-msg"
-                  role="status"
-                  className={`mt-2.5 text-xs ${
-                    subState === "error" ? "text-red-400" : "text-emerald-400"
-                  }`}
-                >
-                  {subMsg}
-                </p>
-              )}
-            </form>
+            {/* Newsletter. The form, its state and its POST used to live here;
+                they moved to NewsletterSubscribe so the blog page's copy — which
+                had no handler at all — could be the same working thing rather
+                than a second attempt at it. */}
+            <NewsletterSubscribe source="footer" label="Get product updates" className="mt-7" />
           </div>
 
           {/* Link columns */}

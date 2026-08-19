@@ -1075,6 +1075,17 @@ interface DetailsPromptProps {
   onPurchase?: (prompt: MarketplacePrompt) => void;
   showImages?: boolean;
   onEnlargeMedia?: (media: { url: string; type: "image" | "video"; title?: string }) => void;
+  /**
+   * Drop the save control entirely.
+   *
+   * For the screens where saving is not a question anyone has: the Saved page
+   * (everything on it is already saved, by definition) and My Products (your own
+   * upload — saving your own listing to your own collection means nothing). On
+   * those, a save icon is an offer to do something that has either already
+   * happened or makes no sense, and pressing it was how the duplicate saves got
+   * made in the first place.
+   */
+  hideSave?: boolean;
 }
 
 
@@ -1099,6 +1110,7 @@ export default function DetailsPrompt({
   owned = false,
   onPurchase,
   showImages = false,
+  hideSave = false,
 }: DetailsPromptProps) {
   const { user } = useAuth();
   /* Cleared whenever the panel opens on a different product, so a second
@@ -1137,11 +1149,43 @@ export default function DetailsPrompt({
 
   const promptRefId = prompt?.id ? String(prompt.id) : "";
 
-  // Reset when the panel is pointed at a different listing — without this the
-  // filled state would carry over from the last prompt viewed.
+  /* Is this one ALREADY saved?
+
+     This used to just `setIsSaved(false)` on every listing — the panel never
+     asked. So opening something you had already saved showed an empty icon
+     offering to save it again, and pressing it wrote a second copy: that is
+     where the duplicates in the Saved page came from, one per extra press.
+
+     Asked of the server instead, so the icon starts in the state that is
+     actually true and the button reads "Remove from saved" rather than offering
+     a save that has already happened. Reset first, so the previous listing's
+     answer can't show while this one's is in flight. */
   useEffect(() => {
     setIsSaved(false);
-  }, [promptRefId]);
+    if (!promptRefId || !currentUserId) return;
+
+    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/saved-collections/ids?section=prompt`, {
+          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => ({} as any));
+        if (cancelled || !data?.success) return;
+        setIsSaved((data.ids || []).map(String).includes(promptRefId));
+      } catch {
+        // Only decides which way the icon points; it stays on "not saved" and
+        // the server's own duplicate guard covers a wrong guess.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [promptRefId, currentUserId]);
 
   const toggleSavePrompt = async () => {
     if (savingPrompt || !promptRefId) return;
@@ -1475,32 +1519,38 @@ const comingSoon = !!prompt?.sellerVerificationPending || sellerHasPayout === fa
               min-h-0 md:h-full flex-1 overflow-y-auto no-scrollbar
             "
           >
-            {/* Title */}
-            <div className="grid grid-cols-[1fr_auto] items-start gap-4 mt-2">
+            {/* Title. The column for the save control collapses with it when
+                the caller has none to offer — see hideSave — so the heading
+                takes the full width instead of leaving a 42px hole. */}
+            <div
+              className={`grid ${hideSave ? "grid-cols-1" : "grid-cols-[1fr_auto]"} items-start gap-4 mt-2`}
+            >
               <h2 className="font-semibold text-[24px] leading-snug tracking-tight">
                 {prompt.title}
               </h2>
-              <button
-                type="button"
-                onClick={toggleSavePrompt}
-                disabled={savingPrompt || !promptRefId}
-                title={isSaved ? "Remove from saved" : "Save to your collection"}
-                aria-label={isSaved ? "Remove from saved" : "Save to your collection"}
-                aria-pressed={isSaved}
-                className="flex items-center justify-center rounded-full justify-self-end transition disabled:cursor-default"
-                style={{
-                  backgroundColor: isSaved ? "#7c3aed" : "#333335",
-                  width: 42,
-                  height: 42,
-                  opacity: savingPrompt ? 0.6 : 1,
-                }}
-              >
-                <img
-                  src="/icons/cop1.png"
-                  alt=""
-                  className="w-5 h-5 object-contain"
-                />
-              </button>
+              {!hideSave && (
+                <button
+                  type="button"
+                  onClick={toggleSavePrompt}
+                  disabled={savingPrompt || !promptRefId}
+                  title={isSaved ? "Remove from saved" : "Save to your collection"}
+                  aria-label={isSaved ? "Remove from saved" : "Save to your collection"}
+                  aria-pressed={isSaved}
+                  className="flex items-center justify-center rounded-full justify-self-end transition disabled:cursor-default"
+                  style={{
+                    backgroundColor: isSaved ? "#7c3aed" : "#333335",
+                    width: 42,
+                    height: 42,
+                    opacity: savingPrompt ? 0.6 : 1,
+                  }}
+                >
+                  <img
+                    src="/icons/cop1.png"
+                    alt=""
+                    className="w-5 h-5 object-contain"
+                  />
+                </button>
+              )}
             </div>
 
             {/* What buyers made of it, right under the title where a price

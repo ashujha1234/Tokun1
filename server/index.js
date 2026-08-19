@@ -5993,6 +5993,9 @@ io.on("connection", (socket) => {
       socket.emit("prompt-initial", {
         sessionId,
         text: session.text,
+        // So a client that joins mid-session starts from the right place in the
+        // ordering rather than accepting the next stale broadcast it hears.
+        rev: session.rev || 0,
       });
 
       socket.to(String(sessionId)).emit("user-joined", { userId, name });
@@ -6026,16 +6029,37 @@ io.on("connection", (socket) => {
     try {
       if (!sessionId) return;
 
-      await CollabSession.findOneAndUpdate(
+      /* Every accepted edit gets a number, and the number only goes up.
+
+         Without one the two sides could not converge. Each client applied
+         whatever arrived last, and "last" is different on each machine — so two
+         people typing at the same moment ended up holding different text
+         permanently, each convinced the other's update was the stale one. The
+         server is the only place that sees both edits in a single order, so the
+         order is decided here and travels with the text; a client that receives
+         a revision it has already passed simply drops it.
+
+         $inc, not read-then-write: two edits landing in the same tick would
+         otherwise read the same value and both claim it. */
+      const updated = await CollabSession.findOneAndUpdate(
         { sessionId },
-        { text, updatedAt: new Date() },
-        { upsert: true }
+        { $set: { text, updatedAt: new Date() }, $inc: { rev: 1 } },
+        { upsert: true, new: true }
       );
 
-      socket.to(String(sessionId)).emit("prompt-change", {
+      /* io.to, not socket.to — the SENDER gets this back too.
+
+         Not so it can re-apply its own text (its handler no-ops on that), but so
+         it learns which revision the server gave its edit. Without that ack a
+         client has no idea where its own text sits in the ordering, so it cannot
+         tell a genuinely newer edit from an older one that arrived late — and
+         two people typing at once ended up simply swapping sentences, each
+         adopting the other's and neither converging. */
+      io.to(String(sessionId)).emit("prompt-change", {
         sessionId,
         text,
         userId,
+        rev: updated?.rev ?? 0,
       });
     } catch (err) {
       console.error("prompt-change error:", err);

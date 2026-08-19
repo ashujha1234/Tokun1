@@ -18,9 +18,10 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, Scale, AlertTriangle } from "lucide-react";
+import { RefreshCw, Scale, AlertTriangle } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import RatingPenaltyControl from "@/components/admin/RatingPenaltyControl";
+import BackLink from "@/components/ui/BackLink";
 
 const API_BASE = `${(import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "")}/api/admin/disputes`;
 
@@ -274,12 +275,7 @@ export default function AdminDisputesPage() {
   return (
     <div className="min-h-screen bg-[#0B0B0D] text-white">
       <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 py-8">
-        <button
-          onClick={() => navigate(-1)}
-          className="inline-flex items-center gap-1.5 text-sm text-white/45 hover:text-white transition"
-        >
-          <ArrowLeft className="w-4 h-4" /> Back
-        </button>
+        <BackLink />
 
         <div className="mt-4 flex items-start justify-between gap-4">
           <div>

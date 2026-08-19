@@ -154,7 +154,6 @@
 // // //   const [tab, setTab] = useState<TabId>("smartgen");
 // // //   const section = SECTION_BY_TAB[tab];
 // // //   const { token } = useAuth() as any;
-
 // // //   const [sections, setSections] = useState<ServerSections>({});
 // // //   const [loading, setLoading] = useState(true);
 
@@ -4052,6 +4051,13 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { loadSaved, type SavedItem } from "@/lib/savedCollections";
 import DetailsPrompt, { type MarketplacePrompt } from "@/components/DetailsPrompt";
+/* The marketplace's own price rule, imported rather than re-derived. This page
+   read `ref.price` straight, so a listing whose price only ever lived in
+   tokun_price (older rows) rendered as ₹0.00 here while the marketplace showed
+   its real price for the same product. */
+/* The reel card itself, so a saved video product renders exactly as it does
+   on the marketplace rather than in a lookalike built here. */
+import VideoReelCard, { cardPrice } from "@/components/VideoReelCard";
 import { StarRating } from "@/components/StarRating";
 import { useNavigate } from "react-router-dom";
 /* The marketplace's own card styles (.mp-card*). Imported rather than
@@ -4240,7 +4246,9 @@ const authorInitials = (name?: string) => (name || "U").trim().slice(0, 2).toUpp
 export default function SavedCollection() {
   const [tab, setTab] = useState<TabId>("smartgen");
   const section = SECTION_BY_TAB[tab];
-  const { token } = useAuth() as any;
+  const { token, user } = useAuth() as any;
+  // Same `_id`-first rule the rest of the app uses for the signed-in user.
+  const currentUserId = user?._id || user?.id || null;
 
   const [sections, setSections] = useState<ServerSections>({});
   const [loading, setLoading] = useState(true);
@@ -4495,7 +4503,29 @@ export default function SavedCollection() {
   };
 
   const folders = activeSection.collections || [];
-  const directItems = activeSection.directItems || [];
+
+  /* One row per product, however many times it was saved.
+
+     The server now refuses to save the same ref twice, but every duplicate
+     already written before that fix is still sitting in people's collections —
+     and a list that shows the same card three times looks broken whoever's
+     fault it was. Deduped on the id, keeping the first occurrence so the
+     original save order is preserved.
+
+     Items whose ref never populated (a listing the seller deleted) have no id to
+     compare, so they're passed through untouched rather than collapsed into one
+     — they're genuinely separate saves. */
+  const directItems = useMemo(() => {
+    const raw = activeSection.directItems || [];
+    const seen = new Set<string>();
+    return raw.filter((it: any) => {
+      const id = getDocId(it?.ref);
+      if (!id) return true;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  }, [activeSection]);
 
   const renderCardFooter = (text: string, title: string) => (
     <div className="flex items-center justify-start gap-2">
@@ -4530,6 +4560,66 @@ export default function SavedCollection() {
     // it looks like data loss — just not clickable.
     const missing = !mapped || ref?.deleted;
 
+    /* A VIDEO PRODUCT IS A REEL, HERE TOO.
+
+       Everywhere else on the site a video listing renders as VideoReelCard —
+       the tall autoplaying card — and only image listings use the wide .mp-card
+       below. This page put every saved product into the image card regardless,
+       so a video you saved off the marketplace changed shape the moment it
+       landed in your saved list: same product, letterboxed into a layout built
+       for a still.
+
+       Same component, not a copy of it, so the two can't drift. Buying still
+       happens on the marketplace (see the details panel's own note) — cart and
+       buy hand the product over there rather than starting a second checkout
+       inside this page. */
+    if (!missing && mapped?.videoUrl) {
+      return (
+        <div key={refId || `${title}_${idx}`} className="relative" style={{ width: 300 }}>
+          <VideoReelCard
+            prompt={{ ...mapped, reviewCount: (mapped as any)?.reviewCount }}
+            isPurchased={owned}
+            isOwn={String((mapped as any)?.uploaderId || "") === String(currentUserId || "")}
+            onVideoPlay={() => {}}
+            onAddToCart={() => navigate(`/prompt-marketplace?prompt=${encodeURIComponent(String(mapped.id))}`)}
+            onBuyNow={() => navigate(`/prompt-marketplace?prompt=${encodeURIComponent(String(mapped.id))}`)}
+            onOpenDetails={() => openPromptDetails(ref)}
+            onNavigateToProfile={(id: string | null | undefined) => id && navigate(`/profile/${id}`)}
+          />
+
+          {/* Unsave. VideoReelCard has no slot for it — it was built for the
+              marketplace, where nothing is saved yet — so it rides on top,
+              clear of the card's own tap target. */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMenu();
+            }}
+            className="absolute top-3 right-3 z-20 p-1.5 rounded-full bg-black/55 hover:bg-black/75 transition-colors"
+            aria-label="More actions"
+          >
+            <MoreHorizontal className="h-4 w-4 text-white" />
+          </button>
+
+          {menuOpen && (
+            <div className="absolute top-12 right-3 z-20 w-48 rounded-[10px] border border-white/10 bg-[#141416] p-1.5 shadow-xl">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteSingleItem(refId);
+                }}
+                className="w-full rounded-md px-3 py-2 text-left text-[13px] text-red-300/90 hover:bg-red-500/10"
+              >
+                Remove from saved
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
     return (
       <div
         key={refId || `${title}_${idx}`}
@@ -4550,16 +4640,42 @@ export default function SavedCollection() {
 
           <div className="mp-card__badges">
             <span className="mp-card__cat">{(mapped?.category || "GENERAL").toUpperCase()}</span>
-            {owned ? (
-              <span className="mp-card__unlock" style={{ background: "#14532D", color: "#BBF7D0" }}>
-                PURCHASED
-              </span>
-            ) : missing ? (
+            {/* The same badge ladder the marketplace card uses, so a product
+                doesn't change shape between the page it was saved from and the
+                page it was saved to. Only PURCHASED and NO LONGER LISTED were
+                here, so an ordinary unbought listing showed no state at all
+                where the marketplace shows "PURCHASE TO UNLOCK". */}
+            {missing ? (
               <span className="mp-card__unlock" style={{ background: "#3F1D1D", color: "#FCA5A5" }}>
                 NO LONGER LISTED
               </span>
-            ) : null}
+            ) : owned ? (
+              <span className="mp-card__unlock" style={{ background: "#14532D", color: "#BBF7D0" }}>
+                PURCHASED
+              </span>
+            ) : (
+              <span
+                className="mp-card__unlock"
+                style={{
+                  background: (mapped as any)?.exclusive ? "#2A2A2A" : undefined,
+                  color: (mapped as any)?.exclusive ? "#4ADE80" : undefined,
+                }}
+              >
+                {(mapped as any)?.exclusive ? "ONE-TIME PURCHASE" : "PURCHASE TO UNLOCK"}
+              </span>
+            )}
           </div>
+
+          {/* Premium mark, same rule as the marketplace: paid listings only. */}
+          {!(mapped as any)?.isFree && cardPrice(mapped) > 0 ? (
+            <div className="mp-card__crown">
+              <img
+                src="/icons/premium.png"
+                alt="Premium"
+                className={(mapped as any)?.exclusive ? "filter-green" : ""}
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className="mp-card__body">
@@ -4597,6 +4713,11 @@ export default function SavedCollection() {
           </div>
           <p className="mp-card__desc">{mapped?.description}</p>
 
+          {/* Price only. The "Details" / "Open" button that sat beside it did
+              exactly what clicking anywhere on the card already does — the whole
+              card is the tap target and opens this same panel — so it was a
+              second button for the first button's job, taking half the footer
+              and making the price look like one of two choices. */}
           <div className="mp-card__footer">
             {(mapped as any)?.isFree ? (
               <div className="mp-card__pill mp-card__pill--free">FREE</div>
@@ -4604,21 +4725,8 @@ export default function SavedCollection() {
               <div className="mp-card__pill mp-card__pill--owned">PURCHASED</div>
             ) : (
               <div className="mp-card__pill mp-card__pill--muted">
-                ₹{Number(mapped?.price || 0).toFixed(2)}
+                ₹{cardPrice(mapped).toFixed(2)}
               </div>
-            )}
-
-            {!missing && (
-              <button
-                type="button"
-                className="mp-card__pill mp-card__pill--buy"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openPromptDetails(ref);
-                }}
-              >
-                {owned ? "Open" : "Details"}
-              </button>
             )}
           </div>
 
@@ -5029,8 +5137,21 @@ export default function SavedCollection() {
     <div className="dark min-h-screen bg-background text-foreground">
       <Header />
 
-      <div className="container mx-auto px-4 sm:px-6 pt-28 sm:pt-32">
-        <div className="flex flex-col items-center text-center mb-8">
+      {/* pt-8, not pt-28/32.
+
+          This page reserved 112–128px of padding for a header that had already
+          reserved its own space: Header is `sticky top-0`, not fixed, so it sits
+          IN the flow and pushes everything down by its own height (~104px on a
+          desktop) before this padding is even applied. Stacked, that put the
+          heading around 230px down and the first row of cards past the fold —
+          you had to scroll to read the details of the very first thing you'd
+          saved.
+
+          pt-8 with a py-8-style rhythm is what the rest of the app's pages use
+          under this header (see OrdersPage), so this now matches them rather
+          than being the one screen that starts halfway down. */}
+      <div className="container mx-auto px-4 sm:px-6 pt-8">
+        <div className="flex flex-col items-center text-center mb-5">
           <h1
             style={{ fontFamily: "Inter", fontWeight: 400, lineHeight: "100%" }}
             className="text-white text-[26px] sm:text-[32px]"
@@ -5041,7 +5162,7 @@ export default function SavedCollection() {
       </div>
 
       <div className="container mx-auto px-4 sm:px-6 pb-16">
-        <div className="mx-auto mb-5 max-w-6xl">
+        <div className="mx-auto mb-4 max-w-6xl">
           <div className="overflow-x-auto no-scrollbar">
             <div className="flex w-max min-w-full justify-start sm:justify-center items-center gap-2 rounded-full bg-white/5 px-2 py-2">
               {TABS.map((t) => {
@@ -5087,6 +5208,11 @@ export default function SavedCollection() {
         onOpenChange={setDetailsOpen}
         prompt={detailsPrompt}
         owned={!!detailsPrompt && purchasedIds.includes(String(detailsPrompt.id))}
+        /* Nothing opened from THIS page can be unsaved-yet — it is the saved
+           list. Offering to save it again was both meaningless and the way
+           duplicates got created. Removing a save still lives on the card's own
+           "…" menu, where it belongs. */
+        hideSave
         onPurchase={(p) => {
           setDetailsOpen(false);
           navigate(`/prompt-marketplace?prompt=${encodeURIComponent(String(p.id))}`);

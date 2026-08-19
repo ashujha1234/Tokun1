@@ -56,6 +56,19 @@ router.post("/", requireAuth, async (req, res) => {
 
     const newItem = { ref: refId, on: onField, name };
 
+    /* Saving the same thing twice adds nothing and costs a duplicate row.
+
+       Every branch below was a bare `push`, so pressing Save again — or the
+       same product being saved from the marketplace card and then from its
+       details panel — appended a second identical entry. The saved page then
+       listed one product several times, and each copy had its own "remove",
+       so clearing them took as many clicks as there were accidents.
+
+       Reported as success rather than as an error: the user asked for this to
+       be saved, and it is. `alreadySaved` lets the client say so instead of
+       claiming it just did something. */
+    const isSameRef = (item) => String(item.ref) === String(refId);
+
     if (collectionTitle) {
       // Save inside a collection
       let collection = savedCollection.sections[section].collections.find(c => c.title === collectionTitle);
@@ -66,20 +79,69 @@ router.post("/", requireAuth, async (req, res) => {
           title: collectionTitle,
           items: [newItem],
         });
+      } else if (collection.items.some(isSameRef)) {
+        return res.json({ success: true, alreadySaved: true, savedCollection });
       } else {
         // append to existing collection
         collection.items.push(newItem);
       }
     } else {
+      if (savedCollection.sections[section].directItems.some(isSameRef)) {
+        return res.json({ success: true, alreadySaved: true, savedCollection });
+      }
       // Save directly to section
       savedCollection.sections[section].directItems.push(newItem);
     }
 
     await savedCollection.save();
 
-    return res.json({ success: true, savedCollection });
+    return res.json({ success: true, alreadySaved: false, savedCollection });
   } catch (err) {
     console.error("POST /saved error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+/**
+ * @route GET /api/saved/ids?section=prompt
+ * @desc Just the ids of what this user has saved in a section.
+ *
+ * For the screens that need to know "have I already saved this?" so they can
+ * stop offering to save it again — the marketplace cards, the details panel.
+ * They can't use GET / for that: it populates every saved document across three
+ * sections, which is a large payload to fetch on a page that only wants a set of
+ * ids to compare against.
+ *
+ * Covers directItems AND everything inside collections, because a product filed
+ * in a folder is just as saved as one sitting loose.
+ */
+router.get("/ids", requireAuth, async (req, res) => {
+  try {
+    const section = String(req.query.section || "prompt");
+    if (!["smartgen", "prompt", "promptOptimizer"].includes(section)) {
+      return res.status(400).json({ success: false, error: "invalid_section" });
+    }
+
+    const saved = await SavedCollection.findOne({ userId: req.user._id })
+      .select(`sections.${section}`)
+      .lean();
+
+    const bucket = saved?.sections?.[section];
+    if (!bucket) return res.json({ success: true, ids: [] });
+
+    const ids = new Set();
+    for (const item of bucket.directItems || []) {
+      if (item?.ref) ids.add(String(item.ref));
+    }
+    for (const collection of bucket.collections || []) {
+      for (const item of collection.items || []) {
+        if (item?.ref) ids.add(String(item.ref));
+      }
+    }
+
+    return res.json({ success: true, ids: [...ids] });
+  } catch (err) {
+    console.error("GET /saved/ids error:", err);
     return res.status(500).json({ success: false, error: "server_error" });
   }
 });

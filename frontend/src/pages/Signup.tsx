@@ -713,7 +713,7 @@ import { authError } from "@/lib/authErrors";
 // import { Input } from "@/components/ui/input";
 // import { useAuth } from "@/contexts/AuthContext";
 // import { toast } from "@/components/ui/use-toast";
-// import { ArrowLeft, User, Briefcase } from "lucide-react";
+// import { User, Briefcase } from "lucide-react";
 
 // const Signup = () => {
 //   const [name, setName] = useState("");
@@ -1270,6 +1270,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/use-toast";
 import { ArrowLeft, User, Briefcase } from "lucide-react";
+import BackLink from "@/components/ui/BackLink";
 
 const Signup = () => {
   const [name, setName] = useState("");
@@ -1480,14 +1481,7 @@ const Signup = () => {
   `}</style>
 
   {/* Back */}
-  <Link
-    to="/"
-    className="inline-flex items-center gap-2 text-white/90 text-[16px] mb-4"
-    style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}
-  >
-    <ArrowLeft className="w-5 h-5" />
-    <span>Back</span>
-  </Link>
+  <BackLink to="/" className="mb-4" />
 
   {/* Heading */}
   <div className="text-center px-2 mb-4">
@@ -1675,10 +1669,7 @@ const Signup = () => {
          <div className="hidden lg:flex min-h-screen items-center justify-center px-5 sm:px-8 md:px-10">
           <div className="w-full max-w-[520px]">
             <div className="mb-6">
-              <Link to="/" className="inline-flex items-center gap-2 text-white/70 hover:text-white">
-                <ArrowLeft className="h-4 w-4" />
-                Back
-              </Link>
+              <BackLink to="/" />
             </div>
 
              <h1 className="text-[36px] leading-[1] font-normal text-[#FFFFFF]">
