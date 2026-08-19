@@ -658,6 +658,7 @@ const BankAccount = require("../models/BankAccount");
 const { requireAuth, blockIfSuspended } = require("../utils/auth");
 const { logActivity } = require("../utils/activityLogger");
 const { runPromptMediaValidation } = require("../utils/promptMediaValidation");
+const { applyPublicPromptFilter } = require("../utils/promptVisibility");
 const crypto = require("crypto");
 const sharp = require("sharp");
 
@@ -1149,11 +1150,19 @@ router.get("/user/:userId", async (req, res) => {
       // Looked up directly (not derived from prompts[0]) so a creator with
       // zero uploads still shows their name/avatar on their profile page.
       User.findById(userId).select("name avatarUrl").lean(),
-      Prompt.find({
-        userId,
-        deleted: { $ne: true },
-        flagged: { $ne: true },
-      })
+      /* Same visibility rules as the marketplace feed. It checked deleted and
+         flagged but not mediaValidation, so a listing the AI check had flagged
+         stayed on its seller's public profile — another way to reach and buy it
+         without ever passing the review queue.
+
+         -promptText because this is the paid content, and this endpoint is
+         public and unauthenticated: it was handing every visitor the full text
+         of every listing on the profile they were looking at. The profile page
+         already throws it away on the client for anyone but the owner (see the
+         note in ProfilePage.tsx), which stopped it being displayed — not sent.
+         Owners read their own uploads through GET /my, which still carries it. */
+      Prompt.find(applyPublicPromptFilter({ userId }))
+        .select("-promptText")
         .populate("categories", "name")
         .populate("userId", "name") // REQUIRED for uploader info
         .sort({ createdAt: -1 }),
@@ -1342,12 +1351,15 @@ router.get("/others", async (req, res) => {
   try {
     const { type, category } = req.query;
 
-    // ✅ Base filter — show only active public prompts
+    // ✅ Base filter — show only active public prompts. deleted / flagged /
+    // mediaValidation are all applied together further down by
+    // applyPublicPromptFilter, once this route's own conditions are in place.
+    //
     // flagged:true = confirmed policy violation via a user report (see
     // POST /api/prompt-reports/:id/flag) — hidden immediately, distinct from
     // deleted (suspend/seller-delete) so admins can still see it was flagged
     // vs fully removed.
-    let filter = { deleted: { $ne: true }, flagged: { $ne: true } };
+    let filter = {};
 
     // If logged in (token optional), exclude user's own prompts
     if (req.user && req.user._id) {
@@ -1416,17 +1428,15 @@ router.get("/others", async (req, res) => {
     // mediaValidation.status persisted at all, pre-dating this feature) are
     // grandfathered in.
     //
+    // The rule itself now lives in utils/promptVisibility.js, because this was
+    // the ONLY route that applied it — the share link, the seller profile feeds
+    // and every money route each had their own shorter version, and a prompt
+    // flagged here was still reachable and buyable through all of them.
+    //
     // Seller payout verification is deliberately NOT a filter any more — see
     // below. It used to hide the listing outright, so a seller mid-onboarding
     // uploaded a prompt and watched it vanish with no explanation.
-    filter.$and = [
-      {
-        $or: [
-          { "mediaValidation.status": { $exists: false } },
-          { "mediaValidation.status": { $in: ["approved", "admin_approved"] } },
-        ],
-      },
-    ];
+    applyPublicPromptFilter(filter);
 
     /* subCategories is populated, not just matched on. The marketplace filters
        the fetched list again on the client (its rails and search run over one
@@ -1490,8 +1500,15 @@ router.get("/others", async (req, res) => {
    Someone opening a link you sent them may not be logged in, and the prompt
    may not be in whatever filtered list the marketplace happened to load. This
    resolves it directly. It applies the same visibility rules as /others
-   (deleted / flagged / suspended sellers stay hidden) and never returns
-   promptText — that's the paid content and is served by the purchase flow.
+   (deleted / flagged / failed media validation / suspended sellers stay hidden)
+   and never returns promptText — that's the paid content and is served by the
+   purchase flow.
+
+   "The same rules as /others" is now literally true. It used to check only
+   `deleted` and `flagged`, and skipped mediaValidation entirely — so a listing
+   the AI check had flagged (score below 60) was gone from the marketplace and
+   still opened, in full, for anyone the seller sent the link to. Sharing the
+   link was a way around the review queue.
    ===================================================================== */
 router.get("/public/:id", async (req, res) => {
   try {
@@ -1501,11 +1518,7 @@ router.get("/public/:id", async (req, res) => {
       return res.status(400).json({ success: false, error: "invalid_prompt_id" });
     }
 
-    const prompt = await Prompt.findOne({
-      _id: id,
-      deleted: { $ne: true },
-      flagged: { $ne: true },
-    })
+    const prompt = await Prompt.findOne(applyPublicPromptFilter({ _id: id }))
       .select("-promptText")
       .populate("categories", "name")
       // Same shape the feed sends, so a prompt opened from a shared link
@@ -1600,7 +1613,16 @@ router.get("/by-seller/:sellerId", async (req, res) => {
       return res.json({ success: true, prompts: [], sellerSuspended: true });
     }
 
-    const prompts = await Prompt.find({ userId: sellerId })
+    /* Was an unfiltered find(): it returned deleted listings, flagged ones, and
+       ones the media check had rejected — the seller's whole raw catalogue —
+       to any caller, on a route with no auth. With the visibility rules applied
+       it answers the question the callers actually ask ("what is this seller
+       selling?"), which is what the admin and buyer seller-profile panels show.
+
+       -promptText for the same reason as /user/:userId above: the paid content
+       was going out with every listing here too. */
+    const prompts = await Prompt.find(applyPublicPromptFilter({ userId: sellerId }))
+      .select("-promptText")
       .populate(
         "userId",
         "name email avatarUrl location sellerStatus isVerified"

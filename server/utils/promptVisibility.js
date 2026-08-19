@@ -1,0 +1,115 @@
+/**
+ * One definition of "this listing is live", for every route that shows or sells
+ * a prompt.
+ *
+ * It used to exist only inside GET /api/prompt/others — the marketplace feed —
+ * as an inline filter. Every other way of reaching a prompt had its own,
+ * shorter idea of the rules, and each gap was reachable:
+ *
+ *   - GET /public/:id (the share link) checked `deleted` and `flagged` but not
+ *     mediaValidation, so a listing the AI check had FLAGGED was hidden from the
+ *     marketplace and still opened perfectly from a link the seller sent by hand.
+ *   - POST /purchase/create-order checked neither, so that link could be paid
+ *     for. Nothing between "seller sends link" and "buyer is charged" ever asked
+ *     whether the listing was allowed to be sold.
+ *   - POST /cart/add checked `deleted` only; /cart/checkout re-checked nothing,
+ *     so anything already sitting in a cart survived being flagged afterwards.
+ *   - GET /user/:userId and /by-seller/:sellerId listed flagged-by-validation
+ *     prompts on the seller's public profile.
+ *
+ * So the rules live here once and the routes call them. A new endpoint that
+ * forgets to is still a bug — but it is now one line to fix rather than four
+ * different half-copies to find.
+ *
+ * WHAT COUNTS AS LIVE
+ *   deleted            — removed by the seller or an admin.
+ *   flagged            — a confirmed policy violation from a user report
+ *                        (POST /api/prompt-reports/:id/flag).
+ *   mediaValidation    — the AI prompt/media match check. Only "approved" (the
+ *                        pipeline cleared it) and "admin_approved" (a human did)
+ *                        are sellable. "flagged", "pending_review", "pending",
+ *                        "admin_rejected" and "edit_requested" are not.
+ *
+ * Prompts uploaded before the validation pipeline existed carry no
+ * mediaValidation.status at all and are grandfathered in — same as the feed has
+ * always done, otherwise this would retroactively delist the whole back
+ * catalogue.
+ *
+ * NOT included: seller payout verification. That one deliberately labels rather
+ * than hides ("coming soon"), and the money routes reject it separately with
+ * `seller_not_verified`.
+ */
+
+/** The only two mediaValidation statuses a buyer may reach. */
+const CLEARED_VALIDATION_STATUSES = ["approved", "admin_approved"];
+
+/* Legacy rows have no status persisted, so "cleared" has to include "absent"
+   rather than being a plain $in. */
+const VALIDATION_CLEARED = {
+  $or: [
+    { "mediaValidation.status": { $exists: false } },
+    { "mediaValidation.status": { $in: CLEARED_VALIDATION_STATUSES } },
+  ],
+};
+
+/**
+ * Adds the visibility rules to a Mongo filter, in place, and returns it.
+ *
+ * Pushes onto `$and` instead of assigning it, so a caller that already has its
+ * own `$and` (or a `$or` of its own, for a category filter) keeps it.
+ */
+function applyPublicPromptFilter(filter = {}) {
+  filter.deleted = { $ne: true };
+  filter.flagged = { $ne: true };
+  if (!Array.isArray(filter.$and)) filter.$and = [];
+  filter.$and.push(VALIDATION_CLEARED);
+  return filter;
+}
+
+/**
+ * The same rules against one already-loaded document.
+ *
+ * Returns null when the listing is live, otherwise `{ error, message }` — the
+ * shape the routes send straight back, and the message the buyer actually
+ * reads. Callers that must not confirm a hidden listing even exists (the share
+ * link) translate any non-null result into a flat 404 instead.
+ *
+ * Works on lean objects and on hydrated documents alike.
+ */
+function promptUnavailableReason(prompt) {
+  if (!prompt || prompt.deleted) {
+    return {
+      error: "prompt_not_found",
+      message: "This product is no longer available.",
+    };
+  }
+
+  if (prompt.flagged) {
+    return {
+      error: "prompt_unavailable",
+      message: "This product has been removed from the marketplace.",
+    };
+  }
+
+  const status = prompt.mediaValidation?.status;
+  if (status && !CLEARED_VALIDATION_STATUSES.includes(status)) {
+    return {
+      error: "prompt_under_review",
+      message:
+        "This product is still being reviewed and can't be bought yet. Please check back later.",
+    };
+  }
+
+  return null;
+}
+
+/** Convenience for the read paths: true when the listing may be shown. */
+const isPromptPubliclyVisible = (prompt) => promptUnavailableReason(prompt) === null;
+
+module.exports = {
+  CLEARED_VALIDATION_STATUSES,
+  VALIDATION_CLEARED,
+  applyPublicPromptFilter,
+  promptUnavailableReason,
+  isPromptPubliclyVisible,
+};

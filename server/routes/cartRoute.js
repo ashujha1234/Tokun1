@@ -16,6 +16,7 @@ const user=require('../models/User');
 const Prompt=require('../models/Prompt');
 const  razorpay  = require("../utils/razorpay");
 const { splitPromptSale } = require("../utils/commission");
+const { promptUnavailableReason } = require("../utils/promptVisibility");
 const ledger = require("../utils/ledger");
 const {
   getSellerLinkedAccountId,
@@ -49,9 +50,14 @@ router.post("/add/:promptId", requireAuth, async (req, res) => {
       return res.status(404).json({ success: false, error: "prompt_not_found" });
     }
 
-    // block if prompt is deleted
-    if (prompt.deleted) {
-      return res.status(400).json({ success: false, error: "prompt_deleted" });
+    /* Deleted, flagged by a report, or not cleared by the media check — the
+       same gate the marketplace feed applies, and the same one Buy Now applies.
+       It used to test `deleted` alone, so a listing that had been flagged (or
+       had failed prompt/media validation and was sitting in the review queue)
+       could be added from a shared link and then paid for through checkout. */
+    const blocked = promptUnavailableReason(prompt);
+    if (blocked) {
+      return res.status(400).json({ success: false, ...blocked });
     }
 
     // block if one-time and already sold
@@ -134,8 +140,15 @@ router.get("/", requireAuth, async (req, res) => {
       });
     }
 
-    // ✅ filter out deleted prompts
-    cart.items = cart.items.filter((item) => item.prompt && !item.prompt.deleted);
+    /* ✅ filter out anything that is no longer sellable — deleted, flagged by a
+       report, or pulled back into the media-validation queue. Was `deleted`
+       only, so a flagged listing sat in the cart looking perfectly normal and
+       only failed at checkout (and before that gate existed, didn't fail at
+       all). Dropped from the saved cart rather than hidden, same as the owned
+       items below, so it doesn't come back on the next load. */
+    cart.items = cart.items.filter(
+      (item) => item.prompt && !promptUnavailableReason(item.prompt)
+    );
 
     // …and anything already owned. A prompt bought outside the cart (Buy Now,
     // or a shared/org purchase) used to stay in the cart forever and get
@@ -251,6 +264,23 @@ router.post("/checkout", requireAuth, blockIfSuspended, blockOrgTeamMemberPurcha
 
     for (let item of payableItems) {
       const p = item.prompt;
+
+      /* Re-checked here, not just at /add. A cart is not a snapshot — it can sit
+         for days, and a listing can be flagged, deleted, or fail its media check
+         at any point after it went in. Without this, anything already in a cart
+         was permanently past the gate: the one place that checked was the moment
+         it was added.
+
+         Checked BEFORE the `free` shortcut below, because a free product still
+         gets delivered by checkout — "no payment" is not "no gate". */
+      const blocked = promptUnavailableReason(p);
+      if (blocked) {
+        return res.status(400).json({
+          success: false,
+          error: `${blocked.error}: ${p.title}`,
+          message: `"${p.title}" isn't available any more. Remove it from your cart to check out.`,
+        });
+      }
 
       // skip free prompts → they don't require payment
       if (p.free) {

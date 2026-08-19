@@ -391,6 +391,7 @@ const PlatformWallet = require("../models/PlatformWallet");
 const BankAccount = require("../models/BankAccount");
 const { requireAuth, blockIfSuspended, blockOrgTeamMemberPurchase } = require("../utils/auth");
 const { splitPromptSale } = require("../utils/commission");
+const { promptUnavailableReason } = require("../utils/promptVisibility");
 const ledger = require("../utils/ledger");
 const { requireKycVerified } = require("../utils/requireKycVerified");
 const { logActivity } = require("../utils/activityLogger");
@@ -463,6 +464,26 @@ router.post("/create-order/:promptId", requireAuth, blockIfSuspended, blockOrgTe
         success: false,
         error: "prompt_not_found",
       });
+    }
+
+    /* Is this listing allowed to be sold at all?
+
+       Nothing here asked that before. This route looked up the prompt by id and
+       went straight to the seller checks, so `deleted`, `flagged` and — the one
+       that mattered — mediaValidation were never consulted on the money path.
+       A seller whose upload had been flagged by the media check could send the
+       product link to someone directly and be paid for it, while the same
+       listing was hidden from the marketplace and sitting in the admin review
+       queue. The hidden listing was hidden from browsing only, not from buying.
+
+       404 for a deleted/missing product (nothing to say about it), 403 for one
+       that exists but isn't sellable, with the reason — the client shows
+       `message` verbatim. */
+    const blocked = promptUnavailableReason(prompt);
+    if (blocked) {
+      return res
+        .status(blocked.error === "prompt_not_found" ? 404 : 403)
+        .json({ success: false, ...blocked });
     }
 
     if (prompt.exclusive && prompt.sold) {
