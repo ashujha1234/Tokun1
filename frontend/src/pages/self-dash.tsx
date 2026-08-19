@@ -1216,6 +1216,17 @@ const VALID_DASH_TABS = [
   "subscription",
 ] as const;
 type DashTab = (typeof VALID_DASH_TABS)[number];
+
+/* Hidden for now, on request. Deliberately a list rather than deleted markup:
+   RequestsContent and ServiceBookingsContent are untouched and still wired up
+   below, so bringing either tab back is removing its name from here.
+
+   readTabParam rejects these too. Without that, a bookmark or an older link
+   carrying ?tab=serviceBookings would open a tab with no button in the sidebar
+   to leave it by. */
+const HIDDEN_DASH_TABS: readonly string[] = ["requests", "serviceBookings"];
+const isHiddenTab = (tab: string) => HIDDEN_DASH_TABS.includes(tab);
+
 type PromptsTab = "purchased" | "uploaded";
 type PlanKey = "Free" | "Pro" | "Enterprise";
 
@@ -2244,7 +2255,9 @@ const SelfDash = () => {
      page sends someone straight after paying — silently landed on the
      dashboard tab instead. Validated against the real tab list now. */
   const readTabParam = (raw: string | null): DashTab | null =>
-    raw && (VALID_DASH_TABS as readonly string[]).includes(raw) ? (raw as DashTab) : null;
+    raw && (VALID_DASH_TABS as readonly string[]).includes(raw) && !isHiddenTab(raw)
+      ? (raw as DashTab)
+      : null;
 
   const [activeTab, setActiveTab] = useState<DashTab>(
     () => readTabParam(initialParams.get("tab")) ?? "dashboard"
@@ -4490,8 +4503,15 @@ const RequestCard = ({ item }: { item: any }) => {
                 </h2>
                 <nav className="no-scrollbar mt-4 flex gap-2 overflow-x-auto lg:mt-10 lg:block lg:space-y-3">
                   <NavButton id="dashboard"       label="DASHBOARD"       icon="/icons/self.svg" />
-                  <NavButton id="requests"        label="REQUESTS"        icon="/icons/req.svg"  />
-                  <NavButton id="serviceBookings" label="SERVICE BOOKINGS" icon="/icons/service.svg" />
+                  {/* REQUESTS and SERVICE BOOKINGS are hidden for now — see
+                      HIDDEN_DASH_TABS. Left in place, guarded, rather than
+                      deleted, so restoring them is a one-line change there. */}
+                  {!isHiddenTab("requests") && (
+                    <NavButton id="requests"        label="REQUESTS"        icon="/icons/req.svg"  />
+                  )}
+                  {!isHiddenTab("serviceBookings") && (
+                    <NavButton id="serviceBookings" label="SERVICE BOOKINGS" icon="/icons/service.svg" />
+                  )}
                   <NavButton id="prompts"         label="MY PRODUCTS"      icon="/icons/self.svg" />
                   <NavButton id="subscription"    label="MY SUBSCRIPTION" icon="/icons/req.svg"  />
                 </nav>
