@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, BadgeCheck, ChevronLeft, Loader2, X } from "lucide-react";
 import {
+  ABOUT_MAX,
+  ABOUT_MIN,
+  AboutCounter,
+  CityPicker,
   CountryPicker,
   LanguagesEditor,
+  ProfessionalTitlePicker,
   RepeatableRows,
   SkillsPicker,
   SpecializationsPicker,
@@ -54,8 +59,6 @@ import {
 
 const GRADIENT = "linear-gradient(270deg,#FF14EF 0%,#1A73E8 100%)";
 const ACCENT = "#1A73E8";
-const ABOUT_MIN = 80;
-const ABOUT_MAX = 3000;
 
 type StepId = "basics" | "skills" | "specializations" | "credentials" | "review";
 
@@ -140,7 +143,15 @@ const stepErrors = (step: StepId, f: FormState): string[] => {
         errs.push(`Write at least ${ABOUT_MIN} characters about yourself.`);
       }
       if (!f.country.trim()) errs.push("Add the country you work from.");
-      if (!f.languages.length) errs.push("Add at least one language.");
+      /* Counted on rows that actually NAME a language, not on row count.
+         "Add a language" appends `{ name: "", level: "conversational" }`, so
+         `f.languages.length` went to 1 the moment the button was pressed and
+         this check passed with nothing selected. Continue then went through —
+         and draftForStep filters the blank row out, so the profile saved zero
+         languages behind a step that had called itself complete. */
+      if (!f.languages.some((l) => l.name.trim())) {
+        errs.push("Add at least one language.");
+      }
       return errs;
     }
     case "skills":
@@ -411,6 +422,35 @@ export default function BecomeFreelancerWizard({
     setPhase("live");
   };
 
+  /* The page behind must not scroll while this is over it.
+
+     Same reason and same shape as the lock in SellerLinkedAccountForm: this is a
+     hand-rolled `fixed inset-0` overlay, not a Radix Dialog, so it gets none of
+     Radix's scroll locking. A wheel gesture anywhere outside the card scrolled
+     the profile page underneath — and this wizard is long enough that the
+     pointer is often over the backdrop, not the card.
+
+     The scrollbar's width is handed back as padding: taking the bar away without
+     it shifts everything underneath by ~15px, visible as a jump on open and
+     again on close. Restores the previous values rather than hardcoding "", so a
+     lock some other dialog already set isn't cleared by this one unmounting. */
+  useEffect(() => {
+    if (!open) return;
+
+    const { body, documentElement: html } = document;
+    const previousOverflow = body.style.overflow;
+    const previousPadding = body.style.paddingRight;
+    const scrollbar = window.innerWidth - html.clientWidth;
+
+    body.style.overflow = "hidden";
+    if (scrollbar > 0) body.style.paddingRight = `${scrollbar}px`;
+
+    return () => {
+      body.style.overflow = previousOverflow;
+      body.style.paddingRight = previousPadding;
+    };
+  }, [open]);
+
   if (!open) return null;
 
   const selectedSpecs = form.specializationIds
@@ -426,7 +466,6 @@ export default function BecomeFreelancerWizard({
 
   const renderBasicsStep = () => {
     const aboutLength = form.about.trim().length;
-    const aboutShort = aboutLength > 0 && aboutLength < ABOUT_MIN;
 
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -439,12 +478,10 @@ export default function BecomeFreelancerWizard({
           />
         </Field>
 
-        <Field label="Professional title *" hint="One line. This sits under your name.">
-          <input
-            className={inputClass}
+        <Field label="Professional title *">
+          <ProfessionalTitlePicker
             value={form.professionalTitle}
-            onChange={(e) => patch({ professionalTitle: e.target.value })}
-            placeholder="Full-stack developer"
+            onChange={(professionalTitle) => patch({ professionalTitle })}
           />
         </Field>
 
@@ -456,28 +493,29 @@ export default function BecomeFreelancerWizard({
             onChange={(e) => patch({ about: e.target.value.slice(0, ABOUT_MAX) })}
             placeholder="What you build, who you build it for, and what a buyer gets when they hire you."
           />
-          <div className="flex items-center justify-between mt-1">
-            <p className={`text-[11px] ${aboutShort ? "text-amber-400/80" : "text-white/35"}`}>
-              {aboutShort
-                ? `${ABOUT_MIN - aboutLength} more characters needed`
-                : `At least ${ABOUT_MIN} characters — buyers skim this first.`}
-            </p>
-            <p className="text-[11px] text-white/30">
-              {aboutLength}/{ABOUT_MAX}
-            </p>
-          </div>
+          {/* One line, and it says what to do rather than posting a score —
+              see AboutCounter. */}
+          <AboutCounter length={aboutLength} />
         </div>
 
         <Field label="Country *">
-          <CountryPicker value={form.country} onChange={(country) => patch({ country })} />
+          {/* Changing the country clears the city. That single line is what
+              actually stops "India, New York" from existing: without it a city
+              typed under one country survives a switch to another, and nothing
+              downstream ever looks at the pair again. */}
+          <CountryPicker
+            value={form.country}
+            onChange={(country) =>
+              patch(country === form.country ? { country } : { country, city: "" })
+            }
+          />
         </Field>
 
         <Field label="City">
-          <input
-            className={inputClass}
+          <CityPicker
+            country={form.country}
             value={form.city}
-            onChange={(e) => patch({ city: e.target.value })}
-            placeholder="Bengaluru"
+            onChange={(city) => patch({ city })}
           />
         </Field>
 
@@ -875,17 +913,27 @@ export default function BecomeFreelancerWizard({
 
                 {stepBody[step]()}
 
-                {showErrors && currentErrors.length > 0 && (
+                {/* Shown whenever the step is short of something, not only after
+                    a rejected click. Continue is disabled now, so there is no
+                    click left to trigger it with — and a greyed button with no
+                    reason beside it is the thing that reads as broken. Amber
+                    while they're still filling it in, red once they've tried. */}
+                {currentErrors.length > 0 && (
                   <div
                     className="mt-4 rounded-lg border px-3 py-2.5"
                     style={{
-                      borderColor: "rgba(239,68,68,0.35)",
-                      background: "rgba(239,68,68,0.08)",
+                      borderColor: showErrors ? "rgba(239,68,68,0.35)" : "rgba(250,188,78,0.3)",
+                      background: showErrors ? "rgba(239,68,68,0.08)" : "rgba(250,188,78,0.07)",
                     }}
                   >
                     <ul className="space-y-1">
                       {currentErrors.map((err) => (
-                        <li key={err} className="text-red-300 text-xs flex gap-1.5">
+                        <li
+                          key={err}
+                          className={`text-xs flex gap-1.5 ${
+                            showErrors ? "text-red-300" : "text-[#FABC4E]"
+                          }`}
+                        >
                           <span aria-hidden>•</span>
                           {err}
                         </li>
@@ -942,12 +990,16 @@ export default function BecomeFreelancerWizard({
                       {activating ? "Creating…" : "Create my profile"}
                     </button>
                   ) : (
+                    /* Disabled while the step is incomplete, rather than
+                       clickable-and-refused. The list above always says what's
+                       missing, so this never greys out silently. */
                     <button
                       type="button"
                       onClick={goNext}
-                      disabled={saving}
+                      disabled={saving || blocking}
+                      title={blocking ? currentErrors.join(" ") : undefined}
                       className={primaryBtn}
-                      style={{ background: blocking && showErrors ? "#333335" : GRADIENT }}
+                      style={{ background: blocking ? "#333335" : GRADIENT }}
                     >
                       {saving
                         ? "Saving…"

@@ -1,5 +1,6 @@
 /**
- * Country and language lists for the freelancer profile pickers.
+ * Country, language and professional-title lists for the freelancer profile
+ * pickers.
  *
  * These live here rather than inside a component because three places need them
  * (the onboarding wizard, the profile section editor, and anything added later),
@@ -77,4 +78,87 @@ export const LANGUAGES: string[] = [
   "Persian", "Polish", "Portuguese", "Romanian", "Russian", "Serbian",
   "Sinhala", "Slovak", "Spanish", "Swahili", "Swedish", "Thai", "Turkish",
   "Ukrainian", "Vietnamese", "Zulu",
+];
+
+/**
+ * Professional titles offered under the "Professional title" field.
+ *
+ * Suggestions, not a whitelist — the field stays a plain text input and stores
+ * whatever is typed. The list exists because an empty box with a placeholder
+ * made everyone invent their own wording ("dev", "Developer (full stack)",
+ * "FULLSTACK DEV"), which reads as noise on a profile card and matches nothing
+ * when buyers search.
+ *
+ * Ordered by what this marketplace actually sells — AI, design, content, video
+ * — before the general software and business roles, because the picker shows
+ * this order before anything is typed.
+ */
+export const PROFESSIONAL_TITLES: string[] = [
+  // AI / prompt work
+  "Prompt Engineer", "AI Engineer", "AI Consultant", "AI Automation Specialist",
+  "Machine Learning Engineer", "Deep Learning Engineer", "NLP Engineer",
+  "Computer Vision Engineer", "MLOps Engineer", "AI Product Manager",
+  "AI Researcher", "Generative AI Specialist", "LLM Application Developer",
+  "Chatbot Developer", "AI Art Director", "AI Video Creator",
+
+  // Design
+  "Graphic Designer", "Logo Designer", "Brand Identity Designer",
+  "Visual Designer", "UI Designer", "UX Designer", "UI/UX Designer",
+  "Product Designer", "Web Designer", "Illustrator", "3D Artist",
+  "3D Modeler", "Motion Designer", "Packaging Designer", "Print Designer",
+  "Presentation Designer", "Interior Designer", "Fashion Designer",
+  "Apparel & T-Shirt Designer", "Character Designer", "Concept Artist",
+  "Game Artist", "NFT Artist", "Digital Artist", "Design Lead",
+
+  // Content, writing, marketing
+  "Content Writer", "Copywriter", "Technical Writer", "SEO Specialist",
+  "SEO Content Strategist", "Blog Writer", "Ghostwriter", "Scriptwriter",
+  "Editor", "Proofreader", "Translator", "Transcriptionist",
+  "Social Media Manager", "Content Creator", "Digital Marketer",
+  "Performance Marketer", "Email Marketing Specialist", "Growth Marketer",
+  "Brand Strategist", "Marketing Consultant", "PR Specialist",
+  "Community Manager", "Influencer Marketing Manager",
+
+  // Video / audio / photo
+  "Video Editor", "Videographer", "Motion Graphics Artist",
+  "Animator", "2D Animator", "3D Animator", "VFX Artist", "Colorist",
+  "Photographer", "Photo Retoucher", "Sound Designer", "Audio Engineer",
+  "Music Producer", "Voice-over Artist", "Podcast Producer",
+
+  // Engineering
+  "Software Engineer", "Full-stack Developer", "Frontend Developer",
+  "Backend Developer", "Web Developer", "Mobile App Developer",
+  "iOS Developer", "Android Developer", "React Developer",
+  "React Native Developer", "Node.js Developer", "Python Developer",
+  "Java Developer", "PHP Developer", "WordPress Developer",
+  "Shopify Developer", "Webflow Developer", "No-code Developer",
+  "Game Developer", "Unity Developer", "Blockchain Developer",
+  "Smart Contract Developer", "DevOps Engineer", "Cloud Architect",
+  "Site Reliability Engineer", "Database Administrator",
+  "Software Architect", "Embedded Systems Engineer", "QA Engineer",
+  "Automation Test Engineer", "Security Engineer",
+  "Cybersecurity Consultant", "Systems Administrator", "IT Support Specialist",
+  "Technical Lead", "Engineering Manager", "CTO",
+
+  // Data
+  "Data Analyst", "Data Scientist", "Data Engineer",
+  "Business Intelligence Analyst", "Analytics Consultant",
+  "Research Analyst", "Statistician",
+
+  // Product, business, operations
+  "Product Manager", "Project Manager", "Program Manager", "Scrum Master",
+  "Business Analyst", "Management Consultant", "Startup Advisor",
+  "Operations Manager", "Virtual Assistant", "Executive Assistant",
+  "Customer Support Specialist", "Sales Specialist",
+  "Business Development Manager", "Recruiter", "HR Consultant",
+  "Accountant", "Bookkeeper", "Financial Analyst", "Tax Consultant",
+  "Legal Consultant", "Contract Specialist",
+
+  // Teaching and other
+  "Educator", "Online Tutor", "Instructional Designer",
+  "Course Creator", "Career Coach", "Business Coach",
+  "Architect", "Civil Engineer", "Mechanical Engineer",
+  "Electrical Engineer", "CAD Designer", "Healthcare Consultant",
+  "Nutritionist", "Fitness Coach", "Travel Consultant",
+  "Event Planner", "Real Estate Consultant", "Freelancer",
 ];

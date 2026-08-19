@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Search, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronDown, Search } from "lucide-react";
 
 /*
  * A compact combobox: closed it's just a field, open it drops a searchable,
@@ -33,6 +33,13 @@ export interface SearchableSelectProps {
   ariaLabel?: string;
 }
 
+/** Height of the panel's search row, excluded from the list's own budget. */
+const SEARCH_ROW = 46;
+/** Never taller than this, however much room there is. */
+const LIST_MAX = 220;
+/** Never shorter than this — below ~3 rows the list stops being usable. */
+const MIN_LIST = 132;
+
 const FIELD_CLASS =
   "w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2.5 text-sm text-white placeholder:text-white/30 outline-none focus:border-[#1A73E8] transition-colors";
 
@@ -54,6 +61,38 @@ export default function SearchableSelect({
   const wrapRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  /* How the panel is placed: below the field, or above it, and how tall the list
+     may be.
+
+     It always opened downward at a fixed height — search box plus a 220px list,
+     roughly 270px. On the last field of a dialog step (Languages, which sits at
+     the bottom of the onboarding form) that put the list far below the fold: you
+     had to scroll the dialog to reach the option you were picking, and the panel
+     ran past the end of the card.
+
+     Now it measures the room on each side of the field and takes the better one,
+     capping the list to what actually fits. */
+  const [placement, setPlacement] = useState<{ dropUp: boolean; listMax: number }>({
+    dropUp: false,
+    listMax: LIST_MAX,
+  });
+
+  const measure = useCallback(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    // Gap left for the dialog's own padding, so the panel never touches the edge.
+    const below = window.innerHeight - r.bottom - 16;
+    const above = r.top - 16;
+
+    // Flips only when the other side is genuinely roomier — not on a few pixels,
+    // which would make the panel jump sides as the page scrolls.
+    const dropUp = below < SEARCH_ROW + MIN_LIST && above > below;
+    const room = (dropUp ? above : below) - SEARCH_ROW;
+
+    setPlacement({ dropUp, listMax: Math.max(MIN_LIST, Math.min(LIST_MAX, room)) });
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     // Focus lands in the search box, not the trigger, so opening and typing is
@@ -61,7 +100,17 @@ export default function SearchableSelect({
     searchRef.current?.focus();
     setQuery("");
     setHighlight(0);
-  }, [open]);
+    measure();
+
+    /* Capture phase: the element that scrolls is the dialog body, and a scroll
+       event on it does not bubble to window. */
+    window.addEventListener("scroll", measure, true);
+    window.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("scroll", measure, true);
+      window.removeEventListener("resize", measure);
+    };
+  }, [open, measure]);
 
   useEffect(() => {
     const onClickOutside = (e: MouseEvent) => {
@@ -135,31 +184,22 @@ export default function SearchableSelect({
         <span className={value ? "text-white truncate" : "text-white/30 truncate"}>
           {value || placeholder}
         </span>
-        <span className="flex items-center gap-1 shrink-0">
-          {value && !disabled && (
-            <span
-              role="button"
-              tabIndex={-1}
-              aria-label="Clear"
-              onClick={(e) => {
-                // Stops the trigger's own onClick from reopening the panel.
-                e.stopPropagation();
-                onChange("");
-              }}
-              className="text-white/35 hover:text-white/80 transition-colors"
-            >
-              <X className="w-3.5 h-3.5" />
-            </span>
-          )}
-          <ChevronDown
-            className={`w-3.5 h-3.5 text-white/40 transition-transform ${open ? "rotate-180" : ""}`}
-          />
-        </span>
+        {/* Chevron alone. There was a ✕ beside it that emptied the field, and it
+            was the wrong control on every field that uses this: country and city
+            are required-ish single choices you replace rather than blank, and it
+            sat close enough to the chevron that reaching for the list cleared the
+            answer instead. Replacing a value is what the list is for — open it
+            and pick another. */}
+        <ChevronDown
+          className={`w-3.5 h-3.5 shrink-0 text-white/40 transition-transform ${open ? "rotate-180" : ""}`}
+        />
       </button>
 
       {open && (
         <div
-          className="absolute z-30 left-0 right-0 mt-1.5 rounded-xl border border-white/10 overflow-hidden shadow-2xl"
+          className={`absolute z-30 left-0 right-0 rounded-xl border border-white/10 overflow-hidden shadow-2xl ${
+            placement.dropUp ? "bottom-full mb-1.5" : "mt-1.5"
+          }`}
           style={{ background: "#0D1017" }}
         >
           <div className="relative border-b border-white/8">
@@ -177,8 +217,9 @@ export default function SearchableSelect({
             />
           </div>
 
-          {/* Capped so a 200-item list can never push the page around. */}
-          <div style={{ maxHeight: 220, overflowY: "auto" }} role="listbox">
+          {/* Capped to the room measured beside the field, so a 200-item list can
+              neither push the page around nor run off the end of a dialog. */}
+          <div style={{ maxHeight: placement.listMax, overflowY: "auto" }} role="listbox">
             {hint && !query && (
               <p className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wide text-white/30">
                 {hint}

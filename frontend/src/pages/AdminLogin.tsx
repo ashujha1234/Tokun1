@@ -404,6 +404,11 @@ const AdminLogin = () => {
         setError(data?.message || "Couldn't send another code.");
         return;
       }
+      /* The code in the box is dead the moment a new one is issued, so it is
+         cleared rather than left looking like a filled-in answer. Only on
+         success — a refused resend means the earlier code is still the live one,
+         and wiping it would be destroying a valid answer. */
+      setOtp("");
       setResendIn(60);
     } catch {
       setError("Couldn't send another code.");

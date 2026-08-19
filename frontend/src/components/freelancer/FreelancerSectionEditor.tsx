@@ -12,8 +12,12 @@ import {
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import {
+  ABOUT_MAX,
+  AboutCounter,
+  CityPicker,
   CountryPicker,
   LanguagesEditor,
+  ProfessionalTitlePicker,
   RepeatableRows,
   SkillsPicker,
   SpecializationsPicker,
@@ -130,8 +134,6 @@ const SECTION_META: Record<EditableSection, { title: string; subtitle: string }>
 };
 
 const GRADIENT = "linear-gradient(270deg,#FF14EF 0%,#1A73E8 100%)";
-const ABOUT_MIN = 80;
-const ABOUT_MAX = 3000;
 
 const formatBytes = (bytes?: number | null) => {
   if (!bytes) return "";
@@ -609,24 +611,29 @@ export default function FreelancerSectionEditor({
             </div>
             <div>
               <label className={labelClass}>Professional title *</label>
-              <input
-                className={inputClass}
+              <ProfessionalTitlePicker
                 value={draft.professionalTitle}
-                onChange={(e) => patch({ professionalTitle: e.target.value })}
-                placeholder="Full-stack developer"
+                onChange={(professionalTitle) => patch({ professionalTitle })}
               />
             </div>
             <div>
               <label className={labelClass}>Country *</label>
-              <CountryPicker value={draft.country} onChange={(country) => patch({ country })} />
+              {/* Clears the city on a country change, same as the onboarding
+                  wizard — this editor writes the same two fields, and the last
+                  time logic here diverged from there the copies drifted. */}
+              <CountryPicker
+                value={draft.country}
+                onChange={(country) =>
+                  patch(country === draft.country ? { country } : { country, city: "" })
+                }
+              />
             </div>
             <div>
               <label className={labelClass}>City</label>
-              <input
-                className={inputClass}
+              <CityPicker
+                country={draft.country}
                 value={draft.city}
-                onChange={(e) => patch({ city: e.target.value })}
-                placeholder="Bengaluru"
+                onChange={(city) => patch({ city })}
               />
             </div>
             <div className="sm:col-span-2">
@@ -648,22 +655,10 @@ export default function FreelancerSectionEditor({
               onChange={(e) => patch({ about: e.target.value.slice(0, ABOUT_MAX) })}
               placeholder="What you build, who you build it for, and what a buyer gets when they hire you."
             />
-            <div className="flex items-center justify-between mt-1.5">
-              <p
-                className={`text-[11px] ${
-                  aboutLength > 0 && aboutLength < ABOUT_MIN
-                    ? "text-amber-400/80"
-                    : "text-white/35"
-                }`}
-              >
-                {aboutLength > 0 && aboutLength < ABOUT_MIN
-                  ? `${ABOUT_MIN - aboutLength} more characters needed`
-                  : `At least ${ABOUT_MIN} characters.`}
-              </p>
-              <p className="text-[11px] text-white/30">
-                {aboutLength}/{ABOUT_MAX}
-              </p>
-            </div>
+            {/* The same counter component as the onboarding wizard's About
+                field — both screens edit this one field, and a hint that differs
+                between them is how the two copies start drifting. */}
+            <AboutCounter length={aboutLength} />
           </div>
         );
 

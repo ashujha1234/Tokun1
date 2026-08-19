@@ -869,6 +869,18 @@ const [devOtp, setDevOtp] = useState<string | null>(null);
       "0"
     )}`;
 
+  /* Puts the cursor back in the code box after a resend — the field is emptied
+     there, and an empty field nobody is typing in reads as a step that failed.
+     Both layouts are in the DOM at once (one is hidden by a breakpoint, not
+     unmounted), so this takes whichever is actually on screen: a hidden element
+     has no offsetParent, and focusing it would do nothing visible. */
+  const focusOtpField = () => {
+    const fields = ["otp-mobile", "otp"]
+      .map((id) => document.getElementById(id) as HTMLInputElement | null)
+      .filter(Boolean) as HTMLInputElement[];
+    fields.find((el) => el.offsetParent !== null)?.focus();
+  };
+
   const handleLoginVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     if (otp.length !== 4) return;
@@ -1066,9 +1078,21 @@ const [devOtp, setDevOtp] = useState<string | null>(null);
         }
       }
        toast({ title: "Code resent", description: "Check your inbox." });
-      //  isko badalana padega tetsing ke liye use kar rhe hain bs 
-       
-setSecondsLeft(50);
+
+      /* The box is emptied, because whatever is in it is now guaranteed wrong.
+         /login/initiate overwrites the account's otpHash, so the code typed from
+         the first email stops working the moment the second one is sent — but it
+         stayed sitting in the field, four digits that look exactly like a filled-in
+         answer, with Verify enabled and ready to fail. Cleared only on success:
+         if the resend was refused (rate limit, network) the earlier code is still
+         the live one and throwing it away would be destroying a valid answer.
+
+         Also drops the dev-mode OTP banner, which would otherwise still be
+         showing — and offering to auto-fill — the dead code. */
+      setOtp("");
+      setDevOtp(null);
+      focusOtpField();
+
       setSecondsLeft(50);
     } catch (err: any) {
       toast(authError(err?.code));

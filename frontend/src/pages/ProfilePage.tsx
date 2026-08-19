@@ -3286,6 +3286,10 @@ const [projectDetails, setProjectDetails] = useState("");
 // Reference files for the hire brief. Uploaded as they're picked; the
 // descriptors go out with the proposal.
 const [hireBriefFiles, setHireBriefFiles] = useState<BriefAttachment[]>([]);
+/* Proposal submission in flight. The ref is the actual guard against a double
+   click; the state only drives the button's label and disabled attribute. */
+const [hiring, setHiring] = useState(false);
+const hiringRef = useRef(false);
 const [budget, setBudget] = useState(27000);
 const [customDate, setCustomDate] = useState(false);
 
@@ -3469,6 +3473,20 @@ const openConversation = async (otherUserId: string) => {
 };
 
 const confirmHire = async () => {
+  /* A ref, not just the `hiring` state below.
+
+     This handler had no guard at all, and it makes two sequential requests with
+     no feedback on the button — so it looked dead, people pressed it again, and
+     the second press ran the whole thing a second time: two HireDeals on the
+     server and two proposal cards in the chat for one project.
+
+     State alone doesn't close that. `setHiring(true)` schedules a re-render;
+     two clicks inside the same frame both read the old `false`. The ref flips
+     synchronously, so the second click returns immediately. */
+  if (hiringRef.current) return;
+  hiringRef.current = true;
+  setHiring(true);
+
   try {
     if (!token || !user?._id) {
       alert("Login required. Please login again.");
@@ -3557,6 +3575,12 @@ const confirmHire = async () => {
   } catch (err: any) {
     console.error("Hire confirm error:", err);
     alert(err?.message || "Hire confirm failed");
+  } finally {
+    // In `finally`, so every early return above — login missing, conversation
+    // failed, proposal rejected — releases the button instead of leaving it
+    // stuck on "Sending…" with no way to retry.
+    hiringRef.current = false;
+    setHiring(false);
   }
 };
 
@@ -4903,13 +4927,16 @@ const sendMessage = () => {
 
       {/* FOOTER */}
       <div className="px-5 pb-5 pt-2">
+        {/* The label changing is what makes this feel fast — the work behind it
+            is two short requests, but with no feedback at all the button read as
+            broken and got pressed again. */}
         <button
-          disabled={!projectTitle.trim() || projectDetails.length < 50}
+          disabled={hiring || !projectTitle.trim() || projectDetails.length < 50}
           onClick={confirmHire}
           className="w-full h-11 rounded-full text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
           style={{ background: GRADIENT }}
         >
-          Submit Project Proposal
+          {hiring ? "Sending…" : "Submit Project Proposal"}
         </button>
       </div>
     </div>

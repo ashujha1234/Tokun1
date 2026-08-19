@@ -5763,7 +5763,7 @@
 
 
 // src/pages/PromptMarketplacePage.tsx
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
@@ -6305,10 +6305,15 @@ const LibPromptMedia = ({
 const LibHeroBanner = ({
   searchQuery,
   onSearchChange,
+  onSearchSubmit,
   onBrowse,
 }: {
   searchQuery: string;
   onSearchChange: (q: string) => void;
+  /** Submitting the bar opens the dedicated results view — see
+      LibSearchResults. It used to only scroll down to the rails, which left the
+      user reading "Newest Products" after asking for something specific. */
+  onSearchSubmit: (q: string) => void;
   onBrowse: () => void;
 }) => {
   const navigate = useNavigate();
@@ -6414,7 +6419,10 @@ const LibHeroBanner = ({
         style={{ background: "rgba(18,18,19,0.85)", border: "1px solid rgba(255,255,255,0.18)", backdropFilter: "blur(8px)" }}
         onSubmit={(e) => {
           e.preventDefault();
-          onBrowse();
+          // An empty box has nothing to search for; scrolling to the rails is
+          // still the most useful thing that can happen.
+          if (searchQuery.trim()) onSearchSubmit(searchQuery);
+          else onBrowse();
         }}
       >
         <Search className="h-5 w-5 shrink-0 text-white/40 ml-2" />
@@ -7334,6 +7342,314 @@ const LibCategoriesRow = ({
   );
 };
 
+/* ====================== SEARCH RESULTS VIEW ======================
+   Submitting the search bar leaves the browse page behind entirely. The rails
+   ("Newest", "Most Popular", "Budget-Friendly") are three orderings of the same
+   list, so a search used to show the same prompt three times over and buried
+   the rest below the fold — the answer to "logo" was spread across horizontal
+   rails you had to scroll one by one.
+
+   Here every match is in one wrapped grid, with the filters that a search
+   actually needs: price, and the sub-categories the results are filed under
+   (searching "design" gives Design's own children — Logo & Branding, Packaging,
+   …). Back returns to the default marketplace, rails and all.
+   ================================================================ */
+
+type PriceBand = "all" | "free" | "under-500" | "500-2000" | "2000-plus";
+type SearchSort = "relevance" | "newest" | "price-asc" | "price-desc" | "rating";
+
+const PRICE_BANDS: { label: string; value: PriceBand }[] = [
+  { label: "All", value: "all" },
+  { label: "Free", value: "free" },
+  { label: "Under ₹500", value: "under-500" },
+  { label: "₹500 – ₹2,000", value: "500-2000" },
+  { label: "₹2,000+", value: "2000-plus" },
+];
+
+const SEARCH_SORTS: { label: string; value: SearchSort }[] = [
+  { label: "Relevance", value: "relevance" },
+  { label: "Newest", value: "newest" },
+  { label: "Price ↑", value: "price-asc" },
+  { label: "Price ↓", value: "price-desc" },
+  { label: "Top rated", value: "rating" },
+];
+
+/** What a card charges, with free listings pinned at 0 rather than at whatever
+    stale figure the row still carries. */
+const promptPrice = (p: Prompt) => (p.isFree ? 0 : cardPrice(p));
+
+const matchesPriceBand = (p: Prompt, band: PriceBand) => {
+  const value = promptPrice(p);
+  switch (band) {
+    case "free":       return value === 0;
+    case "under-500":  return value > 0 && value < 500;
+    case "500-2000":   return value >= 500 && value <= 2000;
+    case "2000-plus":  return value > 2000;
+    default:           return true;
+  }
+};
+
+/* Every field a seller fills in when listing — title, description, the
+   categories AND sub-categories they filed it under, and their tags. Title +
+   description alone meant "logo & branding" — a sub-category the upload form
+   offers by name — matched nothing unless the seller happened to repeat those
+   words in their own copy. One definition, shared by the browse filter and the
+   search view, so the two can never disagree about what "matches". */
+const promptHaystack = (p: Prompt) =>
+  [
+    p.title,
+    p.description || "",
+    ...(p.categoryNames?.length ? p.categoryNames : [p.category]),
+    ...(p.tags || []),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+/** Every category name a prompt answers to — parents and sub-categories —
+    lowercased and trimmed, ready to compare. */
+const promptCategoryNames = (p: Prompt) =>
+  (p.categoryNames?.length ? p.categoryNames : String(p.category || "").split(","))
+    .map((c) => String(c).trim())
+    .filter(Boolean);
+
+/* Where the match landed decides the order: a prompt *called* "Logo Pack" is a
+   better answer to "logo" than one that mentions logos in paragraph three. */
+const relevanceScore = (p: Prompt, q: string) => {
+  const title = (p.title || "").toLowerCase();
+  const cats = promptCategoryNames(p).map((c) => c.toLowerCase());
+
+  let score = 0;
+  if (title === q) score += 100;
+  else if (title.startsWith(q)) score += 45;
+  else if (title.includes(q)) score += 25;
+
+  if (cats.some((c) => c === q)) score += 20;
+  else if (cats.some((c) => c.includes(q))) score += 10;
+
+  if ((p.tags || []).some((t) => String(t).toLowerCase().includes(q))) score += 8;
+  if ((p.description || "").toLowerCase().includes(q)) score += 3;
+
+  // Tie-breaker only — a 5★ prompt never outranks a title match.
+  score += Math.min(p.rating ?? 0, 5);
+  return score;
+};
+
+const LibSearchResults = ({
+  query,
+  draft,
+  onDraftChange,
+  onSubmit,
+  onBack,
+  results,
+  totalMatches,
+  loading,
+  facetLabel,
+  facets,
+  activeFacet,
+  onFacetSelect,
+  priceBand,
+  onPriceBand,
+  sort,
+  onSort,
+  onClearFilters,
+  renderCard,
+}: {
+  query: string;
+  draft: string;
+  onDraftChange: (v: string) => void;
+  onSubmit: () => void;
+  onBack: () => void;
+  results: Prompt[];
+  totalMatches: number;
+  loading: boolean;
+  facetLabel: string;
+  facets: { name: string; count: number }[];
+  activeFacet: string | null;
+  onFacetSelect: (name: string | null) => void;
+  priceBand: PriceBand;
+  onPriceBand: (b: PriceBand) => void;
+  sort: SearchSort;
+  onSort: (s: SearchSort) => void;
+  onClearFilters: () => void;
+  renderCard: (p: Prompt) => React.ReactNode;
+}) => {
+  const filtersOn = priceBand !== "all" || !!activeFacet || sort !== "relevance";
+
+  return (
+    <div className="marketplace__main">
+      <div className="pt-6">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-2 h-9 px-4 rounded-full text-[13px] font-medium text-white/80 hover:text-white transition-colors"
+          style={{ background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.12)" }}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to marketplace
+        </button>
+
+        {/* The search bar comes along, so a result set can be narrowed without
+            going back to the hero first. */}
+        <form
+          className="mt-5 flex items-center w-full max-w-[720px] h-[48px] rounded-[200px] overflow-hidden px-2"
+          style={{
+            background: "rgba(18,18,19,0.85)",
+            border: "1px solid rgba(255,255,255,0.18)",
+            backdropFilter: "blur(8px)",
+          }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSubmit();
+          }}
+        >
+          <Search className="h-5 w-5 shrink-0 text-white/40 ml-2" />
+          <input
+            name="q"
+            value={draft}
+            onChange={(e) => onDraftChange(e.target.value)}
+            placeholder="Search products…"
+            className="ml-2 sm:ml-3 flex-1 min-w-0 bg-transparent outline-none text-white placeholder:text-white/40 text-[13px] sm:text-sm"
+          />
+          <button
+            type="submit"
+            className="shrink-0 grid place-items-center rounded-full text-white font-medium text-[13px] sm:text-sm w-[74px] sm:w-[90px] h-[34px] sm:h-[36px]"
+            style={{ background: GRADIENT_90 }}
+          >
+            Search
+          </button>
+        </form>
+
+        <div className="mt-7 flex items-end justify-between flex-wrap gap-3">
+          <div>
+            <LibEyebrow icon={<Search className="h-4 w-4" />}>SEARCH RESULTS</LibEyebrow>
+            <h2 className="mt-2 text-white text-[24px] sm:text-[30px] font-semibold">
+              Results for “{query}”
+            </h2>
+          </div>
+          <span className="text-white/55 text-[13px]">
+            {loading
+              ? "Searching…"
+              : results.length === totalMatches
+                ? `${totalMatches} product${totalMatches === 1 ? "" : "s"}`
+                : `${results.length} of ${totalMatches} products`}
+          </span>
+        </div>
+      </div>
+
+      {/* ---------- Filters ---------- */}
+      <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:p-5">
+        <div className="flex flex-wrap items-center gap-4">
+          <SegmentedTabs
+            label="Price"
+            value={priceBand}
+            onChange={(v) => onPriceBand(v as PriceBand)}
+            options={PRICE_BANDS}
+          />
+          <SegmentedTabs
+            label="Sort"
+            value={sort}
+            onChange={(v) => onSort(v as SearchSort)}
+            options={SEARCH_SORTS}
+          />
+        </div>
+
+        {/* Only rendered when the results actually carry sub-categories — an
+            empty filter row would just be a heading over nothing. */}
+        {facets.length > 0 && (
+          <div className="mt-5 pt-5 border-t border-white/10">
+            <div className="flex items-center gap-2 mb-3">
+              <SlidersHorizontal className="h-3.5 w-3.5 text-white/45" />
+              <span className="text-[11px] uppercase tracking-[0.14em] text-white/45">
+                {facetLabel}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => onFacetSelect(null)}
+                className="px-3.5 py-1.5 rounded-full text-[12px] font-medium text-white transition-colors"
+                style={
+                  activeFacet === null
+                    ? { background: GRADIENT }
+                    : { background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.12)" }
+                }
+              >
+                All
+              </button>
+              {facets.map((f) => {
+                const on = activeFacet === f.name;
+                return (
+                  <button
+                    key={f.name}
+                    type="button"
+                    /* Clicking the live chip clears it, so a chosen
+                       sub-category can be undone where it was chosen. */
+                    onClick={() => onFacetSelect(on ? null : f.name)}
+                    className="flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[12px] font-medium text-white transition-colors"
+                    style={
+                      on
+                        ? { background: GRADIENT }
+                        : { background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.12)" }
+                    }
+                  >
+                    {f.name}
+                    <span className={on ? "text-white/80" : "text-white/45"}>{f.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {filtersOn && (
+          <button
+            type="button"
+            onClick={onClearFilters}
+            className="mt-4 inline-flex items-center gap-1.5 text-[12px] text-white/55 hover:text-white transition-colors"
+          >
+            <X className="h-3.5 w-3.5" />
+            Clear filters
+          </button>
+        )}
+      </div>
+
+      {/* ---------- Results ---------- */}
+      {loading ? (
+        <p className="mt-10 text-white/60 text-sm">Loading products…</p>
+      ) : results.length === 0 ? (
+        <div className="py-16 text-center">
+          <p className="text-white/70 text-sm">
+            {totalMatches === 0 ? (
+              <>
+                Nothing matched <span className="text-white font-medium">“{query}”</span>.
+              </>
+            ) : (
+              <>
+                {totalMatches} product{totalMatches === 1 ? "" : "s"} matched{" "}
+                <span className="text-white font-medium">“{query}”</span>, but none are left after
+                these filters.
+              </>
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={totalMatches === 0 ? onBack : onClearFilters}
+            className="mt-4 inline-flex items-center h-9 px-5 rounded-full text-[13px] font-medium text-white"
+            style={{ background: GRADIENT }}
+          >
+            {totalMatches === 0 ? "Back to marketplace" : "Clear filters"}
+          </button>
+        </div>
+      ) : (
+        /* Wrapped flex rather than a grid: the cards are a fixed 300px wide
+           (the rails size them that way), so a grid's stretched columns would
+           leave them floating in over-wide cells. */
+        <div className="mt-8 flex flex-wrap gap-5">{results.map(renderCard)}</div>
+      )}
+    </div>
+  );
+};
+
 /**
  * One API prompt document → the shape this page renders.
  *
@@ -7443,7 +7759,26 @@ const PromptMarketplacePage = () => {
   // button that slips past the render-time checks still can't start a payment.
   const teamMember = isTeamMember(user);
   const [requestPrompt, setRequestPrompt] = useState<Prompt | null>(null);
+  /* Two different things, deliberately kept apart:
+       searchQuery  — what is typed in the box right now (the draft)
+       activeSearch — what was actually submitted, mirrored in ?q=
+     The draft filters NOTHING. Only the submitted one is read by any filter and
+     only it swaps the page over to the results view, which is why typing no
+     longer tears the browse page down mid-word. activeSearch is
+     never set directly: the URL is, and the effect below follows it, so the
+     browser's Back button leaves a search exactly like the Back control does. */
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeSearch, setActiveSearch] = useState("");
+  const [searchFacet, setSearchFacet] = useState<string | null>(null);
+  const [priceBand, setPriceBand] = useState<PriceBand>("all");
+  const [searchSort, setSearchSort] = useState<SearchSort>("relevance");
+  /* The children of the category the query names, when it names one. Searching
+     "design" should offer Design's own sub-categories — including any that the
+     current result set happens not to cover — not just whatever labels the
+     matches came back with. Empty for a query like "logo" that isn't a
+     category, and the view falls back to facets built from the results. */
+  const [searchSubOptions, setSearchSubOptions] = useState<string[]>([]);
+  const [searchSubLabel, setSearchSubLabel] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [showTopBg, setShowTopBg] = useState(true);
     const [kycOpen, setKycOpen] = useState(false);
@@ -7808,6 +8143,102 @@ const mapped: Prompt[] = (data.prompts || []).map((doc: any) => mapPromptDoc(doc
     return () => { cancelled = true; };
   }, [location.search, prompts, loading]);
 
+  /* ---------- Search mode: ?q= is the source of truth ----------
+     Reading it back out of the URL rather than only setting state on submit is
+     what makes the browser's Back button work: leaving ?q= behind is a history
+     entry like any other, and this effect turns that entry back into the
+     default marketplace. Refreshing or sharing a results link works for the
+     same reason. */
+  useEffect(() => {
+    const q = (new URLSearchParams(location.search).get("q") || "").trim();
+
+    setActiveSearch(q);
+    // Keeps the box showing what is being searched (and empties it on the way
+    // out, so the browse page isn't left silently filtered by a stale draft).
+    setSearchQuery(q);
+
+    if (!q) {
+      setSearchFacet(null);
+      setPriceBand("all");
+      setSearchSort("relevance");
+      setSearchSubOptions([]);
+      setSearchSubLabel("");
+    }
+  }, [location.search]);
+
+  /* Sub-categories of the category the query names, if any. Same endpoint the
+     category rail's hover panel uses. */
+  useEffect(() => {
+    const q = activeSearch.trim().toLowerCase();
+    if (!q) return;
+
+    const match =
+      apiCategories.find((c) => c.name?.toLowerCase() === q) ||
+      // Substring only for queries long enough to mean something: "a" would
+      // otherwise pick whichever category happened to contain that letter.
+      (q.length >= 3 ? apiCategories.find((c) => c.name?.toLowerCase().includes(q)) : undefined);
+
+    if (!match?._id) {
+      setSearchSubOptions([]);
+      setSearchSubLabel("");
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/category/${match._id}/subcategories`, {
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (data?.success) {
+          setSearchSubOptions(
+            (data.subCategories || []).map((s: any) => s?.name).filter(Boolean)
+          );
+          setSearchSubLabel(`${match.name} sub-categories`);
+        }
+      } catch {
+        // No sub-category chips, then — the results grid stands on its own.
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [activeSearch, apiCategories]);
+
+  /* A search is over the whole marketplace, so it clears the browse filters on
+     the way in. They aren't only cosmetic: category / type / license are sent
+     to /others, so leaving one set would quietly hide matches the user never
+     knew existed. */
+  const submitSearch = (raw: string) => {
+    const q = raw.trim();
+    if (!q) return;
+
+    setSelectedCategory("All");
+    setSelectedCategories([]);
+    setFileType("all");
+    setLicenseType("all");
+    setSearchFacet(null);
+    setPriceBand("all");
+    setSearchSort("relevance");
+
+    const params = new URLSearchParams(location.search);
+    params.set("q", q);
+    // A shared-link id sitting in the URL would reopen its details modal over
+    // the results the moment they rendered.
+    params.delete("prompt");
+    navigate({ pathname: location.pathname, search: `?${params.toString()}` });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const exitSearch = () => {
+    const params = new URLSearchParams(location.search);
+    params.delete("q");
+    const rest = params.toString();
+    navigate({ pathname: location.pathname, search: rest ? `?${rest}` : "" });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   /* ---------- Derived: local search + filter ---------- */
 const filteredPrompts = prompts.filter((p) => {
   /* Already bought → out of the listing entirely. There is nothing left to do
@@ -7820,23 +8251,17 @@ const filteredPrompts = prompts.filter((p) => {
      Prompt.id is `number | string`, and 12 !== "12". */
   if (purchasedPrompts.includes(String(p.id))) return false;
 
-  if (searchQuery.trim()) {
-    const q = searchQuery.toLowerCase();
-    /* Searched over the same fields a seller fills in when listing: the title,
-       the description, the categories AND sub-categories they filed it under,
-       and their tags. Title + description alone meant "logo & branding" — a
-       sub-category the upload form offers by name — matched nothing unless the
-       seller happened to repeat those words in their own copy. */
-    const haystack = [
-      p.title,
-      p.description || "",
-      ...(p.categoryNames || [p.category]),
-      ...(p.tags || []),
-    ]
-      .join(" ")
-      .toLowerCase();
+  /* activeSearch, NOT searchQuery: the browse page reacts to a SUBMITTED search
+     only. Filtering on the draft meant typing "design" tore the rails apart
+     letter by letter — "d", then "de" — before the Search button was ever
+     pressed, so the page was already answering a question that hadn't been
+     asked. (In practice this is always "" here, since a submitted search
+     replaces this view entirely; it stays as the filter so the two can't
+     disagree if that ever changes.)
 
-    if (!haystack.includes(q)) return false;
+     Same haystack the results view searches — see promptHaystack. */
+  if (activeSearch.trim() && !promptHaystack(p).includes(activeSearch.trim().toLowerCase())) {
+    return false;
   }
 
   if (licenseType === "free" && !p.isFree) return false;
@@ -7868,6 +8293,77 @@ const filteredPrompts = prompts.filter((p) => {
 
   return true;
 });
+
+  /* ---------- Derived: submitted search ----------
+     Built off `prompts` rather than `filteredPrompts` on purpose: the browse
+     filters are cleared on submit and the results view owns its own (price,
+     sub-category, sort), so running both would filter the same list twice by
+     two sets of controls, only one of which is on screen. */
+  const searchActive = !!activeSearch.trim();
+  const searchTerm = activeSearch.trim().toLowerCase();
+
+  /* Everything the query matches, before the results view's own filters — this
+     is what the facet counts are taken from, so a count never changes just
+     because a chip next to it was clicked. */
+  const searchMatches = useMemo(() => {
+    if (!searchTerm) return [] as Prompt[];
+    return prompts.filter(
+      (p) => !purchasedPrompts.includes(String(p.id)) && promptHaystack(p).includes(searchTerm)
+    );
+  }, [prompts, purchasedPrompts, searchTerm]);
+
+  /* The sub-category chips. Two sources, in order of preference:
+       1. the searched category's own children ("design" → Logo & Branding, …)
+       2. failing that, the category labels the results themselves carry, which
+          is what turns a query like "logo" into a usable set of chips.
+     Either way only names with at least one result survive — a chip that
+     empties the grid is a dead end, not a filter. */
+  const searchFacets = useMemo(() => {
+    if (!searchTerm) return [] as { name: string; count: number }[];
+
+    const counts = new Map<string, number>();
+    searchMatches.forEach((p) => {
+      promptCategoryNames(p).forEach((name) => {
+        counts.set(name, (counts.get(name) || 0) + 1);
+      });
+    });
+
+    const fromOptions = searchSubOptions.map((name) => ({
+      name,
+      count: counts.get(name) || 0,
+    }));
+    const fromResults = [...counts].map(([name, count]) => ({ name, count }));
+
+    return (searchSubOptions.length ? fromOptions : fromResults)
+      .filter((f) => f.count > 0)
+      // The searched category itself is on every result, so as a chip it would
+      // filter nothing — the point here is the split *below* it.
+      .filter((f) => f.name.toLowerCase() !== searchTerm)
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+      .slice(0, 14);
+  }, [searchMatches, searchSubOptions, searchTerm]);
+
+  const searchResults = useMemo(() => {
+    if (!searchTerm) return [] as Prompt[];
+
+    const facet = searchFacet?.toLowerCase();
+    const shortlist = searchMatches.filter((p) => {
+      if (facet && !promptCategoryNames(p).some((c) => c.toLowerCase() === facet)) return false;
+      return matchesPriceBand(p, priceBand);
+    });
+
+    // Array.prototype.sort is stable, so "newest" returning 0 leaves the server's
+    // order — which is what the "Newest Products" rail shows — untouched.
+    return [...shortlist].sort((a, b) => {
+      switch (searchSort) {
+        case "price-asc":  return promptPrice(a) - promptPrice(b);
+        case "price-desc": return promptPrice(b) - promptPrice(a);
+        case "rating":     return (b.rating ?? 0) - (a.rating ?? 0);
+        case "newest":     return 0;
+        default:           return relevanceScore(b, searchTerm) - relevanceScore(a, searchTerm);
+      }
+    });
+  }, [searchMatches, searchFacet, priceBand, searchSort, searchTerm]);
 
   /* ---------- Helpers ---------- */
   const decideMediaType = (prompt: Prompt): "video" | "image" => {
@@ -8629,11 +9125,42 @@ const savePromptToCollections = async ({
       </div>
       )}
 
-      {/* ================= NEW Library-style design (live) ================= */}
+      {/* ================= Search results (live only after submit) =================
+          The whole browse page below is replaced, not filtered in place: its
+          rails are three orderings of one list, so a search rendered the same
+          few matches three times and left everything else off-screen. */}
+      {searchActive ? (
+        <LibSearchResults
+          query={activeSearch}
+          draft={searchQuery}
+          onDraftChange={setSearchQuery}
+          onSubmit={() => submitSearch(searchQuery)}
+          onBack={exitSearch}
+          results={searchResults}
+          totalMatches={searchMatches.length}
+          loading={loading}
+          facetLabel={searchSubLabel || "Related categories"}
+          facets={searchFacets}
+          activeFacet={searchFacet}
+          onFacetSelect={setSearchFacet}
+          priceBand={priceBand}
+          onPriceBand={setPriceBand}
+          sort={searchSort}
+          onSort={setSearchSort}
+          onClearFilters={() => {
+            setSearchFacet(null);
+            setPriceBand("all");
+            setSearchSort("relevance");
+          }}
+          renderCard={renderOldStyleCard}
+        />
+      ) : (
+      /* ================= NEW Library-style design (live) ================= */
       <div className="marketplace__main">
         <LibHeroBanner
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
+          onSearchSubmit={submitSearch}
           onBrowse={() => browseRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
         />
 
@@ -8694,7 +9221,7 @@ const savePromptToCollections = async ({
                     ? effectiveCategoryFilter.join(", ")
                     : "this selection"}
                 </span>
-                {searchQuery.trim() ? ` matching “${searchQuery.trim()}”` : ""}.
+                {activeSearch.trim() ? ` matching “${activeSearch.trim()}”` : ""}.
               </p>
               <button
                 type="button"
@@ -8774,6 +9301,7 @@ const savePromptToCollections = async ({
           />
         </div>
       </div>
+      )}
 
       <div className="relative z-10 mt-20">
         <Footer />

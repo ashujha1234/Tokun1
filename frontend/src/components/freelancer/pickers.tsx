@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type InputHTMLAttributes } from "react";
 import { Check, Loader2, Plus, Search, Trash2, X } from "lucide-react";
 import SearchableSelect from "@/components/ui/SearchableSelect";
-import { COUNTRIES, LANGUAGES } from "@/lib/referenceData";
+import { COUNTRIES, LANGUAGES, PROFESSIONAL_TITLES } from "@/lib/referenceData";
+import { cachedCities, fetchCities, type CityLookup } from "@/lib/cityLookup";
 import {
   searchSkills,
   createSkill,
@@ -58,6 +59,211 @@ export function DateField({
 
 const ACCENT = "#1A73E8";
 
+/* ══════════════════════ about ══════════════════════ */
+
+/* Both editors of the About field agree on these, so they live in one place —
+   the wizard and the profile section editor each had their own pair. */
+export const ABOUT_MIN = 80;
+export const ABOUT_MAX = 3000;
+
+/**
+ * How much is left to write, in words.
+ *
+ * It used to read "0/80", which is the thing being asked about rather than an
+ * answer: a fraction that starts at zero, counts up to eighty, and then — once
+ * the minimum is met — silently changes denominator to 3000, so the same number
+ * meant two different things at two moments. Nothing on screen said which limit
+ * was in play or what the reader was supposed to do about it.
+ *
+ * A sentence can only be read one way: below the minimum it says how many more
+ * characters are needed, above it how many are left.
+ */
+export function AboutCounter({
+  length,
+  min = ABOUT_MIN,
+  max = ABOUT_MAX,
+}: {
+  length: number;
+  min?: number;
+  max?: number;
+}) {
+  const short = length < min;
+  const needed = min - length;
+  const left = max - length;
+
+  return (
+    <p
+      className={`mt-1 text-[11px] text-right ${
+        short ? "text-amber-400/80" : "text-white/30"
+      }`}
+    >
+      {short
+        ? length === 0
+          ? `Write at least ${min} characters`
+          : `${needed} more character${needed === 1 ? "" : "s"} needed`
+        : `${left.toLocaleString()} character${left === 1 ? "" : "s"} left`}
+    </p>
+  );
+}
+
+/* ══════════════════════ professional title ══════════════════════ */
+
+/**
+ * Free-text title with suggestions underneath.
+ *
+ * Deliberately an input and not a SearchableSelect: a title is something people
+ * write ("Senior Full-stack Developer & AI Consultant"), not something they pick
+ * off a list, and a dropdown-only field would have forced everyone into the
+ * nearest wrong label. So the box behaves exactly like the plain input it
+ * replaces — every keystroke is the value — and the list below is only an offer.
+ *
+ * Matching is prefix-first, then substring, so typing "des" leads with
+ * "Designer"-style titles before "UX Designer" further down the alphabet, and
+ * typing "design" still finds "Logo Designer".
+ */
+export function ProfessionalTitlePicker({
+  value,
+  onChange,
+  placeholder = "Full-stack developer",
+  id,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  id?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  const suggestions = useMemo(() => {
+    const q = value.trim().toLowerCase();
+    // Nothing typed yet: the whole list, in its curated order — the roles this
+    // marketplace actually sells sit at the top.
+    if (!q) return PROFESSIONAL_TITLES;
+
+    const prefix: string[] = [];
+    const contains: string[] = [];
+    for (const title of PROFESSIONAL_TITLES) {
+      const lower = title.toLowerCase();
+      // An exact hit is already in the box; offering it back is a row that does
+      // nothing when clicked.
+      if (lower === q) continue;
+      if (lower.startsWith(q)) prefix.push(title);
+      else if (lower.includes(q)) contains.push(title);
+    }
+    return [...prefix, ...contains];
+  }, [value]);
+
+  useEffect(() => {
+    const onClickOutside = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  const commit = (next: string) => {
+    onChange(next);
+    setOpen(false);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (!open) {
+      // Arrow-down on a closed field is the usual way to ask for the list.
+      if (e.key === "ArrowDown" && suggestions.length) {
+        e.preventDefault();
+        setOpen(true);
+        setHighlight(0);
+      }
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlight((h) => (suggestions.length ? (h + 1) % suggestions.length : 0));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlight((h) =>
+        suggestions.length ? (h - 1 + suggestions.length) % suggestions.length : 0
+      );
+    } else if (e.key === "Enter") {
+      // Only swallowed when there is a highlighted row to take — otherwise Enter
+      // belongs to whatever form this field sits in.
+      if (suggestions[highlight]) {
+        e.preventDefault();
+        commit(suggestions[highlight]);
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setOpen(false);
+    }
+  };
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <input
+        id={id}
+        className={inputClass}
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setOpen(true);
+          setHighlight(0);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={onKeyDown}
+        placeholder={placeholder}
+        autoComplete="off"
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
+        aria-label="Professional title"
+      />
+
+      {open && suggestions.length > 0 && (
+        <div
+          className="absolute z-30 left-0 right-0 mt-1.5 rounded-xl border border-white/10 overflow-hidden shadow-2xl"
+          style={{ background: "#0D1017" }}
+        >
+          <div style={{ maxHeight: 220, overflowY: "auto" }} role="listbox">
+            {!value.trim() && (
+              <p className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wide text-white/30">
+                Common titles — or type your own
+              </p>
+            )}
+            {suggestions.map((title, i) => (
+              <button
+                key={title}
+                type="button"
+                role="option"
+                aria-selected={title === value}
+                onMouseEnter={() => setHighlight(i)}
+                /* mousedown, not click: the input blurs first on a click and any
+                   parent watching for blur would close the panel out from under
+                   the pointer. */
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  commit(title);
+                }}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-sm text-white transition-colors"
+                style={{
+                  background: i === highlight ? "rgba(255,255,255,0.07)" : "transparent",
+                }}
+              >
+                <span className="truncate">{title}</span>
+                {title === value && (
+                  <Check className="w-3.5 h-3.5 shrink-0" style={{ color: "#19E66C" }} />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ══════════════════════ country ══════════════════════ */
 
 export function CountryPicker({
@@ -78,7 +284,111 @@ export function CountryPicker({
   );
 }
 
+/* ══════════════════════ city ══════════════════════ */
+
+/**
+ * City, scoped to the country chosen beside it.
+ *
+ * This was a plain text input, so nothing connected the two fields: pick India,
+ * type "New York", and that was a saved profile. The country now decides what
+ * this field suggests, and picking a different country clears it — see the
+ * onChange the wizard passes for country.
+ *
+ * Deliberately NOT a hard whitelist. The fetched list is complete enough to
+ * include small towns, but an unlisted place still has to be reachable: an
+ * unmatched value is offered as an explicit "Use «…»" row, the same shape
+ * TagPicker and SkillsPicker use. So a mismatch can't happen by accident — only
+ * by choosing it — and someone from a town the dataset missed isn't stuck.
+ */
+export function CityPicker({
+  country,
+  value,
+  onChange,
+}: {
+  country: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [lookup, setLookup] = useState<CityLookup>({ status: "idle" });
+
+  useEffect(() => {
+    const name = country.trim();
+    if (!name) {
+      setLookup({ status: "idle" });
+      return;
+    }
+
+    const cached = cachedCities(name);
+    if (cached) {
+      setLookup({ status: "ready", cities: cached });
+      return;
+    }
+
+    let alive = true;
+    setLookup({ status: "loading" });
+    fetchCities(name).then((cities) => {
+      if (!alive) return;
+      setLookup(cities ? { status: "ready", cities } : { status: "unavailable" });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [country]);
+
+  // No country yet: there is nothing to scope suggestions to, and letting
+  // someone type a city first is how the two fields drifted apart to begin with.
+  if (!country.trim()) {
+    return (
+      <input
+        className={inputClass}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Pick a country first"
+        disabled
+        aria-label="City"
+      />
+    );
+  }
+
+  /* The list couldn't be fetched. Free text, as before — an outage in someone
+     else's service is not a reason to halt onboarding. */
+  if (lookup.status === "unavailable") {
+    return (
+      <>
+        <input
+          className={inputClass}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="City"
+          aria-label="City"
+        />
+        <p className="text-[11px] text-white/35 mt-1">
+          Couldn't load the city list — type it in and we'll take it as given.
+        </p>
+      </>
+    );
+  }
+
+  return (
+    <SearchableSelect
+      value={value}
+      onChange={onChange}
+      options={lookup.status === "ready" ? lookup.cities : []}
+      placeholder={lookup.status === "loading" ? "Loading cities…" : `City in ${country}`}
+      disabled={lookup.status === "loading"}
+      hint={
+        lookup.status === "ready"
+          ? `${lookup.cities.length.toLocaleString()} cities in ${country}`
+          : undefined
+      }
+      ariaLabel="City"
+    />
+  );
+}
+
 /* ══════════════════════ languages ══════════════════════ */
+
+const EMPTY_LANGUAGE: ProfileLanguage = { name: "", level: "conversational" };
 
 /**
  * Name + proficiency rows.
@@ -86,6 +396,22 @@ export function CountryPicker({
  * The name field is a SearchableSelect rather than a text input with a datalist:
  * the old datalist rendered every language as one long native popup with no way
  * to narrow it down.
+ *
+ * ONE ROW IS ALWAYS PRESENT. The field used to start completely empty behind an
+ * "Add a language" button, so a required field opened looking like there was
+ * nothing to fill in. The row is empty, not pre-filled with English — a value
+ * nobody chose would satisfy the required check on the step and go out on a
+ * profile as a fact about that person.
+ *
+ * ONE ✕ PER ROW, and it sits OUTSIDE the field. There were two: SearchableSelect's
+ * own clear inside the box, and a remove-row button beside it — the same glyph
+ * twice, one emptying the field and one deleting the line. SearchableSelect no
+ * longer draws one at all, and the outer one is kept, because a button that can
+ * delete the whole row does not belong inside the field it would be deleting.
+ *
+ * What it does depends on how many rows there are: with more than one it drops
+ * that row, with a single row it empties it back to "Select a language". Either
+ * way a row is always left to type into.
  */
 export function LanguagesEditor({
   languages,
@@ -96,27 +422,44 @@ export function LanguagesEditor({
   onChange: (next: ProfileLanguage[]) => void;
   max?: number;
 }) {
+  /* The rendered rows, which is `languages` unless it's empty — then one blank
+     row stands in. Nothing is written to state for it: the parent's array only
+     grows when a language is actually picked, so validation still sees zero
+     languages until then. */
+  const rows = languages.length ? languages : [EMPTY_LANGUAGE];
+
   // A language already chosen is dropped from the other rows' options, so the
   // same one can't be added twice at two different levels.
   const optionsFor = (index: number) => {
     const taken = new Set(
-      languages.filter((_, i) => i !== index).map((l) => l.name.toLowerCase())
+      rows.filter((_, i) => i !== index).map((l) => l.name.toLowerCase())
     );
     return LANGUAGES.filter((l) => !taken.has(l.toLowerCase()));
   };
 
+  const setName = (index: number, name: string) =>
+    onChange(rows.map((l, i) => (i === index ? { ...l, name } : l)));
+
+  /* The row's ✕. Removes the row when there's more than one, empties it when
+     it's the only one — see the note above. */
+  const clearRow = (index: number) => {
+    if (rows.length > 1) {
+      onChange(rows.filter((_, i) => i !== index));
+      return;
+    }
+    onChange([EMPTY_LANGUAGE]);
+  };
+
   return (
     <div>
-      {languages.length > 0 && (
+      {rows.length > 0 && (
         <div className="space-y-2 mb-2">
-          {languages.map((lang, index) => (
+          {rows.map((lang, index) => (
             <div key={index} className="flex items-start gap-2">
               <div className="flex-1 min-w-0">
                 <SearchableSelect
                   value={lang.name}
-                  onChange={(name) =>
-                    onChange(languages.map((l, i) => (i === index ? { ...l, name } : l)))
-                  }
+                  onChange={(name) => setName(index, name)}
                   options={optionsFor(index)}
                   placeholder="Select a language"
                   ariaLabel="Language"
@@ -126,7 +469,7 @@ export function LanguagesEditor({
                 value={lang.level}
                 onChange={(e) =>
                   onChange(
-                    languages.map((l, i) =>
+                    rows.map((l, i) =>
                       i === index ? { ...l, level: e.target.value as any } : l
                     )
                   )
@@ -140,27 +483,33 @@ export function LanguagesEditor({
                   </option>
                 ))}
               </select>
-              <button
-                type="button"
-                onClick={() => onChange(languages.filter((_, i) => i !== index))}
-                className="text-white/40 hover:text-red-400 transition-colors shrink-0 mt-2.5"
-                aria-label="Remove language"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              {/* Outside the field, and only once there is something to act on —
+                  a ✕ beside an empty row has nothing to clear. */}
+              {(rows.length > 1 || lang.name.trim()) && (
+                <button
+                  type="button"
+                  onClick={() => clearRow(index)}
+                  className="text-white/40 hover:text-red-400 transition-colors shrink-0 mt-2.5"
+                  aria-label={rows.length > 1 ? "Remove language" : "Clear language"}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
           ))}
         </div>
       )}
 
-      {languages.length < max && (
+      {/* Only offered once the row already on screen has been filled in —
+          otherwise pressing it stacks a second blank row under the first. */}
+      {rows.length < max && rows.every((l) => l.name.trim()) && (
         <button
           type="button"
-          onClick={() => onChange([...languages, { name: "", level: "conversational" }])}
+          onClick={() => onChange([...rows, EMPTY_LANGUAGE])}
           className="inline-flex items-center gap-1.5 text-xs text-white/70 hover:text-white transition-colors"
         >
           <Plus className="w-3.5 h-3.5" />
-          Add a language
+          Add another language
         </button>
       )}
     </div>
