@@ -474,6 +474,18 @@ body.is-loading { overflow: hidden; }
   background: transparent;
 }
 
+/* THE SAME BAR, ON AN ORDINARY PAGE.
+   The landing hero reserves this bar's height (--landing-nav-h) and is designed
+   to run underneath it, which is why the default is `fixed`. No other page
+   reserves anything, so there a fixed bar would sit on top of the first ~142px
+   of content. `sticky` keeps it in flow — it takes up its own space and then
+   follows the scroll — so /about, /support and the marketplace get an identical
+   header without their first heading disappearing behind it.
+   Declared after .landing-nav (same specificity) so it wins. */
+.landing-nav--docked {
+  position: sticky;
+}
+
 /* HOW TALL THE BAR ACTUALLY IS.
    Set by the logo, not by any height declared on the row: the mark plus the
    row's 16px of padding either side. The three values below track the three
@@ -1081,11 +1093,9 @@ body.is-loading { overflow: hidden; }
   overflow: hidden;
   background: #06040f;
   contain: layout style;
-  /* Where the scroll STOPS when you arrive here from the hero's "Scroll down"
-     (or any #what-we-offer link). The landing nav is fixed and ~80px tall, so
-     without this the section's top padding lands under it and the
-     "Capabilities" eyebrow is half-hidden by the bar you just scrolled past. */
-  scroll-margin-top: 96px;
+  /* Where the scroll stops on arrival is set by the `#what-we-offer` rule
+     further down this file, off --landing-nav-h — an id beats a class, and one
+     nav-height variable beats a hand-copied pixel value. */
 }
 
 .what-we-offer__shader-wrap {
@@ -1288,9 +1298,7 @@ body.is-loading { overflow: hidden; }
 }
 
 @media (max-width: 600px) {
-  /* Shorter bar on a phone (68px row), so a 96px stop would leave a visible
-     band of the section above the heading. */
-  .what-we-offer { padding: 32px 20px 72px; scroll-margin-top: 78px; }
+  .what-we-offer { padding: 32px 20px 72px; }
   .what-we-offer__header { margin-bottom: 40px; }
   .what-we-offer__grid { grid-template-columns: 1fr; gap: 16px; }
 }

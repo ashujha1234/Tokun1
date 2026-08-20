@@ -11999,6 +11999,9 @@ import { useFreelancerMenu } from '@/hooks/useFreelancerMenu'
 import Footer from '@/components/Footer'
 import CookieConsentBanner from '@/components/CookieConsentBanner'
 import CanvasErrorBoundary from '@/components/CanvasErrorBoundary'
+/* The site bar, shared with every other page — see the note on LandingNav
+   below. TokunLogo comes from there too, so the mark is one component. */
+import SiteNav, { TokunLogo } from '@/components/SiteNav'
 import { prefetchLandingRoutes } from '@/lib/prefetchRoutes'
 import './landing-page.css'
 
@@ -12099,34 +12102,14 @@ function usePageVisible() {
    TokunLogo (image with text fallback)
    ============================================================ */
 
-function TokunLogo({ src = TOKUN_LOGO_SRC }) {
-  const [failed, setFailed] = useState(false)
+/* TokunLogo now lives in components/SiteNav.tsx and is imported at the top of
+   this file — the landing bar and the bar on every other page are one component,
+   so the mark has to be one component too.
 
-  return (
-    <motion.div
-      className="tokun-logo"
-      aria-label="TOKUN home"
-      whileHover={{ scale: 1.06 }}
-      whileTap={{ scale: 0.96 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-    >
-      <Link to="/" className="tokun-logo__link">
-        {failed ? (
-          <span className="tokun-logo__fallback">TOKUN</span>
-        ) : (
-          <motion.img
-            src={src}
-            alt="TOKUN"
-            className="tokun-logo__img"
-            onError={() => setFailed(true)}
-            animate={{ y: [0, -3, 0] }}
-            transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-          />
-        )}
-      </Link>
-    </motion.div>
-  )
-}
+   It also lost its animations there: a hover spring plus a permanent float, both
+   writing `transform` on the same element the scroll-condense scales, which made
+   the logo grow and slide right when you hovered it after scrolling. The hover
+   glow (a filter, in landing-page.css) is what's left. */
 
 /* ============================================================
    HeroAccountMenu — logged-in user ka naam + dropdown
@@ -13229,80 +13212,19 @@ function GradientButton({ children, variant = 'primary', className = '', to }) {
 /* Mirrors the app header's scroll state. Two thresholds, not one: a scroll
    that hovers on a single line flips the state every frame and the panel
    strobes. The gap between them is the dead zone. */
-function useHeaderScrolled() {
-  const [scrolled, setScrolled] = useState(false)
+/* The bar itself is components/SiteNav.tsx now, floating variant, and the same
+   component every other page renders (docked). Its markup, its scroll state and
+   the signed-out Login / Get Started pair all used to be duplicated here, which
+   is how the landing bar and the app bar ended up looking like two different
+   products' headers.
 
-  useEffect(() => {
-    const SHOW_AT = 80
-    const HIDE_AT = 40
-
-    let frame = 0
-    // Mirrors `scrolled` outside React so the rAF callback can read the current
-    // value without the effect depending on it — a dependency there would tear
-    // the listener down and rebuild it on every toggle.
-    let visible = false
-
-    const measure = () => {
-      frame = 0
-      const y = window.scrollY || document.documentElement.scrollTop || 0
-      const next = visible ? y > HIDE_AT : y > SHOW_AT
-      // Scroll fires far more often than the screen refreshes and nearly every
-      // one reads the same answer; only touching state on a real change keeps
-      // React out of the scroll path.
-      if (next !== visible) {
-        visible = next
-        setScrolled(next)
-      }
-    }
-
-    // Coalesce a burst of scroll events into one read per frame.
-    const onScroll = () => {
-      if (!frame) frame = requestAnimationFrame(measure)
-    }
-
-    measure() // a reload part-way down the page must not start transparent
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => {
-      window.removeEventListener('scroll', onScroll)
-      if (frame) cancelAnimationFrame(frame)
-    }
-  }, [])
-
-  return scrolled
-}
-
+   The one thing that stays landing-only is the signed-in slot: here it's the
+   hero account dropdown, while the rest of the app has the full app header.
+   SiteNav takes that as children. */
 function LandingNav() {
   const { isAuthenticated } = useAuth()
-  const scrolled = useHeaderScrolled()
 
-  return (
-    <nav
-      className={`site-header landing-nav${scrolled ? ' site-header--scrolled' : ''}`}
-    >
-      {/* Decorative only, and a SIBLING of the row rather than its parent — so
-          it can clip its own glow without ever clipping the account dropdown,
-          and nothing here can sit between the logo and the pointer. */}
-      <div aria-hidden className="site-header__bg">
-        <span className="site-header__glow" />
-      </div>
-
-      <div className="site-header__inner landing-nav__inner">
-        <div className="site-header__brand">
-          <TokunLogo />
-        </div>
-        <div className="site-header__actions landing-nav__actions">
-          {isAuthenticated ? (
-            <HeroAccountMenu />
-          ) : (
-            <>
-              <Link to={ROUTES.login} className="hero-nav__link">Login</Link>
-              <GradientButton variant="small" to={ROUTES.signup}>Get Started</GradientButton>
-            </>
-          )}
-        </div>
-      </div>
-    </nav>
-  )
+  return <SiteNav>{isAuthenticated ? <HeroAccountMenu /> : undefined}</SiteNav>
 }
 
 /* ============================================================

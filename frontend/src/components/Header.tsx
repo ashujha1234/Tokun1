@@ -2605,8 +2605,9 @@ import { userInitials, userAvatarUrl } from "@/lib/userInitials";
 import DetailsPrompt, { type MarketplacePrompt } from "@/components/DetailsPrompt";
 import { fetchPromptDetails } from "@/lib/promptDetails";
 import { withTokunBranding } from "@/lib/razorpayTheme";
-// What a signed-out visitor gets instead of everything in this file.
-import GuestHeader from "@/components/GuestHeader";
+// The one site bar. A signed-out visitor gets it instead of everything in this
+// file, and it is the SAME component the landing page renders.
+import SiteNav from "@/components/SiteNav";
 // import { useAuth } from "@/contexts/AuthContext";
 // import { toast } from "@/components/ui/use-toast";
 
@@ -3987,7 +3988,11 @@ useEffect(() => {
   };
 }, [user?._id, user?.id, refreshChatBadge]);
 
-  /* NO SESSION → the visitor header, the same one the landing page shows.
+  /* NO SESSION → the landing page's bar, literally: same component, same logo
+     size, same Login / Get Started pair. Only `docked` differs, which swaps
+     fixed for sticky because an ordinary page doesn't reserve space for a
+     floating bar the way the hero does.
+
      Everything below this line assumes a signed-in user: the cart is keyed on
      the token, Upload Product leads to a login wall, notifications need an
      account. A visitor on /about or /prompt-marketplace was getting that whole
@@ -3998,7 +4003,7 @@ useEffect(() => {
      the moment a session resolves. `isReady` matters: during session restore we
      know nothing yet, and flashing "Login / Get Started" at a returning user
      before their avatar appears is worse than a beat of nothing. */
-  if (isReady && !isAuthenticated) return <GuestHeader />;
+  if (isReady && !isAuthenticated) return <SiteNav docked />;
 
   return (
     <>
@@ -4037,6 +4042,11 @@ useEffect(() => {
        the two to stay in step. The logo is the tallest thing in this row, so
        it alone decides the bar's height — which is why the icons had so much
        air above and below them once the panel appeared. */}
+   {/* No hover scale. `.site-header__logo` is already scaled by the scroll
+       condense (transform-origin: left center, 760ms) — a Tailwind
+       group-hover:scale-105 overwrote that same `transform`, so hovering the
+       mark after any scroll made it grow and drift to the right over
+       three-quarters of a second. One animation per property. */}
    <img
   src="/icons/Tokun.png"
   alt="Tokun.world Logo"
@@ -4045,8 +4055,6 @@ useEffect(() => {
     w-auto
     max-w-none
     object-contain
-    transition-transform duration-200
-    group-hover:scale-105
   "
 />
   </button>
