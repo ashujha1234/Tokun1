@@ -124,10 +124,26 @@ router.post("/", async (req, res) => {
       }
     }
 
-    // Scoped to (kind, parent) to match the index — a global name check would
-    // reject "Business" in the service tree because the prompt tree has one.
-    const exists = await Category.findOne({ kind, parent: parent || null, name });
-    if (exists) return res.status(400).json({ success: false, error: "category_exists" });
+    /* Scoped to (kind, parent) to match the index — a global name check would
+       reject "Business" in the service tree because the prompt tree has one.
+
+       Case-INSENSITIVE, which it wasn't: the live prompt tree has both
+       "interior" and "Interior" as separate top-level categories, plus an
+       "Interior Design" beside them, because each was typed with different
+       capitalisation and this check let them all through. Products then split
+       across near-identical categories that no filter can reunite. */
+    const exists = await Category.findOne({
+      kind,
+      parent: parent || null,
+      name: new RegExp(`^${String(name).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"),
+    });
+    if (exists) {
+      return res.status(400).json({
+        success: false,
+        error: "category_exists",
+        message: `"${exists.name}" already exists here.`,
+      });
+    }
 
     const category = await Category.create({ name, description, kind, parent: parent || null });
     res.json({ success: true, category });

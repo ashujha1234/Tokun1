@@ -8352,12 +8352,22 @@ const filteredPrompts = prompts.filter((p) => {
     );
   }, [prompts, purchasedPrompts, searchTerm]);
 
-  /* The sub-category chips. Two sources, in order of preference:
-       1. the searched category's own children ("design" → Logo & Branding, …)
-       2. failing that, the category labels the results themselves carry, which
-          is what turns a query like "logo" into a usable set of chips.
-     Either way only names with at least one result survive — a chip that
-     empties the grid is a dead end, not a filter. */
+  /* The sub-category chips: the searched category's own children ("design" →
+     Logo & Branding, …) PLUS any category the results actually carry.
+
+     It used to be one or the other — the children when there were any, the
+     results' own labels only as a fallback. So a result filed outside the
+     searched category's tree had no chip at all: searching "design" returns a
+     product whose category is "Interior Design" (a top-level category of its
+     own, not a child of Design — it matches because the WORD "design" is in its
+     title), and the chip row listed "3D & Product Renders" and "Logo &
+     Branding" while quietly holding a third thing it never named. The row read
+     as the complete split of the results and wasn't.
+
+     Children come first because they are the meaningful split of what was
+     searched; anything else follows. Either way only names with at least one
+     result survive — a chip that empties the grid is a dead end, not a
+     filter. */
   const searchFacets = useMemo(() => {
     if (!searchTerm) return [] as { name: string; count: number }[];
 
@@ -8368,13 +8378,19 @@ const filteredPrompts = prompts.filter((p) => {
       });
     });
 
-    const fromOptions = searchSubOptions.map((name) => ({
-      name,
-      count: counts.get(name) || 0,
-    }));
-    const fromResults = [...counts].map(([name, count]) => ({ name, count }));
+    /* Keyed by lowercase name so the taxonomy's "Logo & Branding" and a
+       result's "logo & branding" can't both become chips. */
+    const merged = new Map<string, { name: string; count: number }>();
+    const add = (name: string, count: number) => {
+      const key = name.trim().toLowerCase();
+      if (!key || merged.has(key)) return;
+      merged.set(key, { name, count });
+    };
 
-    return (searchSubOptions.length ? fromOptions : fromResults)
+    searchSubOptions.forEach((name) => add(name, counts.get(name) || 0));
+    [...counts].forEach(([name, count]) => add(name, count));
+
+    return [...merged.values()]
       .filter((f) => f.count > 0)
       // The searched category itself is on every result, so as a chip it would
       // filter nothing — the point here is the split *below* it.
@@ -9198,7 +9214,7 @@ const savePromptToCollections = async ({
             setPriceBand("all");
             setSearchSort("relevance");
           }}
-          renderCard={renderOldStyleCard}
+          renderCard={renderRailCard}
         />
       ) : (
       /* ================= NEW Library-style design (live) ================= */
