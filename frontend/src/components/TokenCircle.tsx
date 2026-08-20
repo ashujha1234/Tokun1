@@ -128,7 +128,7 @@ const TokenCircle = ({ originalTokens, optimizedTokens, optimizedWords = 0 }: To
               </span>
               <span className="text-white/40 mx-2">|</span>
               <span className="bg-clip-text text-transparent" style={{ backgroundImage: GRADIENT_CSS }}>
-                {saved} tokuns saved
+                {saved} tokens saved
               </span>
             </span>
           </div>
