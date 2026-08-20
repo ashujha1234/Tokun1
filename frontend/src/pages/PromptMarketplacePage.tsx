@@ -6528,6 +6528,7 @@ const LibOldStyleCard = ({
   onBuyNow,
   onOpenDetails,
   onNavigateToProfile,
+  preferReel = false,
 }: {
   prompt: Prompt;
   mediaKind: "video" | "image";
@@ -6540,6 +6541,8 @@ const LibOldStyleCard = ({
   onBuyNow: (p: Prompt) => void;
   onOpenDetails: (p: Prompt) => void;
   onNavigateToProfile: (id: string | null | undefined) => void;
+  /** Render an image listing in the reel frame too — see the branch below. */
+  preferReel?: boolean;
 }) => {
   // Called before the early return below so the hook order stays fixed.
   const { user: viewer } = useAuth?.() || ({} as any);
@@ -6557,10 +6560,20 @@ const LibOldStyleCard = ({
   const { isInCart } = useCart();
   const inCart = isInCart(prompt.id);
 
-  if (mediaKind === "video") {
+  /* One card for both media types — in the rails only.
+     Width and height already matched there (the rail is a flex row of 300px
+     children, stretched to the tallest), but the two were still visibly
+     different objects: a video filled its tile 9:16, while an image sat as a 4:3
+     thumbnail with title, rating and description printed underneath and a gap
+     where the stretch had padded it out. Same frame now; only the media inside
+     it differs (see the note in VideoReelCard).
+
+     `preferReel` is what keeps this to the rails. Search results render the same
+     component and there the .mp-card is the right one: someone who searched for
+     words needs to see the title and description that matched them, and the reel
+     deliberately shows neither. */
+  if (mediaKind === "video" || (preferReel && prompt.imageUrl)) {
     return (
-      // Same width as the image card below, and the rail stretches both to the
-      // same height — a row of prompts shouldn't change shape by media type.
       <div style={{ width: 300, flexShrink: 0 }}>
         <VideoReelCard
           prompt={prompt}
@@ -6869,8 +6882,27 @@ const LibFeaturedSection = ({
                     )}
                   </div>
 
-                  <h4 className="text-[18px] font-semibold text-white">{p.title}</h4>
-                  <p className="mt-2 text-[13px] leading-relaxed text-white/65 max-w-[420px]">{p.description}</p>
+                  {/* Clamped to three lines, and the block holds those three
+                      lines whether or not the text fills them.
+
+                      This printed the whole description, so the card was as tall
+                      as whatever the seller had written: two featured products
+                      side by side came out at different heights, and one long
+                      description stretched the section past the size it is
+                      supposed to have. The title is one line for the same reason
+                      — a two-line title moved everything under it. */}
+                  <h4 className="text-[18px] font-semibold text-white truncate">{p.title}</h4>
+                  <p
+                    className="mt-2 text-[13px] leading-relaxed text-white/65 max-w-[420px] overflow-hidden"
+                    style={{
+                      display: "-webkit-box",
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: "vertical",
+                      minHeight: "60px",
+                    }}
+                  >
+                    {p.description}
+                  </p>
 
                   <div className="mt-5 flex items-center justify-between flex-wrap gap-2">
                     <span className="text-[18px] font-semibold text-white">{formatCardPrice(p)}</span>
@@ -8775,7 +8807,7 @@ const savePromptToCollections = async ({
 //   };
 //
 
-  const renderOldStyleCard = (p: Prompt) => (
+  const renderOldStyleCard = (p: Prompt, preferReel = false) => (
     <LibOldStyleCard
       key={p.id}
       prompt={p}
@@ -8789,8 +8821,14 @@ const savePromptToCollections = async ({
       onBuyNow={(prompt) => handlePurchase(prompt)}
       onOpenDetails={(prompt) => { setDetailsPrompt(prompt); setDetailsOpen(true); }}
       onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
+      preferReel={preferReel}
     />
   );
+
+  /* The rails, where a video and an image sit next to each other in one row and
+     have to be the same object. Search results keep the plain renderer above —
+     see the note on `preferReel` in LibOldStyleCard. */
+  const renderRailCard = (p: Prompt) => renderOldStyleCard(p, true);
 
   return (
     <div className="marketplace dark text-foreground">
@@ -9255,7 +9293,7 @@ const savePromptToCollections = async ({
                 eyebrow="JUST ADDED"
                 title="Newest Products"
                 items={filteredPrompts}
-                renderCard={renderOldStyleCard}
+                renderCard={renderRailCard}
               />
 
               <LibPromptRow
@@ -9263,7 +9301,7 @@ const savePromptToCollections = async ({
                 eyebrow="TRENDING THIS MONTH"
                 title="Most Popular Products This Month"
                 items={[...filteredPrompts].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))}
-                renderCard={renderOldStyleCard}
+                renderCard={renderRailCard}
               />
 
               {/* Was "T-Shirt Design Prompts" over the unfiltered list — the
@@ -9278,7 +9316,7 @@ const savePromptToCollections = async ({
                   (a, b) =>
                     (a.isFree ? 0 : cardPrice(a)) - (b.isFree ? 0 : cardPrice(b)),
                 )}
-                renderCard={renderOldStyleCard}
+                renderCard={renderRailCard}
               />
 
               <LibFeaturedSection

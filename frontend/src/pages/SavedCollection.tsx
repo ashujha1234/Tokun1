@@ -3964,6 +3964,7 @@ import {
   MoreHorizontal,
   Pencil,
   Trash,
+  ShoppingCart,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { loadSaved, type SavedItem } from "@/lib/savedCollections";
@@ -4370,7 +4371,14 @@ export default function SavedCollection() {
        happens on the marketplace (see the details panel's own note) — cart and
        buy hand the product over there rather than starting a second checkout
        inside this page. */
-    if (!missing && mapped?.videoUrl) {
+    /* One card for every saved product, image or video: the 9:16 reel, the same
+       one the marketplace rails and the profile render. An image used to fall
+       through to the .mp-card below — a 4:3 thumbnail with title and description
+       printed under it — so a saved list holding both kinds showed two different
+       objects side by side. VideoReelCard takes an image now (see the note in
+       it); the .mp-card below is left for a listing whose media is gone, which
+       is the one case there is no reel to show. */
+    if (!missing && (mapped?.videoUrl || mapped?.imageUrl)) {
       return (
         <div key={refId || `${title}_${idx}`} className="relative" style={{ width: 300 }}>
           <VideoReelCard
@@ -4510,20 +4518,68 @@ export default function SavedCollection() {
           </div>
           <p className="mp-card__desc">{mapped?.description}</p>
 
-          {/* Price only. The "Details" / "Open" button that sat beside it did
-              exactly what clicking anywhere on the card already does — the whole
-              card is the tap target and opens this same panel — so it was a
-              second button for the first button's job, taking half the footer
-              and making the price look like one of two choices. */}
+          {/* The marketplace card's buy row, in full.
+
+              This was the price on its own, which made a saved image product the
+              odd one out twice over: the reel branch above (a saved VIDEO
+              product) already carries Cart and Buy Now, so the same page showed
+              two different cards, and the marketplace and profile versions of
+              this exact card carry them too. Saving something and then having to
+              go and find it again to buy it is not a shortlist, it's a note.
+
+              A "Details" / "Open" button is still deliberately absent — the whole
+              card is the tap target for that.
+
+              Cart and Buy Now hand the product to the marketplace rather than
+              starting a checkout here, exactly as the reel branch does: that page
+              owns the payment flow, the team-member request path and the
+              seller-verification gate. */}
           <div className="mp-card__footer">
             {(mapped as any)?.isFree ? (
               <div className="mp-card__pill mp-card__pill--free">FREE</div>
             ) : owned ? (
               <div className="mp-card__pill mp-card__pill--owned">PURCHASED</div>
             ) : (
-              <div className="mp-card__pill mp-card__pill--muted">
-                ₹{cardPrice(mapped).toFixed(2)}
-              </div>
+              <>
+                <div className="mp-card__pill mp-card__pill--muted">
+                  ₹{cardPrice(mapped).toFixed(2)}
+                </div>
+
+                {/* Not on your own listing, and not on a one-time product that
+                    has already sold — it can never be bought again. */}
+                {!missing &&
+                  String((mapped as any)?.uploaderId || "") !== String(currentUserId || "") &&
+                  !((mapped as any)?.exclusive && (mapped as any)?.sold) && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(
+                            `/prompt-marketplace?prompt=${encodeURIComponent(String(mapped.id))}`,
+                          );
+                        }}
+                        className="mp-card__pill mp-card__pill--cart"
+                      >
+                        <ShoppingCart className="h-4 w-4" />
+                        Cart
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(
+                            `/prompt-marketplace?prompt=${encodeURIComponent(String(mapped.id))}`,
+                          );
+                        }}
+                        className="mp-card__pill mp-card__pill--buy"
+                      >
+                        Buy Now
+                      </button>
+                    </>
+                  )}
+              </>
             )}
           </div>
 
@@ -4577,7 +4633,10 @@ export default function SavedCollection() {
       /* No heading, and no top margin to clear a folder grid that isn't there —
          the cards start where you'd expect them to. */
       <div className="w-full mt-2">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6 lg:gap-8">
+        {/* items-start so a reel keeps its 9:16 shape — grid items stretch to
+            the tallest in the row by default, which overrides the card's own
+            aspect-ratio. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6 lg:gap-8 items-start">
           {isPromptSection &&
             directItems.map((it, idx) =>
               renderPromptCard(

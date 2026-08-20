@@ -69,6 +69,15 @@ export default function VideoReelCard({
   const teamMember = isTeamMember(viewer);
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  /* An image listing renders in this same card.
+     The marketplace rails put both kinds side by side, and until now a video was
+     a full-bleed 9:16 tile while an image was a 4:3 thumbnail with a block of
+     text under it — the same width and the same height, but visibly two
+     different cards in one row. The media is what differed, so that is what is
+     shared: the frame, the badges, the watermark and the price/cart/buy row are
+     the card's, and only the element inside the frame changes. */
+  const isVideo = !!prompt.videoUrl;
+
   /* Every reel plays by itself now, the way a feed does — a grid of frozen
      first frames each waiting for a click told a browser nothing about what
      the prompt actually produces. Two things keep that from being expensive:
@@ -80,6 +89,9 @@ export default function VideoReelCard({
      that used to do it now opens the product. */
 
   useEffect(() => {
+    // Nothing to observe on an image card — there is no playback to gate.
+    if (!isVideo) return;
+
     const el = videoRef.current;
     if (!el) return;
 
@@ -99,14 +111,15 @@ export default function VideoReelCard({
     );
     io.observe(el);
     return () => io.disconnect();
-  }, []);
+  }, [isVideo]);
 
   useEffect(() => {
+    if (!isVideo) return;
     const el = videoRef.current;
     if (!el) return;
     if (inView) el.play().catch(() => {});
     else el.pause();
-  }, [inView]);
+  }, [inView, isVideo]);
 
 
   // Listed but not purchasable — the seller is still going through Route payout
@@ -135,23 +148,35 @@ export default function VideoReelCard({
         onOpenDetails(prompt);
       }}
     >
-      {/* Video */}
-      <video
-        ref={videoRef}
-        src={prompt.videoUrl}
-        /* The poster paints before a single byte of video arrives. Without it a
-           card is a black rectangle for as long as the file takes — and these
-           are the seller's originals unless a preview was generated. */
-        poster={prompt.posterUrl || undefined}
-        className="reel-card__video"
-        loop
-        muted
-        // Muted + inline is what lets a browser autoplay this at all; without
-        // both, the play() above is rejected and every card sits frozen.
-        autoPlay
-        playsInline
-        preload="metadata"
-      />
+      {/* Media — the one thing that differs between a video and an image
+          listing. Same class either way, so both fill the frame identically
+          (position:absolute, inset:0, object-fit:cover). */}
+      {isVideo ? (
+        <video
+          ref={videoRef}
+          src={prompt.videoUrl}
+          /* The poster paints before a single byte of video arrives. Without it a
+             card is a black rectangle for as long as the file takes — and these
+             are the seller's originals unless a preview was generated. */
+          poster={prompt.posterUrl || undefined}
+          className="reel-card__video"
+          loop
+          muted
+          // Muted + inline is what lets a browser autoplay this at all; without
+          // both, the play() above is rejected and every card sits frozen.
+          autoPlay
+          playsInline
+          preload="metadata"
+        />
+      ) : (
+        <img
+          src={prompt.imageUrl || prompt.posterUrl}
+          alt={prompt.title || "Product preview"}
+          className="reel-card__video"
+          loading="lazy"
+          draggable={false}
+        />
+      )}
 
       {/* Watermark */}
       {!isPurchased && (

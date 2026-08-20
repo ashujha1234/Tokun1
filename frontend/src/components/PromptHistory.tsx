@@ -19,6 +19,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import RefundReasonPicker from "@/components/RefundReasonPicker";
 import ConfirmModal from "@/components/ConfirmModal";
+import ProductGridCard from "@/components/ProductGridCard";
 // Shared with the second refund dialog in pages/self-dash.tsx — see that module.
 import {
   composeRefundReason,
@@ -689,218 +690,10 @@ function EmptyStateCard({
 }
 
 /* ---------- Grid Card ---------- */
-function HistoryGridCard({
-  prompt,
-  showImages = true,
-  playingVideo,
-  onToggleVideo,
-  onPreview,
-  isUploaded = false,
-  onDelete,
-  onRequestRefund,
-}: {
-  prompt: Prompt;
-  showImages?: boolean;
-  playingVideo: number | string | null;
-  onToggleVideo: (id: number | string) => void;
-  onPreview: (p: Prompt) => void;
-  isUploaded?: boolean;
-  onDelete?: (p: Prompt) => void;
-  onRequestRefund?: (p: Prompt) => void;
-}) {
-  const isPlaying = playingVideo === prompt.id;
-
-  const priceLabel = prompt.isFree ? "FREE" : `₹${(prompt.price ?? 0).toFixed(2)}`;
-  const showPurchaseOverlay = !isUploaded && !prompt.purchasedAt; // only if not owned
-
-  return (
-    <Card
-      key={prompt.id}
-      onClick={() => onPreview(prompt)}
-      className="overflow-hidden cursor-pointer hover:scale-[1.01] transition-transform"
-      style={{ width: 306, height: 520, background: "#1C1C1C", borderRadius: 30 }}
-    >
-      <CardContent className="p-4 h-full flex flex-col">
-        {/* MEDIA */}
-        <div
-          className="relative w-full overflow-hidden group"
-          style={{ height: 240, borderRadius: 20, backgroundColor: "#0B0B0B" }}
-        >
-          {showImages ? (
-            <img src={prompt.imageUrl} alt={prompt.title} className="w-full h-full object-cover" />
-          ) : (
-            <>
-              <video
-                className="w-full h-full object-cover"
-                src={prompt.videoUrl}
-                loop
-                muted
-                playsInline
-                ref={(el) => {
-                  if (!el) return;
-                  if (isPlaying) el.play().catch(() => {});
-                  else el.pause();
-                }}
-              />
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleVideo(prompt.id);
-                }}
-                className="absolute inset-0 flex items-center justify-center"
-                aria-label={isPlaying ? "Pause" : "Play"}
-              >
-                <span className="w-12 h-12 rounded-full bg-black/60 hover:bg-black/75 grid place-items-center text-white transition-colors">
-                  {isPlaying ? (
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-                      <rect x="6" y="5" width="4" height="14" rx="1" />
-                      <rect x="14" y="5" width="4" height="14" rx="1" />
-                    </svg>
-                  ) : (
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M8 5v14l11-7-11-7z" />
-                    </svg>
-                  )}
-                </span>
-              </button>
-              <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">0:20</div>
-            </>
-          )}
-
-          {/* Category pill */}
-          <div
-            className="absolute top-3 left-3 px-3 py-1 text-[11px] font-semibold text-white rounded-full"
-            style={{ background: GRAD }}
-          >
-            {prompt.category?.toUpperCase()}
-          </div>
-
-          {/* Overlay pill area */}
-          {isUploaded ? (
-            // In uploaded section: show PRICE instead of "PURCHASE TO UNLOCK"
-            <div
-              className="absolute top-11 left-3 mt-2 px-3 py-1 text-[11px] font-semibold text-white rounded-full"
-              style={{ background: GRAD }}
-            >
-              {priceLabel}
-            </div>
-          ) : showPurchaseOverlay ? (
-            <div
-              className="absolute top-11 left-3 mt-2 px-3 py-1 text-[11px] font-semibold text-white rounded-full"
-              style={{ background: GRAD }}
-            >
-              PURCHASE TO UNLOCK
-            </div>
-          ) : null}
-
-          {/* Moderation status pill (uploaded prompts only) */}
-          {isUploaded && getModerationBadge(prompt.mediaValidation?.status) && (
-            <div
-              className="absolute top-11 right-3 mt-2 px-2.5 py-1 text-[10px] font-semibold rounded-full"
-              style={{
-                background: getModerationBadge(prompt.mediaValidation?.status)!.bg,
-                color: getModerationBadge(prompt.mediaValidation?.status)!.color,
-              }}
-            >
-              {getModerationBadge(prompt.mediaValidation?.status)!.label}
-            </div>
-          )}
-
-          {/* Rating pill */}
-          <div className="absolute top-3 right-3">
-            <div className="flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium text-white bg-black/40 border border-white/40 backdrop-blur-sm">
-              <Star className="h-3.5 w-3.5 text-white" />
-              {typeof prompt.rating === "number" ? prompt.rating : "—"}
-            </div>
-          </div>
-        </div>
-
-        {/* TEXT CONTENT */}
-        <div className="mt-4">
-         <h3 className="mt-1 text-[18px] leading-snug font-semibold text-white line-clamp-2">{prompt.title}</h3>
-{prompt.fullPrompt ? (
-  <p className="mt-2 text-[13px] leading-relaxed text-white/70 line-clamp-3">{prompt.fullPrompt}</p>
-) : (
-  <p className="mt-2 text-[13px] leading-relaxed text-white/70 line-clamp-2">{prompt.description}</p>
-)}
-        </div>
-
-        {/* FOOTER */}
-        {isUploaded ? (
-          // Uploaded: price pill on the LEFT, delete icon pill on the RIGHT
-          <div className="mt-auto pt-4 flex items-center justify-between">
-            <div
-              className="flex items-center justify-center"
-              style={{ minWidth: 65, height: 40, borderRadius: 50, padding: "0 14px", background: "#333335" }}
-            >
-              <span className="text-[13px] text-white/90">{priceLabel}</span>
-            </div>
-
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete?.(prompt);
-              }}
-              className="flex items-center justify-center"
-              style={{ minWidth: 48, height: 40, borderRadius: 50, padding: "0 14px", background: "#333335" }}
-              aria-label="Delete product"
-              title="Delete"
-            >
-              <Trash className="h-4 w-4 text-white/90" />
-            </button>
-          </div>
-        ) : (
-          // Purchased: icon pill + price pill on the left, refund control on the right
-          <div className="mt-auto pt-4 flex items-center gap-3 justify-between">
-            <div className="flex items-center gap-3">
-              {/* The save-looking pill that stood here is gone — a <div> with
-                  the save icon in it and nothing behind it, on a card for
-                  something already purchased. Same one removed from My Products
-                  and the Saved page. */}
-              <div
-                className="flex items-center justify-center"
-                style={{ minWidth: 65, height: 40, borderRadius: 50, padding: "0 14px", background: "#333335" }}
-              >
-                <span className="text-[13px] text-white/90">{priceLabel}</span>
-              </div>
-            </div>
-
-            {!prompt.isFree && prompt.purchaseId && (
-              prompt.refundStatus === "NONE" || !prompt.refundStatus ? (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRequestRefund?.(prompt);
-                  }}
-                  className="text-[12px] font-medium text-white/70 hover:text-white underline underline-offset-2"
-                >
-                  Request Refund
-                </button>
-              ) : (
-                <span
-                  className="text-[11px] font-medium px-2.5 py-1 rounded-full"
-                  style={{
-                    background:
-                      prompt.refundStatus === "REJECTED" ? "rgba(239,68,68,0.15)" : "rgba(34,197,94,0.15)",
-                    color: prompt.refundStatus === "REJECTED" ? "#f87171" : "#4ade80",
-                  }}
-                >
-                  {prompt.refundStatus === "REQUESTED" && "Refund Requested"}
-                  {prompt.refundStatus === "APPROVED" && "Refund Approved"}
-                  {prompt.refundStatus === "REJECTED" && "Refund Rejected"}
-                  {prompt.refundStatus === "REFUNDED" && "Refunded"}
-                </span>
-              )
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
+/* HistoryGridCard lived here — a 306×520 tile of its own design. Both grids on
+   this page render components/ProductGridCard.tsx now, which is the marketplace
+   card with this screen's actions on it, so a product looks the same here as it
+   does anywhere else. */
 
 /* ---------- Uploaded stats ---------- */
 function UploadedStatsBar({
@@ -1030,7 +823,9 @@ export default function PromptHistory() {
   const [yearFilter, setYearFilter] = useState<string>("2025");
   const [typeFilter, setTypeFilter] = useState<string>("All");
 
-  const [playingVideo, setPlayingVideo] = useState<number | string | null>(null);
+  /* The "which video is playing" state went with the old card: ProductGridCard
+     plays a reel on hover, per card, so nothing has to be coordinated across the
+     grid. */
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsPrompt, setDetailsPrompt] = useState<MarketplacePrompt | null>(null);
    
@@ -1097,8 +892,6 @@ export default function PromptHistory() {
   // Totals for Purchased (use pricePaid mapped into .price)
   const totalPurchasedCount = purchaseHistory.length;
   const totalPurchasedBill = purchaseHistory.reduce((sum, p) => sum + (p.price || 0), 0);
-
-  const onToggleVideo = (id: number | string) => setPlayingVideo((prev) => (prev === id ? null : id));
 
   const openDetails = (p: Prompt) => {
     setDetailsPrompt(p as unknown as MarketplacePrompt);
@@ -1711,15 +1504,14 @@ useEffect(() => {
                 </div>
               ) : (
                   <div className="flex justify-center">
-  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 items-start">
 
 {purchaseHistory.map((prompt) => (
-  <HistoryGridCard
+  /* Same card as the marketplace, the profile and My Products in the seller
+     dashboard — see components/ProductGridCard.tsx. */
+  <ProductGridCard
     key={prompt.id}
     prompt={prompt}
-    showImages={!prompt.videoUrl} // ✅ fix
-    playingVideo={playingVideo}
-    onToggleVideo={onToggleVideo}
     onPreview={openDetails}
     onRequestRefund={openRefundModal}
   />
@@ -1763,16 +1555,13 @@ useEffect(() => {
                 </div>
               ) : (
                  <div className="flex justify-center">
-  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 items-start">
 
  
                  {uploadHistory.map((prompt) => (
-  <HistoryGridCard
+  <ProductGridCard
     key={prompt.id}
     prompt={prompt}
-    showImages={!prompt.videoUrl} // ✅ fix
-    playingVideo={playingVideo}
-    onToggleVideo={onToggleVideo}
     onPreview={openDetails}
     isUploaded
     onDelete={handleDeletePrompt}

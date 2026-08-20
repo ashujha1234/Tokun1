@@ -1141,29 +1141,15 @@ import {
 } from "@/lib/refundReasons";
 import RefundReasonPicker from "@/components/RefundReasonPicker";
 import ConfirmModal from "@/components/ConfirmModal";
+import ProductGridCard from "@/components/ProductGridCard";
 import { withTokunBranding } from "@/lib/razorpayTheme";
 
 const GRADIENT = "linear-gradient(270deg,#FF14EF 0%, #1A73E8 100%)";
 const GRAD = "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)";
 
-function getModerationBadge(status?: string): { label: string; bg: string; color: string } | null {
-  switch (status) {
-    case "pending":
-    case "pending_review":
-      return { label: "Pending Review", bg: "rgba(234,179,8,0.2)", color: "#facc15" };
-    case "approved":
-    case "admin_approved":
-      return { label: "Approved", bg: "rgba(34,197,94,0.2)", color: "#4ade80" };
-    case "admin_rejected":
-      return { label: "Rejected", bg: "rgba(239,68,68,0.2)", color: "#f87171" };
-    case "flagged":
-      return { label: "Flagged", bg: "rgba(239,68,68,0.2)", color: "#f87171" };
-    case "edit_requested":
-      return { label: "Changes Requested", bg: "rgba(167,139,250,0.2)", color: "#c4b5fd" };
-    default:
-      return null;
-  }
-}
+/* getModerationBadge moved into components/ProductGridCard.tsx, the only
+   thing that renders the badge. */
+
 const SELECTED_CARD_BG =
   "linear-gradient(180deg, rgba(255, 20, 239, 0.5) 0%, rgba(26, 115, 232, 0.5) 100%)";
 
@@ -1897,385 +1883,11 @@ function SubscriptionsSection({
   );
 }
 
-/* ─── History Grid Card ─────────────────────────────────── */
-function HistoryGridCard({
-  prompt,
-  showImages = true,
-  playingVideo,
-  onToggleVideo,
-  onPreview,
-  isUploaded = false,
-  onDelete,
-  onEdit,
-  onShare,
-  onRequestRefund,
-}: {
-  prompt: Prompt;
-  showImages?: boolean;
-  playingVideo: number | string | null;
-  onToggleVideo: (id: number | string) => void;
-  onPreview: (p: Prompt) => void;
-  isUploaded?: boolean;
-  onDelete?: (p: Prompt) => void;
-  onEdit?: (p: Prompt) => void;
-  onShare?: (p: Prompt) => void;
-  onRequestRefund?: (p: Prompt) => void;
-}) {
-  /* The <video> for this card, driven straight by the hover handlers below.
-     Held as a ref rather than through the playingVideo/onToggleVideo state the
-     play button used: hover is a per-card, per-pointer thing, and routing it
-     through shared state would make one card's hover a re-render of the whole
-     grid. Those props stay on the component for the image cards and the other
-     callers that still pass them. */
-  const videoElRef = useRef<HTMLVideoElement | null>(null);
-  const priceLabel = prompt.isFree ? "FREE" : `₹${(prompt.price ?? 0).toFixed(2)}`;
-  const isVideo = !showImages && !!prompt.videoUrl;
-  const needsEdit = isUploaded && prompt.mediaValidation?.status === "edit_requested";
-  const { user } = useAuth() as any;
-  const canShareWithTeam =
-    !isUploaded &&
-    !!onShare &&
-    user?.userType === "ORG" &&
-    user?.role === "Owner";
-
-  /* Free prompts were never charged, so there's nothing to refund — and the
-     24-hour window has to close on screen as well as on the server.
-
-     It didn't before: the button stayed on every purchase forever, so a buyer
-     could open a week-old product, write out a reason, attach screenshots and
-     submit, only to be told `refund_window_expired`. The deadline comes from
-     the API (refundEligibleUntil) rather than being recomputed here, so what's
-     offered is exactly what will be accepted. */
-  const refundWindowOpen =
-    prompt.refundEligible ??
-    (prompt.refundEligibleUntil
-      ? Date.now() < new Date(prompt.refundEligibleUntil).getTime()
-      : // Older responses didn't carry the field. Showing the button and
-        // letting the server refuse is friendlier than hiding a refund someone
-        // is still entitled to.
-        true);
-
-  const canRefund =
-    !isUploaded &&
-    !!onRequestRefund &&
-    !prompt.isFree &&
-    !!prompt.purchaseId &&
-    refundWindowOpen;
-  const refundPending =
-    !!prompt.refundStatus && prompt.refundStatus !== "NONE";
-  const refundBadge = refundPending
-    ? {
-        label:
-          prompt.refundStatus === "REQUESTED"
-            ? "Refund Requested"
-            : prompt.refundStatus === "APPROVED"
-            ? "Refund Approved"
-            : prompt.refundStatus === "REJECTED"
-            ? "Refund Rejected"
-            : "Refunded",
-        bg:
-          prompt.refundStatus === "REJECTED"
-            ? "rgba(239,68,68,0.15)"
-            : "rgba(34,197,94,0.15)",
-        color: prompt.refundStatus === "REJECTED" ? "#f87171" : "#4ade80",
-      }
-    : null;
-
-  // Video prompts: media fills the whole card edge-to-edge, with an
-  // explicit Details button (title/description are hidden under the video
-  // now, so the old "just tap the card" affordance isn't discoverable).
-  if (isVideo) {
-    return (
-      <Card
-        onClick={() => onPreview(prompt)}
-        /* HOVER PLAYS IT. There was a play/pause circle sitting in the middle of
-           every video product, and it was the wrong control for this card: the
-           card's own job is to open the product, so the one obvious thing in the
-           middle of it did something else, and a wall of these showed a row of
-           identical black circles over the artwork.
-
-           Hovering is what the marketplace already does with a video listing
-           (see LibPromptMedia there), so a creator looking at their own products
-           gets the same behaviour buyers get. On a touch screen there is no
-           hover — tapping opens the product, which is the useful action anyway
-           and is what the card was always for. */
-        onMouseEnter={() => {
-          const el = videoElRef.current;
-          if (el) el.play().catch(() => {});
-        }}
-        onMouseLeave={() => {
-          const el = videoElRef.current;
-          if (!el) return;
-          el.pause();
-          // Back to the first frame, so the card looks the same next time round
-          // rather than freezing on wherever the pointer happened to leave.
-          el.currentTime = 0;
-        }}
-        className="group relative overflow-hidden cursor-pointer hover:scale-[1.01] transition-transform"
-        style={{ width: 260, height: 460, background: "#0B0B0B", borderRadius: 24 }}
-      >
-        <video
-          ref={videoElRef}
-          className="absolute inset-0 w-full h-full object-cover"
-          src={prompt.videoUrl}
-          loop
-          muted
-          playsInline
-          preload="metadata"
-        />
-
-        {/* The only thing left over the artwork: a small mark saying there IS
-            video here, which fades out as soon as it starts playing. */}
-        <div
-          className="absolute bottom-3 right-3 w-7 h-7 rounded-full grid place-items-center transition-opacity duration-300 opacity-100 group-hover:opacity-0"
-          style={{ background: "rgba(0,0,0,0.55)" }}
-          aria-hidden
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="white">
-            <path d="M8 5v14l11-7-11-7z" />
-          </svg>
-        </div>
-
-        {/* Category pill */}
-        <div
-          className="absolute top-3 left-3 px-2 py-1 text-[10px] font-semibold text-white rounded-full"
-          style={{ background: GRAD }}
-        >
-          {prompt.category?.toUpperCase()}
-        </div>
-
-        {/* Moderation status pill */}
-        {isUploaded && getModerationBadge(prompt.mediaValidation?.status) && (
-          <div
-            className="absolute top-3 right-3 px-2 py-1 text-[10px] font-semibold rounded-full"
-            style={{
-              background: getModerationBadge(prompt.mediaValidation?.status)!.bg,
-              color: getModerationBadge(prompt.mediaValidation?.status)!.color,
-            }}
-          >
-            {getModerationBadge(prompt.mediaValidation?.status)!.label}
-          </div>
-        )}
-
-        {/* Bottom scrim: title + price + details + delete/buy-again */}
-        <div
-          className="absolute bottom-0 left-0 right-0 px-4 pt-12 pb-3"
-          style={{ background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.55) 60%, transparent 100%)" }}
-        >
-          <h3 className="text-[14px] leading-snug font-semibold text-white line-clamp-1">{prompt.title}</h3>
-          <div className="mt-2 flex items-center justify-between gap-2">
-            <div
-              className="flex items-center justify-center shrink-0"
-              style={{ minWidth: 56, height: 32, borderRadius: 50, padding: "0 12px", background: "rgba(255,255,255,0.12)" }}
-            >
-              <span className="text-[12px] text-white/90">{priceLabel}</span>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onPreview(prompt); }}
-                className="text-[12px] font-medium text-white"
-                style={{ height: 32, padding: "0 14px", borderRadius: 50, background: "rgba(255,255,255,0.14)", border: "1px solid rgba(255,255,255,0.2)" }}
-              >
-                Details ›
-              </button>
-              {isUploaded ? (
-                <>
-                  {needsEdit && (
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); onEdit?.(prompt); }}
-                      className="flex items-center justify-center"
-                      style={{ width: 32, height: 32, borderRadius: 50, background: "rgba(167,139,250,0.25)" }}
-                      title="Admin requested changes — edit & resubmit"
-                    >
-                      <Pencil className="h-3.5 w-3.5 text-white/90" />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); onDelete?.(prompt); }}
-                    className="flex items-center justify-center"
-                    style={{ width: 32, height: 32, borderRadius: 50, background: "rgba(255,255,255,0.12)" }}
-                  >
-                    <Trash className="h-3.5 w-3.5 text-white/90" />
-                  </button>
-                </>
-              ) : (
-                <>
-                  {canShareWithTeam && (
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); onShare?.(prompt); }}
-                      className="flex items-center justify-center"
-                      style={{ width: 32, height: 32, borderRadius: 50, background: "rgba(255,20,239,0.2)" }}
-                      title="Share with team"
-                    >
-                      <Users className="h-3.5 w-3.5 text-white/90" />
-                    </button>
-                  )}
-                  {/* The save-looking circle that sat here is gone. It was a
-                      bare <div> with the save icon in it — no handler, nothing
-                      behind it — so it read as a Save button on every one of
-                      your own products and did nothing when pressed. Saving your
-                      own upload to your own collection wouldn't mean anything
-                      anyway. */}
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Refund control — its own row, the pill row above is already full */}
-          {canRefund && (
-            <div className="mt-2 flex justify-end">
-              {refundBadge ? (
-                <span
-                  className="text-[10px] font-medium px-2.5 py-1 rounded-full"
-                  style={{ background: refundBadge.bg, color: refundBadge.color }}
-                >
-                  {refundBadge.label}
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onRequestRefund?.(prompt); }}
-                  className="text-[11px] font-medium text-white/75 hover:text-white underline underline-offset-2"
-                >
-                  Request Refund
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      </Card>
-    );
-  }
-
-  return (
-    <Card
-      onClick={() => onPreview(prompt)}
-      className="overflow-hidden cursor-pointer hover:scale-[1.01] transition-transform"
-      style={{ width: 260, height: 460, background: "#1C1C1C", borderRadius: 24 }}
-    >
-      <CardContent className="p-3 h-full flex flex-col">
-        {/* MEDIA */}
-        <div
-          className="relative w-full overflow-hidden group"
-          style={{ height: 200, borderRadius: 16, backgroundColor: "#0B0B0B" }}
-        >
-          <img src={prompt.imageUrl} alt={prompt.title} className="w-full h-full object-cover" />
-          {/* Category pill */}
-          <div
-            className="absolute top-2 left-2 px-2 py-1 text-[10px] font-semibold text-white rounded-full"
-            style={{ background: GRAD }}
-          >
-            {prompt.category?.toUpperCase()}
-          </div>
-
-          {/* Moderation status pill */}
-          {isUploaded && getModerationBadge(prompt.mediaValidation?.status) && (
-            <div
-              className="absolute top-2 right-2 px-2 py-1 text-[10px] font-semibold rounded-full"
-              style={{
-                background: getModerationBadge(prompt.mediaValidation?.status)!.bg,
-                color: getModerationBadge(prompt.mediaValidation?.status)!.color,
-              }}
-            >
-              {getModerationBadge(prompt.mediaValidation?.status)!.label}
-            </div>
-          )}
-        </div>
-
-        {/* TEXT */}
-        <div className="mt-3 px-1">
-          <h3 className="text-[15px] leading-snug font-semibold text-white line-clamp-2">{prompt.title}</h3>
-          {prompt.fullPrompt ? (
-            <p className="mt-1.5 text-[12px] leading-relaxed text-white/70 line-clamp-2">{prompt.fullPrompt}</p>
-          ) : (
-            <p className="mt-1.5 text-[12px] leading-relaxed text-white/70 line-clamp-2">{prompt.description}</p>
-          )}
-        </div>
-
-        {/* FOOTER */}
-        {isUploaded ? (
-          <div className="mt-auto pt-3 px-1 flex items-center justify-between">
-            <div
-              className="flex items-center justify-center"
-              style={{ minWidth: 60, height: 36, borderRadius: 50, padding: "0 12px", background: "#333335" }}
-            >
-              <span className="text-[12px] text-white/90">{priceLabel}</span>
-            </div>
-            {needsEdit && (
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onEdit?.(prompt); }}
-                className="flex items-center justify-center"
-                style={{ minWidth: 42, height: 36, borderRadius: 50, padding: "0 12px", background: "rgba(167,139,250,0.25)" }}
-                title="Admin requested changes — edit & resubmit"
-              >
-                <Pencil className="h-3.5 w-3.5 text-white/90" />
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onDelete?.(prompt); }}
-              className="flex items-center justify-center"
-              style={{ minWidth: 42, height: 36, borderRadius: 50, padding: "0 12px", background: "#333335" }}
-            >
-              <Trash className="h-3.5 w-3.5 text-white/90" />
-            </button>
-          </div>
-        ) : (
-          <div className="mt-auto pt-3 px-1">
-            <div className="flex items-center gap-2">
-              {/* Same decorative save pill as above, same reason for going: it
-                  looked like a control and was a <div> with an icon in it. */}
-              <div
-                className="flex items-center justify-center"
-                style={{ minWidth: 60, height: 36, borderRadius: 50, padding: "0 12px", background: "#333335" }}
-              >
-                <span className="text-[12px] text-white/90">{priceLabel}</span>
-              </div>
-              {canShareWithTeam && (
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onShare?.(prompt); }}
-                  className="flex items-center justify-center"
-                  style={{ minWidth: 42, height: 36, borderRadius: 50, padding: "0 12px", background: "rgba(255,20,239,0.2)" }}
-                  title="Share with team"
-                >
-                  <Users className="h-3.5 w-3.5 text-white/90" />
-                </button>
-              )}
-            </div>
-
-            {/* Refund control — separate row so it never squeezes the pills */}
-            {canRefund && (
-              <div className="mt-2 flex justify-end">
-                {refundBadge ? (
-                  <span
-                    className="text-[10px] font-medium px-2.5 py-1 rounded-full"
-                    style={{ background: refundBadge.bg, color: refundBadge.color }}
-                  >
-                    {refundBadge.label}
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); onRequestRefund?.(prompt); }}
-                    className="text-[11px] font-medium text-white/70 hover:text-white underline underline-offset-2"
-                  >
-                    Request Refund
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
+/* The 260×460 HistoryGridCard that lived here — its own tile, its own round
+   pills, its own separate video variant — is gone. My Products renders the same
+   card as the marketplace, the profile and the saved list now:
+   components/ProductGridCard.tsx, styled from PromptMarketplace.css. Only the
+   actions on it are this screen's (delete, edit, share, refund). */
 
 /* ─── Resubmit Prompt Modal (edit_requested only) ───────── */
 function ResubmitPromptModal({
@@ -2485,7 +2097,8 @@ const [acceptingRequestId, setAcceptingRequestId] = useState<string | number | n
   /* ── Details ── */
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsPrompt, setDetailsPrompt] = useState<MarketplacePrompt | null>(null);
-  const [playingVideo, setPlayingVideo] = useState<number | string | null>(null);
+  /* The "which video is playing" state went with the old card: ProductGridCard
+     plays a reel on hover, per card, so nothing is coordinated across the grid. */
    
 const [creatingPlan, setCreatingPlan] = useState(false);
 
@@ -3073,7 +2686,6 @@ const handleAcceptRequest = async (item: any) => {
 
 
 
-  const onToggleVideo = (id: number | string) => setPlayingVideo((prev) => (prev === id ? null : id));
   const openDetails = (p: Prompt) => {
     setDetailsPrompt(p as unknown as MarketplacePrompt);
     setDetailsOpen(true);
@@ -4357,14 +3969,16 @@ const RequestCard = ({ item }: { item: any }) => {
         ) : items.length === 0 ? (
           <EmptyState message={isPurchased ? "No products purchased yet." : "No uploaded products yet."} />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 items-start">
             {items.map((prompt) => (
-              <HistoryGridCard
+              /* The marketplace card, with this screen's actions on it — see
+                 components/ProductGridCard.tsx. `showImages`, `playingVideo` and
+                 `onToggleVideo` are gone with the old card: it decides video vs
+                 image from the product itself, and a video plays on hover rather
+                 than through shared "which one is playing" state. */
+              <ProductGridCard
                 key={prompt.id}
                 prompt={prompt}
-                showImages={!prompt.videoUrl}
-                playingVideo={playingVideo}
-                onToggleVideo={onToggleVideo}
                 onPreview={openDetails}
                 isUploaded={!isPurchased}
                 onDelete={!isPurchased ? handleDeletePrompt : undefined}
