@@ -86,9 +86,26 @@ export type AddToCartResult = {
   message?: string;
 };
 
+/* The buyer's Refer & Earn welcome credit, as it applies to THIS cart.
+   Server-computed (GET /api/cart) rather than a percentage the client works out
+   for itself: the credit is capped (maxAmount) and can never exceed Tokun's own
+   cut on the order, so "5% of the total" is the right answer only sometimes —
+   and checkout would then charge a different number than the cart displayed. */
+export type CartWelcomeDiscount = {
+  percent: number;
+  maxAmount: number;
+  /** Rupees off this cart. */
+  amount: number;
+  expiresAt?: string;
+};
+
 type CartContextType = {
   cart: CartItem[];
   loading: boolean;
+  /** null when the buyer has no credit, or it can't apply to this cart. */
+  welcomeDiscount: CartWelcomeDiscount | null;
+  /** What checkout will charge, discount included. */
+  payableTotal: number;
   fetchCart: () => Promise<void>;
   addToCart: (promptId: string) => Promise<AddToCartResult>;
   removeFromCart: (promptId: string) => Promise<void>;
@@ -118,6 +135,8 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   const { token } = useAuth() || ({} as any);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [welcomeDiscount, setWelcomeDiscount] = useState<CartWelcomeDiscount | null>(null);
+  const [payableTotal, setPayableTotal] = useState(0);
 
   /** 🔹 Fetch cart from backend */
   const fetchCart = async () => {
@@ -155,6 +174,8 @@ videoUrl: i.prompt.attachment?.type === "video"
               exclusive: !!i.prompt.exclusive,  
           }))
         );
+        setWelcomeDiscount(data.welcomeDiscount || null);
+        setPayableTotal(Number(data.payableTotal ?? data.totalTokunPrice ?? 0));
       }
     } catch (err) {
       console.error("Fetch cart failed:", err);
@@ -226,7 +247,13 @@ const removeFromCart = async (promptId: string) => {
 
 
   /** 🔹 Clear local cart */
-  const clearCart = () => setCart([]);
+  const clearCart = () => {
+    setCart([]);
+    // The credit belongs to the cart it was previewed against — an emptied cart
+    // has no discount to show.
+    setWelcomeDiscount(null);
+    setPayableTotal(0);
+  };
 
   useEffect(() => {
     if (token) fetchCart();
@@ -245,7 +272,7 @@ const removeFromCart = async (promptId: string) => {
   );
 
   return (
-    <CartContext.Provider value={{ cart, loading, fetchCart, addToCart, removeFromCart, clearCart, isInCart }}>
+    <CartContext.Provider value={{ cart, loading, welcomeDiscount, payableTotal, fetchCart, addToCart, removeFromCart, clearCart, isInCart }}>
       {children}
     </CartContext.Provider>
   );

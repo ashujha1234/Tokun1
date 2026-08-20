@@ -101,8 +101,16 @@ export default function ShareWithTeamModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
+      {/* z-[1200] over z-[1199], because this dialog opens ON TOP of the
+          product popup — and that one lifts itself to z-[1100]/[1099] to clear
+          the marketplace's fixed header (see DetailsPrompt). At the shadcn
+          default of z-50 both this content and its scrim rendered UNDER that
+          popup: the modal was invisible, Radix moved focus into it anyway, and
+          what the buyer saw was a dark, empty, unresponsive screen. */}
       <DialogContent
+        overlayClassName="z-[1199]"
         className="
+          z-[1200]
           bg-[#17171A] text-white border-none rounded-2xl
           w-[min(96vw,480px)] p-6 shadow-xl
         "

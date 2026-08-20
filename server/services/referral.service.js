@@ -518,6 +518,56 @@ async function previewBuyerDiscount({ buyerId, sellerId, split }) {
 }
 
 /**
+ * previewBuyerDiscount for a whole ORDER rather than one listing.
+ *
+ * The cart needed this. previewBuyerDiscount above takes a single split and the
+ * one seller behind it, which is the Buy Now shape; a cart is one payment across
+ * several sellers, and the discount is applied once to the total (see
+ * /api/cart/checkout). Without a preview at this shape the cart page had no way
+ * to name the discount before checkout, so a buyer holding a 5% welcome credit
+ * saw the undiscounted total and only found out at the payment sheet — or
+ * assumed the credit didn't apply to carts at all.
+ *
+ * Reserves nothing: the caller is drawing a screen, not taking money. The
+ * arithmetic is buyerDiscountAmount, the same function reserveBuyerDiscount
+ * uses, so the figure shown is the figure charged.
+ *
+ * @param {number} buyerPays what the buyer would pay without it
+ * @param {number} tokunCut  Tokun's take across the order, after seller waivers
+ * @returns {{discount:number, percent:number, maxAmount:number, expiresAt:Date}|null}
+ */
+async function previewBuyerDiscountForOrder({ buyerId, buyerPays, tokunCut }) {
+  const now = new Date();
+
+  const credit = await CommissionRebate.findOne({
+    userId: buyerId,
+    kind: "buyer_discount",
+    status: { $in: UNSPENT }, // a held-but-unpaid checkout still counts as theirs
+    expiresAt: { $gt: now },
+  })
+    .sort({ expiresAt: 1 }) // the one closest to expiring, as the reserve does
+    .lean();
+
+  if (!credit) return null;
+
+  const discount = buyerDiscountAmount({
+    buyerPays,
+    tokunCut,
+    percent: credit.discountPercent,
+    maxAmount: credit.maxAmount,
+  });
+
+  if (discount <= 0) return null;
+
+  return {
+    discount,
+    percent: credit.discountPercent,
+    maxAmount: credit.maxAmount,
+    expiresAt: credit.expiresAt,
+  };
+}
+
+/**
  * Does this buyer have a welcome discount to spend on this order?
  *
  * @param {number} buyerPays what the buyer would pay without it
@@ -750,6 +800,7 @@ module.exports = {
   consumeReservedCredit,
   reserveBuyerDiscount,
   previewBuyerDiscount,
+  previewBuyerDiscountForOrder,
   consumeBuyerDiscount,
   releaseCheckoutReservations,
   releaseStaleReservations,

@@ -2492,11 +2492,18 @@ router.get("/dashboard", requireAuth, async (req, res) => {
       .select("_id name email role isVerified isDeletedFromOrg orgAssignedCap orgTokensRemaining createdAt")
       .lean();
 
-    // Purchases attributable to the org = the owner's own purchases plus every
-    // team member's. The owner is added explicitly here precisely because
-    // `members` is now team-members-only; in practice members contribute
-    // nothing, since blockOrgTeamMemberPurchase stops them buying at all.
-    const teamUserIds = [org.ownerId, ...members.map((m) => m._id)];
+    /* Purchases attributable to the org = THE OWNER'S. Nobody else's.
+
+       This used to be `[owner, ...members]`, which swept in every purchase a
+       member had ever made — including the ones they made as an individual
+       before they were ever added to the org. Add someone who had bought three
+       products last month and the panel headed "Purchases by You" credited the
+       org with them, and Org Spend counted money the org never paid.
+
+       Members cannot buy at all (blockOrgTeamMemberPurchase rejects every
+       userType "TM", whatever their role), so there is nothing to lose by
+       scoping this to the one account that can. */
+    const orgBuyerIds = [org.ownerId];
 
     const [
       purchaseAgg,
@@ -2507,10 +2514,10 @@ router.get("/dashboard", requireAuth, async (req, res) => {
       recentRequests,
     ] = await Promise.all([
       Purchase.aggregate([
-        { $match: { buyer: { $in: teamUserIds }, paymentStatus: "SUCCESS" } },
+        { $match: { buyer: { $in: orgBuyerIds }, paymentStatus: "SUCCESS" } },
         { $group: { _id: null, count: { $sum: 1 }, totalSpent: { $sum: "$pricePaid" } } },
       ]),
-      Purchase.find({ buyer: { $in: teamUserIds }, paymentStatus: "SUCCESS" })
+      Purchase.find({ buyer: { $in: orgBuyerIds }, paymentStatus: "SUCCESS" })
         .populate("buyer", "name email")
         .populate("prompt", "title")
         .sort({ createdAt: -1 })
@@ -2548,6 +2555,39 @@ router.get("/dashboard", requireAuth, async (req, res) => {
         .limit(10)
         .lean(),
     ]);
+
+    /* Requests for something the org has since bought are done.
+
+       They used to sit in the queue forever: the owner bought the product from
+       the request row, and the row stayed exactly where it was — so the queue
+       filled up with work that was already finished and the owner had no way to
+       tell what was still outstanding. Checked against the org's purchases
+       rather than marked on the notification, so it is also true for a product
+       bought some other way (the marketplace, the cart) after being asked for.
+
+       The count follows the same rule; a badge that counts rows the panel
+       doesn't show is worse than no badge. */
+    const requestedPromptIds = recentRequests
+      .map((n) => n.promptId?._id)
+      .filter(Boolean);
+
+    const alreadyBoughtIds = requestedPromptIds.length
+      ? new Set(
+          (
+            await Purchase.find({
+              buyer: { $in: orgBuyerIds },
+              paymentStatus: "SUCCESS",
+              prompt: { $in: requestedPromptIds },
+            })
+              .select({ prompt: 1 })
+              .lean()
+          ).map((p) => String(p.prompt))
+        )
+      : new Set();
+
+    const openRequests = recentRequests.filter(
+      (n) => !alreadyBoughtIds.has(String(n.promptId?._id || ""))
+    );
 
     return res.json({
       success: true,
@@ -2594,9 +2634,10 @@ router.get("/dashboard", requireAuth, async (req, res) => {
         })),
       },
       teamRequests: {
-        count: requestCount,
-        unread: recentRequests.filter((n) => !n.read).length,
-        recent: recentRequests.map((n) => ({
+        // Minus the ones already bought, so the badge matches the list.
+        count: Math.max(0, requestCount - alreadyBoughtIds.size),
+        unread: openRequests.filter((n) => !n.read).length,
+        recent: openRequests.map((n) => ({
           id: n._id,
           promptId: n.promptId?._id || null,
           promptTitle: n.promptId?.title || "Untitled",

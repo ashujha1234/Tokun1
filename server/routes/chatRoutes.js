@@ -179,7 +179,16 @@ router.post(
   attachment: {
     url: azureUrl,
     name: req.file.originalname,
-    type: req.file.mimetype.startsWith("image") ? "image" : "file",
+    /* image | video | file.
+       "video" is new: everything that wasn't an image used to be "file", so a
+       clip someone sent rendered as a 📎 link — no player, and no way to watch
+       it without leaving the conversation. The client falls back to the file
+       extension for messages written before this, so old rows still play. */
+    type: req.file.mimetype.startsWith("image")
+      ? "image"
+      : req.file.mimetype.startsWith("video")
+        ? "video"
+        : "file",
   },
 });
 
@@ -187,8 +196,13 @@ router.post(
       // this — otherwise sending a file leaves the list showing the previous
       // message and the thread doesn't move to the top.
       const isImage = req.file.mimetype.startsWith("image");
+      const isVideo = req.file.mimetype.startsWith("video");
       await Conversation.findByIdAndUpdate(conversationId, {
-        lastMessage: isImage ? "📷 Photo" : `📎 ${req.file.originalname}`,
+        lastMessage: isImage
+          ? "📷 Photo"
+          : isVideo
+            ? "🎬 Video"
+            : `📎 ${req.file.originalname}`,
         lastSender: req.user._id,
         updatedAt: new Date(),
       });

@@ -1478,9 +1478,25 @@ export default function NotificationsPage() {
     };
 
     const currentUserId = String((user as any)?._id || (user as any)?.id || "");
+
+    /* A prompt the ORG bought and shared counts as owned HERE.
+
+       `owned` is what makes DetailsPrompt reveal the prompt text, and it was
+       "did I buy this?" — which a team member never did and never can
+       (blockOrgTeamMemberPurchase). So the org would buy a product, share it,
+       the server would send the unlocked promptText down with it
+       (/api/prompt-collab/shared/team only includes it once the sharer has
+       actually purchased), and the panel showed the member a locked listing
+       anyway. The share was pointless.
+
+       `unlocked` is the server's own word for it; the promptText being present
+       at all is the fallback for a payload that predates that flag. */
+    const sharedUnlocked = !!prompt.unlocked || !!String(prompt.promptText || "").trim();
+
     setDetailsOwned(
       (!!currentUserId && !!uploaderId && uploaderId === currentUserId) ||
-        purchasedPromptIds.has(promptId)
+        purchasedPromptIds.has(promptId) ||
+        sharedUnlocked
     );
     setDetailsPrompt(normalizedPrompt);
     setDetailsOpen(true);

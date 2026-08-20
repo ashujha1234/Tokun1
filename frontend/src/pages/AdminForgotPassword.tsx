@@ -163,6 +163,14 @@ const AdminForgotPassword = () => {
      `length > 3 && includes("@")`, which accepts "abc@". */
   const isValid = useMemo(() => isValidEmail(email), [email]);
 
+  /* Under the field, not in a toast: a malformed address left the button dead
+     with nothing on screen explaining why. Only once something is typed — an
+     empty form is untouched, not wrong. */
+  const emailError =
+    email.trim() && !isValidEmail(email)
+      ? "Enter a complete email address, like you@company.com"
+      : null;
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isValid || submitting) return;
@@ -233,6 +241,7 @@ const AdminForgotPassword = () => {
                   placeholder="admin@tokun.world"
                   className="h-[44px] w-full rounded-[12px] bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)] border border-white/20 text-white text-[14px] placeholder:text-white/30 px-4 focus-visible:ring-0 focus:border-white/50"
                 />
+                {emailError && <p className="text-[12.5px] text-red-400">{emailError}</p>}
               </div>
 
               {/* Success message */}
@@ -296,6 +305,7 @@ const AdminForgotPassword = () => {
                     className="h-[54px] w-full rounded-[10px] bg-[#0F1520] border border-[#243045] text-white placeholder:text-white/35 focus-visible:ring-0 focus:border-[#3A6BFF]/60"
                     placeholder="admin@tokun.world"
                   />
+                  {emailError && <p className="text-[12.5px] text-red-400">{emailError}</p>}
                 </div>
 
                 {sent && (

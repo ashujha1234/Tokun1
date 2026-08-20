@@ -13,6 +13,7 @@ import { toast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { canManageTeam } from "@/lib/orgRoles";
 import OrgPromptCard from "@/components/OrgPromptCard";
+import DetailsPrompt from "@/components/DetailsPrompt";
 
 type Role = "Admin" | "Member";
 // "Invited" is a real membership state, not a stand-in for "hasn't verified
@@ -704,23 +705,37 @@ export default function BlogPage() {
   // Team-wide activity (what's been bought, what's been shared) — computed
   // live from Purchase/SharedPrompt on the backend, separate from the plain
   // roster call above.
-  useEffect(() => {
+  /* Pulled out of the effect so a purchase can re-run it. Buying from a team
+     request has to change two panels at once — the request leaves the queue
+     (the server stops listing requests for products the org now owns) and the
+     purchase appears under "Purchases by You" — and neither happens if the only
+     way to load this data is a page mount. */
+  const fetchOrgDashboard = useCallback(async () => {
     if (!token) return;
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/org/members/dashboard`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (!res.ok || !data?.success) return;
-        setTeamPurchases(data.teamPurchases || { count: 0, totalSpent: 0, recent: [] });
-        setSharedPrompts(data.sharedPrompts || { count: 0, recent: [] });
-        setTeamRequests(data.teamRequests || { count: 0, unread: 0, recent: [] });
-      } catch (err) {
-        console.error("org dashboard activity fetch failed:", err);
-      }
-    })();
+    try {
+      const res = await fetch(`${API_BASE}/api/org/members/dashboard`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) return;
+      setTeamPurchases(data.teamPurchases || { count: 0, totalSpent: 0, recent: [] });
+      setSharedPrompts(data.sharedPrompts || { count: 0, recent: [] });
+      setTeamRequests(data.teamRequests || { count: 0, unread: 0, recent: [] });
+    } catch (err) {
+      console.error("org dashboard activity fetch failed:", err);
+    }
   }, [token]);
+
+  useEffect(() => {
+    fetchOrgDashboard();
+  }, [fetchOrgDashboard]);
+
+  /* The product popup, opened from a team request. "View & buy" used to
+     `navigate("/prompt-marketplace")` — the bare marketplace, no product, so the
+     owner landed on a grid and had to find by hand the thing they had just
+     clicked on. The popup is the same one the marketplace opens, and it carries
+     Buy Now. */
+  const [buyPrompt, setBuyPrompt] = useState<any>(null);
 
   const totalDistributed = useMemo(
     () => members.reduce((s, m) => s + m.tokens, 0),
@@ -1106,7 +1121,19 @@ const handleResendInvite = async (memberId: string) => {
                       r.promptId && !r.promptDeleted ? (
                         <button
                           type="button"
-                          onClick={() => navigate("/prompt-marketplace")}
+                          onClick={() =>
+                            setBuyPrompt({
+                              id: r.promptId,
+                              title: r.promptTitle,
+                              description: "",
+                              price: r.price,
+                              rating: 0,
+                              downloads: 0,
+                              category: r.category || "General",
+                              imageUrl: r.thumbnail || undefined,
+                              isFree: r.isFree,
+                            })
+                          }
                           className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white hover:bg-white/10"
                         >
                           View &amp; buy
@@ -1179,6 +1206,22 @@ const handleResendInvite = async (memberId: string) => {
      <div className="relative z-10">
   <Footer />
 </div>
+
+      {/* Buy a requested product without leaving the page. Same popup the
+          marketplace opens; onPurchase refreshes the two panels above so the
+          request drops out of the queue and the purchase shows up under
+          "Purchases by You". */}
+      <DetailsPrompt
+        open={!!buyPrompt}
+        onOpenChange={(next) => {
+          if (!next) setBuyPrompt(null);
+        }}
+        prompt={buyPrompt}
+        onPurchase={() => {
+          setBuyPrompt(null);
+          fetchOrgDashboard();
+        }}
+      />
 
       <MemberModal
         open={openModal}

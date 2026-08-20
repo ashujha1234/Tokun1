@@ -95,9 +95,12 @@ const TokenCircle = ({ originalTokens, optimizedTokens, optimizedWords = 0 }: To
       <div className="py-4 px-4 h-full flex flex-col"> {/* ↓ was py-6 */}
         {/* Header */}
         <div className="text-center mb-3"> {/* ↓ was mb-6 */}
-          <h3 className="text-white/95 text-lg font-semibold">Tokun Reduction</h3> {/* ↓ was text-xl */}
+          {/* "Token", not "Tokun". Tokun is the product; what this panel counts
+              is tokens — and the two rings under it are literally labelled
+              Original / Optimized token counts. */}
+          <h3 className="text-white/95 text-lg font-semibold">Token Reduction</h3> {/* ↓ was text-xl */}
           <p className="text-white/60 text-xs mt-1"> {/* ↓ was text-sm */}
-            Optimize your product to see tokun reduction statistics
+            Optimize your product to see token reduction statistics
           </p>
         </div>
 

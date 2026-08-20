@@ -16,6 +16,7 @@
 // import ApiKeyModal from "@/components/ApiKeyModal";
 // import SubscriptionModal from "@/components/SubscriptionModal";
 // import { toast } from "@/components/ui/use-toast";
+import PurchaseConfirmModal from "@/components/PurchaseConfirmModal";
 // import SellPromptModal from "@/components/SellPromptModal";
 // import { User, Landmark, FileText, CreditCard ,X,Download,Trash, Check , Star,Bell,ChevronRight,AlertTriangle} from "lucide-react";
 // import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -2651,7 +2652,9 @@ const setStoredChatBadge = (count: number) => {
   const { user, logout, token, isAuthenticated, isReady } = useAuth() as any;
  // Drives the Team button in the action row below.
  const canManageTeamNav = canManageTeam(user);
- const { cart, removeFromCart, fetchCart } = useCart();
+ const { cart, removeFromCart, fetchCart, welcomeDiscount } = useCart();
+ /* The cart review dialog — see handleCheckout. */
+ const [confirmCartOpen, setConfirmCartOpen] = useState(false);
  const [unreadChats, setUnreadChats] = useState<number>(() => getStoredChatBadge());
 // Text color based on plan
 const userPlanColor =
@@ -2845,6 +2848,18 @@ const goToWallet = () => {
 // the badge just reflects the server's unread count.
 const handleChatClick = () => {
   navigate("/chat");
+  /* Already on /chat? Then navigate() is a no-op and nothing happens — which is
+     exactly what the icon did there, and why the page needed its own "Open
+     Message" button to get the panel back. The event lets that page reopen it;
+     everywhere else it goes unheard and the navigation does the work.
+
+     Dispatched after navigate on purpose: on a first visit the page mounts with
+     the panel open anyway, so a missed event costs nothing. */
+  try {
+    window.dispatchEvent(new CustomEvent("tokun:open-chat"));
+  } catch {
+    /* Older browsers without CustomEvent — the navigation still stands. */
+  }
 };
 
 // const handlePostPrompt = async () => {
@@ -3717,7 +3732,15 @@ navigate("/self-dash?tab=prompts&p=purchased", {
 };
 
 
-const handleCheckout = async () => {
+/* Checkout now asks first.
+
+   It used to close the cart and go straight to Razorpay: the drawer vanished,
+   the page behind it came back, and the next thing on screen was a payment
+   sheet — no summary of what was being bought, and none of the terms Buy Now
+   makes a buyer accept. The review dialog is the same component Buy Now uses
+   (PurchaseConfirmModal, in cart mode), so both routes to a purchase ask for the
+   same consent and show the same money. */
+const handleCheckout = () => {
   if (!token) {
     toast({
       title: "Please log in",
@@ -3726,8 +3749,12 @@ const handleCheckout = async () => {
     navigate("/login");
     return;
   }
+  setConfirmCartOpen(true);
+};
 
+const confirmCartCheckout = async () => {
   setCartOpen(false);
+  setConfirmCartOpen(false);
 
   // Let the cart's close animation finish before checkout takes over.
   await new Promise((res) => setTimeout(res, 150));
@@ -4755,7 +4782,9 @@ useEffect(() => {
 
       {/* ---------- ITEMS ---------- */}
       {cart
-        .filter((item) => item.price !== 0 && item.tag !== "Free")
+        /* `item.tag` never existed on a CartItem, so that half of the test was
+           always true and TypeScript said so. `price !== 0` is the free check. */
+        .filter((item) => item.price !== 0)
         .map((item) => (
           /* Flex, not the header's three fixed columns.
 
@@ -4854,12 +4883,21 @@ useEffect(() => {
               </div>
             </button>
 
-            {/* Price. Fixed width from sm up so it sits under the header's
-                "Price" column; on a phone it takes only what the amount needs.
-                tabular-nums keeps the digits from shifting the column between
-                rows. */}
+            {/* Price — the SELLER'S price, which is what the Subtotal below
+                adds up.
+
+                This showed `item.price`: list price plus Tokun's fee. So a ₹500
+                product read ₹515 and a ₹100 one ₹103, and then the footer said
+                Subtotal ₹600 — three numbers that don't reconcile, with the fee
+                buried inside two of them and also itemised on its own line
+                underneath. The rows now show 500 and 100, the subtotal is 600,
+                and the fee is the one line that names it.
+
+                Fixed width from sm up so it sits under the header's "Price"
+                column; tabular-nums keeps the digits from shifting the column
+                between rows. */}
             <span className="shrink-0 sm:w-[120px] text-right sm:text-center text-white text-sm sm:text-base tabular-nums">
-              ₹{item.price}
+              ₹{(item.listPrice ?? item.price ?? 0).toFixed(2)}
             </span>
 
             {/* Remove. h-9 w-9 rather than a bare icon: a 20px tap target is
@@ -4905,6 +4943,19 @@ useEffect(() => {
       const listTotal = paid.reduce((sum, i) => sum + (i.listPrice ?? i.price ?? 0), 0);
       const fee = Math.max(0, +(charged - listTotal).toFixed(2));
 
+      /* The Refer & Earn welcome discount, as the SERVER worked it out for this
+         cart (GET /api/cart → welcomeDiscount). Not computed here: the credit is
+         capped and can never exceed Tokun's own cut on the order, so "5% of the
+         total" is only sometimes the right number — and checkout applies the
+         server's figure, so a locally-computed one would disagree with the
+         amount actually charged.
+
+         It was applied at /api/cart/checkout all along and never shown, so a
+         buyer holding a credit saw the full total here and had no reason to
+         think it counted on carts at all. */
+      const discount = welcomeDiscount?.amount || 0;
+      const dueNow = discount > 0 ? Math.max(0, +(charged - discount).toFixed(2)) : charged;
+
       return (
         <>
           <div className="space-y-2 text-sm text-white">
@@ -4918,10 +4969,25 @@ useEffect(() => {
                 <span className="text-white/70">₹{fee.toFixed(2)}</span>
               </div>
             )}
+            {discount > 0 && (
+              <div className="flex justify-between" style={{ color: "#19E66C" }}>
+                {/* Names the percentage as well as the amount: "you saved ₹15" on
+                    its own doesn't tell the buyer their referral credit is what
+                    did it, and they came here expecting to see it. */}
+                <span>Referral discount ({welcomeDiscount?.percent}% off)</span>
+                <span>− ₹{discount.toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between pt-2 border-t border-white/10 font-semibold">
               <span>Total</span>
-              <span>₹{charged.toFixed(2)}</span>
+              <span>₹{dueNow.toFixed(2)}</span>
             </div>
+            {discount > 0 && (
+              <p className="text-[11px] text-white/45 leading-relaxed">
+                Your welcome credit comes off this payment. It's one credit for
+                one order, so it's spent when this checkout completes.
+              </p>
+            )}
           </div>
 
           <div className="mt-4 flex items-center justify-end gap-4">
@@ -4940,7 +5006,7 @@ useEffect(() => {
                 fontWeight: 400,
               }}
             >
-              Checkout ₹{charged.toFixed(2)}
+              Checkout ₹{dueNow.toFixed(2)}
             </button>
           </div>
         </>
@@ -4958,6 +5024,47 @@ useEffect(() => {
     </header>
 
   
+
+      {/* Cart review — the same dialog Buy Now opens, in cart mode. The figures
+          are the server's (GET /api/cart), so this can't quote a total the
+          checkout won't charge. */}
+      <PurchaseConfirmModal
+        open={confirmCartOpen}
+        prompt={null}
+        cart={{
+          items: cart
+            .filter((i) => i.price !== 0)
+            .map((i) => ({
+              id: i.id,
+              title: i.title,
+              listPrice: Number(i.listPrice ?? i.price ?? 0),
+              imageUrl: i.imageUrl,
+            })),
+          listTotal: cart
+            .filter((i) => i.price !== 0)
+            .reduce((sum, i) => sum + Number(i.listPrice ?? i.price ?? 0), 0),
+          platformFee: Math.max(
+            0,
+            +(
+              cart.filter((i) => i.price !== 0).reduce((s, i) => s + Number(i.price || 0), 0) -
+              cart
+                .filter((i) => i.price !== 0)
+                .reduce((s, i) => s + Number(i.listPrice ?? i.price ?? 0), 0)
+            ).toFixed(2),
+          ),
+          discount: Number(welcomeDiscount?.amount || 0),
+          discountPercent: welcomeDiscount?.percent,
+          payable: Math.max(
+            0,
+            +(
+              cart.filter((i) => i.price !== 0).reduce((s, i) => s + Number(i.price || 0), 0) -
+              Number(welcomeDiscount?.amount || 0)
+            ).toFixed(2),
+          ),
+        }}
+        onClose={() => setConfirmCartOpen(false)}
+        onConfirm={confirmCartCheckout}
+      />
 
       {profileOpen && (
   <div role="dialog" aria-modal="true" className="fixed inset-0 z-[1000] grid place-items-center">

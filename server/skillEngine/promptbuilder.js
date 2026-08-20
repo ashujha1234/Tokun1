@@ -8001,8 +8001,14 @@ AUTO-DETECTED CONTEXT (weave into every section):
 ${constraintLines.map(l => `- ${l}`).join("\n")}
 ` : "";
 
-  const userAnswersBlock = (isDeepMode && userAnswers.length > 0) ? `
-WHAT THE USER TOLD US (Deep Mode answers - reference DIRECTLY in output):
+  /* Not gated on isDeepMode any more.
+     The answers come from the Deep Mode questions either way, and dropping them
+     whenever the FORMAT wasn't the deep one meant a user could fill in five
+     questions and have every one ignored — which is what happens now that the
+     client asks for Skill Mode's format with deep answers attached. What the
+     user typed is context; which template renders it is a separate decision. */
+  const userAnswersBlock = userAnswers.length > 0 ? `
+WHAT THE USER TOLD US (their own answers - reference DIRECTLY in output):
 ${userAnswers.join("\n")}
 ` : "";
 
@@ -8082,7 +8088,7 @@ No ## headers. No numbered sections.
 ----------------------------------------------------
 
 USER REQUEST: "${userText}"
-${subcategoryFocus}${constraintsBlock}${tutorialTechBlock}${aiImageBlock}${knowledgeBlock}${modernToolsBlock}
+${subcategoryFocus}${constraintsBlock}${userAnswersBlock}${tutorialTechBlock}${aiImageBlock}${knowledgeBlock}${modernToolsBlock}
 Tone of voice: ${expertTone}
 Expert to embody: ${expertRole}
 

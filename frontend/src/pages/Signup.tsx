@@ -1293,6 +1293,24 @@ const Signup = () => {
   const signupEmail = isIndividual ? email : businessEmail;
   const signupName = isIndividual ? name : companyName;
   const canSubmitSignup = !isLoading && isNonEmpty(signupName) && isValidEmail(signupEmail);
+
+  /* Said under the field, not in a toast.
+     Typing "345@" used to leave the button dead with no explanation, and
+     submitting a bad address got you a toast in the corner — away from the input
+     that caused it, gone in four seconds, and no help at all in fixing it. Only
+     shown once something has been typed: an empty form is untouched, not wrong.
+
+     One element rather than four copies: this form renders twice (mobile and
+     desktop) and each layout has an individual and an organization variant. */
+  const emailError =
+    signupEmail.trim() && !isValidEmail(signupEmail)
+      ? "Enter a complete email address, like you@company.com"
+      : null;
+
+  const fieldError = (message: string | null) =>
+    message ? (
+      <p className="text-[12px] text-red-400 pl-0.5">{message}</p>
+    ) : null;
   const [devOtp, setDevOtp] = useState<string | null>(null);
   const { signup } = useAuth();
   const navigate = useNavigate();
@@ -1595,6 +1613,7 @@ const Signup = () => {
           placeholder="Enter email"
           className="h-[44px] w-full rounded-[12px] bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)] border border-white/20 text-white text-[14px] placeholder:text-white/30 placeholder:text-[13px] px-4 focus-visible:ring-0 focus:border-white/50"
         />
+        {fieldError(emailError)}
       </div>
     </>
   ) : (
@@ -1636,6 +1655,7 @@ const Signup = () => {
           placeholder="Enter business email"
           className="h-[44px] w-full rounded-[12px] bg-[linear-gradient(90deg,rgba(18,26,46,0.95)_0%,rgba(11,18,36,0.95)_100%)] border border-white/20 text-white text-[14px] placeholder:text-white/30 placeholder:text-[13px] px-4 focus-visible:ring-0 focus:border-white/50"
         />
+        {fieldError(emailError)}
       </div>
     </>
   )}
@@ -1783,6 +1803,7 @@ const Signup = () => {
                       required
                       className="h-[50px] w-full md:w-[350px] rounded-[6px] bg-[#0F1520] border border-[#282C42] text-white focus-visible:ring-0 focus-visible:outline-none focus:border-[#7D4DFF]/60"
                     />
+                    {fieldError(emailError)}
                   </div>
                 </>
               ) : (
@@ -1814,6 +1835,7 @@ const Signup = () => {
                       required
                       className="h-[50px] w-full md:w-[350px] rounded-[6px] bg-[#0F1520] border border-[#282C42] text-white focus-visible:ring-0 focus-visible:outline-none focus:border-[#7D4DFF]/60"
                     />
+                    {fieldError(emailError)}
                   </div>
                 </>
               )}

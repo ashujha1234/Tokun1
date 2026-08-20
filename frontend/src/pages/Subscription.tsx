@@ -758,6 +758,14 @@ export default function Subscription() {
     if (plan === "Enterprise" && user && !(user as any)?.orgId) {
       return { ctaLabel: "Organization plan", disabled: true, isCurrent: false };
     }
+    /* The mirror of that rule: an ORGANIZATION account can't buy the individual
+       plans. Free and Pro are provisioned per person and billed to a user
+       (/order/create/user rejects anything that isn't userType "IND"), so on an
+       org account these were two buttons whose only possible outcome was
+       "not_individual_account". Enterprise is the org's plan. */
+    if (plan !== "Enterprise" && (user as any)?.userType === "ORG") {
+      return { ctaLabel: "Individual plan", disabled: true, isCurrent: false };
+    }
     return { ctaLabel: "Choose Plan", disabled: false, isCurrent: false };
   };
   const navigate = useNavigate();

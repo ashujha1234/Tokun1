@@ -1,11 +1,15 @@
-// Instagram Reels-style card for video prompts.
+// Instagram Reels-style card for a product — video or image.
 //
 // Lived inside PromptMarketplacePage until the profile page needed the same
-// thing: a video listing has to look and behave identically wherever it's
-// shown, and a second copy would have drifted the moment either page changed.
-// The styles come from pages/PromptMarketplace.css (.reel-card*), which both
-// pages already import.
+// thing: a listing has to look and behave identically wherever it's shown, and
+// a second copy would have drifted the moment either page changed.
 import React, { useEffect, useRef, useState } from "react";
+/* Its own styles, rather than relying on the page to have imported them.
+   .reel-card and .mp-card__pill live in the marketplace stylesheet, and every
+   page that rendered this card had to remember to pull that in — the brand page
+   didn't, so the card came out completely unstyled there. Vite dedupes the
+   import, so pages that already have it are unaffected. */
+import "@/pages/PromptMarketplace.css";
 import { useCart } from "@/contexts/CartContext";
 import { ShoppingCart, Lock, Check } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";

@@ -1721,6 +1721,20 @@ function SubscriptionsSection({
           "Enterprise is billed to an organization. Sign in as the org owner to buy it.",
       };
     }
+    /* The mirror of that rule. Free and Pro are provisioned per person and
+       billed to a user — /order/create/user rejects anything that isn't
+       userType "IND" — so on an organization account these two buttons could
+       only ever come back with "not_individual_account". Enterprise is the
+       org's plan. */
+    if (plan !== "Enterprise" && user?.userType === "ORG") {
+      return {
+        ctaLabel: "Individual plan",
+        disabled: true,
+        isCurrent: false,
+        disabledReason:
+          "Free and Pro are individual plans. Your organization is on Enterprise, which covers the whole team.",
+      };
+    }
     return { ctaLabel: "Choose Plan", disabled: false, isCurrent: false };
   };
 

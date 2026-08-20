@@ -4,6 +4,9 @@ import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import DetailsPrompt from "@/components/DetailsPrompt";
+import VideoReelCard from "@/components/VideoReelCard";
+import { useCart } from "@/contexts/CartContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/use-toast";
 import { mediaUrl } from "@/lib/mediaUrl";
 
@@ -29,8 +32,10 @@ type LogoPrompt = {
   videoUrl?: string;
   category: string;
   rating: number;
+  reviewCount: number;
   downloads: number;
   uploaderId?: string;
+  uploaderName?: string;
   exclusive?: boolean;
   sold?: boolean;
   sellerVerificationPending?: boolean;
@@ -290,6 +295,12 @@ const BrandPromptsPage = () => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  /* For the cards: the cart the whole app shares, and who is looking — a seller
+     browsing this page must not be offered their own listing. */
+  const { addToCart } = useCart();
+  const { user } = useAuth() as any;
+  const currentUserId = user?._id || user?.id || null;
+
   /* Opening a card used to navigate to /prompt-marketplace?prompt=<id> and let
      that page open the panel — so looking at one logo prompt cost a full page
      load and dumped you on a different screen, with the whole marketplace
@@ -334,9 +345,15 @@ const BrandPromptsPage = () => {
               imageUrl: att?.type === "image" ? media : undefined,
               videoUrl: att?.type === "video" ? media : undefined,
               category: doc.categories?.[0]?.name || LOGO_CATEGORY,
-              rating: Number(doc.averageRating ?? 0),
+              /* Buyer reviews first, the legacy embedded field second — the
+                 same order mapPromptDoc uses in the marketplace. Reading
+                 averageRating alone showed no stars here for a product that
+                 has a score everywhere else. */
+              rating: Number(doc.reviewAverage ?? doc.averageRating ?? 0),
+              reviewCount: Number(doc.reviewCount ?? 0),
               downloads: Number(doc.downloads ?? 0),
               uploaderId: doc?.userId?._id ? String(doc.userId._id) : undefined,
+              uploaderName: doc?.userId?.name || "",
               exclusive: !!doc.exclusive,
               sold: !!doc.sold,
               sellerVerificationPending: !!doc.sellerVerificationPending,
@@ -437,37 +454,47 @@ const BrandPromptsPage = () => {
         )}
 
         {!loading && !loadError && logoPrompts.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+          /* The same card as the marketplace, the profile, the saved list and
+             My Products — see VideoReelCard. This page had its own: a 180px
+             thumbnail with the title, description and price stacked under it,
+             so a logo product looked like a different kind of thing here than
+             it did anywhere else, and it carried no cart or buy button at all.
+
+             items-start so a reel keeps its 9:16 shape; grid items stretch to
+             the tallest in the row by default, which overrides the card's
+             aspect-ratio. */
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 items-start">
             {logoPrompts.map((p) => (
-              <button
+              <VideoReelCard
                 key={p.id}
-                onClick={() => {
+                prompt={p}
+                isPurchased={false}
+                isOwn={!!p.uploaderId && String(p.uploaderId) === String(currentUserId || "")}
+                hasPayoutSetup={p.sellerVerificationPending ? false : undefined}
+                onVideoPlay={() => {}}
+                onAddToCart={async () => {
+                  const result = await addToCart(String(p.id));
+                  toast(
+                    result.ok
+                      ? { title: "Added to Cart", description: `"${p.title}" was added.` }
+                      : {
+                          title:
+                            result.error === "already_in_cart"
+                              ? "Already in your cart"
+                              : "Couldn't add to cart",
+                          description: result.message,
+                        },
+                  );
+                }}
+                /* Checkout lives on the marketplace — the Razorpay flow is not
+                   duplicated per page. Same hand-off the details panel does. */
+                onBuyNow={() => navigate(`/prompt-marketplace?prompt=${encodeURIComponent(p.id)}`)}
+                onOpenDetails={() => {
                   setDetailsPrompt(p);
                   setDetailsOpen(true);
                 }}
-                className="text-left rounded-2xl overflow-hidden border border-white/10 bg-white/[0.03] hover:border-white/25 transition-colors"
-              >
-                <div className="relative h-[180px] bg-black/40">
-                  {p.imageUrl ? (
-                    <img src={p.imageUrl} alt={p.title} className="absolute inset-0 w-full h-full object-cover" />
-                  ) : p.videoUrl ? (
-                    <video src={p.videoUrl} muted playsInline className="absolute inset-0 w-full h-full object-cover" />
-                  ) : (
-                    <div className="absolute inset-0 grid place-items-center text-white/25 text-xs">
-                      No preview
-                    </div>
-                  )}
-                </div>
-                <div className="p-4">
-                  <p className="text-sm font-semibold text-white truncate">{p.title}</p>
-                  {p.description && (
-                    <p className="mt-1 text-xs text-white/50 line-clamp-2">{p.description}</p>
-                  )}
-                  <p className="mt-3 text-sm font-semibold text-white">
-                    {p.isFree ? "Free" : `₹${p.price.toLocaleString()}`}
-                  </p>
-                </div>
-              </button>
+                onNavigateToProfile={(id) => id && navigate(`/profile/${id}`)}
+              />
             ))}
           </div>
         )}

@@ -35,6 +35,7 @@ const {
   bindCreditToOrder,
   consumeReservedCredit,
   reserveBuyerDiscount,
+  previewBuyerDiscountForOrder,
   consumeBuyerDiscount,
 } = require("../services/referral.service");
 const CommissionRebate = require("../models/CommissionRebate");
@@ -173,6 +174,10 @@ router.get("/", requireAuth, async (req, res) => {
     let totalItems = cart.items.length;
     let totalPrice = 0;
     let totalTokunPrice = 0;
+    // Tokun's take across the cart — the ceiling for the buyer's welcome
+    // discount, exactly as /checkout computes it.
+    let tokunCut = 0;
+    const sellerIds = new Set();
 
     // totalPrice is the sum of list prices; totalTokunPrice is what checkout
     // will actually charge. Routed through the shared split so both agree with
@@ -180,8 +185,63 @@ router.get("/", requireAuth, async (req, res) => {
     cart.items.forEach((item) => {
       const s = splitPromptSale(item.prompt);
       totalPrice += s.listPrice;
-      totalTokunPrice += s.buyerPays;
+      // Free items are delivered by checkout but never charged for.
+      if (!item.prompt.free) {
+        totalTokunPrice += s.buyerPays;
+        tokunCut += s.platformCut;
+        if (item.prompt.userId) sellerIds.add(String(item.prompt.userId));
+      }
     });
+
+    /* The buyer's Refer & Earn welcome discount, previewed across the whole
+       cart.
+
+       /checkout has always applied this — one credit, one payment, taken off the
+       cart total — but nothing said so before the payment sheet opened. A buyer
+       holding a 5% credit saw the full total on the cart page with no sign it
+       would come off, which reads as "the referral discount doesn't work on
+       carts".
+
+       Seller waivers come off the ceiling first, because checkout settles those
+       first out of the same pot — ignoring them here could preview a discount
+       bigger than the one actually charged. */
+    let welcomeDiscount = null;
+
+    if (totalTokunPrice > 0) {
+      try {
+        let ceiling = tokunCut;
+
+        for (const sellerId of sellerIds) {
+          const waiver = await CommissionRebate.findOne({
+            userId: sellerId,
+            kind: "seller_commission",
+            status: "ACTIVE",
+            expiresAt: { $gt: new Date() },
+          })
+            .sort({ expiresAt: 1 })
+            .lean();
+          if (waiver) ceiling -= Number(waiver.maxAmount || 0);
+        }
+
+        const preview = await previewBuyerDiscountForOrder({
+          buyerId: req.user._id,
+          buyerPays: totalTokunPrice,
+          tokunCut: Math.max(0, +ceiling.toFixed(2)),
+        });
+
+        if (preview) {
+          welcomeDiscount = {
+            percent: preview.percent,
+            maxAmount: preview.maxAmount,
+            amount: preview.discount,
+            expiresAt: preview.expiresAt,
+          };
+        }
+      } catch (discountErr) {
+        // A cart that can't preview its discount still has to render.
+        console.error("Cart discount preview failed:", discountErr.message);
+      }
+    }
 
     res.json({
       success: true,
@@ -189,6 +249,10 @@ router.get("/", requireAuth, async (req, res) => {
       totalItems,
       totalPrice,
       totalTokunPrice,
+      /* What the buyer will actually be charged, discount included — so the cart
+         page doesn't have to do this subtraction itself and get it wrong. */
+      payableTotal: +Math.max(0, totalTokunPrice - (welcomeDiscount?.amount || 0)).toFixed(2),
+      welcomeDiscount,
     });
   } catch (err) {
     console.error("Cart fetch error:", err);

@@ -3095,9 +3095,11 @@ import Header from "@/components/Header";
 import { socket } from "@/lib/socket";
 import { useAuth } from "@/contexts/AuthContext";
 import { FiVideo, FiInfo, FiSend } from "react-icons/fi";
-import { Search, X, Plus, ArrowLeft, Check } from "lucide-react";
+import { Search, X, Plus, ArrowLeft, Check, Download } from "lucide-react";
 import { useAgoraCall } from "@/hooks/useAgoraCall";
 import DeliverablePreviewModal from "@/components/escrow/DeliverablePreviewModal";
+import ImageLightbox from "@/components/ImageLightbox";
+import { downloadFile, isImageAttachment, isVideoAttachment } from "@/lib/downloadFile";
 import NdaButton from "@/components/NdaCard";
 import { toast } from "@/components/ui/use-toast";
 import {
@@ -6143,9 +6145,41 @@ export default function Chat() {
      you never navigated to. */
   useBodyScrollLock(openChatPopup);
 
+  /* The header's message icon reopens the panel.
+     On every other page that icon navigates to /chat; here the navigation is a
+     no-op, so clicking it did nothing at all and the only way back in was a
+     button on the page behind ("Open Message"), which has been removed. */
+  useEffect(() => {
+    const reopen = () => setOpenChatPopup(true);
+    window.addEventListener("tokun:open-chat", reopen);
+    return () => window.removeEventListener("tokun:open-chat", reopen);
+  }, []);
+
   const [loadingConversations, setLoadingConversations] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+
+  /* Chat search. The box in the sidebar was an uncontrolled input with no
+     handler and nothing reading it — you could type in it all day. */
+  const [chatSearch, setChatSearch] = useState("");
+
+  /* The attachment being viewed full size, if any — see ImageLightbox. */
+  const [lightbox, setLightbox] = useState<{ url: string; name: string } | null>(null);
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
+
+  /* Matched on the other person's name and on the last message — the two things
+     a row in that list actually shows. Case-insensitive, and an empty query is
+     the whole list rather than nothing. */
+  const visibleConversations = useMemo(() => {
+    const q = chatSearch.trim().toLowerCase();
+    if (!q) return conversations;
+
+    return conversations.filter((c) => {
+      const name = String(c?.otherUser?.name || "").toLowerCase();
+      const last = String(getLastMessageText(c) || "").toLowerCase();
+      const email = String(c?.otherUser?.email || "").toLowerCase();
+      return name.includes(q) || last.includes(q) || email.includes(q);
+    });
+  }, [conversations, chatSearch]);
 
   // Set of userIds the server reports as connected right now. Drives the avatar
   // presence dot, which used to be hardcoded on for everyone.
@@ -6599,9 +6633,13 @@ const startMeetCall = () => {
           </div>
           <h1 className="text-[32px] font-semibold leading-[40px] text-white" style={{ fontFamily: "Plus Jakarta Sans, sans-serif" }}>Messages</h1>
           <p className="mx-auto mt-3 max-w-[360px] text-[16px] font-normal leading-[24px] text-white/55" style={{ fontFamily: "Inter, sans-serif" }}>Your conversations will appear here.</p>
-          <button onClick={() => setOpenChatPopup(true)} className="mt-8 h-12 rounded-full px-8 text-[14px] font-semibold leading-[20px] text-white transition hover:opacity-90" style={{ background: GRADIENT, fontFamily: "Inter, sans-serif" }}>
-            Open Message
-          </button>
+          {/* The "Open Message" button that stood here is gone. It only existed
+              because the header's message icon did nothing on this page — a
+              second control for the icon's own job. The icon reopens the panel
+              now (see the tokun:open-chat listener above). */}
+          <p className="mx-auto mt-4 max-w-[360px] text-[13px] leading-[20px] text-white/35" style={{ fontFamily: "Inter, sans-serif" }}>
+            Tap the message icon in the header to open your chats.
+          </p>
         </div>
       </main>
 
@@ -6637,9 +6675,29 @@ const startMeetCall = () => {
                       <button onClick={() => setOpenChatPopup(false)} className="sm:hidden grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white"><X size={16} /></button>
                     </div>
                   </div>
+                  {/* This box had no value, no handler and no consumer — it
+                      accepted typing and did nothing with it. It filters the list
+                      below on the other person's name and on the last message,
+                      which are the two things actually on a row. */}
                   <div className="mt-5 sm:mt-7 flex h-[34px] items-center rounded-lg bg-white/85 px-4 text-zinc-900">
-                    <input className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-500" placeholder="Search chats..." />
-                    <Search size={20} />
+                    <input
+                      value={chatSearch}
+                      onChange={(e) => setChatSearch(e.target.value)}
+                      className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-500"
+                      placeholder="Search chats..."
+                    />
+                    {chatSearch ? (
+                      <button
+                        type="button"
+                        onClick={() => setChatSearch("")}
+                        aria-label="Clear search"
+                        className="shrink-0 text-zinc-500 hover:text-zinc-900"
+                      >
+                        <X size={16} />
+                      </button>
+                    ) : (
+                      <Search size={20} />
+                    )}
                   </div>
                 </div>
                 <div className="mt-6 sm:mt-8 flex-1 overflow-y-auto">
@@ -6647,8 +6705,12 @@ const startMeetCall = () => {
                     <p className="px-5 sm:px-8 text-sm text-white/40">Loading chats...</p>
                   ) : conversations.length === 0 ? (
                     <p className="px-5 sm:px-8 text-sm text-white/40">No conversations yet.</p>
+                  ) : visibleConversations.length === 0 ? (
+                    <p className="px-5 sm:px-8 text-sm text-white/40">
+                      No chats match "{chatSearch}".
+                    </p>
                   ) : (
-                    conversations.map((c) => {
+                    visibleConversations.map((c) => {
                       const active = activeConvo?._id === c._id;
                       const lastText = getLastMessageText(c);
                       return (
@@ -6800,10 +6862,75 @@ const serviceWorkSubmittedData = parseServiceWorkSubmittedData(m.text);
 
                             {m.attachment && (
                               <div className="mt-2">
-                                {m.attachment.type === "image" ? (
-                                  <img src={m.attachment.url} className="max-w-[200px] sm:max-w-[240px] rounded-lg" />
+                                {isImageAttachment(m.attachment.name, m.attachment.type) ||
+                                isVideoAttachment(m.attachment.name, m.attachment.type) ? (
+                                  /* Media plays/opens in place, and the download
+                                     sits ON it.
+
+                                     Before: an image was a bare <img> with no
+                                     click target and no download, and a video
+                                     wasn't media at all — it came through as a
+                                     "file" and rendered as a 📎 link, so the only
+                                     way to watch a clip was to leave the chat.
+                                     The save button is on the media itself rather
+                                     than only inside the full-size viewer,
+                                     because that is where someone looking at it
+                                     reaches for it. */
+                                  <div className="relative inline-block max-w-[200px] sm:max-w-[240px]">
+                                    {isVideoAttachment(m.attachment.name, m.attachment.type) ? (
+                                      <video
+                                        src={m.attachment.url}
+                                        controls
+                                        playsInline
+                                        preload="metadata"
+                                        className="w-full rounded-lg bg-black"
+                                      />
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setLightbox({
+                                            url: m.attachment.url,
+                                            name: m.attachment.name || "image",
+                                          })
+                                        }
+                                        title="View full size"
+                                        className="block w-full"
+                                      >
+                                        <img
+                                          src={m.attachment.url}
+                                          alt={m.attachment.name || "Attachment"}
+                                          className="w-full rounded-lg cursor-zoom-in"
+                                        />
+                                      </button>
+                                    )}
+
+                                    {/* Top-right, clear of a video's own controls
+                                        along the bottom edge. */}
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        downloadFile(m.attachment.url, m.attachment.name);
+                                      }}
+                                      title={`Download ${m.attachment.name || "file"}`}
+                                      aria-label="Download attachment"
+                                      className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-black/60 text-white/90 backdrop-blur-sm transition hover:bg-black/80 hover:text-white"
+                                    >
+                                      <Download size={14} />
+                                    </button>
+                                  </div>
                                 ) : (
-                                  <a href={m.attachment.url} target="_blank" rel="noopener noreferrer" className="break-all text-sm text-blue-400 underline">📎 {m.attachment.name}</a>
+                                  /* Anything else — a zip, a PDF. Still a link,
+                                     but it saves rather than navigating away. */
+                                  <button
+                                    type="button"
+                                    onClick={() => downloadFile(m.attachment.url, m.attachment.name)}
+                                    className="inline-flex items-center gap-1.5 break-all text-left text-sm text-blue-400 underline hover:text-blue-300"
+                                  >
+                                    <Download size={13} className="shrink-0" />
+                                    {m.attachment.name}
+                                  </button>
                                 )}
                               </div>
                             )}
@@ -6844,9 +6971,10 @@ const serviceWorkSubmittedData = parseServiceWorkSubmittedData(m.text);
                         disabled={!activeConvo}
                         className="flex-1 bg-transparent text-sm outline-none placeholder:text-zinc-500 disabled:cursor-not-allowed"
                         placeholder={activeConvo ? "Type a message..." : "Select conversation first"} />
-                      <button onClick={() => fileInputRef.current?.click()} disabled={!activeConvo} className="disabled:opacity-40 shrink-0">
-                        <img src="/icons/calo.svg" alt="" className="h-[24px] w-[24px] sm:h-[28px] sm:w-[28px] object-contain opacity-80 hover:opacity-100" />
-                      </button>
+                      {/* The second attach button that sat here is gone. It fired
+                          the same file picker as the + on the left of the bar —
+                          two controls, identical behaviour, one row apart, and
+                          nothing distinguishing them but the icon. */}
                     </div>
                     <SendButton disabled={!activeConvo} onClick={sendMessage} />
                   </div>
@@ -6866,9 +6994,28 @@ const serviceWorkSubmittedData = parseServiceWorkSubmittedData(m.text);
                     <h4 className="mb-3 text-xs font-semibold uppercase text-white/40">Shared Resources</h4>
                     <div className="space-y-3">
                       {sharedResources.length === 0 && <p className="text-xs text-white/40">No shared files yet</p>}
-                      {sharedResources.map((m, i) => (
-                        <a key={i} href={m.attachment.url} target="_blank" rel="noopener noreferrer" className="block break-all rounded-lg bg-[#202020] px-3 py-2 text-xs hover:bg-white/10">📎 {m.attachment.name}</a>
-                      ))}
+                      {sharedResources.map((m, i) =>
+                        /* An image opens in the same viewer the message bubble
+                           uses, so it can be seen and saved from here as well.
+                           Everything else is still a link to the file. */
+                        m.attachment?.type === "image" ? (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() =>
+                              setLightbox({
+                                url: m.attachment.url,
+                                name: m.attachment.name || "image",
+                              })
+                            }
+                            className="block w-full break-all rounded-lg bg-[#202020] px-3 py-2 text-left text-xs hover:bg-white/10"
+                          >
+                            🖼 {m.attachment.name}
+                          </button>
+                        ) : (
+                          <a key={i} href={m.attachment.url} target="_blank" rel="noopener noreferrer" className="block break-all rounded-lg bg-[#202020] px-3 py-2 text-xs hover:bg-white/10">📎 {m.attachment.name}</a>
+                        ),
+                      )}
                     </div>
                   </div>
                 </aside>
@@ -6877,6 +7024,14 @@ const serviceWorkSubmittedData = parseServiceWorkSubmittedData(m.text);
           </div>
         </div>
       )}
+
+      {/* Full-size attachment viewer — see components/ImageLightbox.tsx. */}
+      <ImageLightbox
+        open={!!lightbox}
+        url={lightbox?.url || ""}
+        name={lightbox?.name}
+        onClose={() => setLightbox(null)}
+      />
 
       {/* ── INCOMING CALL ── */}
       {incomingCall && (

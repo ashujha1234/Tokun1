@@ -4983,7 +4983,7 @@ app.use("/api/quota", quotaRoutes);
    /stream path isn't matched by the GET /:id catch-all inside smartgenRoutes.
 ================================ */
 app.post("/api/smartgen/stream", requireAuth, async (req, res) => {
-  const { prompt, context = {}, skillMode = false } = req.body || {};
+  const { prompt, context = {}, skillMode = false, deepMode } = req.body || {};
 
   if (!prompt || typeof prompt !== "string" || prompt.trim().length < 3) {
     return res.status(400).json({ success: false, error: "prompt_required" });
@@ -4993,7 +4993,16 @@ app.post("/api/smartgen/stream", requireAuth, async (req, res) => {
   }
 
   const userId = req.user?.id || req.user?._id?.toString?.() || null;
-  const isDeepMode = !!(context.deepAnswers && Object.keys(context.deepAnswers || {}).length > 0);
+
+  /* Answers present is what makes a request "deep" — unless the caller says
+     otherwise. The client currently sends deepMode:false with answers attached
+     on purpose: it wants Skill Mode's sectioned format, with the answers used as
+     context rather than the long deep variant. Inferring it from the answers
+     alone left no way to ask for that. Callers that send nothing behave exactly
+     as before. */
+  const hasDeepAnswers = !!(context.deepAnswers && Object.keys(context.deepAnswers || {}).length > 0);
+  const isDeepMode =
+    typeof deepMode === "boolean" ? deepMode && hasDeepAnswers : hasDeepAnswers;
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");

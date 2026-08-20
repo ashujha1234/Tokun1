@@ -883,7 +883,20 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
     setIsGenerating(true); setGenerated(""); setStreamedText(""); setIsEditing(false); setTokensUsed(null);
     const ctrl = new AbortController(); abortRef.current = ctrl;
 
-    const context = skillMode ? {
+    /* Deep Mode takes the SKILL path.
+       This was `skillMode ? {...} : {}`, and the body sent `skillMode` as-is —
+       so with Deep on and Skill off the context went out EMPTY (every answer the
+       questions popup had just collected was dropped) and the server, seeing
+       skillMode:false, ran its plain path: a 150–350 word prose prompt capped at
+       800 tokens. That is why Deep Mode generated the shortest output of the
+       three despite asking the most questions.
+
+       deepMode:false is deliberate for now — the answers ride along and are used
+       as context, but the FORMAT is Skill Mode's sectioned brief rather than the
+       deep 1,100–1,600-word variant. */
+    const useSkillPath = skillMode || deepMode;
+
+    const context = useSkillPath ? {
       domainId:         effectiveDomainId ?? undefined,
       subcategoryId:    selectedSubcat?.id ?? undefined,
       subcategoryLabel: effectiveSubcatLabel ?? undefined,
@@ -895,7 +908,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
       const res = await fetch(`${API_BASE}/api/smartgen/stream`, {
         method:"POST",
         headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})},
-        body:JSON.stringify({prompt:prompt.trim(),context,skillMode}),
+        body:JSON.stringify({prompt:prompt.trim(),context,skillMode:useSkillPath,deepMode:false}),
         signal:ctrl.signal, credentials:"include",
       });
 
@@ -950,7 +963,9 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
         toast({title:"Generation failed",description:(fe as Error).message});
       }
     } finally { setIsGenerating(false); }
-  }, [user, prompt, skillMode, effectiveDomainId, selectedSubcat, effectiveSubcatLabel, deepAnswers, navigate, onPromptGenerated, isGenerating]);
+    // deepMode is read inside now (useSkillPath), so it belongs here — without
+    // it, toggling Deep left this callback holding the previous value.
+  }, [user, prompt, skillMode, deepMode, effectiveDomainId, selectedSubcat, effectiveSubcatLabel, deepAnswers, navigate, onPromptGenerated, isGenerating]);
 
   /* ── Convert an attached document → Markdown and/or a ready-to-use prompt ──
      One upload, one server-side conversion; `mode` decides what comes back. */
