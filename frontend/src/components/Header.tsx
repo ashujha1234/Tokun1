@@ -4137,7 +4137,22 @@ useEffect(() => {
               
 
         {/* 🔔 Notifications */}
-<DropdownMenu>
+<DropdownMenu
+  /* Opening the panel IS reading them.
+
+     The count only cleared if you spotted the small "Mark all as Read" link in
+     the corner of the panel — so the badge sat there after you had looked at
+     everything, and the only way to clear it was a second, separate action
+     every single time. Seeing the list is the thing the badge was asking you to
+     do; the link stays for the case where you want to clear it without opening
+     anything.
+
+     Guarded on the count so closing the panel, or opening it with nothing
+     unread, doesn't fire a pointless round of requests. */
+  onOpenChange={(open) => {
+    if (open && realUnreadCount > 0) markAllAsRead();
+  }}
+>
   <DropdownMenuTrigger asChild>
         <button
           type="button"

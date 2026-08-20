@@ -1,5 +1,6 @@
 import { useId, useState } from "react";
 import { Check, Loader2 } from "lucide-react";
+import { isValidEmail } from "@/lib/validators";
 
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
@@ -20,9 +21,6 @@ const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").repla
  * changed on screen is the thing you were asking about.
  */
 
-/** Loose on purpose: this only has to catch what obviously cannot be an address.
-    The confirmation email is the real proof the mailbox exists. */
-const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
 type State = "idle" | "sending" | "done" | "error";
 

@@ -150,6 +150,7 @@ const {
   uploadWorkFileToAzure,
   getWorkFileDownloadUrl,
   WORK_FILE_MAX_BYTES,
+  WORK_FILE_MAX_LABEL,
   isAllowedWorkFile,
   ALLOWED_WORK_EXTENSIONS,
   normalizeDeliverableLink,
@@ -190,8 +191,8 @@ const workStorage = multer.diskStorage({
   },
 });
 // Disk, not memory: this accepts files up to WORK_FILE_MAX_BYTES and buffering
-// half a gigabyte per concurrent upload would take the process down. The temp
-// copy is streamed to Azure and unlinked by uploadWorkFileToAzure().
+// gigabytes per concurrent upload would take the process down. The temp copy is
+// streamed to Azure and unlinked by uploadWorkFileToAzure().
 const uploadWorkFile = multer({
   storage: workStorage,
   limits: { fileSize: WORK_FILE_MAX_BYTES, files: 1 },
@@ -213,7 +214,8 @@ function handleWorkFileUpload(req, res, next) {
       return res.status(400).json({
         success: false,
         error: "file_too_large",
-        message: `Each file must be under ${Math.round(WORK_FILE_MAX_BYTES / (1024 * 1024))} MB. For anything bigger, share a GitHub repo or Drive link instead.`,
+        // The label, not a computed MB figure — "2048 MB" reads like a bug.
+        message: `Each file must be under ${WORK_FILE_MAX_LABEL}. For anything bigger, share a GitHub repo or Drive link instead.`,
       });
     }
     if (String(err.message).includes("unsupported_work_file_type")) {
@@ -1269,7 +1271,7 @@ router.post("/orders/:orderId/verify-payment", requireAuth, blockIfSuspended, as
 /* ================= UPLOAD WORK FILE (seller, before submit) ================= */
 router.post("/orders/:orderId/upload-work-file", requireAuth, handleWorkFileUpload, async (req, res) => {
   // Every early return has to remove the temp file multer already wrote, or a
-  // rejected upload leaves 500 MB on disk forever.
+  // rejected upload leaves gigabytes on disk forever.
   const cleanupTemp = () => {
     if (req.file?.path) fs.promises.unlink(req.file.path).catch(() => {});
   };

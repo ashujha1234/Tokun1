@@ -39,12 +39,17 @@ const {
   getWorkFileDownloadUrl,
   isAllowedWorkFile,
 } = require("../utils/serviceWorkStorage");
+const {
+  isWatermarkableImage,
+  isSettled,
+  watermarkImageBuffer,
+} = require("../utils/deliverableWatermark");
 
 const router = express.Router();
 
 // A screen recording is the most useful thing a freelancer can send here, and
 // those are big — but this is a progress clip, not the delivery, so it sits
-// well below the 500 MB deliverable ceiling.
+// well below the deliverable ceiling (WORK_FILE_MAX_BYTES).
 const REVIEW_MEDIA_MAX_BYTES = 100 * 1024 * 1024;
 const REVIEW_MAX_MEDIA = 6;
 
@@ -164,6 +169,27 @@ async function loadContext(req) {
   return { cfg, order, buyer, seller, isBuyer, isSeller, orderKind, orderId };
 }
 
+/**
+ * The `fundsStatus` of the order a checkpoint belongs to.
+ *
+ * Progress reviews carry buyerId/sellerId of their own so a dispute screen can
+ * read them without knowing the parent model, but they do NOT copy the money
+ * state — and the money is what decides whether a preview is watermarked. So
+ * it's fetched, one field, from whichever parent this review hangs off.
+ *
+ * "" on anything unexpected, which isSettled() reads as not settled: an
+ * unreadable order errs towards protecting the seller's unpaid work rather than
+ * towards handing over the original.
+ */
+async function parentFundsStatus(review) {
+  const cfg = KIND_CONFIG[review.orderKind];
+  if (!cfg) return "";
+  const orderId = review[cfg.idField];
+  if (!orderId) return "";
+  const order = await cfg.model.findById(orderId).select("fundsStatus").lean();
+  return order?.fundsStatus || "";
+}
+
 async function postToChat(order, senderId, text) {
   if (!order.chatId) return;
   try {
@@ -261,7 +287,9 @@ router.get("/:reviewId/media/:index/download", requireAuth, async (req, res) => 
       return res.status(400).json({ success: false, error: "invalid_id" });
     }
 
-    const review = await ProgressReview.findById(reviewId).select("buyerId sellerId media");
+    const review = await ProgressReview.findById(reviewId).select(
+      "buyerId sellerId media orderKind hireDealId serviceOrderId"
+    );
     if (!review) return res.status(404).json({ success: false, error: "review_not_found" });
 
     /* Admins too, not just the two parties.
@@ -282,7 +310,51 @@ router.get("/:reviewId/media/:index/download", requireAuth, async (req, res) => 
       return res.status(404).json({ success: false, error: "media_not_found" });
     }
 
-    return res.json({ success: true, name: media.name, kind: media.kind, url: getWorkFileDownloadUrl(media.blobName) });
+    /* Watermarked for the buyer while the money is still held — the same rule
+       the deliverables routes apply, and for the same reason.
+
+       This route did not apply it, and that is a hole rather than an oversight
+       about a lesser file: a checkpoint IS the work, most often a screenshot of
+       exactly the thing being paid for, and it is shared *mid-project* — before
+       submission, before approval, at the moment the buyer has the most to gain
+       by taking the image and cancelling. It handed back a signed URL to the
+       untouched original, which a browser opens as a right-click-saveable
+       image. A revision cycle is where this shows up in practice: the seller
+       re-shares the reworked art as a checkpoint, and that copy was clean.
+
+       The seller is never watermarked (their own file), and neither is an admin
+       ruling on a dispute — they need to see what was actually delivered. */
+    const isBuyer = String(review.buyerId) === userId;
+    const fundsStatus = isBuyer ? await parentFundsStatus(review) : "";
+    const held = isBuyer && !isSettled(fundsStatus);
+
+    if (held && isWatermarkableImage(media.name, media.mimeType)) {
+      // Fetched server-side and re-encoded: handing over the SAS URL would hand
+      // over the original, which is the whole thing being prevented.
+      const upstream = await fetch(getWorkFileDownloadUrl(media.blobName));
+      if (!upstream.ok) throw new Error(`blob fetch failed: ${upstream.status}`);
+
+      const stamped = await watermarkImageBuffer(Buffer.from(await upstream.arrayBuffer()));
+
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("X-Tokun-Watermarked", "1");
+      res.setHeader(
+        "Content-Disposition",
+        `inline; filename="preview-${String(media.name || "image").replace(/[^\x20-\x7E]/g, "_")}"`
+      );
+      return res.send(stamped);
+    }
+
+    return res.json({
+      success: true,
+      name: media.name,
+      kind: media.kind,
+      url: getWorkFileDownloadUrl(media.blobName),
+      /* Bytes that couldn't be stamped — a video or a PDF — but are still
+         being looked at before payout. The client marks its own surface with
+         this, same as it does for deliverables. */
+      heldInEscrow: held,
+    });
   } catch (err) {
     console.error("progress media download error:", err);
     return res.status(500).json({ success: false, error: "server_error" });

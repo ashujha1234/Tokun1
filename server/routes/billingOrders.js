@@ -13,6 +13,12 @@ const { sendInvoiceEmail } = require("../services/email.service");
 
 const { requireAuth } = require("../utils/auth");
 
+/* How close to the due date a subscription may be renewed. Shared with the
+   dashboard's Renew button, which hides itself outside this window (see
+   SubscriptionsSection in frontend/src/pages/self-dash.tsx) — the check lives
+   here as well because the button is not what holds the money. */
+const RENEWAL_WINDOW_DAYS = 7;
+
 // Create IND order (free or pro)
 router.post("/create/user", requireAuth, async (req, res) => {
   try {
@@ -32,6 +38,43 @@ router.post("/create/user", requireAuth, async (req, res) => {
     // Free plan: no order needed. You can directly start/renew (or skip purchase)
     if (planKey === "free") {
       return res.json({ success: true, free: true, message: "no_payment_required" });
+    }
+
+    /* Not a month early.
+
+       Renewing the plan you're already on extends it from the existing due date
+       (renewUserPlanFromDue in service/billing.js), so no time was ever lost —
+       but nothing stopped an active subscriber being charged again the day after
+       they paid, and the dashboard's Renew button offered exactly that. A charge
+       for something the account already has, four weeks before it needs it, is
+       not a renewal; it is a surprise on a card statement.
+
+       So renewal opens only inside the window before the due date. Anything else
+       — a different plan, a lapsed subscription, no due date on record — is
+       untouched and goes through as before. */
+    if (
+      user.plan === planKey &&
+      user.subscriptionStatus === "active" &&
+      user.currentPeriodEnd
+    ) {
+      const msLeft = new Date(user.currentPeriodEnd).getTime() - Date.now();
+      const daysLeft = Math.ceil(msLeft / (24 * 60 * 60 * 1000));
+
+      if (daysLeft > RENEWAL_WINDOW_DAYS) {
+        return res.status(400).json({
+          success: false,
+          error: "renewal_too_early",
+          currentPeriodEnd: user.currentPeriodEnd,
+          daysLeft,
+          message: `Your ${planKey.toUpperCase()} plan is already active until ${new Date(
+            user.currentPeriodEnd
+          ).toLocaleDateString("en-IN", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          })}. You can renew it in the last ${RENEWAL_WINDOW_DAYS} days before that.`,
+        });
+      }
     }
 
     const amount = priceFor(planKey, billingCycle) * 100; // paise
@@ -90,6 +133,33 @@ router.post("/create/org", requireAuth, async (req, res) => {
 
     const org = await Organization.findById(orgId);
     if (!org) return res.status(404).json({ success: false, error: "org_not_found" });
+
+    // Same rule as the individual route above — an active org plan isn't
+    // renewable until it's near its due date.
+    if (
+      org.plan === planKey &&
+      org.subscriptionStatus === "active" &&
+      org.currentPeriodEnd
+    ) {
+      const daysLeft = Math.ceil(
+        (new Date(org.currentPeriodEnd).getTime() - Date.now()) / (24 * 60 * 60 * 1000)
+      );
+      if (daysLeft > RENEWAL_WINDOW_DAYS) {
+        return res.status(400).json({
+          success: false,
+          error: "renewal_too_early",
+          currentPeriodEnd: org.currentPeriodEnd,
+          daysLeft,
+          message: `This organization's ${String(planKey).toUpperCase()} plan is active until ${new Date(
+            org.currentPeriodEnd
+          ).toLocaleDateString("en-IN", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          })}. You can renew it in the last ${RENEWAL_WINDOW_DAYS} days before that.`,
+        });
+      }
+    }
 
     //const planKey = "enterprise";
     const amount = priceFor(planKey, billingCycle) * 100; // paise

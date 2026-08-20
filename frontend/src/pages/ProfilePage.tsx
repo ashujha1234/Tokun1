@@ -2784,14 +2784,19 @@ import {
   Pencil,
   Landmark,
   Video,
+  // The image cards' buy row, same icons as the marketplace card it copies.
+  ShoppingCart,
+  Check,
 } from "lucide-react";
+import { isTeamMember } from "@/lib/orgRoles";
 import SellerLinkedAccountForm from "@/components/SellerLinkedAccountForm";
 // The cards here are the marketplace's, so the panel that opens from them is
 // the marketplace's too — same details, same Add to Cart, same purchase rules.
 import DetailsPrompt from "@/components/DetailsPrompt";
 // Video listings get the marketplace's 9:16 reel card, image listings the
 // .mp-card — same split, and the same component, as the marketplace grid.
-import VideoReelCard from "@/components/VideoReelCard";
+import VideoReelCard, { cardPrice } from "@/components/VideoReelCard";
+import { StarRating } from "@/components/StarRating";
 import { useCart } from "@/contexts/CartContext";
 import "./PromptMarketplace.css"; // reuse the marketplace .mp-card / .reel-card design
 import { useAuth } from "@/contexts/AuthContext";
@@ -2956,6 +2961,11 @@ const [openServicePopup, setOpenServicePopup] = useState(false);
 // const [selectedService, setSelectedService] = useState<any>(null);
 const [openCreateServicePopup, setOpenCreateServicePopup] = useState(false);
 const isOwnProfile = userId === user?._id;
+
+/* A team member's only route to a paid product is asking their Owner, so the
+   image cards' buy row says "Request" and drops the cart — the same rule the
+   reel cards on this page already apply from inside VideoReelCard. */
+const teamMember = isTeamMember(user);
 
 /* Admin preview mode (`?adminView=1`). The freelancer review dashboard links
    here to check a profile before approving its intro video, and it opened the
@@ -3216,11 +3226,35 @@ const [detailsOpen, setDetailsOpen] = useState(false);
 // One reel plays at a time, same as the marketplace grid — tapping a second
 // card stops the first rather than leaving a wall of running videos.
 const [playingVideo, setPlayingVideo] = useState<string | number | null>(null);
-const { addToCart } = useCart();
+/* isInCart as well as addToCart: the image cards below now carry the same
+   price/cart/buy row as the marketplace, and that row has to answer "already in
+   the cart?" the same way everywhere — see the note on isInCart in
+   CartContext. */
+const { addToCart, isInCart } = useCart();
 
 // Ids the viewer already owns, so the panel says "Purchased" instead of
 // offering to sell them a prompt twice. Same source as the marketplace.
 const [purchasedPromptIds, setPurchasedPromptIds] = useState<string[]>([]);
+
+/* One cart handler for both card shapes on this page.
+   Awaited, so the confirmation reflects what the server did rather than that a
+   request was sent — same fix as the marketplace cards. It was written inline
+   on the reel card only; the image cards now need it too, and two copies of a
+   toast that has to match is how they stop matching. */
+const addPromptToCart = async (prompt: any) => {
+  const result = await addToCart(String(prompt.id));
+  toast(
+    result.ok
+      ? { title: "Added to Cart", description: `"${prompt.title}" was added.` }
+      : {
+          title:
+            result.error === "already_in_cart"
+              ? "Already in your cart"
+              : "Couldn't add to cart",
+          description: result.message,
+        },
+  );
+};
 
 useEffect(() => {
   if (!token) return;
@@ -3347,7 +3381,18 @@ return {
   // doesn't open the panel showing ₹0.
   tokunPrice:
     Number(doc.tokun_price || 0) > 0 ? Number(doc.tokun_price) : Number(doc.price || 0),
-  rating: typeof doc.averageRating === "number" ? doc.averageRating : undefined,
+  /* Buyer reviews first, exactly as the marketplace maps them (see
+     mapPromptDoc there). `averageRating` is the legacy embedded-ratings field
+     that nothing writes to any more — reading it alone meant every listing on a
+     profile showed no stars while the same product showed its real score in the
+     marketplace. */
+  rating:
+    typeof doc.reviewAverage === "number" && doc.reviewAverage > 0
+      ? doc.reviewAverage
+      : typeof doc.averageRating === "number"
+        ? doc.averageRating
+        : undefined,
+  reviewCount: typeof doc.reviewCount === "number" ? doc.reviewCount : 0,
   // Only carried for your own uploads. /api/prompt/user/:id happens to return
   // promptText for everyone's listings too, but there's no reason to hold
   // another seller's paid content in this page's state.
@@ -4227,6 +4272,11 @@ const sendMessage = () => {
                     </p>
                   ) : (
                     <>
+                    {/* The My Products grid, class for class (see the uploads
+                        grid in pages/self-dash.tsx). A fixed 430px card — the
+                        size the marketplace resolves to — was tried here and
+                        rejected: on a panel this wide it reads as one oversized
+                        tile rather than a product in a grid. */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
                       {prompts.slice(0, promptsShown).map((prompt) =>
                         // A video listing is a 9:16 reel here exactly as it is in
@@ -4242,26 +4292,7 @@ const sendMessage = () => {
                             onVideoPlay={(id) =>
                               setPlayingVideo((prev) => (prev === id ? null : id))
                             }
-                            /* Awaited, so the confirmation reflects what the
-                               server did rather than that a request was sent.
-                               Same fix as the marketplace cards. */
-                            onAddToCart={async (id) => {
-                              const result = await addToCart(String(id));
-                              toast(
-                                result.ok
-                                  ? {
-                                      title: "Added to Cart",
-                                      description: `"${prompt.title}" was added.`,
-                                    }
-                                  : {
-                                      title:
-                                        result.error === "already_in_cart"
-                                          ? "Already in your cart"
-                                          : "Couldn't add to cart",
-                                      description: result.message,
-                                    },
-                              );
-                            }}
+                            onAddToCart={() => addPromptToCart(prompt)}
                             // Checkout lives on the marketplace; it opens with
                             // this prompt's panel already up.
                             onBuyNow={(p) =>
@@ -4305,15 +4336,50 @@ const sendMessage = () => {
                               ) : null}
                             </div>
 
+                            {/* The same badge ladder the marketplace card
+                                carries. This had the category alone, so a
+                                listing here was missing the row every other
+                                surface shows — which is most of why the card
+                                came out visibly shorter than the same product
+                                elsewhere. */}
                             <div className="mp-card__badges">
                               <span className="mp-card__cat">
                                 {prompt.category?.toUpperCase()}
                               </span>
+                              {prompt.exclusive && prompt.sold ? (
+                                <span
+                                  className="mp-card__unlock"
+                                  style={{ background: "#3A1D1D", color: "#FCA5A5" }}
+                                >
+                                  SOLD
+                                </span>
+                              ) : purchasedPromptIds.includes(String(prompt.id)) ? (
+                                <span
+                                  className="mp-card__unlock"
+                                  style={{ background: "#14532D", color: "#BBF7D0" }}
+                                >
+                                  PURCHASED
+                                </span>
+                              ) : (
+                                <span
+                                  className="mp-card__unlock"
+                                  style={{
+                                    background: prompt.exclusive ? "#2A2A2A" : undefined,
+                                    color: prompt.exclusive ? "#4ADE80" : undefined,
+                                  }}
+                                >
+                                  {prompt.exclusive ? "ONE-TIME PURCHASE" : "PURCHASE TO UNLOCK"}
+                                </span>
+                              )}
                             </div>
 
-                            {!prompt.isFree && prompt.price && prompt.price > 0 ? (
+                            {!prompt.isFree && cardPrice(prompt) > 0 ? (
                               <div className="mp-card__crown">
-                                <img src="/icons/premium.png" alt="Premium" />
+                                <img
+                                  src="/icons/premium.png"
+                                  alt="Premium"
+                                  className={prompt.exclusive ? "filter-green" : ""}
+                                />
                               </div>
                             ) : null}
                           </div>
@@ -4327,15 +4393,103 @@ const sendMessage = () => {
                             </div>
 
                             <h3 className="mp-card__title">{prompt.title}</h3>
+                            {/* Missing here and present everywhere else — the
+                                other half of why this card sat shorter. */}
+                            <div style={{ margin: "2px 0 6px" }}>
+                              <StarRating
+                                value={(prompt as any).rating}
+                                count={(prompt as any).reviewCount}
+                                size={12}
+                                compact
+                              />
+                            </div>
                             <p className="mp-card__desc">{prompt.description}</p>
 
+                            {/* The marketplace card's whole buy row, not just
+                                the price.
+
+                                A price with no way to act on it was the last
+                                difference between this card and the same
+                                product in the marketplace — and the reel cards
+                                sitting beside it on this very page already had
+                                Cart and Buy Now, so an image listing looked
+                                both shorter and inert next to them.
+
+                                Buy Now hands off to the marketplace rather
+                                than starting a checkout here: that page owns
+                                the payment flow, the team-member request path
+                                and the seller-verification gate, and this
+                                card has no way to know about the last one. */}
                             <div className="mp-card__footer">
                               {prompt.isFree ? (
                                 <div className="mp-card__pill mp-card__pill--free">FREE</div>
                               ) : (
-                                <div className="mp-card__pill mp-card__pill--muted">
-                                  ₹{(prompt.price ?? 0).toFixed(2)}
-                                </div>
+                                <>
+                                  <div className="mp-card__pill mp-card__pill--muted">
+                                    {/* cardPrice, not prompt.price — an older row
+                                        whose price only lives in tokun_price read
+                                        as ₹0.00 here while the marketplace showed
+                                        the real figure for the same product. */}
+                                    ₹{cardPrice(prompt).toFixed(2)}
+                                  </div>
+
+                                  {purchasedPromptIds.includes(String(prompt.id)) ? (
+                                    <div className="mp-card__pill mp-card__pill--owned">
+                                      PURCHASED
+                                    </div>
+                                  ) : prompt.exclusive && prompt.sold ? (
+                                    /* A one-time product that has sold can
+                                       never be bought again — no buttons, the
+                                       SOLD badge above says it. (A "SOLD OUT"
+                                       pill was tried in this row and taken back
+                                       out: the badge on the image already says
+                                       it, and a second, wider copy of the same
+                                       word took over the card.) */
+                                    null
+                                  ) : (
+                                    !isOwnProfile && (
+                                      <>
+                                        {/* No cart for team members: checkout
+                                            is blocked server-side for them, so
+                                            the button could only fail later. */}
+                                        {!teamMember &&
+                                          (isInCart(prompt.id) ? (
+                                            <span className="mp-card__pill mp-card__pill--in-cart">
+                                              <Check className="h-4 w-4" />
+                                              In cart
+                                            </span>
+                                          ) : (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                addPromptToCart(prompt);
+                                              }}
+                                              className="mp-card__pill mp-card__pill--cart"
+                                            >
+                                              <ShoppingCart className="h-4 w-4" />
+                                              Cart
+                                            </button>
+                                          ))}
+
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            navigate(
+                                              `/prompt-marketplace?prompt=${encodeURIComponent(
+                                                String(prompt.id),
+                                              )}`,
+                                            );
+                                          }}
+                                          className="mp-card__pill mp-card__pill--buy"
+                                        >
+                                          {teamMember ? "Request" : "Buy Now"}
+                                        </button>
+                                      </>
+                                    )
+                                  )}
+                                </>
                               )}
                             </div>
                           </div>

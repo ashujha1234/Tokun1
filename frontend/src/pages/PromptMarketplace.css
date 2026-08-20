@@ -894,6 +894,16 @@
   align-items: center;
   gap: 10px;
   margin-top: auto;
+  /* Wraps rather than clips.
+
+     Price + Cart + Buy Now need roughly 250px between them. In the marketplace
+     grid there is always more than that, but the same row is used on the
+     profile page and inside a 9:16 reel's bottom overlay, and there it ran out:
+     .mp-card__pill has overflow:hidden, so the last button in the row lost its
+     right-hand side and "Buy Now" read as a cut-off box. Below the threshold the
+     buy button now drops to a full-width second line instead. */
+  flex-wrap: wrap;
+  row-gap: 8px;
 }
 .mp-card__pill {
   display: inline-flex;
@@ -961,7 +971,11 @@
 }
 
 .mp-card__pill--buy {
+  /* min-width is what makes the wrap above happen at the right moment: the
+     button asks for enough room to show its label, and when the row can't give
+     it, it takes a line of its own rather than shrinking into an ellipsis. */
   flex: 1 1 auto;
+  min-width: 104px;
   background: var(--mp-grad-buy);
   cursor: pointer;
   box-shadow: var(--mp-btn-shadow);

@@ -658,7 +658,7 @@ const BankAccount = require("../models/BankAccount");
 const { requireAuth, blockIfSuspended } = require("../utils/auth");
 const { logActivity } = require("../utils/activityLogger");
 const { runPromptMediaValidation } = require("../utils/promptMediaValidation");
-const { applyPublicPromptFilter } = require("../utils/promptVisibility");
+const { applyPublicPromptFilter, excludeSoldOut } = require("../utils/promptVisibility");
 const {
   perceptualHash,
   looksLikeDuplicate,
@@ -1207,7 +1207,13 @@ router.get("/my", requireAuth, async (req, res) => {
   try {
     const { type, category } = req.query;
 
-    let filter = { userId: req.user._id }; // own prompts
+    /* Own prompts, minus the ones deleted.
+       DELETE /:id below only SOFT-deletes a listing somebody has bought (buyers
+       keep what they paid for), and this route didn't exclude those — so the
+       seller pressed delete, the row vanished because the client dropped it from
+       local state, and it was back on the next reload. From the seller's side
+       that is indistinguishable from delete not working at all. */
+    let filter = { userId: req.user._id, deleted: { $ne: true } };
 
     // Filter by attachment type
     if (type === "image" || type === "video") {
@@ -1542,6 +1548,15 @@ router.get("/others", async (req, res) => {
     // uploaded a prompt and watched it vanish with no explanation.
     applyPublicPromptFilter(filter);
 
+    /* And nothing that is already sold out for good.
+
+       A one-time product that has been bought can never be bought again, so it
+       is not a listing any more — it is a record of a sale. Left in, these
+       accumulate forever and every one of them takes a slot in a grid whose job
+       is to show things that can be bought. They stay on the creator's profile,
+       where a sold piece is portfolio rather than stock. */
+    excludeSoldOut(filter);
+
     /* subCategories is populated, not just matched on. The marketplace filters
        the fetched list again on the client (its rails and search run over one
        load), and with only the parent names in the payload a card filed under
@@ -1622,7 +1637,11 @@ router.get("/public/:id", async (req, res) => {
       return res.status(400).json({ success: false, error: "invalid_prompt_id" });
     }
 
-    const prompt = await Prompt.findOne(applyPublicPromptFilter({ _id: id }))
+    /* excludeSoldOut too: a link to a one-time product that has been bought
+       leads to a page whose only honest content is "you can't have this". The
+       buyer reaches their copy through Orders / My Products, not through this
+       route — this one exists to show a stranger something they might buy. */
+    const prompt = await Prompt.findOne(excludeSoldOut(applyPublicPromptFilter({ _id: id })))
       .select("-promptText")
       .populate("categories", "name")
       // Same shape the feed sends, so a prompt opened from a shared link
@@ -1748,6 +1767,13 @@ router.get("/by-seller/:sellerId", async (req, res) => {
 router.delete("/:id", requireAuth, async (req, res) => {
   try {
     const promptId = req.params.id;
+
+    /* Checked before the query: an id that isn't an ObjectId makes findOne throw
+       a CastError, which left this answering 500 "server_error" for what is
+       simply a bad id — and a 500 is the one thing a client can't act on. */
+    if (!mongoose.Types.ObjectId.isValid(promptId)) {
+      return res.status(400).json({ success: false, error: "invalid_prompt_id" });
+    }
 
     // Find prompt and make sure user owns it
     const prompt = await Prompt.findOne({

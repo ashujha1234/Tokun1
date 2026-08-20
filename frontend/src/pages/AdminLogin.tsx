@@ -258,6 +258,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
+import { isValidEmail } from "@/lib/validators";
 
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
@@ -292,10 +293,14 @@ const AdminLogin = () => {
     return () => window.clearTimeout(id);
   }, [resendIn]);
 
-  const isValid = useMemo(() => {
-    const e = email.trim();
-    return e.length > 3 && e.includes("@") && password.trim().length >= 1;
-  }, [email, password]);
+  /* `e.length > 3 && e.includes("@")` used to stand in for a valid address,
+     which passes "abc@" and "a@b" — so Sign in was live for something that could
+     never be an email, and the only thing that said so was the server. The rule
+     is shared now (lib/validators), so this screen and the login page agree. */
+  const isValid = useMemo(
+    () => isValidEmail(email) && password.trim().length >= 1,
+    [email, password]
+  );
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

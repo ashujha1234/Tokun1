@@ -9,7 +9,7 @@
 //
 // Deliberately separate from the work-file uploader:
 //   • brief files are the CLIENT's, work files are the SELLER's
-//   • brief files are small reference material, not 500 MB deliveries
+//   • brief files are small reference material, not multi-gigabyte deliveries
 //   • both parties may read a brief from the moment it's created, whereas a
 //     deliverable stays locked until the work is approved
 //

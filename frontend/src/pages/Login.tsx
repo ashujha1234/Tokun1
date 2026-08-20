@@ -475,28 +475,17 @@ import { authError } from "@/lib/authErrors";
 
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/use-toast";
 import BackLink from "@/components/ui/BackLink";
+import { isValidEmail } from "@/lib/validators";
 
 const API_BASE = import.meta.env.VITE_API_URL ;
 console.log("[ENV] API_BASE =", API_BASE);
 
-/* One definition of "this is an email", used by the button's enabled state, the
-   message under the field, and the submit guard.
-
-   It was written inline in exactly one of those three places — the hint under
-   the mobile field — while the button only ever checked `!email`. So typing a
-   single letter enabled Request OTP with the error text sitting right underneath
-   it: the page said the address was wrong and offered to send a code to it at
-   the same time. Pressing it spent a round-trip to be told the same thing by the
-   server.
-
-   Deliberately loose. Anything stricter rejects addresses that genuinely
-   deliver, and the OTP itself is the real proof the mailbox exists — this only
-   has to catch what obviously cannot be one. */
-const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+/* Shared with every other form that takes an email — see lib/validators. It
+   used to be inline here, and inline (differently) on Signup and the two admin
+   screens, which is how they ended up disagreeing about what counts as valid. */
 
 const Login = () => {
   const [email, setEmail] = useState("");

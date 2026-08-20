@@ -69,29 +69,28 @@ router.post("/", requireAuth, async (req, res) => {
        claiming it just did something. */
     const isSameRef = (item) => String(item.ref) === String(refId);
 
-    if (collectionTitle) {
-      // Save inside a collection
-      let collection = savedCollection.sections[section].collections.find(c => c.title === collectionTitle);
+    /* ONE FLAT LIST. `collectionTitle` is ignored.
 
-      if (!collection) {
-        // create new collection if not exists
-        savedCollection.sections[section].collections.push({
-          title: collectionTitle,
-          items: [newItem],
-        });
-      } else if (collection.items.some(isSameRef)) {
-        return res.json({ success: true, alreadySaved: true, savedCollection });
-      } else {
-        // append to existing collection
-        collection.items.push(newItem);
-      }
-    } else {
-      if (savedCollection.sections[section].directItems.some(isSameRef)) {
-        return res.json({ success: true, alreadySaved: true, savedCollection });
-      }
-      // Save directly to section
-      savedCollection.sections[section].directItems.push(newItem);
+       Saving used to be able to file the item into a named collection, and the
+       Saved page rendered those as folders with their own page, rename and
+       move-between-folders. That is gone: saving something should put it where
+       you can see it rather than ask you to file it first. Old collections are
+       left in the document untouched — the page reads them and shows their
+       contents alongside everything else, so nothing anyone saved disappears —
+       they simply stop growing.
+
+       The parameter is still accepted rather than rejected so an older client
+       (a tab left open across a deploy) still saves successfully instead of
+       failing on a field the server suddenly refuses. */
+    const alreadyFiled = (savedCollection.sections[section].collections || []).some((c) =>
+      (c.items || []).some(isSameRef)
+    );
+
+    if (savedCollection.sections[section].directItems.some(isSameRef) || alreadyFiled) {
+      return res.json({ success: true, alreadySaved: true, savedCollection });
     }
+
+    savedCollection.sections[section].directItems.push(newItem);
 
     await savedCollection.save();
 

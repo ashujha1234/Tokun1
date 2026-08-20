@@ -2556,9 +2556,37 @@ const startCollaboration = async (): Promise<string | null> => {
         </div>
 
         <div className="relative flex-1">
+        {/* NOTHING REWRITES WHAT IS TYPED HERE.
+
+            The app never did any auto-correcting of its own — the one thing that
+            silently changed your text was a `.trim()` in the seeding effect, and
+            that is gone (see the note there). What is left is the BROWSER'S own
+            correcting, which is on by default in a textarea and is the wrong
+            behaviour for this box in particular:
+
+              autoCorrect    — swaps words it thinks are misspelt, and a prompt is
+                               full of model names, API terms and deliberate
+                               spellings that no dictionary knows.
+              autoCapitalize — capitalises the first letter of every sentence, so
+                               a lowercase instruction quietly stops being one.
+              spellCheck     — the red underlines, which on a 2,000-character
+                               prompt is a wall of them.
+              data-gramm     — Grammarly and friends inject into textareas and
+                               rewrite them; this tells them to leave it alone.
+
+            macOS adds its own on top (double-space → full stop, smart quotes),
+            which is a system setting we cannot switch off from here — but the
+            three attributes below are what stops the browser doing it. */}
         <textarea
   ref={editorRef}
   placeholder="Enter your prompt here..."
+  autoCorrect="off"
+  autoCapitalize="off"
+  autoComplete="off"
+  spellCheck={false}
+  data-gramm="false"
+  data-gramm_editor="false"
+  data-enable-grammarly="false"
   className="min-h-[180px] h-full w-full bg-transparent resize-none border-0 outline-none focus:ring-0 pr-10 text-white placeholder:text-white/40 text-sm p-0"
   value={text}
   onChange={handleTextChange}

@@ -1140,6 +1140,7 @@ import {
   hasRefundReason,
 } from "@/lib/refundReasons";
 import RefundReasonPicker from "@/components/RefundReasonPicker";
+import ConfirmModal from "@/components/ConfirmModal";
 import { withTokunBranding } from "@/lib/razorpayTheme";
 
 const GRADIENT = "linear-gradient(270deg,#FF14EF 0%, #1A73E8 100%)";
@@ -1351,25 +1352,6 @@ const formatProjectStatus = (status?: string) => {
   }
 };
 
-const getProjectProgress = (status?: string) => {
-  switch (status) {
-    case "ACCEPTED_WAITING_PAYMENT":
-      return 12;
-    case "FUNDED":
-      return 28;
-    case "IN_PROGRESS":
-      return 55;
-    case "WORK_SUBMITTED":
-      return 85;
-    case "REVISION_REQUESTED":
-      return 70;
-    case "COMPLETED":
-      return 100;
-    default:
-      return 0;
-  }
-};
-
 const getProjectStatusStyle = (status?: string): React.CSSProperties => {
   switch (status) {
     case "ACCEPTED_WAITING_PAYMENT":
@@ -1451,6 +1433,14 @@ function PlanBanner({
   expiryDate,
   onRenew,
   onUpgrade,
+  /* Both buttons used to fire unconditionally at whichever card happened to be
+     selected below, which made them wrong in every direction: Renew on a Free
+     account started a checkout for a subscription there is nothing to renew,
+     and "Upgrade plan" bought the selected card even when that WAS the current
+     plan. Now the section above decides what each one means and says so. */
+  canRenew = true,
+  upgradeLabel = "⚡ Upgrade plan",
+  upgradeDisabledReason,
 }: {
   planLabel?: string;
   planName?: string;
@@ -1458,6 +1448,11 @@ function PlanBanner({
   expiryDate?: string;
   onRenew: () => void;
   onUpgrade: () => void;
+  /** False on Free: there is no paid period to extend. */
+  canRenew?: boolean;
+  upgradeLabel?: string;
+  /** Set when there is nothing to upgrade to — disables the button and says why. */
+  upgradeDisabledReason?: string;
 }) {
   const formattedExpiry = expiryDate
     ? new Date(expiryDate).toLocaleDateString("en-US", {
@@ -1486,19 +1481,31 @@ function PlanBanner({
         {subtitle && <div className="text-sm opacity-90 mt-1">{subtitle}</div>}
       </div>
       <div className="flex items-center gap-3">
-        <button
-          onClick={onRenew}
-          className="h-10 px-4 rounded-lg text-white text-sm font-medium"
-          style={{ border: "1px solid rgba(255,255,255,0.55)", background: "transparent" }}
-        >
-          Renew
-        </button>
+        {canRenew && (
+          <button
+            onClick={onRenew}
+            className="h-10 px-4 rounded-lg text-white text-sm font-medium transition-colors hover:bg-white/10"
+            style={{ border: "1px solid rgba(255,255,255,0.55)", background: "transparent" }}
+          >
+            Renew
+          </button>
+        )}
         <button
           onClick={onUpgrade}
-          className="h-10 px-4 rounded-lg text-sm font-semibold"
-          style={{ background: "#FFFFFF", color: "#111" }}
+          disabled={!!upgradeDisabledReason}
+          title={upgradeDisabledReason}
+          className="h-10 px-4 rounded-lg text-sm font-semibold disabled:cursor-default"
+          style={
+            upgradeDisabledReason
+              ? {
+                  background: "rgba(255,255,255,0.15)",
+                  color: "rgba(255,255,255,0.7)",
+                  border: "1px solid rgba(255,255,255,0.25)",
+                }
+              : { background: "#FFFFFF", color: "#111" }
+          }
         >
-          ⚡ Upgrade plan
+          {upgradeLabel}
         </button>
       </div>
     </div>
@@ -1516,6 +1523,16 @@ function PlanCard({
   tokens,
   extras,
   highlight,
+  /* The same three the pricing page's card takes (pages/Subscription.tsx) and
+     the copy of this section in components/PromptHistory.tsx. This card was the
+     one left without them, which is why the dashboard showed no green on the
+     plan you're actually on and offered "Choose Plan" for it — pressing that
+     reopened checkout for something already paid for. */
+  isCurrent = false,
+  ctaLabel = "Choose Plan",
+  disabled = false,
+  /** Why the button is dead, on hover. Nothing renders for the current plan. */
+  disabledReason,
 }: {
   selected: boolean;
   onSelect: () => void;
@@ -1526,6 +1543,10 @@ function PlanCard({
   tokens: string;
   extras: { label: string; value: string }[];
   highlight?: string;
+  isCurrent?: boolean;
+  ctaLabel?: string;
+  disabled?: boolean;
+  disabledReason?: string;
 }) {
   const [amount, per] = price.split("/");
   return (
@@ -1536,18 +1557,37 @@ function PlanCard({
         width: 220,
         height: 380,
         borderRadius: 16,
-        border: "1px solid #35343C",
+        /* Green outline on the active plan, so it is findable at a glance
+           rather than only by reading three buttons. */
+        border: isCurrent ? "1px solid rgba(25,230,108,0.55)" : "1px solid #35343C",
         background: selected ? SELECTED_CARD_BG : "#0D0D0E",
         color: "#FFFFFF",
+        boxShadow: isCurrent ? "0 0 0 1px rgba(25,230,108,0.18), 0 8px 30px rgba(25,230,108,0.10)" : undefined,
       }}
     >
-      {highlight && (
+      {/* The current-plan pill replaces "Most Popular" rather than stacking with
+          it — two badges on one 220px card sit on top of each other, and which
+          plan you're ON is the more useful of the two. */}
+      {isCurrent ? (
         <div
-          className="absolute -top-3 left-1/2 -translate-x-1/2 px-2.5 py-1 rounded-full text-[10px] font-medium border border-white/25"
-          style={{ background: GRAD, color: "#fff" }}
+          className="absolute -top-3 left-1/2 -translate-x-1/2 px-2.5 py-1 rounded-full text-[10px] font-semibold"
+          style={{
+            background: "#14532D",
+            color: "#BBF7D0",
+            border: "1px solid rgba(187,247,208,0.35)",
+          }}
         >
-          {highlight}
+          CURRENT PLAN
         </div>
+      ) : (
+        highlight && (
+          <div
+            className="absolute -top-3 left-1/2 -translate-x-1/2 px-2.5 py-1 rounded-full text-[10px] font-medium border border-white/25"
+            style={{ background: GRAD, color: "#fff" }}
+          >
+            {highlight}
+          </div>
+        )
       )}
       <CardHeader className="pt-4 pb-2">
         <div className="space-y-2">
@@ -1589,16 +1629,29 @@ function PlanCard({
       </CardContent>
       <CardFooter className="pt-2 pb-4 flex justify-center">
         <Button
-          onClick={(e) => { e.stopPropagation(); onChoose(); }}
-          className='font-["Inter"] text-[14px] w-[170px] h-[42px] rounded-[6px]'
+          onClick={(e) => {
+            e.stopPropagation();
+            if (disabled) return;
+            onChoose();
+          }}
+          disabled={disabled}
+          title={isCurrent ? undefined : disabledReason}
+          /* disabled:opacity-100 — the states below carry their own colour, and
+             the default 50% wash on top of them made "Current plan" look
+             broken rather than settled. */
+          className='font-["Inter"] text-[13px] leading-tight w-[170px] h-[42px] rounded-[6px] whitespace-normal px-2 disabled:opacity-100 disabled:cursor-default'
           style={
-            selected
-              ? { background: GRAD, border: "1px solid #FFFFFF", color: "#fff" }
-              : { background: "transparent", border: "1px solid #FFFFFF", color: "#fff" }
+            isCurrent
+              ? { background: "#14532D", border: "1px solid rgba(187,247,208,0.35)", color: "#BBF7D0" }
+              : disabled
+                ? { background: "transparent", border: "1px solid rgba(255,255,255,0.25)", color: "rgba(255,255,255,0.45)" }
+                : selected
+                  ? { background: GRAD, border: "1px solid #FFFFFF", color: "#fff" }
+                  : { background: "transparent", border: "1px solid #FFFFFF", color: "#fff" }
           }
           variant="ghost"
         >
-          Choose Plan
+          {ctaLabel}
         </Button>
       </CardFooter>
     </Card>
@@ -1615,8 +1668,21 @@ function SubscriptionsSection({
   onRenew: (plan: PlanKey, annual: boolean) => void;
   onUpgrade: (plan: PlanKey, annual: boolean) => void;
 }) {
+  /* Which plan this account is actually on, as a key the cards can compare
+     against rather than a label to print. Everything below reads from it. Same
+     normaliser as the pricing page and PromptHistory — three copies of this
+     section exist and they have to agree on what "Pro" means. */
+  const currentPlanKey: PlanKey = (() => {
+    const raw = String(user?.plan || "free").toLowerCase();
+    if (raw.startsWith("pro")) return "Pro";
+    if (raw.startsWith("enter")) return "Enterprise";
+    return "Free";
+  })();
+
   const [annual, setAnnual] = useState(false);
-  const [selected, setSelected] = useState<PlanKey>("Pro");
+  /* Starts on the plan you're on, not a hardcoded "Pro" — a Free account opened
+     this tab with the Pro card tinted as though it were already theirs. */
+  const [selected, setSelected] = useState<PlanKey>(currentPlanKey);
 
   const prices = { Free: 0, Pro: 799, Enterprise: 7999 } as const;
   const tokens = { Free: "5,000", Pro: "100,000", Enterprise: "1,000,000" } as const;
@@ -1627,9 +1693,105 @@ function SubscriptionsSection({
     return `${INR(v)}/month`;
   };
 
-  const currentPlan = user?.plan
-    ? `${String(user.plan).charAt(0).toUpperCase() + String(user.plan).slice(1)} Plan`
-    : "Free Plan";
+  const currentPlan = `${currentPlanKey} Plan`;
+
+  /* Enterprise is billed to an ORGANIZATION — the checkout route is
+     /order/create/org and it needs an orgId. An individual (Pro or otherwise)
+     pressing it got as far as a "we couldn't find your Organization ID" message,
+     i.e. a dead button that only announced itself after being pressed. */
+  const isOrgOwner = !!user?.orgId;
+
+  /* What each card's button says and whether it does anything.
+
+       the plan you're on   → says so, does nothing, and is green
+       Free from a paid plan
+                            → not a purchase. Downgrading happens by letting the
+                              paid plan lapse, so "Choose Plan" was an offer we
+                              can't honour — and pressing it ran a ₹0 checkout
+                              that reported a free plan "activated" when nothing
+                              had changed.
+       Enterprise without an org
+                            → an organization plan, and this account isn't one
+       anything else         → a real upgrade */
+  const ctaFor = (plan: PlanKey) => {
+    if (plan === currentPlanKey) {
+      return { ctaLabel: "Current plan", disabled: true, isCurrent: true };
+    }
+    if (plan === "Free") {
+      return {
+        ctaLabel: "Included with every account",
+        disabled: true,
+        isCurrent: false,
+        disabledReason:
+          "Your paid plan already includes everything in Free. It moves back to Free on its own when the paid period ends.",
+      };
+    }
+    if (plan === "Enterprise" && !isOrgOwner) {
+      return {
+        ctaLabel: "Organization plan",
+        disabled: true,
+        isCurrent: false,
+        disabledReason:
+          "Enterprise is billed to an organization. Sign in as the org owner to buy it.",
+      };
+    }
+    return { ctaLabel: "Choose Plan", disabled: false, isCurrent: false };
+  };
+
+  /* Renew extends what you already have, so it uses the CURRENT plan and the
+     cycle it was bought on — not whichever card is selected and not whatever
+     the monthly/yearly toggle happens to be showing. Renewing Pro used to bill
+     Enterprise if the Enterprise card was the one clicked last. */
+  const currentCycleIsAnnual = String(user?.billingCycle || "")
+    .toLowerCase()
+    .startsWith("year");
+
+  /* Renewal only near the due date.
+
+     A renewal extends from the existing due date, so nothing was ever lost by
+     renewing early — but the button happily charged an active subscriber again
+     weeks ahead of time, which reads as being billed twice for the same month.
+     Matches RENEWAL_WINDOW_DAYS in server/routes/billingOrders.js, which
+     rejects an early order outright; this only decides whether to offer it. */
+  const RENEWAL_WINDOW_DAYS = 7;
+
+  const periodEnd = user?.currentPeriodEnd ? new Date(user.currentPeriodEnd) : null;
+  const daysLeftInPeriod =
+    periodEnd && !Number.isNaN(periodEnd.getTime())
+      ? Math.ceil((periodEnd.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+      : null;
+
+  /* No due date on record (an older account, or a plan set by hand) → the
+     button stays, because we can't prove it isn't due. */
+  const renewalOpen = daysLeftInPeriod === null || daysLeftInPeriod <= RENEWAL_WINDOW_DAYS;
+  const canRenew = currentPlanKey !== "Free" && renewalOpen;
+
+  /* Said in the banner rather than left as a missing button. */
+  const renewalNote =
+    currentPlanKey !== "Free" && !renewalOpen && periodEnd
+      ? `Renews on ${periodEnd.toLocaleDateString("en-IN", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        })} — you can renew it in the last ${RENEWAL_WINDOW_DAYS} days before that.`
+      : "Your active subscription details";
+
+  /* The next plan up, and only if this account can actually buy it. Free → Pro
+     for everyone; Pro → Enterprise only for an org owner; nothing above
+     Enterprise. */
+  const upgradeTarget: PlanKey | null =
+    currentPlanKey === "Free"
+      ? "Pro"
+      : currentPlanKey === "Pro" && isOrgOwner
+        ? "Enterprise"
+        : null;
+
+  const upgradeDisabledReason =
+    upgradeTarget
+      ? undefined
+      : currentPlanKey === "Enterprise"
+        ? "You're on the highest plan."
+        : "Pro is the top plan for an individual account. Enterprise is billed to an organization.";
 
   return (
     <div className="mt-2">
@@ -1637,9 +1799,16 @@ function SubscriptionsSection({
         planLabel="Active Membership"
         planName={currentPlan}
         expiryDate={user?.currentPeriodEnd}
-        subtitle="Your active subscription details"
-        onRenew={() => onRenew(selected, annual)}
-        onUpgrade={() => onUpgrade(selected, annual)}
+        subtitle={renewalNote}
+        canRenew={canRenew}
+        onRenew={() => onRenew(currentPlanKey, currentCycleIsAnnual)}
+        upgradeLabel={upgradeTarget ? `⚡ Upgrade to ${upgradeTarget}` : "⚡ Upgrade plan"}
+        upgradeDisabledReason={upgradeDisabledReason}
+        onUpgrade={() => {
+          if (!upgradeTarget) return;
+          setSelected(upgradeTarget);
+          onUpgrade(upgradeTarget, annual);
+        }}
       />
 
       <div className="mt-6 mb-5 flex items-center justify-center gap-4 text-[12px]">
@@ -1672,6 +1841,7 @@ function SubscriptionsSection({
               setSelected("Free");
               onUpgrade("Free", annual);
             }}
+            {...ctaFor("Free")}
             title="Free"
             subtitle="(Individuals)"
             price={priceFor("Free")}
@@ -1686,6 +1856,7 @@ function SubscriptionsSection({
               setSelected("Pro");
               onUpgrade("Pro", annual);
             }}
+            {...ctaFor("Pro")}
             title="Pro"
             subtitle="(Individuals)"
             price={priceFor("Pro")}
@@ -1705,6 +1876,7 @@ function SubscriptionsSection({
               setSelected("Enterprise");
               onUpgrade("Enterprise", annual);
             }}
+            {...ctaFor("Enterprise")}
             title="Enterprise"
             subtitle="(Organization)"
             price={priceFor("Enterprise")}
@@ -1942,12 +2114,12 @@ function HistoryGridCard({
                       <Users className="h-3.5 w-3.5 text-white/90" />
                     </button>
                   )}
-                  <div
-                    className="flex items-center justify-center"
-                    style={{ width: 32, height: 32, borderRadius: 50, background: "rgba(255,255,255,0.12)" }}
-                  >
-                    <img src="/icons/cop1.png" alt="cop1" className="h-3.5" />
-                  </div>
+                  {/* The save-looking circle that sat here is gone. It was a
+                      bare <div> with the save icon in it — no handler, nothing
+                      behind it — so it read as a Save button on every one of
+                      your own products and did nothing when pressed. Saving your
+                      own upload to your own collection wouldn't mean anything
+                      anyway. */}
                 </>
               )}
             </div>
@@ -2056,12 +2228,8 @@ function HistoryGridCard({
         ) : (
           <div className="mt-auto pt-3 px-1">
             <div className="flex items-center gap-2">
-              <div
-                className="flex items-center justify-center"
-                style={{ minWidth: 42, height: 36, borderRadius: 50, background: "#333335", padding: "0 10px" }}
-              >
-                <img src="/icons/cop1.png" alt="cop1" className="h-4" />
-              </div>
+              {/* Same decorative save pill as above, same reason for going: it
+                  looked like a control and was a <div> with an icon in it. */}
               <div
                 className="flex items-center justify-center"
                 style={{ minWidth: 60, height: 36, borderRadius: 50, padding: "0 12px", background: "#333335" }}
@@ -2308,8 +2476,6 @@ const SelfDash = () => {
   const [purchaseHistory, setPurchaseHistory] = useState<Prompt[]>([]);
   const [purchasesLoading, setPurchasesLoading] = useState(false);
   const [purchasesError, setPurchasesError] = useState<string | null>(null);
-  const [proposalOpen, setProposalOpen] = useState(false);
-  const [selectedProject, setSelectedProject] = useState<any | null>(null);
 const [acceptingRequestId, setAcceptingRequestId] = useState<string | number | null>(null);
   /* ── Uploaded state ── */
   const [uploadHistory, setUploadHistory] = useState<Prompt[]>([]);
@@ -2668,6 +2834,37 @@ const fetchHireEarnings = async () => {
 
 useEffect(() => {
   fetchHireEarnings();
+}, [token]);
+
+/* ── Orders, as the Orders page sees them ──────────────────────────────────
+   The stat cards used to be computed from /api/hire/my/earnings, which knows
+   only about hire deals and counts them by its own rules. So the dashboard and
+   the Orders page — the two screens that answer "how much work do I have" —
+   disagreed: a service booking counted on one and not the other, and "total
+   projects" was a different number in each place.
+
+   /api/my-orders is the feed the Orders page renders and the one the header
+   badge counts from. `side=selling` is this dashboard's whole subject: work
+   this account is delivering. */
+const [sellerOrders, setSellerOrders] = useState<any[]>([]);
+
+const fetchSellerOrders = async () => {
+  if (!token) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/my-orders?side=selling`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) throw new Error(data?.error || "orders_fetch_failed");
+    setSellerOrders(Array.isArray(data.orders) ? data.orders : []);
+  } catch (err) {
+    // Stats fall back to zero rather than to a stale number from another source.
+    console.error("Seller orders fetch failed:", err);
+  }
+};
+
+useEffect(() => {
+  fetchSellerOrders();
 }, [token]);
 
 // Route payout setup — drives the "set up your payout account" banner below.
@@ -3143,10 +3340,19 @@ const handleAcceptRequest = async (item: any) => {
   }, [token]);
 
   /* ── Delete uploaded ── */
-  const handleDeletePrompt = async (p: Prompt) => {
+  /* The product awaiting confirmation, and whether its delete is in flight.
+     This was a window.confirm: a white OS box on a dark page, and it froze the
+     tab while it was up. See components/ConfirmModal.tsx. */
+  const [pendingDelete, setPendingDelete] = useState<Prompt | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeletePrompt = (p: Prompt) => setPendingDelete(p);
+
+  const confirmDeletePrompt = async () => {
+    const p = pendingDelete;
+    if (!p) return;
     const id = String(p.id);
-    const ok = window.confirm("Delete this product permanently?");
-    if (!ok) return;
+    setDeleting(true);
     try {
       const res = await fetch(`${API_BASE}/api/prompt/${encodeURIComponent(id)}`, {
         method: "DELETE",
@@ -3161,8 +3367,13 @@ const handleAcceptRequest = async (item: any) => {
       setUploadHistory((prev) => prev.filter((x) => String(x.id) !== id));
       if (detailsOpen && detailsPrompt && String((detailsPrompt as any).id) === id) setDetailsOpen(false);
       toast({ title: "Deleted", description: "Product removed from your uploads." });
+      setPendingDelete(null);
     } catch (err: any) {
       toast({ title: "Delete failed", description: err?.message || "Could not delete." });
+      /* The dialog stays up on failure — closing it would leave the row still
+         there with nothing to press again. */
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -3193,77 +3404,12 @@ const handleAcceptRequest = async (item: any) => {
 
 
 
-const normalizeStatus = (status?: string) =>
-  String(status || "").trim().toUpperCase();
-
-const getHireDealId = (item: any, index: number, prefix: string) =>
-  String(
-    item?._id ||
-      item?.id ||
-      item?.dealId ||
-      item?.raw?._id ||
-      `${prefix}-${index}`
-  );
-
-const allHireDealMap = new Map<string, any>();
-
-[
-  ...(hireEarnings.requests || []),
-  ...(hireEarnings.projects || []),
-  ...(hireEarnings.deals || []),
-].forEach((item, index) => {
-  const id = getHireDealId(item, index, "hire");
-  allHireDealMap.set(id, item);
-});
-
-const allHireDeals = Array.from(allHireDealMap.values());
-
-const isAcceptedDeal = (deal: any) => {
-  const status = normalizeStatus(deal?.status);
-
-  return (
-    [
-      "ACCEPTED_WAITING_PAYMENT",
-      "FUNDED",
-      "IN_PROGRESS",
-      "WORK_SUBMITTED",
-      "REVISION_REQUESTED",
-      "COMPLETED",
-      "DELIVERED",
-    ].includes(status) ||
-    !!deal?.acceptedAt ||
-    !!deal?.workStartedAt ||
-    !!deal?.workSubmittedAt ||
-    !!deal?.completedAt
-  );
-};
-
-const isDeliveredDeal = (deal: any) => {
-  const status = normalizeStatus(deal?.status);
-
-  return (
-    ["COMPLETED", "DELIVERED", "PAYMENT_RELEASED", "RELEASED"].includes(
-      status
-    ) ||
-    !!deal?.completedAt ||
-    !!deal?.releasedAt ||
-    !!deal?.paymentReleasedAt
-  );
-};
-
-const totalRequestsAccepted = allHireDeals.filter(isAcceptedDeal).length;
-const totalRequestsDelivered = allHireDeals.filter(isDeliveredDeal).length;
-
-const calculatedSuccessRate =
-  totalRequestsAccepted > 0
-    ? Math.round((totalRequestsDelivered / totalRequestsAccepted) * 1000) / 10
-    : 0;
-
-const successRateLabel = `${calculatedSuccessRate}%`;
-const successRateBadge =
-  totalRequestsAccepted > 0
-    ? `${totalRequestsDelivered}/${totalRequestsAccepted}`
-    : "0/0";
+/* The hire-deal success-rate derivation that used to sit here is gone: it
+   rebuilt one list out of three overlapping arrays from /api/hire/my/earnings
+   (requests + projects + deals, deduped by id) and then guessed each deal's
+   state from any of six timestamp fields. The stats below read the order status
+   straight off /api/my-orders instead — the same status the Orders page shows —
+   so there is nothing left to reconcile. */
 
 
 
@@ -3292,71 +3438,71 @@ const successRateBadge =
   const atCurrentMonth =
     year === todayStart.getFullYear() && month === todayStart.getMonth();
 
-  /* ── Stats data ── */
+  /* ── Stats data ──
+     Every figure here now comes from /api/my-orders (side=selling) — the same
+     feed the Orders page lists and the header badge counts from. They used to
+     come from /api/hire/my/earnings, which knows only about hire deals and
+     counts them by its own rules, so this dashboard and Orders answered "how
+     much work do I have" with two different numbers for the same account.
+
+     Product sales are the one thing not in that feed (a product has no work
+     state, so /api/my-orders deliberately excludes it — see the note at the top
+     of server/routes/myOrders.js). They come from the uploads list, as before,
+     and only into EARNINGS. */
+  const ordersNeedingAction = sellerOrders.filter((o) => o.needsAction);
+  const ordersEarned = sellerOrders
+    .filter((o) => o.status === "COMPLETED")
+    .reduce((sum, o) => sum + Number(o.amount || 0), 0);
+
+  /* Reached-the-money statuses vs finished ones — the same distinction the old
+     isAcceptedDeal/isDeliveredDeal pair drew, off the order status the Orders
+     page shows rather than off six possible timestamp fields. */
+  const ordersStarted = sellerOrders.filter((o) =>
+    ["FUNDED", "IN_PROGRESS", "WORK_SUBMITTED", "REVISION_REQUESTED", "COMPLETED"].includes(
+      o.status,
+    ),
+  ).length;
+  const ordersCompleted = sellerOrders.filter((o) => o.status === "COMPLETED").length;
+
+  const successRate =
+    ordersStarted > 0 ? Math.round((ordersCompleted / ordersStarted) * 1000) / 10 : 0;
+
   const stats = [
   {
-    title: "ACTIVE REQUESTS",
-    value: String(hireEarnings.activeRequests || 0),
-    badge: `+${hireEarnings.activeRequests || 0}`,
+    title: "NEEDS YOUR ACTION",
+    value: String(ordersNeedingAction.length),
+    badge: `+${ordersNeedingAction.length}`,
     badgeColor: "#19E66C",
   },
   {
     title: "EARNINGS",
-    value: `₹${(totalEarningsINR + hireEarnings.totalEarnings).toLocaleString()}`,
-    badge: "+19%",
+    value: `₹${(totalEarningsINR + ordersEarned).toLocaleString()}`,
+    /* Was a hardcoded "+19%". */
+    badge: `${sellerOrders.length} order${sellerOrders.length === 1 ? "" : "s"}`,
     badgeColor: "#DDB7FF",
   },
   {
     title: "TOTAL PROJECTS",
-    value: String(hireEarnings.totalProjects ?? hireEarnings.totalDeals ?? 0),
-    badge: `+${hireEarnings.totalProjects ?? hireEarnings.totalDeals ?? 0}`,
+    value: String(sellerOrders.length),
+    badge: `+${sellerOrders.length}`,
     badgeColor: "#DDB7FF",
   },
  {
   title: "SUCCESS RATE",
-  value: successRateLabel,
-  badge: successRateBadge,
+  value: `${successRate}%`,
+  badge: `${ordersCompleted}/${ordersStarted}`,
   badgeColor:
-    calculatedSuccessRate >= 70
+    successRate >= 70
       ? "#19E66C"
-      : calculatedSuccessRate >= 40
+      : successRate >= 40
       ? "#FABC4E"
       : "#FF6B6B",
 },
 ];
 
-const activeProjects = (hireEarnings.projects || []).map((project: any, index: number) => {
-  const amount = Number(project.amount || project.budget || 0);
-  const status = project.status || "ACCEPTED_WAITING_PAYMENT";
+/* The `activeProjects` mapping that stood here is gone with the Active Projects
+   panel below it — see the note where that panel used to be. */
 
- return {
-  id: project._id || index + 1,
-  title: project.title || "Active Project",
-  user: project.clientName || project.clientId?.name || "Client",
-  price: INR(amount),
-  budget: amount,
-  status,
-  statusText: formatProjectStatus(status),
-  start: formatShortDate(project.acceptedAt || project.createdAt),
-  finish: formatShortDate(project.deliveryDate),
-  progress: getProjectProgress(status),
-  desc: project.description || "Project accepted from client. Work progress will appear here.",
-  description: project.description || "",
-  deliveryDate: project.deliveryDate,
-  createdAt: project.createdAt,
-  acceptedAt: project.acceptedAt,
-
-  fundsStatus: project.fundsStatus,
-  paymentStatus: project.paymentStatus,
-  workStartedAt: project.workStartedAt,
-  workSubmittedAt: project.workSubmittedAt,
-  deliverables: project.deliverables || [],
-  submissionNote: project.submissionNote || "",
-  revisions: project.revisions || [],
-
-  raw: project,
-};
-});
 
 const allRequests = (hireEarnings.requests || []).map((request: any, index: number) => {
   const amount = Number(request.amount || request.budget || 0);
@@ -3596,231 +3742,21 @@ const RequestCard = ({ item }: { item: any }) => {
           </div>
         ))}
       </div>
-      <div className="relative z-10 mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_1px_355px] lg:gap-6">
-        <div>
-          <div className="flex items-center justify-between">
-            <h2 style={{ margin: 0, fontFamily: "Inter, sans-serif", fontWeight: 800, fontSize: 21, lineHeight: "100%", color: "#FFFFFF" }}>Active Projects</h2>
-            <button type="button" style={{ fontFamily: "Inter, sans-serif", fontWeight: 800, fontSize: 12, lineHeight: "100%", letterSpacing: "1.5px", color: "#C084FC" }}>VIEW ALL</button>
-          </div>
-          <div className="mt-4 h-px w-full bg-white/10" />
-         
-<div className="mt-4 space-y-5">
-  {activeProjects.length > 0 ? (
-    activeProjects.map((project) => {
-      const statusStyle = getProjectStatusStyle(project.status);
+      {/* This row held Active Projects and New Requests. Both are gone, and the
+          dashboard tab is now the stat cards and the calendar.
 
-      return (
-        <div
-          key={project.id}
-          onClick={() => {
-  setSelectedProject(project);
-  setProposalOpen(true);
-}}
-          style={{
-            borderRadius: 16,
-            background: "rgba(0,0,0,0.22)",
-            border: "1px solid rgba(255,255,255,0.10)",
-            padding: "22px 16px",
-            boxSizing: "border-box",
-            cursor: "pointer",
-          }}
-        >
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div style={{ minWidth: 0 }}>
-              <h3
-                style={{
-                  margin: 0,
-                  fontFamily: "Inter, sans-serif",
-                  fontWeight: 800,
-                  fontSize: 18,
-                  lineHeight: "120%",
-                  color: "#FFFFFF",
-                }}
-              >
-                {project.title}
-              </h3>
+          Active Projects was a second, thinner rendering of work the Orders page
+          already lists properly — built from /api/hire/my/earnings, so it showed
+          hire deals and silently omitted service bookings, and its progress bar
+          was inferred from status rather than known. Two screens describing the
+          same projects differently is how a seller ends up trusting neither.
+          Orders is the one place they live, and its rows open the order's own
+          page, where work is submitted, revised, approved or cancelled.
 
-              <p
-                style={{
-                  margin: "7px 0 0",
-                  fontFamily: "Inter, sans-serif",
-                  fontWeight: 400,
-                  fontSize: 12,
-                  lineHeight: "100%",
-                  color: "#71717A",
-                }}
-              >
-                Client: {project.user} • {project.price}
-              </p>
-            </div>
-
-            <span
-              className="w-fit"
-              style={{
-                height: 24,
-                padding: "0 13px",
-                borderRadius: 999,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontFamily: "Inter, sans-serif",
-                fontWeight: 800,
-                fontSize: 10,
-                lineHeight: "100%",
-                letterSpacing: "1px",
-                ...statusStyle,
-              }}
-            >
-              {project.statusText}
-            </span>
-          </div>
-
-          <p
-            style={{
-              margin: "14px 0 0",
-              fontFamily: "Inter, sans-serif",
-              fontWeight: 400,
-              fontSize: 13,
-              lineHeight: "18px",
-              color: "#8F8996",
-            }}
-          >
-            {project.desc}
-          </p>
-
-          <div className="mt-7 flex items-center gap-2">
-            <Clock3 size={20} color="#C084FC" />
-            <p
-              style={{
-                margin: 0,
-                fontFamily: "Inter, sans-serif",
-                fontWeight: 800,
-                fontSize: 12,
-                lineHeight: "100%",
-                letterSpacing: "2px",
-                color: "#C084FC",
-              }}
-            >
-              EXECUTION TIMELINE
-            </p>
-          </div>
-
-          <div
-            className="mt-4 h-[6px] max-w-[520px] overflow-hidden rounded-full"
-            style={{
-              background: "#18181B80",
-              border: "1px solid #FFFFFF1A",
-            }}
-          >
-            <div
-              style={{
-                width: `${project.progress}%`,
-                height: "100%",
-                borderRadius: 999,
-                background: "#D9A6FF",
-              }}
-            />
-          </div>
-
-          <div
-            className="mt-3 flex max-w-[520px] items-center justify-between"
-            style={{
-              fontFamily: "Inter, sans-serif",
-              fontWeight: 400,
-              fontSize: 13,
-              lineHeight: "100%",
-              color: "#C9C2CE",
-            }}
-          >
-            <span>Start: {project.start}</span>
-            <span>Finish: {project.finish}</span>
-          </div>
-        </div>
-      );
-    })
-  ) : (
-    <div
-      style={{
-        borderRadius: 16,
-        background: "rgba(0,0,0,0.22)",
-        border: "1px dashed rgba(255,255,255,0.14)",
-        padding: "32px 18px",
-        boxSizing: "border-box",
-        textAlign: "center",
-      }}
-    >
-      <div
-        style={{
-          width: 48,
-          height: 48,
-          margin: "0 auto",
-          borderRadius: 16,
-          background: "rgba(192,132,252,0.10)",
-          border: "1px solid rgba(192,132,252,0.20)",
-          display: "grid",
-          placeItems: "center",
-        }}
-      >
-        <Clock3 size={22} color="#C084FC" />
-      </div>
-
-      <h3
-        style={{
-          margin: "14px 0 0",
-          fontFamily: "Inter, sans-serif",
-          fontWeight: 800,
-          fontSize: 17,
-          color: "#FFFFFF",
-        }}
-      >
-        No active projects yet
-      </h3>
-
-      <p
-        style={{
-          margin: "8px auto 0",
-          maxWidth: 360,
-          fontFamily: "Inter, sans-serif",
-          fontWeight: 400,
-          fontSize: 13,
-          lineHeight: "19px",
-          color: "#71717A",
-        }}
-      >
-        done
-      </p>
-    </div>
-  )}
-</div>
-
-
-        </div>
-        <div className="hidden bg-white/20 lg:block" style={{ width: 1 }} />
-        <div className="flex flex-col gap-0">
-          <div className="flex items-center justify-between mb-4">
-            <h2 style={{ margin: 0, fontFamily: "Inter, sans-serif", fontWeight: 800, fontSize: 21, lineHeight: "100%", color: "#FFFFFF" }}>New Requests</h2>
-          <span
-  className="rounded-full bg-white/10 px-2 py-1"
-  style={{
-    fontFamily: "Inter, sans-serif",
-    fontWeight: 800,
-    fontSize: 11,
-    lineHeight: "100%",
-    color: "#FFFFFF",
-  }}
->
-  +{hireEarnings.activeRequests || 0}
-</span>
-          </div>
-      {allRequests.length > 0 ? (
-  <RequestCard item={allRequests[0]} />
-) : (
-  <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-5 text-white/45">
-    No new project requests yet.
-  </div>
-)}
-        </div>
-      </div>
+          New Requests showed exactly ONE request (`allRequests[0]`) above a
+          count of all of them — so a seller with four waiting saw one, and the
+          panel's job was really to advertise the Requests tab, which lists every
+          one of them with the accept/decline controls. Same list, one place. */}
     </>
   );
 
@@ -4842,6 +4778,19 @@ const RequestCard = ({ item }: { item: any }) => {
               />
             )}
 
+            {/* Delete confirmation. Names the product, which window.confirm's
+                single line never did — "Delete this product permanently?" left
+                the seller to trust they'd clicked the right row. */}
+            <ConfirmModal
+              open={!!pendingDelete}
+              title="Delete this product?"
+              message={`"${pendingDelete?.title || "This product"}" will be removed from your uploads and from the marketplace. This can't be undone. Buyers who already own it keep their copy.`}
+              confirmLabel={deleting ? "Deleting…" : "Delete product"}
+              busy={deleting}
+              onConfirm={confirmDeletePrompt}
+              onCancel={() => setPendingDelete(null)}
+            />
+
             {/* `h-[calc(100%-0px)]` was a flat `height: 100%` measured against
                 the whole section, so it knew nothing about the payout banners
                 sitting above it — the panel ran a banner's worth of height past
@@ -4885,11 +4834,10 @@ const RequestCard = ({ item }: { item: any }) => {
         (!!(detailsPrompt as any).purchasedAt ||
           !!(detailsPrompt as any).isUploadedByMe)
       }
-      /* Everything reachable from this dashboard is either your own upload or
-         something you've already bought. Saving either to your own collection
-         is a bookmark to a page you already own — so the control is dropped
-         rather than left there doing nothing useful. */
-      hideSave
+      /* No hideSave here: this page's details panel is components/historyDetail,
+         a different component from the marketplace's DetailsPrompt, and it has
+         no save control to hide in the first place. The save-looking pills that
+         WERE on this page were on the cards, and they're gone. */
       onPurchase={() => {}}
     />
 
@@ -4910,20 +4858,6 @@ const RequestCard = ({ item }: { item: any }) => {
 )}
 
 
-{proposalOpen && selectedProject && (
- <ProposalDetailModal
-  open={proposalOpen}
-  project={selectedProject}
-  token={token}
-  onSubmitted={fetchHireEarnings}
-  onClose={() => {
-    setProposalOpen(false);
-    setSelectedProject(null);
-  }}
-/>
-
-
-)}
 
 
 
@@ -5030,549 +4964,13 @@ const RequestCard = ({ item }: { item: any }) => {
 };
 
 
-function ProposalDetailModal({
-  open,
-  project,
-  token,
-  onSubmitted,
-  onClose,
-}: {
-  open: boolean;
-  project: any;
-  token?: string;
-  onSubmitted?: () => void | Promise<void>;
-  onClose: () => void;
-}) {
-  if (!open || !project) return null;
-
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [submittingWork, setSubmittingWork] = useState(false);
-
-  const raw = project.raw || {};
-
-  const rawDealId = project?.id || raw?._id;
-  const dealId =
-    rawDealId && typeof rawDealId === "object" && rawDealId._id
-      ? String(rawDealId._id)
-      : rawDealId
-      ? String(rawDealId)
-      : "";
-
-  const currentStatus = project?.status || raw?.status;
-
-  const canSubmitWork = [
-    "FUNDED",
-    "IN_PROGRESS",
-    "REVISION_REQUESTED",
-    "WORK_SUBMITTED",
-  ].includes(currentStatus);
-
-  const title = project.title || raw.title || "Active Project";
-
-  const description =
-    project.description ||
-    project.desc ||
-    raw.description ||
-    "Project details will appear here.";
-
-  const budgetText =
-    project.price || INR(Number(project.budget || raw.amount || raw.budget || 0));
-
-  const targetDate = project.finish || formatShortDate(raw.deliveryDate);
-  const startDate = project.start || "Today";
-  const progress = Number(project.progress || getProjectProgress(currentStatus));
-
-  const handleAttachFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-
-    setSelectedFiles((prev) => [...prev, ...files].slice(0, 10));
-    e.target.value = "";
-  };
-
-  const handleSubmitWork = async () => {
-    if (!token) {
-      toast({
-        title: "Login required",
-        description: "Please login again.",
-      });
-      return;
-    }
-
-    if (!dealId) {
-      toast({
-  title: "Deal not found",
-  description: "Project ID is missing. Please refresh and try again.",
-});
-
-      return;
-    }
-
-    if (!canSubmitWork) {
-     toast({
-  title: "Cannot submit yet",
-  description: "Project can only be submitted after client payment is received.",
-});
-
-      return;
-    }
-
-    if (!selectedFiles.length) {
-      toast({
-  title: "No files attached",
-  description: "Please attach files before submitting.",
-});
-
-      return;
-    }
-
-    try {
-      setSubmittingWork(true);
-
-      const uploadedFiles: any[] = [];
-
-      for (const file of selectedFiles) {
-        const formData = new FormData();
-        formData.append("file", file);
-
-        const uploadRes = await fetch(`${API_BASE}/api/hire/${dealId}/upload-work-file`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
-        });
-
-        const uploadData = await uploadRes.json().catch(() => ({}));
-
-        if (!uploadRes.ok || !uploadData?.success) {
-          throw new Error(uploadData?.error || `Failed to upload ${file.name}`);
-        }
-
-        uploadedFiles.push({
-          url: uploadData.file.url,
-          name: uploadData.file.name,
-          description: uploadData.file.name,
-          size: uploadData.file.size,
-          mimeType: uploadData.file.mimeType,
-        });
-      }
-
-      const submitRes = await fetch(`${API_BASE}/api/hire/${dealId}/submit-work`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          note: "",
-          deliverables: uploadedFiles,
-        }),
-      });
-
-      const submitData = await submitRes.json().catch(() => ({}));
-
-      if (!submitRes.ok || !submitData?.success) {
-        throw new Error(submitData?.error || "Failed to submit files");
-      }
-
-      toast({
-  title: "Files submitted",
-  description: "Project files sent to client for review in chat.",
-});
-
-      await onSubmitted?.();
-      onClose();
-    } catch (err: any) {
-      toast({
-        title: "Submit failed",
-        description: err?.message || "Could not submit files.",
-      });
-    } finally {
-      setSubmittingWork(false);
-    }
-  };
-
-  return (
-    <div
-      className="fixed inset-0 bg-black/60 backdrop-blur-md"
-      style={{ zIndex: 2147483647 }}
-      onClick={onClose}
-    >
-      <div
-        className="text-white shadow-[0_35px_100px_rgba(0,0,0,0.65)]"
-        style={{
-          position: "absolute",
-          top: 102,
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: 675,
-          height: 877,
-          maxWidth: "calc(100vw - 24px)",
-          maxHeight: "calc(100vh - 120px)",
-          borderRadius: 30,
-          background: "#202020",
-          opacity: 1,
-          padding: "30px 50px",
-          overflowY: "auto",
-          boxSizing: "border-box",
-          fontFamily: "Inter, sans-serif",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Close */}
-        <button
-          type="button"
-          onClick={onClose}
-          style={{
-            position: "absolute",
-            right: 18,
-            top: 17,
-            width: 28,
-            height: 28,
-            display: "grid",
-            placeItems: "center",
-            border: "none",
-            background: "transparent",
-            color: "rgba(255,255,255,0.30)",
-            cursor: "pointer",
-          }}
-        >
-          <X size={22} />
-        </button>
-
-        {/* Proposal number */}
-        <div
-          style={{
-            fontWeight: 800,
-            fontSize: 11,
-            lineHeight: "100%",
-            letterSpacing: "3.5px",
-            color: "#C783FF",
-            textTransform: "uppercase",
-          }}
-        >
-          Proposal #{String(project.id || "").slice(-6) || "23456"}
-        </div>
-
-        {/* Title */}
-        <h2
-          style={{
-            margin: "14px 0 0",
-            fontWeight: 800,
-            fontSize: 38,
-            lineHeight: "105%",
-            color: "#F3EAF9",
-            letterSpacing: "-1.4px",
-          }}
-        >
-          {title}
-        </h2>
-
-        {/* Proposal Summary */}
-        <div
-          style={{
-            marginTop: 27,
-            width: "100%",
-            minHeight: 152,
-            borderRadius: 28,
-            padding: "30px 31px",
-            background:
-              "linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.025))",
-            border: "1px solid rgba(255,255,255,0.11)",
-            boxSizing: "border-box",
-          }}
-        >
-          <div
-            style={{
-              fontWeight: 800,
-              fontSize: 12,
-              lineHeight: "100%",
-              letterSpacing: "3px",
-              color: "#C783FF",
-              textTransform: "uppercase",
-            }}
-          >
-            Proposal Summary
-          </div>
-
-          <div
-            style={{
-              marginTop: 18,
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 22,
-            }}
-          >
-            <div
-              style={{
-                height: 60,
-                borderRadius: 15,
-                background: "#333333",
-                border: "1px solid rgba(255,255,255,0.05)",
-                padding: "13px 16px",
-                boxSizing: "border-box",
-              }}
-            >
-              <div
-                style={{
-                  fontWeight: 800,
-                  fontSize: 8,
-                  lineHeight: "100%",
-                  letterSpacing: "1.8px",
-                  color: "rgba(255,255,255,0.28)",
-                  textTransform: "uppercase",
-                }}
-              >
-                Total Budget
-              </div>
-
-              <div
-                style={{
-                  marginTop: 9,
-                  fontWeight: 800,
-                  fontSize: 22,
-                  lineHeight: "100%",
-                  color: "#FFFFFF",
-                }}
-              >
-                {budgetText}
-              </div>
-            </div>
-
-            <div
-              style={{
-                height: 60,
-                borderRadius: 15,
-                background: "#333333",
-                border: "1px solid rgba(255,255,255,0.05)",
-                padding: "13px 16px",
-                boxSizing: "border-box",
-              }}
-            >
-              <div
-                style={{
-                  fontWeight: 800,
-                  fontSize: 8,
-                  lineHeight: "100%",
-                  letterSpacing: "1.8px",
-                  color: "rgba(255,255,255,0.28)",
-                  textTransform: "uppercase",
-                }}
-              >
-                Target Date
-              </div>
-
-              <div
-                style={{
-                  marginTop: 9,
-                  fontWeight: 800,
-                  fontSize: 22,
-                  lineHeight: "100%",
-                  color: "#FFFFFF",
-                }}
-              >
-                {targetDate}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Project Overview */}
-        <div style={{ marginTop: 32 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-            <FileText size={17} color="#C783FF" />
-
-            <span
-              style={{
-                fontWeight: 800,
-                fontSize: 12,
-                lineHeight: "100%",
-                letterSpacing: "3px",
-                color: "#C783FF",
-                textTransform: "uppercase",
-              }}
-            >
-              Project Overview
-            </span>
-          </div>
-
-          <div
-            style={{
-              marginTop: 19,
-              fontWeight: 400,
-              fontSize: 16,
-              lineHeight: "18px",
-              color: "#CFC3D4",
-              whiteSpace: "pre-line",
-            }}
-          >
-            {description}
-          </div>
-        </div>
-
-        {/* Execution Timeline */}
-        <div
-          style={{
-            marginTop: 31,
-            width: "100%",
-            minHeight: 112,
-            borderRadius: 15,
-            background: "#1D1D1D",
-            border: "1px solid rgba(255,255,255,0.10)",
-            padding: "15px 16px",
-            boxSizing: "border-box",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Clock3 size={18} color="#C783FF" />
-
-            <span
-              style={{
-                fontWeight: 800,
-                fontSize: 12,
-                lineHeight: "100%",
-                letterSpacing: "2.5px",
-                color: "#C783FF",
-                textTransform: "uppercase",
-              }}
-            >
-              Execution Timeline
-            </span>
-          </div>
-
-          <div
-            style={{
-              marginTop: 20,
-              height: 8,
-              overflow: "hidden",
-              borderRadius: 999,
-              background: "#4A4250",
-            }}
-          >
-            <div
-              style={{
-                height: "100%",
-                width: `${Math.max(2, Math.min(progress, 100))}%`,
-                borderRadius: 999,
-                background: "#D5A0FF",
-              }}
-            />
-          </div>
-
-          <div
-            style={{
-              marginTop: 13,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              fontWeight: 400,
-              fontSize: 12,
-              lineHeight: "100%",
-              color: "#D8CDD9",
-            }}
-          >
-            <span>Start: {startDate}</span>
-            <span>Finish: {targetDate}</span>
-          </div>
-        </div>
-
-        {/* Bottom buttons */}
-        <div
-          style={{
-            marginTop: 32,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 14,
-          }}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            hidden
-            onChange={handleAttachFiles}
-          />
-
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={!canSubmitWork || submittingWork}
-            style={{
-              width: 180,
-              height: 49,
-              borderRadius: 8,
-              border: "1px solid rgba(255,255,255,0.10)",
-              background: "#242424",
-              color: "#FFFFFF",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 12,
-              fontWeight: 400,
-              fontSize: 16,
-              cursor: !canSubmitWork || submittingWork ? "not-allowed" : "pointer",
-              opacity: !canSubmitWork || submittingWork ? 0.55 : 1,
-            }}
-          >
-            <Link2 size={17} />
-            {selectedFiles.length > 0
-              ? `${selectedFiles.length} File${selectedFiles.length > 1 ? "s" : ""}`
-              : "Attach Files"}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleSubmitWork}
-            disabled={!canSubmitWork || submittingWork}
-            style={{
-              width: 190,
-              height: 49,
-              borderRadius: 8,
-              border: "none",
-              background: GRADIENT,
-              color: "#FFFFFF",
-              fontWeight: 400,
-              fontSize: 16,
-              cursor: !canSubmitWork || submittingWork ? "not-allowed" : "pointer",
-              opacity: !canSubmitWork || submittingWork ? 0.55 : 1,
-            }}
-          >
-            {submittingWork ? "Submitting..." : "Submit Files"}
-          </button>
-        </div>
-
-        {selectedFiles.length > 0 && (
-          <div
-            style={{
-              marginTop: 12,
-              textAlign: "center",
-              fontSize: 11,
-              lineHeight: "16px",
-              color: "rgba(255,255,255,0.35)",
-            }}
-          >
-            {selectedFiles.map((file) => file.name).join(", ")}
-          </div>
-        )}
-        {/* ── NDA (project accept hone ke baad download) ── */}
-        {dealId && (
-          <div style={{ marginTop: 16, display: "flex", justifyContent: "center" }}>
-            <NdaButton
-              dealId={dealId}
-              token={token}
-              apiBase={API_BASE}
-              fallback={project}
-              variant="compact"
-            />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+/* ProposalDetailModal lived here — the project popup the Active Projects panel
+   opened. Both are gone together: the panel was removed (see the note in
+   DashboardContent) and this was its only caller, and everything it did is done
+   properly by the order detail page at /orders/:kind/:id — brief, checkpoints,
+   deliverables, submit and resubmit, cancellation, dispute — which every row on
+   the Orders page now links to. Its submit-work form was a second, hire-only
+   implementation of components/escrow/SubmitWorkModal. */
 
 /* ── Shared helpers for service-order deliverables ──────────────────────── */
 

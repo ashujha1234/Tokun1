@@ -152,16 +152,16 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { isValidEmail } from "@/lib/validators";
 
 const AdminForgotPassword = () => {
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
 
-  const isValid = useMemo(() => {
-    const e = email.trim();
-    return e.length > 3 && e.includes("@");
-  }, [email]);
+  /* Same shared rule as every other form that takes an email — this used to be
+     `length > 3 && includes("@")`, which accepts "abc@". */
+  const isValid = useMemo(() => isValidEmail(email), [email]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

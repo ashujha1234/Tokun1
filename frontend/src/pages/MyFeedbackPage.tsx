@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import Header from "@/components/Header";
 import { mediaUrl } from "@/lib/mediaUrl";
@@ -12,7 +11,6 @@ const statusColor: Record<string, string> = { pending: "#facc15", reviewed: "#60
 
 export default function MyFeedbackPage() {
   const { user } = useAuth() as any;
-  const navigate = useNavigate();
   const [email, setEmail] = useState(user?.email || "");
   const [submitted, setSubmitted] = useState(false);
   const [feedbacks, setFeedbacks] = useState<any[]>([]);
@@ -53,10 +51,10 @@ export default function MyFeedbackPage() {
       <Header />
       <div style={{ maxWidth: 680, margin: "0 auto", padding: "100px 20px 60px" }}>
 
-        {/* Back */}
-        <button onClick={() => navigate(-1)} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", fontSize: 13, cursor: "pointer", marginBottom: 24, display: "flex", alignItems: "center", gap: 6 }}>
-          ← Back
-        </button>
+        {/* No "← Back" here. PageControls (mounted in App.tsx, outside
+            <Routes>) already puts a back control on every page and it runs the
+            same navigate(-1) this did — two backs on one screen, one of them
+            the old hand-rolled one. */}
 
         {/* Title */}
         <h1 style={{ fontSize: 28, fontWeight: 800, margin: "0 0 6px", letterSpacing: "-0.02em" }}>My Feedback</h1>

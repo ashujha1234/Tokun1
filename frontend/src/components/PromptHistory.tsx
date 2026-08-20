@@ -18,6 +18,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import RefundReasonPicker from "@/components/RefundReasonPicker";
+import ConfirmModal from "@/components/ConfirmModal";
 // Shared with the second refund dialog in pages/self-dash.tsx — see that module.
 import {
   composeRefundReason,
@@ -252,8 +253,14 @@ function SubscriptionsSection({
   onUpgrade,
 }: {
   user: any;
-  onRenew: () => void;
-  onUpgrade: () => void;
+  /* These take the plan and the billing period. They always did — self-dash
+     passes `(plan, annual) => startSubscriptionPurchase(plan, annual)` — but the
+     type said they took nothing, so every card called `onUpgrade()` bare and the
+     purchase started with `plan` undefined. That is why pressing Free "activated
+     a free plan" and pressing the plan you were already on reopened checkout:
+     nothing downstream ever learned which card had been pressed. */
+  onRenew: (plan?: PlanKey, annual?: boolean) => void;
+  onUpgrade: (plan?: PlanKey, annual?: boolean) => void;
 }) {
   const [annual, setAnnual] = useState(false);
   const [selected, setSelected] = useState<PlanKey>("Pro");
@@ -267,10 +274,32 @@ function SubscriptionsSection({
     return `${INR(v)}/month`;
   };
 
-  const currentPlan =
-    user?.plan
-      ? `${String(user.plan).charAt(0).toUpperCase() + String(user.plan).slice(1)} Plan`
-      : "Free Plan";
+  /* Which plan this account is ACTUALLY on, as a key the cards can compare
+     against — not just a label to print. Everything below reads from it. */
+  const currentPlanKey: PlanKey = (() => {
+    const raw = String(user?.plan || "free").toLowerCase();
+    if (raw.startsWith("pro")) return "Pro";
+    if (raw.startsWith("enter")) return "Enterprise";
+    return "Free";
+  })();
+
+  const currentPlan = `${currentPlanKey} Plan`;
+
+  /* What a given card's button should say and do.
+
+       the plan you're on   → says so, does nothing
+       Free, when you're on a paid plan
+                            → not a purchase. Downgrading happens by letting the
+                              paid plan lapse, so offering "Choose Plan" here was
+                              an offer we can't honour — and pressing it started
+                              a checkout for ₹0 and announced a "free plan
+                              activated" that had activated nothing.
+       anything else        → a real upgrade, and it carries WHICH plan. */
+  const ctaFor = (plan: PlanKey) => {
+    if (plan === currentPlanKey) return { ctaLabel: "Current plan", disabled: true, isCurrent: true };
+    if (plan === "Free") return { ctaLabel: "Included with every account", disabled: true, isCurrent: false };
+    return { ctaLabel: "Choose Plan", disabled: false, isCurrent: false };
+  };
 
   return (
     <div className="mt-2">
@@ -314,8 +343,10 @@ function SubscriptionsSection({
           onSelect={() => setSelected("Free")}
           onChoose={() => {
             setSelected("Free");
-            onUpgrade(); // hook your real flow later
+            // WHICH plan, and monthly or yearly — both were missing.
+            onUpgrade("Free", annual);
           }}
+          {...ctaFor("Free")}
           title="Free"
           subtitle="(Individuals)"
           price={priceFor("Free")}
@@ -328,8 +359,10 @@ function SubscriptionsSection({
           onSelect={() => setSelected("Pro")}
           onChoose={() => {
             setSelected("Pro");
-            onUpgrade();
+            // WHICH plan, and monthly or yearly — both were missing.
+            onUpgrade("Pro", annual);
           }}
+          {...ctaFor("Pro")}
           title="Pro"
           subtitle="(Individuals)"
           price={priceFor("Pro")}
@@ -347,8 +380,10 @@ function SubscriptionsSection({
           onSelect={() => setSelected("Enterprise")}
           onChoose={() => {
             setSelected("Enterprise");
-            onUpgrade();
+            // WHICH plan, and monthly or yearly — both were missing.
+            onUpgrade("Enterprise", annual);
           }}
+          {...ctaFor("Enterprise")}
           title="Enterprise"
           subtitle="(Organization)"
           price={priceFor("Enterprise")}
@@ -381,10 +416,18 @@ function PlanCard({
   tokens,
   extras,
   highlight,
+  isCurrent = false,
+  ctaLabel = "Choose Plan",
+  disabled = false,
 }: {
   selected: boolean;
   onSelect: () => void;
   onChoose: () => void;
+  /** This is the plan the account is actually on. */
+  isCurrent?: boolean;
+  /** What the button says — "Choose Plan" is only right when it's a choice. */
+  ctaLabel?: string;
+  disabled?: boolean;
   title: string;
   subtitle: string;
   price: string; // e.g. "₹799/month"
@@ -466,17 +509,26 @@ function PlanCard({
         <Button
           onClick={(e) => {
             e.stopPropagation();
+            if (disabled) return;
             onChoose();
           }}
-          className='font-["Inter"] text-[16px] w-[200px] h-[50px] rounded-[6px]'
+          disabled={disabled}
+          className='font-["Inter"] text-[16px] w-[200px] h-[50px] rounded-[6px] disabled:opacity-100 disabled:cursor-default'
           style={
-            selected
-              ? { background: GRAD, border: "1px solid #FFFFFF", color: "#fff" }
-              : { background: "transparent", border: "1px solid #FFFFFF", color: "#fff" }
+            /* The plan you're already on reads as a state, not an offer — it
+               used to render an inviting "Choose Plan" that reopened checkout
+               for something already paid for. */
+            isCurrent
+              ? { background: "#14532D", border: "1px solid rgba(187,247,208,0.35)", color: "#BBF7D0" }
+              : disabled
+                ? { background: "transparent", border: "1px solid rgba(255,255,255,0.25)", color: "rgba(255,255,255,0.45)" }
+                : selected
+                  ? { background: GRAD, border: "1px solid #FFFFFF", color: "#fff" }
+                  : { background: "transparent", border: "1px solid #FFFFFF", color: "#fff" }
           }
           variant="ghost"
         >
-          Choose Plan
+          {ctaLabel}
         </Button>
       </CardFooter>
     </Card>
@@ -803,13 +855,10 @@ function HistoryGridCard({
           // Purchased: icon pill + price pill on the left, refund control on the right
           <div className="mt-auto pt-4 flex items-center gap-3 justify-between">
             <div className="flex items-center gap-3">
-              <div
-                className="flex items-center justify-center"
-                style={{ minWidth: 65, height: 40, borderRadius: 50, background: "#333335", padding: "0 10px" }}
-              >
-                <img src="/icons/cop1.png" alt="cop1" />
-              </div>
-
+              {/* The save-looking pill that stood here is gone — a <div> with
+                  the save icon in it and nothing behind it, on a card for
+                  something already purchased. Same one removed from My Products
+                  and the Saved page. */}
               <div
                 className="flex items-center justify-center"
                 style={{ minWidth: 65, height: 40, borderRadius: 50, padding: "0 14px", background: "#333335" }}
@@ -1377,10 +1426,19 @@ const totalEarningsINR = uploadHistory.reduce((sum, p) => {
 }, 0);
 
   // ---- DELETE uploaded prompt ----
-  const handleDeletePrompt = async (p: Prompt) => {
+  /* Two-step, in the app. Was a window.confirm — see the note at the top of
+     components/ConfirmModal.tsx. The same grid and the same delete also live in
+     pages/self-dash.tsx, which is why the dialog is a shared component. */
+  const [pendingDelete, setPendingDelete] = useState<Prompt | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeletePrompt = (p: Prompt) => setPendingDelete(p);
+
+  const confirmDeletePrompt = async () => {
+    const p = pendingDelete;
+    if (!p) return;
     const id = String(p.id);
-    const ok = window.confirm("Delete this product permanently?");
-    if (!ok) return;
+    setDeleting(true);
 
     try {
       const res = await fetch(`${API_BASE}/api/prompt/${encodeURIComponent(id)}`, {
@@ -1401,11 +1459,15 @@ const totalEarningsINR = uploadHistory.reduce((sum, p) => {
         setDetailsOpen(false);
       }
       toast({ title: "Deleted", description: "Product removed from your uploads." });
+      setPendingDelete(null);
     } catch (err: any) {
       toast({
         title: "Delete failed",
         description: err?.message || "Could not delete the prompt.",
       });
+      // Dialog stays up on failure, so there is still something to retry.
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -1745,6 +1807,18 @@ useEffect(() => {
     (!!(detailsPrompt as any).purchasedAt || !!(detailsPrompt as any).isUploadedByMe)
   }
   onPurchase={() => {}}
+/>
+
+{/* Delete confirmation — same dialog and same wording as the products grid in
+    the seller dashboard, which is the point of it being a component. */}
+<ConfirmModal
+  open={!!pendingDelete}
+  title="Delete this product?"
+  message={`"${pendingDelete?.title || "This product"}" will be removed from your uploads and from the marketplace. This can't be undone. Buyers who already own it keep their copy.`}
+  confirmLabel={deleting ? "Deleting…" : "Delete product"}
+  busy={deleting}
+  onConfirm={confirmDeletePrompt}
+  onCancel={() => setPendingDelete(null)}
 />
 
 <Dialog open={!!refundTarget} onOpenChange={(open) => !open && setRefundTarget(null)}>

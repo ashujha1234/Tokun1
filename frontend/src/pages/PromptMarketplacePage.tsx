@@ -6605,6 +6605,14 @@ const LibOldStyleCard = ({
               <Clock className="h-3 w-3 inline-block mr-1 -mt-[1px]" />
               COMING SOON
             </span>
+          ) : prompt.exclusive && prompt.sold ? (
+            /* Sold, and permanently — a one-time product can never be bought
+               again. The card used to read "ONE-TIME PURCHASE" exactly as it did
+               before anyone bought it, so it looked available right up until the
+               buy failed. */
+            <span className="mp-card__unlock" style={{ background: "#3A1D1D", color: "#FCA5A5" }}>
+              SOLD
+            </span>
           ) : !isPurchased ? (
             <span
               className="mp-card__unlock"

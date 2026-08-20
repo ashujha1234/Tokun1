@@ -750,6 +750,16 @@ router.post("/verifypayment", async (req, res) => {
         periodEnd = user.currentPeriodEnd;
       } else {
         periodStart = user.currentPeriodEnd;
+        /* Renew on the cycle that was PAID FOR, not the one on the account.
+           renewUserPlanFromDue() extends by one `user.billingCycle`, and
+           nothing here had updated that from the payment — so a monthly
+           subscriber who renewed with the yearly toggle on was charged the
+           yearly price (₹7,668) and given one extra MONTH. The cycle is set
+           first; renewUserPlanFromDue saves the user, so this is persisted with
+           it. */
+        if (billingCycle && billingCycle !== user.billingCycle) {
+          user.billingCycle = billingCycle;
+        }
         await renewUserPlanFromDue(user);
         periodEnd = user.currentPeriodEnd;
       }
@@ -907,6 +917,10 @@ router.post("/verifypayment", async (req, res) => {
         periodEnd = org.currentPeriodEnd;
       } else {
         periodStart = org.currentPeriodEnd;
+        // Same as the USER branch: extend by the cycle that was paid for.
+        if (payment.billingCycle && payment.billingCycle !== org.billingCycle) {
+          org.billingCycle = payment.billingCycle;
+        }
         await renewOrgFromDue(org);
         periodEnd = org.currentPeriodEnd;
       }

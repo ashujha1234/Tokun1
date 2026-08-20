@@ -115,19 +115,6 @@
 //           <span className="text-white text-[14px]">Create collection</span>
 //         </button>
 
-//         {isCreating && (
-//           <div className="mt-3">
-//             <label className="text-[12px] leading-[1.15] text-white/70">Name/Title</label>
-//             <input
-//               value={title}
-//               onChange={(e) => setTitle(e.target.value)}
-//               placeholder="e.g., Advanced Code Review Prompt"
-//               className="mt-2 h-[44px] w-full rounded-[12px] bg-[#252526] px-3 text-[14px] text-white placeholder:text-[#3B3B3B] outline-none"
-//               autoFocus
-//             />
-//           </div>
-//         )}
-
 //         <div className="mt-4 flex items-center gap-3">
 //           <Button onClick={onClose} variant="outline" className="h-[44px] flex-1 rounded-full border-0 bg-[#333335] text-white">
 //             Cancel
@@ -429,20 +416,11 @@ export default function ModalComponent({
     };
   }, [isOpen, onClose, anchorRef]);
 
-  useEffect(() => {
-    if (isOpen && isCreating) {
-      setTimeout(() => inputRef.current?.focus(), 0);
-    }
-  }, [isOpen, isCreating]);
-
   if (!isOpen) return null;
 
-  const handleCreate = () => {
-    const trimmed = title.trim();
-    if (!trimmed) return;
-    onSave?.({ title: trimmed, type: "prompt-optimization" });
-    onClose();
-  };
+  /* handleCreate — which saved into a named collection — went with the folders,
+     along with the focus effect for the name field it belonged to. onSave now
+     only ever receives the quick-save payload below. */
 
   const handleQuickSaveAll = () => {
     onSave?.({ category: "All Saved", quick: true, type: "prompt-optimization" });
@@ -480,34 +458,11 @@ export default function ModalComponent({
           </button>
         </div>
 
-        {/* Create collection */}
-        <button
-          onClick={() => setIsCreating(true)}
-          className="flex w-full items-center gap-3 rounded-[16px] px-3 py-3 text-left hover:bg-white/5"
-          title="Create collection with custom name"
-        >
-          <img src="/icons/dd1.png" alt="" className="h-5 w-5 shrink-0" />
-          <span className="text-white text-[14px]">Create collection</span>
-        </button>
+        {/* "Create collection" stood here, with a name field under it and a
+            Create button in the footer. Saving no longer files anything into a
+            folder — the Saved page is one flat list — so the only thing this
+            popup can do is the thing above: save it. */}
 
-        {isCreating && (
-          <div className="mt-3">
-            <label className="text-[12px] leading-[1.15] text-white/70">Name/Title</label>
-            <input
-              ref={inputRef}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && title.trim()) {
-                  e.preventDefault();
-                  handleCreate();
-                }
-              }}
-              placeholder="e.g., Advanced Code Review Product"
-              className="mt-2 h-[44px] w-full rounded-[12px] bg-[#252526] px-3 text-[14px] text-white placeholder:text-[#3B3B3B] outline-none"
-            />
-          </div>
-        )}
 
         <div className="mt-4 flex items-center gap-3">
           <Button
@@ -518,12 +473,11 @@ export default function ModalComponent({
             Cancel
           </Button>
           <Button
-            onClick={handleCreate}
-            disabled={!isCreating || !title.trim()}
-            className="h-[44px] flex-1 rounded-full text-white disabled:opacity-50"
+            onClick={handleQuickSaveAll}
+            className="h-[44px] flex-1 rounded-full text-white"
             style={{ backgroundImage: "linear-gradient(90deg,#FF14EF 0%, #1A73E8 100%)" }}
           >
-            Create
+            Save
           </Button>
         </div>
       </div>

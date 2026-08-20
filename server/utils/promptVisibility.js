@@ -67,6 +67,28 @@ function applyPublicPromptFilter(filter = {}) {
 }
 
 /**
+ * Also drop one-time products that have already been bought.
+ *
+ * SEPARATE from applyPublicPromptFilter on purpose, because this is not the same
+ * kind of hiding. Those rules are about a listing being *allowed* to be seen;
+ * this one is about a listing being *worth showing* — it is a perfectly good
+ * product that simply cannot be bought again by anyone, ever, because that is
+ * what listing it as one-time means.
+ *
+ * So it goes on the two surfaces whose job is "here is what you can buy" — the
+ * marketplace feed and the shared link — and NOT on a creator's profile, where a
+ * sold piece is portfolio and evidence their work sells.
+ *
+ * `exclusive` alone is not enough and `sold` alone is not either: an ordinary
+ * product can be sold a thousand times and stay on sale.
+ */
+function excludeSoldOut(filter = {}) {
+  if (!Array.isArray(filter.$and)) filter.$and = [];
+  filter.$and.push({ $nor: [{ exclusive: true, sold: true }] });
+  return filter;
+}
+
+/**
  * The same rules against one already-loaded document.
  *
  * Returns null when the listing is live, otherwise `{ error, message }` — the
@@ -110,6 +132,7 @@ module.exports = {
   CLEARED_VALIDATION_STATUSES,
   VALIDATION_CLEARED,
   applyPublicPromptFilter,
+  excludeSoldOut,
   promptUnavailableReason,
   isPromptPubliclyVisible,
 };

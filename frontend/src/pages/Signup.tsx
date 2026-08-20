@@ -13,7 +13,7 @@ import { authError } from "@/lib/authErrors";
 // //   const [companyName, setCompanyName] = useState(""); // For Organization
 // //   const [businessEmail, setBusinessEmail] = useState(""); // For Organization
 // //   const [isLoading, setIsLoading] = useState(false);
-// //   const [isIndividual, setIsIndividual] = useState(true); // Toggle state for Individual / Organization
+// //   const [isIndividual, setIsIndividual] = useState(true);
 // //   const { signup } = useAuth(); 
 // //   const navigate = useNavigate();
 
@@ -1271,6 +1271,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/use-toast";
 import { ArrowLeft, User, Briefcase } from "lucide-react";
 import BackLink from "@/components/ui/BackLink";
+import { isNonEmpty, isValidEmail } from "@/lib/validators";
 
 const Signup = () => {
   const [name, setName] = useState("");
@@ -1279,6 +1280,19 @@ const Signup = () => {
   const [businessEmail, setBusinessEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isIndividual, setIsIndividual] = useState(true);
+
+  /* Whether Continue may be pressed, for BOTH layouts and both account types.
+
+     The mobile button checked `isLoading` and nothing else — a completely blank
+     form was submittable. The desktop one checked the fields were non-empty, so
+     a single letter in the email counted. Either way the address was only
+     validated by the server, one round-trip later.
+
+     Which email matters depends on the account type, which is why this can't
+     just be "the email field is valid". */
+  const signupEmail = isIndividual ? email : businessEmail;
+  const signupName = isIndividual ? name : companyName;
+  const canSubmitSignup = !isLoading && isNonEmpty(signupName) && isValidEmail(signupEmail);
   const [devOtp, setDevOtp] = useState<string | null>(null);
   const { signup } = useAuth();
   const navigate = useNavigate();
@@ -1628,7 +1642,7 @@ const Signup = () => {
 
   <Button
     type="submit"
-    disabled={isLoading}
+    disabled={!canSubmitSignup}
     className="w-full h-[44px] rounded-[12px] text-[14px] font-semibold text-white disabled:opacity-50 mt-2"
     style={{
       background: "linear-gradient(90deg, #FF14EF 0%, #A855F7 50%, #1A73E8 100%)",
@@ -1806,10 +1820,7 @@ const Signup = () => {
 
               <Button
                 type="submit"
-               disabled={
-  isLoading ||
-  (isIndividual ? !name.trim() || !email.trim() : !companyName.trim() || !businessEmail.trim())
-}
+                disabled={!canSubmitSignup}
                 className="w-full md:w-[350px] h-[50px] rounded-[6px] text-[16px] font-normal text-[#FFFFFF] text-center bg-gradient-to-r from-[#7D4DFF] via-[#A24BFF] to-[#FF2CC3] hover:opacity-90 disabled:opacity-50"
               >
                 {isLoading ? "Creating..." : "Continue"}

@@ -8,7 +8,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { SellPromptModalProvider } from "@/contexts/SellPromptModalContext";
 import { CartProvider } from "@/contexts/CartContext";
 import ScrollToTop from "@/components/ScrollToTop";
-import BackToTop from "@/components/BackToTop";
+import PageControls from "@/components/PageControls";
 import RouteFallback from "@/components/RouteFallback";
 
 // Landing stays eagerly imported on purpose: it owns the loading curtain, and a
@@ -119,9 +119,9 @@ export default function App() {
           <Sonner />
           <BrowserRouter>
           <ScrollToTop />
-          {/* Sits outside <Routes>, so it's on every page rather than on
-              whichever ones someone remembered to add it to. */}
-          <BackToTop />
+          {/* Sits outside <Routes>, so back and back-to-top are on every page
+              rather than on whichever ones someone remembered. */}
+          <PageControls />
             <Suspense fallback={<RouteFallback />}>
             <Routes>
               {/* public */}

@@ -17,11 +17,9 @@
  */
 
 import { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import { RefreshCw, Scale, AlertTriangle } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import RatingPenaltyControl from "@/components/admin/RatingPenaltyControl";
-import BackLink from "@/components/ui/BackLink";
 
 const API_BASE = `${(import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "")}/api/admin/disputes`;
 
@@ -157,7 +155,6 @@ async function openProgressMedia(reviewId: string, index: number) {
 }
 
 export default function AdminDisputesPage() {
-  const navigate = useNavigate();
   const [tab, setTab] = useState("ADMIN_REVIEW");
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [loading, setLoading] = useState(true);
@@ -275,9 +272,13 @@ export default function AdminDisputesPage() {
   return (
     <div className="min-h-screen bg-[#0B0B0D] text-white">
       <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 py-8">
-        <BackLink />
+        {/* No inline BackLink. A bare <BackLink /> is navigate(-1), which is
+            exactly what PageControls already puts on every page — so this screen
+            carried the same control twice. The labelled ones ("Back to sign in",
+            "Back to Wallet") stay: those go to a known place, which is a
+            different thing from history-back. */}
 
-        <div className="mt-4 flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-extrabold flex items-center gap-2">
               <Scale className="w-6 h-6" /> Cancellation disputes

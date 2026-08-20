@@ -13,8 +13,8 @@
 //
 // So: a PRIVATE container, and reads only ever happen through a short-lived
 // SAS minted by the gated download route. Files land on disk first and are
-// streamed up, because holding a 500 MB buffer in memory per concurrent
-// upload is how you OOM the process.
+// streamed up, because holding a multi-gigabyte buffer in memory per
+// concurrent upload is how you OOM the process.
 
 const path = require("path");
 const fs = require("fs");
@@ -27,10 +27,22 @@ const {
 
 const CONTAINER = "service-work";
 
-// A zipped code project routinely lands between 50 and 300 MB, and the old
-// 50 MB cap rejected those with a multer error this route didn't even convert
-// to JSON. Anything above this should go in as a repo/Drive link instead.
-const WORK_FILE_MAX_BYTES = 500 * 1024 * 1024;
+/* The per-file ceiling for a delivery.
+
+   Was 500 MB, which a real delivery clears more often than not: a video edit's
+   project folder, a set of layered PSDs, a 3D scene with textures, or a build
+   with node_modules in it are all routinely over half a gigabyte, and the
+   seller's only option was to break the work up or push the client to a Drive
+   link — outside escrow, where nothing we do protects either side.
+
+   Nothing buffers a file of this size: multer writes it to a temp path on disk
+   and uploadWorkFileToAzure() streams that path into the container (see the
+   note at the top of this file). Raising it costs temp disk during the upload,
+   not memory. Above this, a repo/Drive link is still the honest answer. */
+const WORK_FILE_MAX_BYTES = 2 * 1024 * 1024 * 1024;
+
+/** For copy: "2 GB" rather than "2048 MB". */
+const WORK_FILE_MAX_LABEL = "2 GB";
 
 // A read URL is handed to a browser that immediately follows it; an hour is
 // generous for a large download and short enough that a leaked URL is not a
@@ -246,5 +258,6 @@ module.exports = {
   normalizeDeliverableLink,
   ALLOWED_WORK_EXTENSIONS,
   WORK_FILE_MAX_BYTES,
+  WORK_FILE_MAX_LABEL,
   CONTAINER,
 };

@@ -20,7 +20,11 @@ import type { OrderKind } from "@/lib/escrowApi";
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 const GRAD = "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)";
 
-const MAX_BYTES = 500 * 1024 * 1024;
+/* Must match WORK_FILE_MAX_BYTES in server/utils/serviceWorkStorage.js — this
+   check only saves the seller a wasted upload; the multer limit is what
+   actually enforces it. */
+const MAX_BYTES = 2 * 1024 * 1024 * 1024;
+const MAX_LABEL = "2 GB";
 
 /** Where the two order kinds live. The only thing that actually differs. */
 const ENDPOINTS = {
@@ -90,7 +94,7 @@ export default function SubmitWorkModal({
     if (tooBig.length) {
       toast({
         title: "File too large",
-        description: `${tooBig[0].name} is over 500 MB. Share it as a repo or Drive link instead.`,
+        description: `${tooBig[0].name} is over ${MAX_LABEL}. Share it as a repo or Drive link instead.`,
       });
     }
     setSelectedFiles((prev) => [...prev, ...files.filter((f) => f.size <= MAX_BYTES)]);
@@ -246,7 +250,7 @@ export default function SubmitWorkModal({
               disabled={submitting}
               className="w-full h-11 rounded-lg border border-dashed border-white/20 text-sm text-white/60 hover:border-white/40 disabled:opacity-50"
             >
-              + Attach files (.zip for folders, max 500 MB each)
+              + Attach files (.zip for folders, max {MAX_LABEL} each)
             </button>
 
             {selectedFiles.length > 0 && (

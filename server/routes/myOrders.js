@@ -112,7 +112,7 @@ router.get("/", requireAuth, async (req, res) => {
     const rows = [];
 
     const pushEscrowRow = (doc, opts) => {
-      const { kind, side: rowSide, title, counterparty, amount, link } = opts;
+      const { kind, side: rowSide, title, counterparty, amount } = opts;
       rows.push({
         id: String(doc._id),
         kind,
@@ -127,7 +127,15 @@ router.get("/", requireAuth, async (req, res) => {
         // Service bookings carry a delivery deadline; hire deals don't, so this
         // is null for them and the row simply doesn't show a clock.
         deliveryDueAt: doc.deliveryDueAt || null,
-        link,
+        /* The order's own page, for every row.
+           These used to point four different ways — the buyer's rows into the
+           chat thread, the seller's back into a self-dash tab — so a list of
+           orders was a list of links to somewhere else, and the one screen built
+           to act on an order (approve, request a revision, submit or resubmit
+           work, cancel, dispute) was reachable from none of them. The seller's
+           hire rows were the worst of it: they landed on the dashboard's
+           requests tab, which lists incoming requests, not the project. */
+        link: `/orders/${kind}/${String(doc._id)}`,
         needsAction: NEEDS_ACTION[rowSide === "buying" ? "buyer" : "seller"].includes(doc.status),
         // Only present once a cancellation actually settled, so the row can say
         // where the money went instead of just "Cancelled".
@@ -149,7 +157,6 @@ router.get("/", requireAuth, async (req, res) => {
         title: o.serviceTitle,
         counterparty: o.sellerId,
         amount: Number(o.totalPayable || 0),
-        link: o.chatId ? `/chat?conversation=${o.chatId}` : "/chat",
       });
     }
     for (const o of servicesSold) {
@@ -159,7 +166,6 @@ router.get("/", requireAuth, async (req, res) => {
         title: o.serviceTitle,
         counterparty: o.buyerId,
         amount: Number(o.sellerAmount || 0),
-        link: "/self-dash?tab=serviceBookings",
       });
     }
     for (const d of hiresBought) {
@@ -169,7 +175,6 @@ router.get("/", requireAuth, async (req, res) => {
         title: d.title,
         counterparty: d.freelancerId,
         amount: Number(d.totalPayable || d.amount || 0),
-        link: d.chatId ? `/chat?conversation=${d.chatId}` : "/chat",
       });
     }
     for (const d of hiresSold) {
@@ -179,7 +184,6 @@ router.get("/", requireAuth, async (req, res) => {
         title: d.title,
         counterparty: d.clientId,
         amount: Number(d.freelancerAmount || 0),
-        link: "/self-dash?tab=requests",
       });
     }
 

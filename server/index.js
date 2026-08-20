@@ -4489,6 +4489,25 @@ const corsOptions = {
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  /* RESPONSE headers the frontend is allowed to read.
+
+     Without this a cross-origin fetch can only see the CORS-safelisted six, and
+     the frontend IS cross-origin (tokun.world against the API host) — so
+     `res.headers.get("X-Tokun-Watermarked")` came back null in production while
+     working fine on localhost, where nothing is cross-origin at all.
+
+     That header is not decoration. It is how the escrow preview knows the bytes
+     it just received are a watermarked copy held against an unreleased payment:
+     see resolveDeliverableUrl in frontend/src/lib/serviceDeliverables.ts, whose
+     `watermarked` flag drives both the "payment is still held" notice and the
+     hiding of the Download button in DeliverablePreviewModal. Invisible header →
+     flag always false → the buyer got a Download button and no notice on work
+     they hadn't paid out for, which is exactly what was reported after a
+     revision resubmission.
+
+     Content-Disposition comes along because the same responses carry the
+     seller's original filename in it. */
+  exposedHeaders: ["X-Tokun-Watermarked", "Content-Disposition"],
   optionsSuccessStatus: 204,
 };
 

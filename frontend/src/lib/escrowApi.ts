@@ -224,13 +224,33 @@ export async function respondToProgressReview(
   return readJson(res);
 }
 
-/** Progress media sits in a private container, same as deliverables. */
+/** Progress media sits in a private container, same as deliverables.
+ *
+ * Two response shapes, same as a deliverable: JSON with a signed URL, or — when
+ * the viewer is the buyer, the payment is still held, and the file is an image —
+ * the watermarked bytes themselves. The second case is why this can't just read
+ * `data.url`: on that path there is no JSON at all, and treating it as JSON
+ * meant the throw landed as "Couldn't open" on a file that had arrived fine.
+ */
 export async function openProgressMedia(reviewId: string, index: number, token?: string) {
   const res = await fetch(`${API_BASE}/api/progress-review/${reviewId}/media/${index}/download`, {
     headers: authHeaders(token, false),
   });
-  const data = await readJson(res);
-  window.open(data.url, "_blank", "noopener,noreferrer");
+
+  if ((res.headers.get("content-type") || "").includes("application/json")) {
+    const data = await readJson(res);
+    window.open(data.url, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  if (!res.ok) throw new Error("Couldn't open this file.");
+  // Object URL, not the blob URL: the bytes are already in the tab and this is
+  // the stamped copy, so there is nothing to re-fetch.
+  const url = URL.createObjectURL(await res.blob());
+  window.open(url, "_blank", "noopener,noreferrer");
+  // Long enough for the new tab to have loaded it; the tab keeps its own
+  // reference to the decoded image after that.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 /* ── Uploads ───────────────────────────────────────────────────────────────── */

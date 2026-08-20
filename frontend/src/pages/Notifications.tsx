@@ -1139,7 +1139,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Bell, Users, CreditCard, CheckCircle2, Share2, Zap,
   RotateCcw, UserPlus, Briefcase, PartyPopper, BadgeDollarSign,
-  BellOff, ArrowLeft,
+  BellOff,
 } from "lucide-react";
 
 type Notif = {
@@ -1844,15 +1844,10 @@ export default function NotificationsPage() {
 
           {/* ── Page header ── */}
           <div className="flex items-center justify-between mb-8">
+            {/* No back arrow here any more. PageControls puts one on every
+                page (App.tsx, outside <Routes>), and this one did the same
+                navigate(-1) — so the screen carried two identical backs. */}
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => navigate(-1)}
-                className="w-9 h-9 rounded-xl flex items-center justify-center text-white/70 hover:text-white transition"
-                style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }}
-                aria-label="Back"
-              >
-                <ArrowLeft size={16} />
-              </button>
               <div>
                 <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
                   Notifications

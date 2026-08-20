@@ -3089,8 +3089,8 @@ import { avatarFallback, uploadedAvatar } from "@/lib/avatar";
 
 
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import { socket } from "@/lib/socket";
 import { useAuth } from "@/contexts/AuthContext";
@@ -3108,6 +3108,7 @@ import {
 import { openBriefAttachment } from "@/lib/escrowApi";
 import { withTokunBranding } from "@/lib/razorpayTheme";
 import { useDealRecord, ndaFullySigned, sideOf } from "@/hooks/useDealRecord";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 const GRADIENT = "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)";
 
@@ -6118,6 +6119,7 @@ function CounterProposalCard({
 export default function Chat() {
   const { token, user } = useAuth() as any;
   const location = useLocation();
+  const navigate = useNavigate();
 
   const ringingAudio = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -6132,6 +6134,15 @@ export default function Chat() {
   const [incomingCall, setIncomingCall] = useState<any>(null);
   const [callType, setCallType] = useState<"video" | "audio">("video");
   const [openChatPopup, setOpenChatPopup] = useState(true);
+
+  /* The page behind stays put while the popup is up.
+
+     The overlay is `fixed inset-0`, which covers the page but does not stop it
+     scrolling — so scrolling the conversation and running past its end carried
+     on scrolling the page underneath, and closing the popup left you somewhere
+     you never navigated to. */
+  useBodyScrollLock(openChatPopup);
+
   const [loadingConversations, setLoadingConversations] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
@@ -6167,27 +6178,47 @@ export default function Chat() {
     ringingAudio.current.loop = true;
   }, []);
 
+  /* Pulls the conversation list.
+
+     Lifted out of the mount effect because it is needed again later: a message
+     can arrive for a thread this list has never seen — which is exactly what a
+     new hire or deal produces — and the only way to learn about it is to ask.
+     `selectFirst` is what the initial load does and a background refresh must
+     not: re-selecting a thread under someone reading another one is worse than
+     the stale list. */
+  const loadConversations = useCallback(
+    async ({ selectFirst = false }: { selectFirst?: boolean } = {}) => {
+      if (!token) return;
+      try {
+        const r = await fetch(`${API_BASE}/api/chat/conversations`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await r.json();
+        if (!d?.success || !Array.isArray(d.conversations)) return;
+
+        setConversations(d.conversations);
+        if (!selectFirst) return;
+
+        const stateConversationId = location.state?.conversationId;
+        if (stateConversationId) {
+          const found = d.conversations.find((c: any) => c._id === stateConversationId);
+          if (found) { setActiveConvo(found); setMobileView("chat"); }
+          else if (d.conversations.length > 0) setActiveConvo(d.conversations[0]);
+        } else if (d.conversations.length > 0) {
+          setActiveConvo(d.conversations[0]);
+        }
+      } catch (err) {
+        console.error("Load conversations error:", err);
+      }
+    },
+    [token, location.state]
+  );
+
   useEffect(() => {
     if (!token) return;
     setLoadingConversations(true);
-    fetch(`${API_BASE}/api/chat/conversations`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then((d) => {
-        if (d?.success && Array.isArray(d.conversations)) {
-          setConversations(d.conversations);
-          const stateConversationId = location.state?.conversationId;
-          if (stateConversationId) {
-            const found = d.conversations.find((c: any) => c._id === stateConversationId);
-            if (found) { setActiveConvo(found); setMobileView("chat"); }
-            else if (d.conversations.length > 0) setActiveConvo(d.conversations[0]);
-          } else if (d.conversations.length > 0) {
-            setActiveConvo(d.conversations[0]);
-          }
-        }
-      })
-      .catch((err) => console.error("Load conversations error:", err))
-      .finally(() => setLoadingConversations(false));
-  }, [token, location.state]);
+    loadConversations({ selectFirst: true }).finally(() => setLoadingConversations(false));
+  }, [token, location.state, loadConversations]);
 
   // NOTE: landing on this page deliberately does NOT mark everything read.
   // It used to POST /conversations/read-all here, which flipped every message
@@ -6248,13 +6279,33 @@ export default function Chat() {
           socket.emit("message:read", { conversationId: msg.conversationId, userId: user._id });
         }
       }
-      setConversations((prev) =>
-        prev.map((c) => c._id === msg.conversationId ? { ...c, lastMessage: msg.text || c.lastMessage, updatedAt: msg.createdAt || new Date().toISOString() } : c)
-      );
+      setConversations((prev) => {
+        /* A message for a thread that isn't in the list yet.
+
+           THIS is why a new hire or deal needed a refresh: the sidebar is built
+           once on mount, and this handler only ever `map`ped over what was
+           already there — so a brand-new conversation had nothing to update and
+           simply never appeared. You had to reload the page for the list to be
+           fetched again.
+
+           Asking the server is the right move rather than assembling a row from
+           the message: the list carries the other user, their avatar, unread
+           counts and ordering, none of which are in a message payload. */
+        if (!prev.some((c) => String(c._id) === String(msg.conversationId))) {
+          loadConversations();
+          return prev;
+        }
+
+        return prev.map((c) =>
+          c._id === msg.conversationId
+            ? { ...c, lastMessage: msg.text || c.lastMessage, updatedAt: msg.createdAt || new Date().toISOString() }
+            : c
+        );
+      });
     };
     socket.on("new-message", handleNewMessage);
     return () => socket.off("new-message", handleNewMessage);
-  }, [activeConvo, user?._id]);
+  }, [activeConvo, user?._id, loadConversations]);
 
   /* ── Presence ──────────────────────────────────────────────────────────
      Previously every avatar rendered a green dot unconditionally (UserAvatar
@@ -6566,7 +6617,23 @@ const startMeetCall = () => {
                   <div className="flex items-center justify-between text-white">
                     <h2 className="text-[20px] sm:text-[24px] font-medium leading-[32px]" style={{ fontFamily: "Plus Jakarta Sans, sans-serif" }}>Messages</h2>
                     <div className="flex items-center gap-3">
-                      <img src="/icons/pen.svg" alt="" className="h-[22px] w-[22px] object-contain" />
+                      {/* The compose pen. It was a bare <img> — no button, no
+                          handler — so it looked like "start a new message" and
+                          did nothing at all when pressed.
+
+                          It goes to Find Creators, because that is genuinely
+                          where a new conversation starts here: threads are
+                          opened by contacting or hiring someone, not by picking
+                          a name out of an address book. */}
+                      <button
+                        type="button"
+                        onClick={() => navigate("/find-creators")}
+                        title="Start a new conversation — find a creator to message"
+                        aria-label="Start a new conversation"
+                        className="grid h-8 w-8 place-items-center rounded-full transition hover:bg-white/10"
+                      >
+                        <img src="/icons/pen.svg" alt="" className="h-[22px] w-[22px] object-contain" />
+                      </button>
                       <button onClick={() => setOpenChatPopup(false)} className="sm:hidden grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white"><X size={16} /></button>
                     </div>
                   </div>

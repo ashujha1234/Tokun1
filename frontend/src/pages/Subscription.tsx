@@ -670,6 +670,11 @@ import { Check, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { withTokunBranding } from "@/lib/razorpayTheme";
+/* Every failure on this page used to be a window.alert — a white OS box on a
+   dark page, blocking the tab, and looking like it came from the browser rather
+   than from Tokun. The rest of the app reports outcomes with this toast; the
+   pricing page was the one place that didn't. */
+import { toast } from "@/components/ui/use-toast";
 
 type PlanKey = "Free" | "Pro" | "Enterprise";
 type ServerPlanKey = "free" | "pro";
@@ -718,6 +723,43 @@ const INR = (n: number) =>
 
 export default function Subscription() {
   const { user, isReady, persistAuth, refreshQuota } = useAuth();
+
+  /* The plan this account is actually on — as a key, so the cards can compare
+     against it rather than just print it. Without this, the plan you had just
+     paid for still showed an inviting "Choose Plan" that reopened checkout. */
+  const currentPlanKey: PlanKey = (() => {
+    const raw = String((user as any)?.plan || "free").toLowerCase();
+    if (raw.startsWith("pro")) return "Pro";
+    if (raw.startsWith("enter")) return "Enterprise";
+    return "Free";
+  })();
+
+  /* What a card's button says and whether it does anything.
+
+       the plan you're on  → says so, does nothing
+       Free, from a paid plan
+                           → not a purchase at all. Downgrading happens by
+                             letting the paid plan lapse, so "Choose Plan" here
+                             was an offer we can't honour — and pressing it
+                             started a ₹0 checkout that announced a free plan
+                             had been "activated" when nothing had changed.
+       anything else       → a real upgrade */
+  const ctaFor = (plan: PlanKey) => {
+    if (plan === currentPlanKey) return { ctaLabel: "Current plan", disabled: true, isCurrent: true };
+    if (plan === "Free") return { ctaLabel: "Included with every account", disabled: true, isCurrent: false };
+    /* Enterprise is billed to an organization: the checkout route is
+       /order/create/org and it needs an orgId. A signed-in individual — Pro or
+       Free — has none, so this button could only ever get as far as telling them
+       so after they pressed it. Said up front instead.
+
+       Only when we KNOW the account can't buy it. A visitor who isn't signed in
+       yet is left with a live button, because "no org" isn't established for
+       them, and the org path still handles the rest. */
+    if (plan === "Enterprise" && user && !(user as any)?.orgId) {
+      return { ctaLabel: "Organization plan", disabled: true, isCurrent: false };
+    }
+    return { ctaLabel: "Choose Plan", disabled: false, isCurrent: false };
+  };
   const navigate = useNavigate();
   const [annual, setAnnual] = useState(false);
   const [selected, setSelected] = useState<PlanKey>("Pro");
@@ -870,8 +912,14 @@ export default function Subscription() {
     navigate("/self-dash?tab=subscription");
   };
 
-  const startPurchase = async () => {
-    const planKey = toServerPlanKey(selected);
+  const startPurchase = async (plan: PlanKey = selected) => {
+    /* The plan comes in as an argument now.
+
+       It used to read `selected`, and every card called
+       `setSelected("Pro"); startPurchase();` in the same handler — but
+       setSelected is asynchronous, so startPurchase ran against the PREVIOUS
+       selection. Press Pro while Free was highlighted and you bought Free. */
+    const planKey = toServerPlanKey(plan);
 
     if (!planKey) {
       console.warn("[Subscribe] Enterprise not supported here. Handle separately.");
@@ -972,7 +1020,14 @@ export default function Subscription() {
     const orgId = user?.orgId || null;
 
     if (!orgId) {
-      alert("We couldn’t find your Organization ID. Please log in as the org owner.");
+      /* An individual pressing Enterprise, which is the common case rather than
+         an error: the plan is billed to an organization, so there is nothing to
+         charge. Says what to do about it instead of naming a missing ID. */
+      toast({
+        title: "Enterprise is billed to an organization",
+        description:
+          "This plan needs an organization account, and you're signed in as an individual. Sign in as the org owner, or pick Pro for individual use.",
+      });
       return;
     }
 
@@ -996,7 +1051,10 @@ export default function Subscription() {
       const data = await res.json();
 
       if (!res.ok || !data?.success) {
-        alert(`Unable to start enterprise checkout: ${data?.error || res.status}`);
+        toast({
+          title: "Couldn't start enterprise checkout",
+          description: String(data?.error || `Server responded ${res.status}.`),
+        });
         return;
       }
 
@@ -1024,7 +1082,13 @@ export default function Subscription() {
       const vJson = await vRes.json();
 
       if (!vRes.ok || !vJson?.success) {
-        alert(`Verification failed: ${vJson?.error || vRes.status}`);
+        /* The money may well have been taken — Razorpay collected it and our
+           verify call is what failed. Never say "payment failed" here. */
+        toast({
+          title: "Payment couldn't be confirmed",
+          description:
+            "If you were charged, the plan activates once we reconcile it. Contact support with your payment ID if it doesn't.",
+        });
         return;
       }
 
@@ -1033,7 +1097,14 @@ export default function Subscription() {
       finishPurchase(vJson);
     } catch (e: any) {
       console.error("[Subscribe/ORG] ❌ FLOW FAILED:", e?.message || e);
-      alert(`Enterprise purchase failed: ${e?.message || "unexpected_error"}`);
+      toast(
+        e?.message === "checkout_dismissed"
+          ? { title: "Checkout closed", description: "Payment was not completed." }
+          : {
+              title: "Enterprise purchase failed",
+              description: e?.message || "Something went wrong. Please try again.",
+            },
+      );
     } finally {
       setCreating(false);
     }
@@ -1084,8 +1155,9 @@ export default function Subscription() {
             onSelect={() => setSelected("Free")}
             onChoose={() => {
               if (!creating) setSelected("Free");
-              startPurchase();
+              startPurchase("Free");
             }}
+            {...ctaFor("Free")}
             title="Free"
             subtitle="(Individuals)"
             price={priceFor("Free")}
@@ -1098,8 +1170,9 @@ export default function Subscription() {
             onSelect={() => setSelected("Pro")}
             onChoose={() => {
               if (!creating) setSelected("Pro");
-              startPurchase();
+              startPurchase("Pro");
             }}
+            {...ctaFor("Pro")}
             title="Pro"
             subtitle="(Individuals)"
             price={priceFor("Pro")}
@@ -1119,6 +1192,7 @@ export default function Subscription() {
               if (!creating) setSelected("Enterprise");
               startEnterprisePurchase();
             }}
+            {...ctaFor("Enterprise")}
             title="Enterprise"
             subtitle="(Organization)"
             price={priceFor("Enterprise")}
@@ -1155,7 +1229,12 @@ function PlanCard({
   price,
   tokens,
   extras,
-  highlight,
+  highlight = "",
+  /* Same three the dashboard's card takes, so a plan reads the same in both
+     places — see SubscriptionsSection in components/PromptHistory.tsx. */
+  isCurrent = false,
+  ctaLabel = "Choose Plan",
+  disabled = false,
 }) {
   const [amount, per] = price.split("/");
 
@@ -1244,25 +1323,24 @@ function PlanCard({
         <Button
           onClick={(e) => {
             e.stopPropagation();
+            if (disabled) return;
             onChoose();
           }}
-          className='font-["Inter"] text-[16px] w-[200px] h-[50px] rounded-[6px]'
+          disabled={disabled}
+          className='font-["Inter"] text-[16px] w-[200px] h-[50px] rounded-[6px] disabled:opacity-100 disabled:cursor-default'
           style={
-            selected
-              ? {
-                  background: GRAD,
-                  border: "1px solid #FFFFFF",
-                  color: "#fff",
-                }
-              : {
-                  background: "transparent",
-                  border: "1px solid #FFFFFF",
-                  color: "#fff",
-                }
+            /* The plan you're already on is a state, not an offer. */
+            isCurrent
+              ? { background: "#14532D", border: "1px solid rgba(187,247,208,0.35)", color: "#BBF7D0" }
+              : disabled
+                ? { background: "transparent", border: "1px solid rgba(255,255,255,0.25)", color: "rgba(255,255,255,0.45)" }
+                : selected
+                  ? { background: GRAD, border: "1px solid #FFFFFF", color: "#fff" }
+                  : { background: "transparent", border: "1px solid #FFFFFF", color: "#fff" }
           }
           variant="ghost"
         >
-          Choose Plan
+          {ctaLabel}
         </Button>
       </CardFooter>
     </Card>

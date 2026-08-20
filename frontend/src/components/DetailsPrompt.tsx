@@ -1272,6 +1272,12 @@ useEffect(() => {
 
 const comingSoon = !!prompt?.sellerVerificationPending || sellerHasPayout === false;
 
+/* A one-time product that has been bought. Not "out of stock" — it can never be
+   bought again by anyone, which is the whole point of listing it that way.
+   Named once because three different places need to ask, and one of them
+   (Add to Cart) was asking nothing at all. */
+const soldOut = !!prompt?.exclusive && !!prompt?.sold;
+
 
 
 
@@ -1694,7 +1700,14 @@ const comingSoon = !!prompt?.sellerVerificationPending || sellerHasPayout === fa
               </div>
             )}
 
-            {!isOwnPrompt && !owned && !isTeamMember && !comingSoon && Number(prompt.price || 0) > 0 && !inCart && (
+            {/* `!soldOut` was missing here, and only here.
+
+                Buy Now already checked it further down, so a one-time product
+                that had been bought showed no Buy button — and Add to Cart
+                sitting right above it, fully live. Pressing it always failed:
+                POST /api/cart/add refuses with `prompt_already_sold`. A button
+                whose only possible outcome is an error. */}
+            {!isOwnPrompt && !owned && !isTeamMember && !comingSoon && !soldOut && Number(prompt.price || 0) > 0 && !inCart && (
               <button
                 /* Awaits the result before saying anything. It used to fire and
                    forget, so a refusal (already in the cart, already purchased,
@@ -1766,7 +1779,18 @@ const comingSoon = !!prompt?.sellerVerificationPending || sellerHasPayout === fa
                 >
                   Request to buy
                 </button>
-              ) : !(prompt.exclusive && prompt.sold) ? (
+              ) : soldOut ? (
+                /* Say it. This branch used to be `null` — no button and no
+                   explanation, just a gap where the buy area should be, so the
+                   panel looked broken rather than sold. */
+                <div className="w-full rounded-[10px] border border-white/10 bg-white/[0.04] px-4 py-3 text-center">
+                  <p className="text-[15px] font-semibold text-white">Sold</p>
+                  <p className="mt-1 text-[12px] leading-relaxed text-white/50">
+                    This was a one-time purchase — the creator sold it once and it
+                    can't be bought again.
+                  </p>
+                </div>
+              ) : (
                 <>
                   {/* What you are about to be charged, itemised, before you
                       commit to it. The price shown further up is the total, so
@@ -1825,7 +1849,7 @@ const comingSoon = !!prompt?.sellerVerificationPending || sellerHasPayout === fa
                     .
                   </p>
                 </>
-              ) : null
+              )
             )}
 
             {isTeamMember && !isOwnPrompt && !owned && Number(prompt.price || 0) > 0 && (

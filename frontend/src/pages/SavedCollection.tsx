@@ -247,89 +247,6 @@
 // // //   };
 
 // // //   /* ───────── Folder actions ───────── */
-// // //   const openFolder = (title: string) => {
-// // //     setViewingFolder(title);
-// // //     const qs = new URLSearchParams({ tab, folder: title });
-// // //     history.pushState({ folder: title, tab }, "", `/folder-save?${qs.toString()}`);
-// // //   };
-
-// // //   const leaveFolder = () => {
-// // //     setViewingFolder(null);
-// // //     history.pushState({}, "", `/saved-collection`);
-// // //   };
-
-// // //   const startRenameFolder = (title: string) => {
-// // //     setEditingFolder(title);
-// // //     setEditFolderValue(title);
-// // //     setMenuForFolder(null);
-// // //   };
-
-// // //   const confirmRenameFolder = async () => {
-// // //     const oldTitle = editingFolder!;
-// // //     const newTitle = editFolderValue.trim();
-// // //     if (!newTitle || newTitle === oldTitle) {
-// // //       setEditingFolder(null);
-// // //       return;
-// // //     }
-// // //     try {
-// // //       const resp = await apiRenameCollection(section, oldTitle, newTitle, token);
-// // //       if (resp?.success) {
-// // //         toast({ title: "Renamed", description: `Folder is now “${newTitle}”.` });
-// // //         if (resp.savedCollection?.sections) setSections(resp.savedCollection.sections);
-// // //         else await fetchAll();
-// // //         setViewingFolder(newTitle);
-// // //       } else toast({ title: "Rename failed", description: resp?.error || "Unable to rename" });
-// // //     } catch (e: any) {
-// // //       toast({ title: "Error", description: e?.message || "Unable to rename" });
-// // //     } finally {
-// // //       setEditingFolder(null);
-// // //     }
-// // //   };
-
-// // //   const deleteFolder = async (title: string) => {
-// // //     try {
-// // //       const resp = await apiDeleteCollection(section, title, token);
-// // //       if (resp?.success) {
-// // //         toast({ title: "Deleted", description: `Folder “${title}” removed.` });
-// // //         if (resp.savedCollection?.sections) setSections(resp.savedCollection.sections);
-// // //         else await fetchAll();
-// // //         setViewingFolder(null);
-// // //         history.pushState({}, "", `/saved-collection`);
-// // //       } else toast({ title: "Delete failed", description: resp?.error || "Unable to delete folder" });
-// // //     } catch (e: any) {
-// // //       toast({ title: "Error", description: e?.message || "Unable to delete folder" });
-// // //     }
-// // //   };
-
-// // //   /* ───────── All Saved actions ───────── */
-// // //   const openMoveForm = (refId: string, currentName: string) => {
-// // //     setMenuForDirect(refId);
-// // //     setMoveRefId(refId);
-// // //     setMoveFolderName("");
-// // //     setMoveItemName(currentName || "");
-// // //   };
-
-// // //   const performMoveToFolder = async () => {
-// // //     if (!moveRefId || !moveFolderName.trim()) return;
-// // //     try {
-// // //       await apiDeleteItem(section, moveRefId, token);
-// // //       const resp = await apiPostSave(section, moveRefId, token, {
-// // //         collectionTitle: moveFolderName.trim(),
-// // //         name: moveItemName.trim() || undefined,
-// // //       });
-// // //       if (resp?.success) {
-// // //         toast({ title: "Moved", description: `Item moved to “${moveFolderName.trim()}”.` });
-// // //         if (resp.savedCollection?.sections) setSections(resp.savedCollection.sections);
-// // //         else await fetchAll();
-// // //       } else toast({ title: "Move failed", description: resp?.error || "Could not move item" });
-// // //     } catch (e: any) {
-// // //       toast({ title: "Error", description: e?.message || "Could not move item" });
-// // //     } finally {
-// // //       setMenuForDirect(null);
-// // //       setMoveRefId(null);
-// // //     }
-// // //   };
-
 // // //   const deleteSingleItem = async (refId: string) => {
 // // //     try {
 // // //       const resp = await apiDeleteItem(section, refId, token);
@@ -555,7 +472,7 @@
 // // //                     <h3 className="text-[16px] font-semibold text-white">{title}</h3>
 // // //                     <button
 // // //                       type="button"
-// // //                       onClick={() => (isMenu ? setMenuForDirect(null) : openMoveForm(refId, title))}
+// // //                       onClick={() => setMenuForDirect(isMenu ? null : refId)}
 // // //                       className="p-1 rounded-full hover:bg-white/10"
 // // //                       aria-label="More actions"
 // // //                     >
@@ -4253,20 +4170,10 @@ export default function SavedCollection() {
   const [sections, setSections] = useState<ServerSections>({});
   const [loading, setLoading] = useState(true);
 
+  /* One menu, for the one card menu that is left. The folder state that stood
+     here — which folder is open, which folder's menu, which folder is being
+     renamed, which item is being moved and to where — went with the folders. */
   const [menuForDirect, setMenuForDirect] = useState<string | null>(null);
-  const [menuForFolderItem, setMenuForFolderItem] = useState<string | null>(null);
-  const [menuForFolder, setMenuForFolder] = useState<string | null>(null);
-
-  const [viewingFolder, setViewingFolder] = useState<string | null>(null);
-
-  const [editingFolder, setEditingFolder] = useState<string | null>(null);
-  const [editFolderValue, setEditFolderValue] = useState("");
-
-  const [moveRefId, setMoveRefId] = useState<string | null>(null);
-  const [moveFolderName, setMoveFolderName] = useState("");
-  const [moveItemName, setMoveItemName] = useState("");
-
-  const [editItemTitle, setEditItemTitle] = useState("");
 
   const menuScopeRef = useRef<HTMLDivElement>(null);
 
@@ -4340,33 +4247,13 @@ export default function SavedCollection() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const folder = params.get("folder");
-    const tabFromUrl = params.get("tab") as TabId | null;
-    const onFolderPage = location.pathname.endsWith("/folder-save");
-    if (onFolderPage && folder) {
-      if (tabFromUrl && TABS.find((t) => t.id === tabFromUrl)) setTab(tabFromUrl);
-      setViewingFolder(folder);
-    }
-    const onPop = () => {
-      const nowFolder = new URLSearchParams(location.search).get("folder");
-      if (location.pathname.endsWith("/folder-save") && nowFolder) {
-        setViewingFolder(nowFolder);
-      } else {
-        setViewingFolder(null);
-      }
-    };
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
+  /* The effect that read ?folder= off /folder-save and followed it through
+     history went with the folders — there is no folder page to route to. */
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       if (menuScopeRef.current && !menuScopeRef.current.contains(e.target as Node)) {
-        setMenuForFolder(null);
         setMenuForDirect(null);
-        setMenuForFolderItem(null);
       }
     };
     document.addEventListener("mousedown", onDown);
@@ -4383,111 +4270,11 @@ export default function SavedCollection() {
     toast({ title: "Copied", description: `"${label}" has been copied.` });
   };
 
-  const openFolder = (title: string) => {
-    setViewingFolder(title);
-    const qs = new URLSearchParams({ tab, folder: title });
-    history.pushState({ folder: title, tab }, "", `/folder-save?${qs.toString()}`);
-  };
-
-  const leaveFolder = () => {
-    setViewingFolder(null);
-    history.pushState({}, "", `/saved-collection`);
-  };
-
-  const startRenameFolder = (title: string) => {
-    setEditingFolder(title);
-    setEditFolderValue(title);
-    setMenuForFolder(null);
-  };
-
-  const confirmRenameFolder = async () => {
-    const oldTitle = editingFolder!;
-    const newTitle = editFolderValue.trim();
-    if (!newTitle || newTitle === oldTitle) {
-      setEditingFolder(null);
-      return;
-    }
-    try {
-      const resp = await apiRenameCollection(section, oldTitle, newTitle, token);
-      if (resp?.success) {
-        toast({ title: "Renamed", description: `Folder is now “${newTitle}”.` });
-        if (resp.savedCollection?.sections) setSections(resp.savedCollection.sections);
-        else await fetchAll();
-        setViewingFolder((v) => (v === oldTitle ? newTitle : v));
-      } else toast({ title: "Rename failed", description: resp?.error || "Unable to rename" });
-    } catch (e: any) {
-      toast({ title: "Error", description: e?.message || "Unable to rename" });
-    } finally {
-      setEditingFolder(null);
-    }
-  };
-
-  const deleteFolder = async (title: string) => {
-    try {
-      const resp = await apiDeleteCollection(section, title, token);
-      if (resp?.success) {
-        toast({ title: "Deleted", description: `Folder “${title}” removed.` });
-        if (resp.savedCollection?.sections) setSections(resp.savedCollection.sections);
-        else await fetchAll();
-        if (viewingFolder === title) {
-          setViewingFolder(null);
-          history.pushState({}, "", `/saved-collection`);
-        }
-      } else toast({ title: "Delete failed", description: resp?.error || "Unable to delete folder" });
-    } catch (e: any) {
-      toast({ title: "Error", description: e?.message || "Unable to delete folder" });
-    }
-  };
-
-  const renameItemInFolder = async (folderTitle: string, refId: string, newTitle: string) => {
-    if (!newTitle.trim()) return;
-    try {
-      await apiDeleteItem(section, refId, token);
-      const resp = await apiPostSave(section, refId, token, {
-        collectionTitle: folderTitle,
-        name: newTitle.trim(),
-      });
-      if (resp?.success) {
-        toast({ title: "Renamed", description: `Item renamed to “${newTitle.trim()}”.` });
-        if (resp.savedCollection?.sections) setSections(resp.savedCollection.sections);
-        else await fetchAll();
-      } else {
-        toast({ title: "Rename failed", description: resp?.error || "Could not rename item" });
-      }
-    } catch (e: any) {
-      toast({ title: "Error", description: e?.message || "Could not rename item" });
-    } finally {
-      setMenuForFolderItem(null);
-    }
-  };
-
-  const openMoveForm = (refId: string, currentName: string) => {
-    setMenuForDirect(refId);
-    setMoveRefId(refId);
-    setMoveFolderName("");
-    setMoveItemName(currentName || "");
-  };
-
-  const performMoveToFolder = async () => {
-    if (!moveRefId || !moveFolderName.trim()) return;
-    try {
-      await apiDeleteItem(section, moveRefId, token);
-      const resp = await apiPostSave(section, moveRefId, token, {
-        collectionTitle: moveFolderName.trim(),
-        name: moveItemName.trim() || undefined,
-      });
-      if (resp?.success) {
-        toast({ title: "Moved", description: `Item moved to “${moveFolderName.trim()}”.` });
-        if (resp.savedCollection?.sections) setSections(resp.savedCollection.sections);
-        else await fetchAll();
-      } else toast({ title: "Move failed", description: resp?.error || "Could not move item" });
-    } catch (e: any) {
-      toast({ title: "Error", description: e?.message || "Could not move item" });
-    } finally {
-      setMenuForDirect(null);
-      setMoveRefId(null);
-    }
-  };
+  /* openFolder / leaveFolder / startRenameFolder / confirmRenameFolder /
+     deleteFolder / renameItemInFolder / openMoveForm / performMoveToFolder all
+     stood here. Every one of them existed to manage folders, and there are no
+     folders any more — see the note on directItems. Removing an item is the one
+     thing a saved card can still do, and that is right below. */
 
   const deleteSingleItem = async (refId: string) => {
     try {
@@ -4502,23 +4289,29 @@ export default function SavedCollection() {
     }
   };
 
-  const folders = activeSection.collections || [];
+  /* ONE FLAT LIST. Saving puts a thing here; that is the whole model now.
 
-  /* One row per product, however many times it was saved.
+     There used to be folders on top of this — a grid of collections, a page per
+     folder, rename, move-between-folders, and a "Create collection" step in the
+     save popup. It is gone: saving something should put it where you can see it,
+     not ask you to file it first and then hide it two levels down.
 
-     The server now refuses to save the same ref twice, but every duplicate
-     already written before that fix is still sitting in people's collections —
-     and a list that shows the same card three times looks broken whoever's
-     fault it was. Deduped on the id, keeping the first occurrence so the
-     original save order is preserved.
+     Anything already sitting INSIDE a collection is folded in here rather than
+     dropped. Those are real saves; removing the folders must not remove the
+     things that were in them.
 
-     Items whose ref never populated (a listing the seller deleted) have no id to
-     compare, so they're passed through untouched rather than collapsed into one
-     — they're genuinely separate saves. */
+     Deduped on the id, keeping the first occurrence so the original save order
+     survives — the same product can legitimately appear in both a folder and the
+     loose list, and duplicates written before the server's guard existed are
+     still in people's data. Items whose ref never populated (a listing the
+     seller deleted) have no id to compare, so they pass through untouched
+     rather than collapsing into one — they are genuinely separate saves. */
   const directItems = useMemo(() => {
-    const raw = activeSection.directItems || [];
+    const loose = activeSection.directItems || [];
+    const filed = (activeSection.collections || []).flatMap((c: any) => c.items || []);
+
     const seen = new Set<string>();
-    return raw.filter((it: any) => {
+    return [...loose, ...filed].filter((it: any) => {
       const id = getDocId(it?.ref);
       if (!id) return true;
       if (seen.has(id)) return false;
@@ -4527,11 +4320,15 @@ export default function SavedCollection() {
     });
   }, [activeSection]);
 
+  /* Copy, and only Copy.
+
+     A save icon sat to the left of it — the same circle-with-an-icon that was on
+     the My Products cards, and just as inert. On THIS page it made even less
+     sense than there: everything here is already saved, so an icon offering to
+     save it is answering a question nobody is asking, and it appeared on every
+     Smartgen and Optimiser card you saved. */
   const renderCardFooter = (text: string, title: string) => (
     <div className="flex items-center justify-start gap-2">
-      <div className="w-9 h-9 rounded-full grid place-items-center shrink-0" style={{ background: "#333335" }}>
-        <img src="/icons/cop1.png" className="w-4 h-4 object-contain" />
-      </div>
       <button
         onClick={() => copyToClipboard(text, title)}
         className="h-9 px-3.5 rounded-full text-white text-[13px] font-medium inline-flex items-center justify-center gap-2 bg-[#333335] hover:opacity-90 transition-colors"
@@ -4753,168 +4550,33 @@ export default function SavedCollection() {
   // section, and both should look like the marketplace they came from.
   const isPromptSection = section === "prompt";
 
-  const renderFolderPage = () => {
-    if (!viewingFolder) return null;
-    const folder = folders.find((f) => f.title === viewingFolder);
-    if (!folder) {
-      setViewingFolder(null);
-      history.replaceState({}, "", "/saved-collection");
-      return null;
+
+  const renderAllSaved = () => {
+    /* Loading and empty live here now. They used to belong to the folder grid,
+       which no longer exists — so without moving them, an empty list rendered
+       as a blank page and a loading one as nothing at all. */
+    if (loading) {
+      return <div className="text-center text-white/80 py-10">Loading your saved items…</div>;
+    }
+
+    if (!directItems.length) {
+      return (
+        <div className="text-center py-16">
+          <img src="/icons/void.png" alt="" className="mx-auto mb-6 h-32 sm:h-40 w-auto opacity-90" />
+          <p className="text-white text-lg sm:text-xl">Nothing saved yet</p>
+          {/* No longer mentions saving "with a Name/Title to group them into a
+              folder" — there are no folders to group into. */}
+          <p className="text-white/70 mt-2 text-sm sm:text-base">
+            Anything you save from Smartgen, the Optimiser or Product Verse shows up here.
+          </p>
+        </div>
+      );
     }
 
     return (
-      <div className="w-full">
-        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6 lg:gap-8">
-          {/* Products render as the marketplace card they came from; every other
-              tab keeps the generic saved tile below. A saved prompt is a listing
-              with a price, a seller and a details panel — a Copy button over its
-              description was never what anyone saved it for. */}
-          {isPromptSection &&
-            (folder.items || []).map((it, idx) =>
-              renderPromptCard(
-                it,
-                idx,
-                () => {
-                  const refId = getDocId(it.ref);
-                  setMenuForFolderItem(menuForFolderItem === refId ? null : refId);
-                },
-                menuForFolderItem === getDocId(it.ref)
-              )
-            )}
-          {!isPromptSection && (folder.items || []).map((it, idx) => {
-            const refId = getDocId(it.ref);
-            const title = getItemTitle(it);
-            const text = pickTextFromRef(section, it.ref);
-            const imageUrl = itemImage(it, idx);
-            const isMenu = menuForFolderItem === refId;
-
-            return (
-              <Card
-                key={refId || `${title}_${idx}`}
-                className="overflow-hidden w-full"
-                style={{
-                  minHeight: 470,
-                  borderRadius: 24,
-                  borderBottomWidth: 1,
-                  borderLeftWidth: 1,
-                  borderColor: "rgba(255,255,255,0.1)",
-                  background: "#1C1C1C",
-                  fontFamily: "Inter, sans-serif",
-                }}
-              >
-                <CardContent className="relative p-4 h-full flex flex-col" ref={isMenu ? menuScopeRef : undefined}>
-                  <div
-                    className="relative w-full overflow-hidden"
-                    style={{ height: 220, borderRadius: 16, backgroundColor: "#0B0B0B", margin: "0 auto" }}
-                  >
-                    <img src={imageUrl} alt={title} className="w-full h-full object-cover rounded-[16px]" />
-                    <div className="absolute top-3 left-3 px-3 py-1 text-[11px] font-semibold text-white rounded-full" style={{ background: GRADIENT }}>
-                      {viewingFolder}
-                    </div>
-                    <div className="absolute top-3 right-3">
-                      <div className="flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium text-white bg-black/50 border border-white/30 backdrop-blur-sm">
-                        <Download className="h-3.5 w-3.5" />
-                        {(it as any).uses ? (it as any).uses : 0} USES
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <h3 className="text-[16px] sm:text-[18px] leading-snug font-semibold text-white break-words">
-                        {title}
-                      </h3>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (isMenu) {
-                            setMenuForFolderItem(null);
-                          } else {
-                            setMenuForFolderItem(refId);
-                            setEditItemTitle(title);
-                          }
-                        }}
-                        className="p-1 rounded-full hover:bg-white/10 shrink-0"
-                        aria-label="More actions"
-                      >
-                        <MoreHorizontal className="h-5 w-5 text-white/85" />
-                      </button>
-                    </div>
-
-                    <p className="mt-2 text-[13px] leading-relaxed text-white/70 break-words">
-                      {text.length > 140 ? `${text.slice(0, 140)}…` : text}
-                    </p>
-                  </div>
-
-                  <div className="mt-auto pt-4">{renderCardFooter(text, title)}</div>
-
-                  {isMenu && (
-                    <div className="mt-3 rounded-[16px] p-3 shadow-lg border border-white/10 bg-[#333335]">
-                      <div className="space-y-2">
-                        <div className="text-white/80 text-sm font-medium">Edit title</div>
-                        <input
-                          value={editItemTitle}
-                          onChange={(e) => setEditItemTitle(e.target.value)}
-                          placeholder="Item title"
-                          className="h-9 w-full rounded-xl bg-[#252526] px-3 text-white outline-none"
-                        />
-                        <div className="flex flex-wrap gap-2 pt-1">
-                          <Button
-                            className="h-9 rounded-full text-white"
-                            style={{ background: GRADIENT }}
-                            disabled={!editItemTitle.trim()}
-                            onClick={() => renameItemInFolder(viewingFolder, refId, editItemTitle)}
-                          >
-                            Save
-                          </Button>
-                          <Button
-                            className="h-9 rounded-full text-white"
-                            style={{ background: "#333335" }}
-                            variant="outline"
-                            onClick={() => setMenuForFolderItem(null)}
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="h-px bg-white/10 my-3" />
-
-                      <button
-                        onClick={() => {
-                          setMenuForFolderItem(null);
-                          deleteSingleItem(refId);
-                        }}
-                        className="w-full flex items-center gap-3 px-3 py-3 rounded-[12px] hover:bg-white/10 text-white text-sm"
-                      >
-                        <Trash className="h-4 w-4" />
-                        Delete item
-                      </button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
-          {!folder.items?.length && (
-            <div className="text-center text-white/70 col-span-full py-12">No items inside this folder yet.</div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  const renderAllSaved = () => {
-    if (!directItems.length) return null;
-    return (
-      /* No "All Saved" heading any more.
-         Saving something used to file it under a heading two scrolls below the
-         folder grid, so the thing you had just saved was the hardest thing on
-         the page to find. These are the saves; they go straight on the page.
-         The margin only opens up when there are folders above to separate them
-         from — with none, the cards start at the top where you'd expect. */
-      <div className={`w-full ${folders.length ? "mt-10 sm:mt-12" : "mt-2"}`}>
+      /* No heading, and no top margin to clear a folder grid that isn't there —
+         the cards start where you'd expect them to. */
+      <div className="w-full mt-2">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6 lg:gap-8">
           {isPromptSection &&
             directItems.map((it, idx) =>
@@ -4962,7 +4624,7 @@ export default function SavedCollection() {
 
                     <button
                       type="button"
-                      onClick={() => (isMenu ? setMenuForDirect(null) : openMoveForm(refId, title))}
+                      onClick={() => setMenuForDirect(isMenu ? null : refId)}
                       className="p-1 rounded-full hover:bg-white/10 shrink-0"
                       aria-label="More actions"
                     >
@@ -4977,46 +4639,11 @@ export default function SavedCollection() {
                   <div className="mt-auto pt-4">{renderCardFooter(text, title)}</div>
 
                   {isMenu && (
+                    /* The "Move to folder" form that filled this menu is gone
+                       with the folders — two inputs and a Move button for a
+                       destination that no longer exists. Removing the item is
+                       what the menu is for now. */
                     <div className="mt-3 rounded-[16px] p-3 shadow-lg border border-white/10 bg-[#333335]">
-                      <div className="space-y-2">
-                        <div className="text-white/80 text-sm font-medium">Move to folder</div>
-                        <input
-                          value={moveFolderName}
-                          onChange={(e) => setMoveFolderName(e.target.value)}
-                          placeholder="Folder name (collection)"
-                          className="h-9 w-full rounded-xl bg-[#252526] px-3 text-white outline-none"
-                        />
-                        <input
-                          value={moveItemName}
-                          onChange={(e) => setMoveItemName(e.target.value)}
-                          placeholder="Item title (optional)"
-                          className="h-9 w-full rounded-xl bg-[#252526] px-3 text-white outline-none"
-                        />
-                        <div className="flex flex-wrap gap-2 pt-1">
-                          <Button
-                            className="h-9 rounded-full text-white"
-                            style={{ background: GRADIENT }}
-                            disabled={!moveFolderName.trim()}
-                            onClick={performMoveToFolder}
-                          >
-                            Move
-                          </Button>
-                          <Button
-                            className="h-9 rounded-full text-white"
-                            style={{ background: "#333335" }}
-                            variant="outline"
-                            onClick={() => {
-                              setMenuForDirect(null);
-                              setMoveRefId(null);
-                            }}
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="h-px bg-white/10 my-3" />
-
                       <button
                         onClick={() => deleteSingleItem(refId)}
                         className="w-full flex items-center gap-3 px-3 py-3 rounded-[12px] hover:bg-white/10 text-white text-sm"
@@ -5035,103 +4662,6 @@ export default function SavedCollection() {
     );
   };
 
-  const renderFolderGrid = () => {
-    if (loading) return <div className="text-center text-white/80 py-10">Loading your saved items…</div>;
-
-    if (!folders.length) {
-      /* Nothing at all — folders AND loose saves both empty. That's the only
-         case worth a full empty state now.
-
-         It used to fire on "no folders" alone, which after the heading change
-         meant someone who had just saved a product was shown a large "No
-         folders yet" over the top of the card they had come to look at. */
-      if (directItems.length) return null;
-
-      return (
-        <div className="text-center py-16">
-          <img src="/icons/void.png" alt="" className="mx-auto mb-6 h-32 sm:h-40 w-auto opacity-90" />
-          <p className="text-white text-lg sm:text-xl">Nothing saved yet</p>
-          <p className="text-white/70 mt-2 text-sm sm:text-base">
-            Saved items show up here. Save with a Name/Title to group them into a folder.
-          </p>
-        </div>
-      );
-    }
-
-    return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6 lg:gap-8">
-        {folders.map((c, idx) => {
-          const isMenu = menuForFolder === c.title;
-          const cover = itemImage((c.items || [])[0], idx);
-          const count = (c.items || []).length;
-
-          return (
-            <Card
-              key={c.title}
-              className="overflow-hidden w-full"
-              style={{
-                borderRadius: 24,
-                borderBottomWidth: 1,
-                borderLeftWidth: 1,
-                borderColor: "rgba(255,255,255,0.1)",
-                background: "#1C1C1C",
-              }}
-            >
-              <CardContent className="relative p-4" ref={isMenu ? menuScopeRef : undefined}>
-                <div
-                  className="relative w-full overflow-hidden group cursor-pointer"
-                  style={{ height: 220, borderRadius: 16, backgroundColor: "#0B0B0B", margin: "0 auto" }}
-                  onClick={() => openFolder(c.title)}
-                  title={c.title}
-                  aria-label={c.title}
-                >
-                  <img src={cover} alt={c.title} className="w-full h-full object-cover rounded-[16px]" />
-                  <div className="absolute top-3 left-3 px-3 py-1 text-[11px] font-semibold text-white rounded-full" style={{ background: GRADIENT }}>
-                    {count} {count === 1 ? "ITEM" : "ITEMS"}
-                  </div>
-                </div>
-
-                <div className="mt-3 flex items-start justify-between gap-3">
-                  <h3 className="text-[15px] sm:text-[16px] font-semibold text-white break-words">{c.title}</h3>
-
-                  <button
-                    type="button"
-                    onClick={() => setMenuForFolder(isMenu ? null : c.title)}
-                    className="p-1 rounded-full hover:bg-white/10 shrink-0"
-                    aria-label="Folder menu"
-                  >
-                    <MoreHorizontal className="h-5 w-5 text-white/85" />
-                  </button>
-                </div>
-
-                {isMenu && (
-                  <div className="mt-3 rounded-[16px] p-2 shadow-lg border border-white/10 bg-[#333335]">
-                    <button
-                      onClick={() => {
-                        setMenuForFolder(null);
-                        startRenameFolder(c.title);
-                      }}
-                      className="w-full flex items-center gap-3 px-3 py-3 rounded-[12px] hover:bg-white/10 text-white text-sm"
-                    >
-                      <Pencil className="h-4 w-4" />
-                      Rename folder
-                    </button>
-                    <button
-                      onClick={() => deleteFolder(c.title)}
-                      className="w-full flex items-center gap-3 px-3 py-3 rounded-[12px] hover:bg-white/10 text-white text-sm"
-                    >
-                      <Trash className="h-4 w-4" />
-                      Delete folder
-                    </button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-    );
-  };
 
   return (
     <div className="dark min-h-screen bg-background text-foreground">
@@ -5172,12 +4702,7 @@ export default function SavedCollection() {
                     key={t.id}
                     onClick={() => {
                       setTab(t.id);
-                      setMenuForFolder(null);
                       setMenuForDirect(null);
-                      if (viewingFolder) {
-                        const qs = new URLSearchParams({ tab: t.id, folder: viewingFolder });
-                        history.replaceState({ folder: viewingFolder, tab: t.id }, "", `/folder-save?${qs.toString()}`);
-                      }
                     }}
                     className={`flex items-center gap-2 rounded-full px-3 sm:px-4 py-2 text-xs sm:text-sm whitespace-nowrap transition ${
                       active
@@ -5194,10 +4719,9 @@ export default function SavedCollection() {
           </div>
         </div>
 
-        <>
-          {!viewingFolder ? renderFolderGrid() : renderFolderPage()}
-          {!viewingFolder && renderAllSaved()}
-        </>
+        {/* The folder grid and the per-folder page that used to switch in here
+            are gone — see the note on directItems. One list, always. */}
+        {renderAllSaved()}
       </div>
 
       {/* The marketplace's own details panel, opened from a saved product card.
@@ -5219,39 +4743,8 @@ export default function SavedCollection() {
         }}
       />
 
-      {editingFolder && (
-        <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#1C1C1C] border border-white/10 rounded-2xl p-3 shadow-xl w-[92vw] sm:w-[min(90vw,520px)]">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-            <input
-              value={editFolderValue}
-              onChange={(e) => setEditFolderValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") confirmRenameFolder();
-                if (e.key === "Escape") setEditingFolder(null);
-              }}
-              className="h-10 flex-1 rounded-xl bg-[#252526] px-3 text-white outline-none"
-              placeholder="Collection name"
-              autoFocus
-            />
-            <Button
-              className="h-10 rounded-full text-white"
-              style={{ background: GRADIENT }}
-              disabled={!editFolderValue.trim()}
-              onClick={confirmRenameFolder}
-            >
-              Save
-            </Button>
-            <Button
-              className="h-10 rounded-full text-white"
-              style={{ background: "#333335" }}
-              variant="outline"
-              onClick={() => setEditingFolder(null)}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
+      {/* The rename-folder bar that docked at the bottom of this page is gone
+          with the folders — there is nothing left to rename. */}
 
       <div className="mt-16 sm:mt-20">
         <Footer />

@@ -1218,7 +1218,19 @@ router.get("/history", requireAuth, async (req, res) => {
   try {
     const purchases = await Purchase.find({ buyer: req.user._id })
       .sort({ purchasedAt: -1 })
-      .populate("prompt", "title free price deleted")
+      /* categories, and their names.
+
+         Only "title free price deleted" came back, so every purchased product
+         reached My Products with no category at all and rendered the "General"
+         fallback — on every card, whatever the seller had actually filed it
+         under. The nested populate is the part that matters: without it
+         `categories` is a list of ObjectIds, which resolves to no name just as
+         surely as an empty list did. */
+      .populate({
+        path: "prompt",
+        select: "title free price deleted categories exclusive sold",
+        populate: { path: "categories", select: "name" },
+      })
       .lean();
 
     /* When each purchase stops being refundable, computed here rather than in

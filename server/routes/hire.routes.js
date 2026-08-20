@@ -367,6 +367,9 @@ const {
   normalizeDeliverableLink,
   uploadWorkFileToAzure,
   getWorkFileDownloadUrl,
+  isAllowedWorkFile,
+  WORK_FILE_MAX_BYTES,
+  WORK_FILE_MAX_LABEL,
 } = require("../utils/serviceWorkStorage");
 const {
   isWatermarkableImage,
@@ -423,12 +426,57 @@ const workStorage = multer.diskStorage({
   },
 });
 
+/* Same ceiling and same allowlist as a service booking's work file — this is
+   the same act (a creator handing over the delivery) and there is no reason the
+   two flows disagree.
+
+   They did disagree: this was 50 MB while the service route took
+   WORK_FILE_MAX_BYTES and the shared SubmitWorkModal offered the larger number
+   to both. So a freelancer on a hire deal picked a file the modal accepted, sat
+   through the upload, and got a bare multer error — and the modal, which reads
+   `message` out of a JSON body, had nothing to show but "Failed to upload".
+   That is the same wall a revision resubmission hits, when the seller is
+   re-sending the whole deliverable a second time. */
 const uploadWorkFile = multer({
   storage: workStorage,
-  limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB
+  limits: { fileSize: WORK_FILE_MAX_BYTES, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    if (isAllowedWorkFile(file.originalname)) return cb(null, true);
+    cb(new Error("unsupported_work_file_type"));
   },
 });
+
+/* Multer's failures used to reach Express's default handler, which answers with
+   an HTML error page; the client's res.json() then threw and the freelancer saw
+   a generic failure with no reason. Mirrors handleWorkFileUpload in
+   serviceRoutes.js. */
+function handleWorkFileUpload(req, res, next) {
+  uploadWorkFile.single("file")(req, res, (err) => {
+    if (!err) return next();
+
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        success: false,
+        error: "file_too_large",
+        message: `Each file must be under ${WORK_FILE_MAX_LABEL}. For anything bigger, share a GitHub repo or Drive link instead.`,
+      });
+    }
+    if (String(err.message).includes("unsupported_work_file_type")) {
+      return res.status(400).json({
+        success: false,
+        error: "unsupported_work_file_type",
+        message:
+          "That file type isn't accepted. Zip the folder and upload the .zip — that's also the only way to keep a code project's folder structure intact.",
+      });
+    }
+    console.error("hire work upload error:", err);
+    return res.status(400).json({
+      success: false,
+      error: "upload_failed",
+      message: "Could not read that file. Please try again.",
+    });
+  });
+}
 
 
 
@@ -630,11 +678,20 @@ router.post("/create-proposal", requireAuth, blockIfSuspended, async (req, res) 
 
 
 // ─── Upload work file before submitting project ──────────
-router.post("/:dealId/upload-work-file", requireAuth, uploadWorkFile.single("file"), async (req, res) => {
+router.post("/:dealId/upload-work-file", requireAuth, handleWorkFileUpload, async (req, res) => {
+  /* Multer has already written the file to disk by the time any of the checks
+     below run, so every early return has to remove it — otherwise a rejected
+     upload leaves gigabytes in uploads/hire-work forever. Only the success path
+     hands the temp copy to uploadWorkFileToAzure(), which unlinks it itself. */
+  const cleanupTemp = () => {
+    if (req.file?.path) fs.promises.unlink(req.file.path).catch(() => {});
+  };
+
   try {
     const deal = await HireDeal.findById(req.params.dealId);
 
     if (!deal) {
+      cleanupTemp();
       return res.status(404).json({
         success: false,
         error: "Deal not found",
@@ -642,6 +699,7 @@ router.post("/:dealId/upload-work-file", requireAuth, uploadWorkFile.single("fil
     }
 
     if (String(deal.freelancerId) !== String(req.user._id)) {
+      cleanupTemp();
       return res.status(403).json({
         success: false,
         error: "Only freelancer can upload work files",
@@ -649,6 +707,7 @@ router.post("/:dealId/upload-work-file", requireAuth, uploadWorkFile.single("fil
     }
 
     if (!["FUNDED", "IN_PROGRESS", "REVISION_REQUESTED"].includes(deal.status)) {
+      cleanupTemp();
       return res.status(400).json({
         success: false,
         error: `Cannot upload files. Current status: ${deal.status}`,
@@ -686,10 +745,12 @@ router.post("/:dealId/upload-work-file", requireAuth, uploadWorkFile.single("fil
       },
     });
   } catch (err) {
+    cleanupTemp();
     console.error("upload work file error:", err);
     return res.status(500).json({
       success: false,
       error: "Failed to upload work file",
+      message: "Upload failed on our side. Please try that file again.",
     });
   }
 });
