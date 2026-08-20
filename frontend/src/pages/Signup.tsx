@@ -1513,7 +1513,7 @@ const Signup = () => {
   `}</style>
 
   {/* Back */}
-  <BackLink to="/" className="mb-4" />
+  <BackLink fallbackTo="/" className="mb-4" />
 
   {/* Heading */}
   <div className="text-center px-2 mb-4">
@@ -1703,7 +1703,7 @@ const Signup = () => {
          <div className="hidden lg:flex min-h-screen items-center justify-center px-5 sm:px-8 md:px-10">
           <div className="w-full max-w-[520px]">
             <div className="mb-6">
-              <BackLink to="/" />
+              <BackLink fallbackTo="/" />
             </div>
 
              <h1 className="text-[36px] leading-[1] font-normal text-[#FFFFFF]">

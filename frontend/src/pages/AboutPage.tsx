@@ -545,10 +545,16 @@ export default function AboutPage() {
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
 
+              {/* hover:text-white is doing real work here. The `outline`
+                  variant ships with `hover:text-accent-foreground`, and outside
+                  a `.dark` root that token is near-black (--accent-foreground:
+                  222 47% 11%) — so hovering this button turned the label black
+                  on a black page and it vanished. The variant's hover:bg-accent
+                  is overridden for the same reason. */}
               <Button
                 variant="outline"
                 onClick={() => navigate("/support")}
-                className="h-11 px-6 rounded-full bg-transparent text-white border-white/20 hover:bg-white/5"
+                className="h-11 px-6 rounded-full bg-transparent text-white border-white/20 hover:bg-white/10 hover:text-white hover:border-white/40"
               >
                 Contact Support
               </Button>

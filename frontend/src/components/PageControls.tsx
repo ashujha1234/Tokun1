@@ -114,12 +114,19 @@ export default function PageControls() {
         <ArrowUp className="h-5 w-5" strokeWidth={2.5} />
       </button>
 
-      {showBack && (
+      {/* FLOATING BACK BUTTON — PARKED, not deleted.
+
+          Commented out on request for now. Back-to-top above stays: that one is
+          about a long page, this one duplicated the browser's own back button
+          on every screen in the app, sitting over page content to do it.
+
+          Everything it needs is still here (showBack, NO_BACK_ON, the shared
+          `button` class) so putting it back is uncommenting this block. The
+          inline BackLink on the auth screens is unaffected — that one is part of
+          those layouts, not this overlay. */}
+      {/* {showBack && (
         <button
           type="button"
-          /* navigate(-1), the same thing the inline BackLink does when it isn't
-             given a destination: from a page reached by clicking around, "back"
-             is genuinely wherever you came from. */
           onClick={() => navigate(-1)}
           aria-label="Go back"
           title="Go back"
@@ -132,7 +139,7 @@ export default function PageControls() {
         >
           <ArrowLeft className="h-5 w-5" strokeWidth={2.5} />
         </button>
-      )}
+      )} */}
     </div>
   );
 }

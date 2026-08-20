@@ -1081,6 +1081,11 @@ body.is-loading { overflow: hidden; }
   overflow: hidden;
   background: #06040f;
   contain: layout style;
+  /* Where the scroll STOPS when you arrive here from the hero's "Scroll down"
+     (or any #what-we-offer link). The landing nav is fixed and ~80px tall, so
+     without this the section's top padding lands under it and the
+     "Capabilities" eyebrow is half-hidden by the bar you just scrolled past. */
+  scroll-margin-top: 96px;
 }
 
 .what-we-offer__shader-wrap {
@@ -1283,7 +1288,9 @@ body.is-loading { overflow: hidden; }
 }
 
 @media (max-width: 600px) {
-  .what-we-offer { padding: 32px 20px 72px; }
+  /* Shorter bar on a phone (68px row), so a 96px stop would leave a visible
+     band of the section above the heading. */
+  .what-we-offer { padding: 32px 20px 72px; scroll-margin-top: 78px; }
   .what-we-offer__header { margin-bottom: 40px; }
   .what-we-offer__grid { grid-template-columns: 1fr; gap: 16px; }
 }

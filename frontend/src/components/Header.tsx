@@ -2605,6 +2605,8 @@ import { userInitials, userAvatarUrl } from "@/lib/userInitials";
 import DetailsPrompt, { type MarketplacePrompt } from "@/components/DetailsPrompt";
 import { fetchPromptDetails } from "@/lib/promptDetails";
 import { withTokunBranding } from "@/lib/razorpayTheme";
+// What a signed-out visitor gets instead of everything in this file.
+import GuestHeader from "@/components/GuestHeader";
 // import { useAuth } from "@/contexts/AuthContext";
 // import { toast } from "@/components/ui/use-toast";
 
@@ -3985,9 +3987,22 @@ useEffect(() => {
   };
 }, [user?._id, user?.id, refreshChatBadge]);
 
+  /* NO SESSION → the visitor header, the same one the landing page shows.
+     Everything below this line assumes a signed-in user: the cart is keyed on
+     the token, Upload Product leads to a login wall, notifications need an
+     account. A visitor on /about or /prompt-marketplace was getting that whole
+     toolbar plus a lone "Log in" pill, and no route to signing up.
+
+     Placed here, after every hook has run, so the hook order is identical on
+     both branches — an early return above them would break the rules of hooks
+     the moment a session resolves. `isReady` matters: during session restore we
+     know nothing yet, and flashing "Login / Get Started" at a returning user
+     before their avatar appears is worse than a beat of nothing. */
+  if (isReady && !isAuthenticated) return <GuestHeader />;
+
   return (
     <>
-    
+
 <header
   className={`site-header sticky top-0 left-0 right-0 z-50 flex justify-center pointer-events-none${
     scrolled ? " site-header--scrolled" : ""

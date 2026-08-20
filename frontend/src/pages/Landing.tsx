@@ -13325,6 +13325,35 @@ const heroFadeUp = {
   }),
 }
 
+/**
+ * The scroll cue's own click handler.
+ *
+ * It was a bare `href="#what-we-offer"`, which the browser answers by JUMPING
+ * — the hero is gone and What We Offer is simply there, with no sense of having
+ * moved between them. Worse, the anchor jump puts the section's top flush with
+ * the viewport top, and the landing nav is FIXED over that, so the "Capabilities"
+ * eyebrow and part of the heading landed underneath the bar.
+ *
+ * So: glide there, and stop below the nav (the offset is `scroll-margin-top` on
+ * the section, in landing-page.css, so it applies to a hash-link arrival too).
+ * The href stays as-is — it's still the correct link if JS hasn't loaded, and
+ * middle-click still works.
+ */
+function scrollToWhatWeOffer(e: React.MouseEvent<HTMLAnchorElement>) {
+  const target = document.getElementById('what-we-offer')
+  if (!target) return // let the browser follow the href
+
+  e.preventDefault()
+  target.scrollIntoView({
+    // Honoured, not assumed: a smooth 100vh glide is exactly what someone with
+    // vestibular sensitivity turned this setting off for.
+    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ? 'auto'
+      : 'smooth',
+    block: 'start',
+  })
+}
+
 function Hero() {
   return (
     <section className="hero">
@@ -13405,7 +13434,11 @@ function Hero() {
         animate={{ opacity: 1 }}
         transition={{ delay: 1.5, duration: 0.8 }}
       >
-        <a href="#what-we-offer" className="hero__scroll-link">
+        <a
+          href="#what-we-offer"
+          className="hero__scroll-link"
+          onClick={scrollToWhatWeOffer}
+        >
           <div className="hero__scroll-inner">
             <Mouse size={20} strokeWidth={1.5} />
             <span>Scroll down</span>
