@@ -34,6 +34,20 @@ const ReviewMediaSchema = new mongoose.Schema(
     mimeType: { type: String, default: "" },
     kind: { type: String, enum: ["image", "video", "file"], default: "file" },
     uploadedAt: { type: Date, default: Date.now },
+
+    /* A screen recording is the most common video checkpoint there is, and it
+       is shared MID-PROJECT — the moment a buyer has the most to gain by taking
+       the work and cancelling. So it gets the same burned-in watermarked
+       re-encode a video deliverable does; see ServiceOrder's DeliverableSchema
+       and utils/deliverableVideoPreview.js. */
+    previewBlobName: { type: String, default: "" },
+    previewStatus: {
+      type: String,
+      enum: ["", "PENDING", "READY", "FAILED"],
+      default: "",
+    },
+    previewAttempts: { type: Number, default: 0 },
+    previewError: { type: String, default: "" },
   },
   { _id: false }
 );

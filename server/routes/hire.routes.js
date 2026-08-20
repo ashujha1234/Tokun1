@@ -363,6 +363,7 @@ const { validateTargetDate, escrowExpiryFrom } = require("../utils/escrowWindow"
 const { transactionSplit, SERVICE_COMMISSION_PERCENT } = require("../utils/fees");
 const { normalizeBriefAttachments } = require("./briefAttachments");
 const { resolveHireRevisionsAllowed, getRevisionState } = require("../utils/revisionPolicy");
+const { tempUploadDir } = require("../utils/privateUploadDirs");
 const {
   normalizeDeliverableLink,
   uploadWorkFileToAzure,
@@ -371,11 +372,11 @@ const {
   WORK_FILE_MAX_BYTES,
   WORK_FILE_MAX_LABEL,
 } = require("../utils/serviceWorkStorage");
-const {
-  isWatermarkableImage,
-  isSettled,
-  watermarkImageBuffer,
-} = require("../utils/deliverableWatermark");
+const { isPreviewableVideo, isSettled } = require("../utils/deliverableWatermark");
+// The one place that decides what a client may see before the money moves —
+// shared with the service and checkpoint routes.
+const { serveHeldPreview } = require("../utils/escrowPreviewGate");
+const { warmVideoPreview } = require("../utils/deliverableVideoPreview");
 const { fetchTransferIdsByAccount } = require("../utils/routePayouts");
 const { generateInvoicePDF } = require("../services/invoice.service");
 const { sendInvoiceEmail } = require("../services/email.service");
@@ -404,15 +405,21 @@ const getOrCreateWallet = async (userId) => {
   return wallet;
 };
 // ─── Work file upload setup ─────────────────────────────
-const workUploadDir = path.join(__dirname, "../uploads/hire-work");
+/* Pre-Azure deliverables, read-only — the gated download route still streams
+   these for old records. Nothing writes here any more and /uploads no longer
+   serves it; see utils/privateUploadDirs.js. */
+const legacyWorkDir = path.join(__dirname, "../uploads/hire-work");
 
-if (!fs.existsSync(workUploadDir)) {
-  fs.mkdirSync(workUploadDir, { recursive: true });
-}
+/* The scratch copy multer writes before uploadWorkFileToAzure() streams it into
+   the private container. Outside the served tree: this used to be
+   uploads/hire-work, which express.static hands to anyone — so a delivery was
+   public for the length of its own upload, and permanently if the process died
+   mid-way. */
+const workTempDir = tempUploadDir("hire-work");
 
 const workStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, workUploadDir);
+    cb(null, workTempDir);
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname || "");
@@ -756,7 +763,10 @@ router.post("/:dealId/upload-work-file", requireAuth, handleWorkFileUpload, asyn
 });
 
 // ─── NDA UPLOAD ────────────────────────────────────────────────────────────────
-const ndaUploadDir = path.join(__dirname, "../uploads/nda");
+/* Signed NDAs, outside /uploads: an agreement between two parties is not
+   public, and the UI reads the stored URL only as a "has this side signed?"
+   flag (see components/NdaCard.tsx), never as a link. */
+const ndaUploadDir = tempUploadDir("nda");
 if (!fs.existsSync(ndaUploadDir)) fs.mkdirSync(ndaUploadDir, { recursive: true });
 
 const ndaStorage = multer.diskStorage({
@@ -1332,67 +1342,63 @@ router.get("/:dealId/deliverables/:index/download", requireAuth, async (req, res
       return res.json({ success: true, url: deliverable.url, kind: "link" });
     }
 
-    const needsWatermark =
-      isClient &&
-      !isSettled(deal.fundsStatus) &&
-      isWatermarkableImage(deliverable.name, deliverable.mimeType);
+    // Pre-Azure record: still on this host's disk. Resolved here because the
+    // escrow gate below needs to know where the bytes live either way.
+    const legacyName = path.basename(String(deliverable.url || ""));
+    const legacyPath = legacyName ? path.join(legacyWorkDir, legacyName) : "";
+    const legacyExists = !!legacyPath && fs.existsSync(legacyPath);
 
+    if (!deliverable.blobName && !legacyExists) {
+      return res.status(404).json({
+        success: false,
+        error: "file_missing",
+        message: "This file is no longer available. Ask the creator to re-upload it.",
+      });
+    }
+
+    /* Same rule as the service route, decided by the same code: while the money
+       is held the client gets MARKED BYTES or nothing — a stamped image, a
+       watermark-burned video re-encode, or a refusal. Never the original.
+
+       What this replaces is worth naming. An image whose format sharp couldn't
+       decode came back untouched with `X-Tokun-Watermarked: 1` on it, and a
+       video came back as a signed URL to the master with the mark drawn in CSS
+       over the player. Both told the client they were protected while handing
+       over the clean file. See utils/escrowPreviewGate.js. */
+    if (isClient && !isSettled(deal.fundsStatus)) {
+      return serveHeldPreview({
+        res,
+        name: deliverable.name,
+        mimeType: deliverable.mimeType,
+        blobName: deliverable.blobName || "",
+        legacyPath: deliverable.blobName ? "" : legacyPath,
+        state: deliverable,
+        persist: (patch) =>
+          HireDeal.updateOne(
+            { _id: deal._id },
+            {
+              $set: Object.fromEntries(
+                Object.entries(patch).map(([k, v]) => [`deliverables.${index}.${k}`, v])
+              ),
+            }
+          ),
+      });
+    }
+
+    // Settled, or the freelancer asking for their own file: the original.
     if (deliverable.blobName) {
-      if (needsWatermark) {
-        // Fetched server-side and re-encoded — handing back a signed URL would
-        // give away the untouched original.
-        const signedUrl = getWorkFileDownloadUrl(deliverable.blobName);
-        const upstream = await fetch(signedUrl);
-        if (!upstream.ok) throw new Error(`blob fetch failed: ${upstream.status}`);
-
-        const stamped = await watermarkImageBuffer(Buffer.from(await upstream.arrayBuffer()));
-        res.setHeader("Content-Type", "image/png");
-        res.setHeader("X-Tokun-Watermarked", "1");
-        res.setHeader(
-          "Content-Disposition",
-          `inline; filename="preview-${String(deliverable.name || "image").replace(/[^\x20-\x7E]/g, "_")}"`
-        );
-        return res.send(stamped);
-      }
-
       return res.json({
         success: true,
         kind: "file",
         name: deliverable.name,
         url: getWorkFileDownloadUrl(deliverable.blobName),
-        /* Whether the client is looking at this while their money is still
-           held. Images answer the same question with the X-Tokun-Watermarked
-           header, because for them the server can stamp the bytes on the way
-           out. It can't do that to a video in the time a request has — so the
-           fact travels instead, and the player draws the mark over it.
-
-           Said plainly: that overlay is on the PLAYER, not burned into the
-           file. It stops a casual screen-recording from being clean; it does
-           not stop someone who reads the network tab. Burning it in properly
-           needs an ffmpeg pass at upload time. */
-        heldInEscrow: isClient && !isSettled(deal.fundsStatus),
+        heldInEscrow: false,
       });
     }
 
-    // Pre-Azure record: still on this host's disk. Streamed through the same
-    // auth check rather than handing back the public /uploads path.
-    const legacyName = path.basename(String(deliverable.url || ""));
-    const legacyPath = path.join(workUploadDir, legacyName);
-    if (legacyName && fs.existsSync(legacyPath)) {
-      if (needsWatermark) {
-        const stamped = await watermarkImageBuffer(await fs.promises.readFile(legacyPath));
-        res.setHeader("Content-Type", "image/png");
-        res.setHeader("X-Tokun-Watermarked", "1");
-        return res.send(stamped);
-      }
-      return res.download(legacyPath, deliverable.name || legacyName);
-    }
-
-    return res.status(404).json({
-      success: false,
-      error: "file_missing",
-      message: "This file is no longer available. Ask the creator to re-upload it.",
-    });
+    // Streamed through the same auth check rather than handing back the public
+    // /uploads path.
+    return res.download(legacyPath, deliverable.name || legacyName);
   } catch (err) {
     console.error("download hire deliverable error:", err);
     return res.status(500).json({ success: false, error: "server_error" });
@@ -1492,6 +1498,28 @@ router.post("/:dealId/submit-work", requireAuth, async (req, res) => {
     ];
     deal.submissionNote = note || "";
     await deal.save();
+
+    /* Start the watermarked review copy of any video straight away — an ffmpeg
+       pass over a real edit is minutes, and the client shouldn't meet a spinner
+       on their first click. Fire-and-forget: their own request re-checks and
+       records the outcome, and a failed encode must not fail this submission. */
+    deal.deliverables.forEach((d, i) => {
+      if (d.kind === "link" || !d.blobName) return;
+      if (!isPreviewableVideo(d.name, d.mimeType)) return;
+      warmVideoPreview({
+        blobName: d.blobName,
+        state: d,
+        persist: (patch) =>
+          HireDeal.updateOne(
+            { _id: deal._id },
+            {
+              $set: Object.fromEntries(
+                Object.entries(patch).map(([k, v]) => [`deliverables.${i}.${k}`, v])
+              ),
+            }
+          ),
+      });
+    });
 
     await Notification.create({
       senderId: req.user._id,

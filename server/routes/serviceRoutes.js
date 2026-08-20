@@ -131,11 +131,11 @@ const {
   isDeliveryOverdue,
 } = require("../utils/escrowWindow");
 const { normalizeBriefAttachments } = require("./briefAttachments");
-const {
-  isWatermarkableImage,
-  isSettled,
-  watermarkImageBuffer,
-} = require("../utils/deliverableWatermark");
+const { isPreviewableVideo, isSettled } = require("../utils/deliverableWatermark");
+/* Everything a buyer is allowed to see before the money moves is decided in
+   one place, shared with the hire and checkpoint routes. */
+const { serveHeldPreview } = require("../utils/escrowPreviewGate");
+const { warmVideoPreview } = require("../utils/deliverableVideoPreview");
 const {
   allowedCategoryNames,
   allowedSubCategoryNames,
@@ -155,6 +155,7 @@ const {
   ALLOWED_WORK_EXTENSIONS,
   normalizeDeliverableLink,
 } = require("../utils/serviceWorkStorage");
+const { tempUploadDir } = require("../utils/privateUploadDirs");
 const { generateInvoicePDF } = require("../services/invoice.service");
 const { sendInvoiceEmail } = require("../services/email.service");
 const {
@@ -175,11 +176,21 @@ const {
 const router = express.Router();
 
 // ─── Work file upload setup (mirrors hire.routes.js's hire-work dir) ───
-const workUploadDir = path.join(__dirname, "../uploads/service-work");
-if (!fs.existsSync(workUploadDir)) fs.mkdirSync(workUploadDir, { recursive: true });
+/* Where PRE-AZURE deliverables still live, read-only.
+   Kept only so the gated download route can still stream a record written
+   before work files moved to the private container. Nothing writes here any
+   more, and /uploads no longer serves it — see utils/privateUploadDirs.js. */
+const legacyWorkDir = path.join(__dirname, "../uploads/service-work");
+
+/* Where a new upload lands for the seconds between multer writing it and
+   uploadWorkFileToAzure() streaming it into the private container. Outside the
+   served tree: this used to be uploads/service-work, so every delivery was
+   readable over plain HTTP for the length of its own upload — and for good if
+   the process died in between. */
+const workTempDir = tempUploadDir("service-work");
 
 const workStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, workUploadDir),
+  destination: (req, file, cb) => cb(null, workTempDir),
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname || "");
     const base = path
@@ -236,7 +247,11 @@ function handleWorkFileUpload(req, res, next) {
 }
 
 // ─── NDA upload setup (mirrors hire.routes.js's nda dir) ───
-const ndaUploadDir = path.join(__dirname, "../uploads/service-nda");
+/* Signed NDAs. Written outside /uploads because a signed agreement between two
+   parties is not public — and the UI only ever reads the STORED URL as a
+   "has this side signed?" boolean, never as a link, so nothing is fetching it
+   over HTTP. */
+const ndaUploadDir = tempUploadDir("service-nda");
 if (!fs.existsSync(ndaUploadDir)) fs.mkdirSync(ndaUploadDir, { recursive: true });
 
 const ndaStorage = multer.diskStorage({
@@ -1382,71 +1397,74 @@ router.get("/orders/:orderId/deliverables/:index/download", requireAuth, async (
       return res.json({ success: true, url: deliverable.url, kind: "link" });
     }
 
-    /* Watermark a preview the buyer hasn't paid out for yet.
-       A client has to be able to see the work to approve it — but for image
+    // Pre-Azure record: the file is still on this host's disk under the URL
+    // stored at the time. Resolved up here because the escrow gate below needs
+    // to know where the bytes are, whichever era the record is from.
+    const legacyName = path.basename(String(deliverable.url || ""));
+    const legacyPath = legacyName ? path.join(legacyWorkDir, legacyName) : "";
+    const legacyExists = !!legacyPath && fs.existsSync(legacyPath);
+
+    if (!deliverable.blobName && !legacyExists) {
+      return res.status(404).json({
+        success: false,
+        error: "file_missing",
+        message: "This file is no longer available. Ask the creator to re-upload it.",
+      });
+    }
+
+    /* WHILE THE MONEY IS HELD, THE BUYER GETS MARKED BYTES OR NOTHING.
+
+       A buyer has to be able to see the work to approve it — but for creative
        work, seeing it IS most of the value, and nothing stopped someone
-       previewing the final artwork and then cancelling. So while the money is
-       still held, the buyer gets a watermarked copy; the moment the escrow
-       settles they get the original.
-       The seller is never watermarked — it's their own file. */
-    const needsWatermark =
-      isBuyer && !isSettled(order.fundsStatus) &&
-      isWatermarkableImage(deliverable.name, deliverable.mimeType);
+       previewing the final artwork and then cancelling. So:
 
+         image  → re-encoded with the watermark composited in
+         video  → a watermark-burned re-encode, prepared in the background
+         other  → locked; a zip or a PSD has no protectable preview form
+
+       All three answers, and the refusals when a mark can't be made, live in
+       utils/escrowPreviewGate.js — the same decision the hire route and the
+       checkpoint route make.
+
+       The seller is never gated on their own file, and this branch is
+       buyer-only, so an admin ruling on a dispute is unaffected. */
+    if (isBuyer && !isSettled(order.fundsStatus)) {
+      return serveHeldPreview({
+        res,
+        name: deliverable.name,
+        mimeType: deliverable.mimeType,
+        blobName: deliverable.blobName || "",
+        legacyPath: deliverable.blobName ? "" : legacyPath,
+        state: deliverable,
+        // Records the video re-encode against THIS deliverable, so the next
+        // view (and the buyer's other device) reuses it instead of re-encoding.
+        persist: (patch) =>
+          ServiceOrder.updateOne(
+            { _id: order._id },
+            {
+              $set: Object.fromEntries(
+                Object.entries(patch).map(([k, v]) => [`deliverables.${index}.${k}`, v])
+              ),
+            }
+          ),
+      });
+    }
+
+    // Settled, or the seller asking for their own file: the original, untouched.
     if (deliverable.blobName) {
-      if (needsWatermark) {
-        // Fetched server-side and re-encoded, because a SAS URL would hand
-        // over the untouched original.
-        const signedUrl = getWorkFileDownloadUrl(deliverable.blobName);
-        const upstream = await fetch(signedUrl);
-        if (!upstream.ok) throw new Error(`blob fetch failed: ${upstream.status}`);
-
-        const stamped = await watermarkImageBuffer(
-          Buffer.from(await upstream.arrayBuffer())
-        );
-
-        res.setHeader("Content-Type", "image/png");
-        res.setHeader("X-Tokun-Watermarked", "1");
-        res.setHeader(
-          "Content-Disposition",
-          `inline; filename="preview-${String(deliverable.name || "image").replace(/[^\x20-\x7E]/g, "_")}"`
-        );
-        return res.send(stamped);
-      }
-
       return res.json({
         success: true,
         kind: "file",
         name: deliverable.name,
         url: getWorkFileDownloadUrl(deliverable.blobName),
-        // See the matching note on the hire route: images get watermarked
-        // bytes, everything else gets told the money is still held so the
-        // player can mark its own surface.
-        heldInEscrow: isBuyer && !isSettled(order.fundsStatus),
+        heldInEscrow: false,
       });
     }
 
-    // Pre-Azure record: the file is still on this host's disk under the URL
-    // stored at the time. Streamed rather than redirected so it goes through
-    // the same auth check as everything else, instead of handing back the
-    // public /uploads path this route exists to replace.
-    const legacyName = path.basename(String(deliverable.url || ""));
-    const legacyPath = path.join(workUploadDir, legacyName);
-    if (legacyName && fs.existsSync(legacyPath)) {
-      if (needsWatermark) {
-        const stamped = await watermarkImageBuffer(await fs.promises.readFile(legacyPath));
-        res.setHeader("Content-Type", "image/png");
-        res.setHeader("X-Tokun-Watermarked", "1");
-        return res.send(stamped);
-      }
-      return res.download(legacyPath, deliverable.name || legacyName);
-    }
-
-    return res.status(404).json({
-      success: false,
-      error: "file_missing",
-      message: "This file is no longer available. Ask the creator to re-upload it.",
-    });
+    // Streamed rather than redirected so it goes through the same auth check as
+    // everything else, instead of handing back the public /uploads path this
+    // route exists to replace.
+    return res.download(legacyPath, deliverable.name || legacyName);
   } catch (err) {
     console.error("download service deliverable error:", err);
     return res.status(500).json({ success: false, error: "server_error" });
@@ -1594,6 +1612,31 @@ router.post("/orders/:orderId/submit-work", requireAuth, async (req, res) => {
       },
     ];
     await order.save();
+
+    /* Start the watermarked review copy of any video NOW, not when the buyer
+       first clicks Preview. An ffmpeg pass over a real edit is minutes, and
+       making the buyer wait through it in front of a spinner is how a delivery
+       feels broken. Fire-and-forget on purpose: the buyer's own request
+       re-checks and records the result either way, and a failed encode must not
+       fail the seller's submission. */
+    order.deliverables.forEach((d, i) => {
+      if (d.kind === "link") return;
+      if (!isPreviewableVideo(d.name, d.mimeType)) return;
+      warmVideoPreview({
+        blobName: d.blobName || "",
+        legacyPath: "",
+        state: d,
+        persist: (patch) =>
+          ServiceOrder.updateOne(
+            { _id: order._id },
+            {
+              $set: Object.fromEntries(
+                Object.entries(patch).map(([k, v]) => [`deliverables.${i}.${k}`, v])
+              ),
+            }
+          ),
+      });
+    });
 
     try {
       await Notification.create({
@@ -1983,7 +2026,14 @@ router.get("/orders/:orderId", requireAuth, async (req, res) => {
       // The terms the listing promised — deliverables, delivery time, revisions
       // — live on the Service, not the order, which only ever snapshotted the
       // title. Without this the booking detail popup can't show what was sold.
-      .populate("serviceId", "title description deliverables delivery revisions media price")
+      /* screens/prototype/fileType are the legacy package fields — no longer
+         collected, but a listing created before `deliverables` existed has
+         nothing else describing what it includes, and the NDA quotes that list
+         as the agreed scope (see NdaCard.tsx). */
+      .populate(
+        "serviceId",
+        "title description deliverables delivery revisions media price screens prototype fileType"
+      )
       .lean();
 
     if (!order) return res.status(404).json({ success: false, error: "order_not_found" });

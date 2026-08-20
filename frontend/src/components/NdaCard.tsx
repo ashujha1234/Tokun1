@@ -13,109 +13,381 @@ function formatDate(value?: string | Date) {
   if (Number.isNaN(d.getTime())) return String(value);
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
 }
-function money(n?: number) {
-  return `₹${Number(n || 0).toLocaleString("en-IN")}.00`;
+
+/** Date AND time, for the things whose exact moment is the point — a signature. */
+function formatDateTime(value?: string | Date) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return `${d.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}, ${d.toLocaleTimeString(
+    "en-IN",
+    { hour: "2-digit", minute: "2-digit" }
+  )} IST`;
 }
+
+function money(n?: number | null, currency = "INR") {
+  const value = Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return currency === "INR" ? `₹${value}` : `${currency} ${value}`;
+}
+
+function fileSize(bytes?: number) {
+  const n = Number(bytes || 0);
+  if (!n) return "";
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/* Status codes are internal vocabulary; an agreement two people sign shouldn't
+   read "HELD_BY_TOKUN". Anything unmapped falls back to a de-snaked version
+   rather than being hidden, so a new state never silently disappears from a
+   signed document. */
+const FUNDS_LABELS: Record<string, string> = {
+  NOT_HELD: "Not yet funded",
+  HELD_BY_TOKUN: "Held in escrow by Tokun",
+  RELEASED_TO_SELLER: "Released to the creator",
+  RELEASED_TO_FREELANCER: "Released to the creator",
+  AUTO_RELEASED: "Auto-released to the creator",
+  REFUNDED_TO_BUYER: "Refunded to the client",
+  PARTIALLY_SETTLED: "Settled in part between the parties",
+  DISPUTED: "Under dispute",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  PENDING_PAYMENT: "Awaiting payment",
+  ACCEPTED_WAITING_PAYMENT: "Accepted — awaiting payment",
+  FUNDED: "Funded, work not started",
+  IN_PROGRESS: "Work in progress",
+  WORK_SUBMITTED: "Work submitted, under review",
+  REVISION_REQUESTED: "Revision requested",
+  COMPLETED: "Completed",
+  CANCELLED: "Cancelled",
+  DISPUTED: "Under dispute",
+  REFUNDED: "Refunded",
+  SETTLED: "Settled",
+};
+
+function humanise(code?: string, map: Record<string, string> = {}) {
+  const key = String(code || "");
+  if (!key) return "";
+  if (map[key]) return map[key];
+  return key
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/^./, (c) => c.toUpperCase());
+}
+
 function esc(s?: string) {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/** Free text the parties wrote, kept as they wrote it — line breaks and all. */
+function escBlock(s?: string) {
+  return esc(s).replace(/\r?\n/g, "<br/>");
+}
+
 export type NdaData = {
   dealId?: string;
+  /** Which side of the marketplace this came from — the wording differs. */
+  engagement?: "service" | "hire";
+
+  // ── what the work is ──
   projectTitle?: string;
+  /** The brief: what the client actually asked for, in their words. */
   description?: string;
+  /** The listing that was booked, and its public description (services only). */
+  serviceTitle?: string;
+  serviceDescription?: string;
+  /** "What you get" bullets from the listing, snapshotted into the agreement. */
+  packageItems?: string[];
+  /** Reference material attached to the brief — named, never linked. */
+  attachments?: { name?: string; size?: number }[];
+
+  // ── terms ──
+  deliveryLabel?: string;
+  deliveryDays?: number | null;
+  deliveryDueAt?: string;
+  targetDate?: string;
+  revisionsLabel?: string;
+  revisionsAllowed?: number | null;
+
+  // ── money ──
   budget?: number;
   amount?: number;
-  targetDate?: string;
+  clientFee?: number;
+  totalPayable?: number;
+  currency?: string;
+
+  // ── state ──
+  status?: string;
+  paymentStatus?: string;
+  fundsStatus?: string;
+  escrowExpiresAt?: string;
+  bookedAt?: string;
+  paidAt?: string;
+
+  // ── parties ──
   clientName?: string;
+  clientEmail?: string;
   freelancerName?: string;
+  freelancerEmail?: string;
+  clientSignedAt?: string;
+  freelancerSignedAt?: string;
+
   effectiveDate?: string;
 };
 
 /* ---------- NDA HTML builder ---------- */
 
+/* The agreement.
+ *
+ * It used to carry seven facts: title, one line of description, budget, target
+ * date, two names and an ID. Everything that makes an engagement specific — what
+ * was actually ordered, what the listing promised, how many revisions, what the
+ * client attached to the brief, what was paid and what is still held in escrow —
+ * was on the order screen and nowhere in the document the parties signed. An NDA
+ * that can't identify the work it covers is decoration; if it ever has to be
+ * read in a dispute, the schedules below are the part that matters.
+ *
+ * Everything here comes from the order itself. Nothing is invented: a field the
+ * booking doesn't have renders as "Not specified" rather than a plausible
+ * default, because a signed document inventing terms is worse than one admitting
+ * a gap.
+ */
 export function buildNdaHtml(nda: NdaData, sigs?: { client?: string; freelancer?: string }): string {
-  const title = esc(nda.projectTitle || "Project Engagement");
-  const description = esc(nda.description || "Confidential project work as discussed between the parties.");
-  const budget = money(nda.budget ?? nda.amount);
-  const target = nda.targetDate ? esc(formatDate(nda.targetDate)) : "As mutually agreed";
+  const isService = nda.engagement === "service";
+  const currency = nda.currency || "INR";
+
+  const title = esc(nda.projectTitle || nda.serviceTitle || "Project Engagement");
   const dealId = esc(nda.dealId || "—");
-  const client = esc(nda.clientName || "Client (Disclosing Party)");
+  const client = esc(nda.clientName || (isService ? "Client (Disclosing Party)" : "Client (Disclosing Party)"));
   const freelancer = esc(nda.freelancerName || "Creator (Receiving Party)");
   const today = esc(formatDate(nda.effectiveDate));
+
+  const NOT_SPECIFIED = `<span style="color:#a29daf;font-weight:500">Not specified</span>`;
+  const val = (v?: string | number | null) =>
+    v === 0 || (v !== undefined && v !== null && String(v).trim() !== "") ? esc(String(v)) : NOT_SPECIFIED;
+
+  /* ── the terms, as text ── */
+  const price = nda.budget ?? nda.amount;
+  const deliveryTerm = (() => {
+    if (nda.deliveryDays) return `${nda.deliveryDays} day${nda.deliveryDays === 1 ? "" : "s"} from payment`;
+    if (nda.deliveryLabel) return nda.deliveryLabel;
+    return "";
+  })();
+  const revisionTerm = (() => {
+    if (typeof nda.revisionsAllowed === "number") {
+      return `${nda.revisionsAllowed} revision${nda.revisionsAllowed === 1 ? "" : "s"} included`;
+    }
+    if (nda.revisionsLabel) return nda.revisionsLabel;
+    // null on a booking made under no cap. That IS the term, and it's a
+    // materially different one from "not specified".
+    if (nda.revisionsAllowed === null) return "Unlimited (no cap agreed at booking)";
+    return "";
+  })();
+
+  const row = (k: string, v: string, wide = false) =>
+    `<div class="${wide ? "cell full" : "cell"}"><div class="k">${esc(k)}</div><div class="v">${v}</div></div>`;
+
+  const packageList = (nda.packageItems || []).filter((s) => String(s || "").trim());
+  const attachments = (nda.attachments || []).filter((a) => String(a?.name || "").trim());
 
   const sigBox = (dataUrl?: string) =>
     dataUrl
       ? `<img src="${dataUrl}" style="height:52px;display:block;margin-bottom:6px;max-width:220px;" alt="signature"/>`
       : `<div style="height:52px;margin-bottom:6px;border-bottom:1px dashed #bbb;"></div>`;
 
+  // Short enough to sit on one line beside the role chip — the timestamp is the
+  // part with legal weight, "electronically" is already said in clause 12.
+  const signedLine = (at?: string) =>
+    at ? `Signed ${esc(formatDateTime(at))}` : `Signature / Date`;
+
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"/>
 <title>NDA — ${title}</title>
 <style>
-  @page{size:A4;margin:22mm 18mm}
+  @page{size:A4;margin:18mm 16mm}
   *{box-sizing:border-box}
-  body{margin:0;font-family:Georgia,"Times New Roman",serif;color:#14121b;background:#f3f2f7;line-height:1.55;font-size:13px}
-  .sheet{max-width:820px;margin:24px auto;background:#fff;padding:48px 54px 56px;box-shadow:0 12px 50px rgba(0,0,0,.18)}
-  .brand{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #7c3aed;padding-bottom:14px;margin-bottom:26px}
+  body{margin:0;font-family:Georgia,"Times New Roman",serif;color:#14121b;background:#f3f2f7;line-height:1.55;font-size:12.5px}
+  .sheet{max-width:820px;margin:24px auto;background:#fff;padding:44px 50px 52px;box-shadow:0 12px 50px rgba(0,0,0,.18)}
+  .brand{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #7c3aed;padding-bottom:14px;margin-bottom:22px}
   .brand h1{font-family:Inter,Arial,sans-serif;font-size:22px;letter-spacing:4px;margin:0;color:#7c3aed}
   .brand .tag{font-family:Inter,Arial,sans-serif;font-size:10px;letter-spacing:2px;color:#8b8794;text-transform:uppercase}
-  h2.doc-title{font-family:Inter,Arial,sans-serif;text-align:center;font-size:20px;margin:4px 0;letter-spacing:.5px}
-  .subtitle{text-align:center;color:#6b6675;font-size:11px;margin-bottom:26px;font-family:Inter,Arial,sans-serif}
-  .meta{display:grid;grid-template-columns:1fr 1fr;gap:10px 24px;background:#faf9fc;border:1px solid #ece9f3;border-radius:10px;padding:16px 18px;margin-bottom:26px;font-family:Inter,Arial,sans-serif;font-size:12px}
-  .meta .k{color:#8b8794;font-size:9px;letter-spacing:1.4px;text-transform:uppercase}
-  .meta .v{color:#14121b;font-weight:600;margin-top:2px}
+  h2.doc-title{font-family:Inter,Arial,sans-serif;text-align:center;font-size:19px;margin:4px 0;letter-spacing:.5px}
+  .subtitle{text-align:center;color:#6b6675;font-size:11px;margin-bottom:22px;font-family:Inter,Arial,sans-serif}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 22px;background:#faf9fc;border:1px solid #ece9f3;border-radius:10px;padding:15px 17px;margin-bottom:18px;font-family:Inter,Arial,sans-serif;font-size:11.5px}
+  .grid.three{grid-template-columns:1fr 1fr 1fr}
+  .cell .k{color:#8b8794;font-size:8.5px;letter-spacing:1.3px;text-transform:uppercase}
+  .cell .v{color:#14121b;font-weight:600;margin-top:2px;word-break:break-word}
   .full{grid-column:1/-1}
-  h3{font-family:Inter,Arial,sans-serif;font-size:13px;margin:22px 0 6px;color:#2a2536}
-  p{margin:0 0 10px}ol{margin:0 0 10px;padding-left:20px}ol li{margin-bottom:7px}
-  .sig{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:46px}
-  .sig .name{font-weight:700;color:#14121b;font-family:Inter,Arial,sans-serif;margin-bottom:6px}
-  .sig .line{border-top:1px solid #14121b;padding-top:6px;font-family:Inter,Arial,sans-serif;font-size:11px;color:#6b6675}
+  .sec{font-family:Inter,Arial,sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#7c3aed;margin:26px 0 8px;padding-bottom:5px;border-bottom:1px solid #ece9f3}
+  h3{font-family:Inter,Arial,sans-serif;font-size:12.5px;margin:18px 0 5px;color:#2a2536}
+  p{margin:0 0 9px}
+  ol{margin:0 0 9px;padding-left:20px}ol li{margin-bottom:6px}
+  ul.items{margin:0;padding-left:18px;font-family:Inter,Arial,sans-serif;font-size:11.5px}
+  ul.items li{margin-bottom:4px}
+  .quote{background:#faf9fc;border-left:3px solid #d9d0f5;border-radius:0 8px 8px 0;padding:12px 14px;margin:0 0 12px;font-size:12px;white-space:normal}
+  .quote .lbl{font-family:Inter,Arial,sans-serif;font-size:8.5px;letter-spacing:1.3px;text-transform:uppercase;color:#8b8794;margin-bottom:5px}
+  table.files{width:100%;border-collapse:collapse;font-family:Inter,Arial,sans-serif;font-size:11px;margin-bottom:10px}
+  table.files td{padding:5px 8px;border-bottom:1px solid #f0edf6;vertical-align:top}
+  table.files td.sz{text-align:right;color:#8b8794;white-space:nowrap;width:80px}
+  .note{font-family:Inter,Arial,sans-serif;font-size:10.5px;color:#8b8794;margin:0 0 10px}
+  .sig{display:grid;grid-template-columns:1fr 1fr;gap:36px;margin-top:38px;page-break-inside:avoid}
+  .sig .name{font-weight:700;color:#14121b;font-family:Inter,Arial,sans-serif;margin-bottom:2px}
+  .sig .email{font-family:Inter,Arial,sans-serif;font-size:10.5px;color:#8b8794;margin-bottom:8px;word-break:break-all}
+  .sig .line{border-top:1px solid #14121b;padding-top:6px;font-family:Inter,Arial,sans-serif;font-size:10.5px;color:#6b6675}
   .role{font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:#8b8794;font-family:Inter,Arial,sans-serif}
-  .disclaimer{margin-top:34px;padding-top:14px;border-top:1px dashed #d9d5e2;font-size:10px;color:#8b8794;font-family:Inter,Arial,sans-serif}
+  .disclaimer{margin-top:30px;padding-top:13px;border-top:1px dashed #d9d5e2;font-size:9.5px;color:#8b8794;font-family:Inter,Arial,sans-serif;line-height:1.6}
+  .clause{page-break-inside:avoid}
   @media print{body{background:#fff}.sheet{box-shadow:none;margin:0;max-width:none;padding:0}}
 </style></head>
 <body><div class="sheet">
   <div class="brand"><h1>TOKUN</h1><span class="tag">Escrow-Protected Engagement</span></div>
   <h2 class="doc-title">NON-DISCLOSURE &amp; CONFIDENTIALITY AGREEMENT</h2>
-  <div class="subtitle">Executed electronically on acceptance of the project proposal via the Tokun platform</div>
-  <div class="meta">
-    <div><div class="k">Effective Date</div><div class="v">${today}</div></div>
-    <div><div class="k">Agreement / Deal ID</div><div class="v">${dealId}</div></div>
-    <div><div class="k">Disclosing Party (Client)</div><div class="v">${client}</div></div>
-    <div><div class="k">Receiving Party (Creator)</div><div class="v">${freelancer}</div></div>
-    <div><div class="k">Project Budget (Escrow)</div><div class="v">${budget}</div></div>
-    <div><div class="k">Target Delivery</div><div class="v">${target}</div></div>
-    <div class="full"><div class="k">Project Title</div><div class="v">${title}</div></div>
+  <div class="subtitle">Executed electronically by both parties on the Tokun platform · ${
+    isService ? "Service booking" : "Direct hire engagement"
+  }</div>
+
+  <div class="sec">Parties &amp; Agreement</div>
+  <div class="grid">
+    ${row("Effective Date", val(formatDate(nda.effectiveDate)))}
+    ${row(isService ? "Booking / Agreement ID" : "Deal / Agreement ID", val(nda.dealId))}
+    ${row(
+      "Disclosing Party (Client)",
+      `${val(nda.clientName)}${nda.clientEmail ? `<div style="font-weight:500;color:#6b6675;font-size:10.5px">${esc(nda.clientEmail)}</div>` : ""}`
+    )}
+    ${row(
+      "Receiving Party (Creator)",
+      `${val(nda.freelancerName)}${nda.freelancerEmail ? `<div style="font-weight:500;color:#6b6675;font-size:10.5px">${esc(nda.freelancerEmail)}</div>` : ""}`
+    )}
+    ${row("Engagement Type", isService ? "Fixed-price service booking" : "Negotiated project engagement")}
+    ${row("Escrow Agent", "Tokun (funds held until the work is approved or settled)")}
   </div>
-  <h3>Project / Work Description</h3><p>${description}</p>
-  <h3>1. Purpose</h3><p>This Agreement governs the disclosure of confidential information between the Disclosing Party and the Receiving Party in connection with the above-described project, engaged through Tokun's escrow service.</p>
-  <h3>2. Confidential Information</h3><p>"Confidential Information" means any non-public information disclosed by the Disclosing Party — project briefs, source files, designs, code, credentials, business plans, customer data, and any material shared inside Tokun chat or file exchange.</p>
-  <h3>3. Obligations of the Receiving Party</h3>
+
+  <div class="sec">Schedule A — The Engagement</div>
+  <div class="grid">
+    ${row(isService ? "Service Booked" : "Project Title", val(nda.projectTitle || nda.serviceTitle), true)}
+    ${isService && nda.serviceTitle && nda.projectTitle !== nda.serviceTitle ? row("Listing Title", val(nda.serviceTitle), true) : ""}
+    ${row("Delivery Terms", val(deliveryTerm))}
+    ${row("Revisions Included", val(revisionTerm))}
+    ${row("Delivery Due", val(nda.deliveryDueAt ? formatDate(nda.deliveryDueAt) : ""))}
+    ${row(
+      isService ? "Client's Preferred Date" : "Agreed Delivery Date",
+      val(nda.targetDate ? formatDate(nda.targetDate) : "")
+    )}
+    ${row("Current Stage", val(humanise(nda.status, STATUS_LABELS)))}
+    ${row("Booked On", val(nda.bookedAt ? formatDate(nda.bookedAt) : ""))}
+  </div>
+
+  ${
+    packageList.length
+      ? `<h3>A.1 &nbsp;What the engagement includes</h3>
+         <p class="note">As listed by the creator and snapshotted at booking. These are the terms this agreement covers.</p>
+         <ul class="items">${packageList.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`
+      : ""
+  }
+
+  ${
+    nda.serviceDescription
+      ? `<h3>A.2 &nbsp;Scope as listed by the creator</h3>
+         <div class="quote"><div class="lbl">Listing description</div>${escBlock(nda.serviceDescription)}</div>`
+      : ""
+  }
+
+  <h3>${packageList.length || nda.serviceDescription ? "A.3" : "A.1"} &nbsp;The client's brief</h3>
+  <div class="quote">
+    <div class="lbl">${isService ? "Requirements submitted with the booking" : "Project description agreed between the parties"}</div>
+    ${
+      nda.description
+        ? escBlock(nda.description)
+        : `<span style="color:#a29daf">No written brief was submitted with this ${isService ? "booking" : "engagement"}; the scope is as set out above and as agreed in the parties' Tokun chat.</span>`
+    }
+  </div>
+
+  ${
+    attachments.length
+      ? `<h3>Reference material shared with the brief</h3>
+         <p class="note">Named here so the record shows what was handed over. These files are Confidential Information under clause 2 — they are stored privately by Tokun and are not linked from this document.</p>
+         <table class="files">${attachments
+           .map(
+             (a) =>
+               `<tr><td>${esc(a.name)}</td><td class="sz">${esc(fileSize(a.size))}</td></tr>`
+           )
+           .join("")}</table>`
+      : ""
+  }
+
+  <div class="sec">Schedule B — Commercial Terms</div>
+  <div class="grid three">
+    ${row(isService ? "Listed Price" : "Agreed Project Value", price === undefined || price === null ? NOT_SPECIFIED : esc(money(price, currency)))}
+    ${row("Client Platform Fee", nda.clientFee === undefined || nda.clientFee === null ? NOT_SPECIFIED : esc(money(nda.clientFee, currency)))}
+    ${row("Total Paid by Client", nda.totalPayable === undefined || nda.totalPayable === null ? NOT_SPECIFIED : esc(money(nda.totalPayable, currency)))}
+    ${row("Currency", esc(currency))}
+    ${row("Payment Status", val(humanise(nda.paymentStatus)))}
+    ${row("Escrow Status", val(humanise(nda.fundsStatus, FUNDS_LABELS)))}
+    ${nda.paidAt ? row("Funded On", esc(formatDate(nda.paidAt))) : ""}
+    ${nda.escrowExpiresAt ? row("Escrow Must Settle By", esc(formatDate(nda.escrowExpiresAt))) : ""}
+  </div>
+  <p class="note">The figures above are the amounts recorded on this ${
+    isService ? "booking" : "deal"
+  } at the time this document was generated. The creator's own payout is net of Tokun's commission and is shown on their earnings record.</p>
+
+  <div class="sec">Terms</div>
+
+  <div class="clause"><h3>1. Purpose</h3><p>This Agreement governs the disclosure of confidential information between the Disclosing Party and the Receiving Party in connection with the engagement described in Schedule A, contracted and paid for through Tokun's escrow service. Schedules A and B form part of this Agreement.</p></div>
+
+  <div class="clause"><h3>2. Confidential Information</h3><p>"Confidential Information" means any non-public information either party discloses to the other for the Purpose, in any form, including: the brief and any reference material attached to it (named above); source files, designs, code, copy, footage and prompts; credentials, API keys and access to any system; business plans, pricing, unreleased products and customer data; every message, file and mid-project checkpoint exchanged inside Tokun; and the unreleased deliverables themselves.</p></div>
+
+  <div class="clause"><h3>3. Obligations of the Receiving Party (Creator)</h3>
   <ol>
-    <li>Use the Confidential Information solely to perform the Purpose.</li>
-    <li>Not disclose, publish, resell, or share it with any third party without prior written consent.</li>
+    <li>Use the Confidential Information solely to perform the Purpose in Schedule A.</li>
+    <li>Not disclose, publish, resell, or share it with any third party without prior written consent, including with subcontractors not disclosed to the Disclosing Party.</li>
     <li>Protect it with at least the same care used for its own confidential material.</li>
-    <li>Not reuse project-specific deliverables for any other client or public portfolio without consent.</li>
-  </ol>
-  <h3>4. Exclusions</h3><p>Does not include information that becomes public through no fault of the Receiving Party, was lawfully known before disclosure, or is independently developed without use of the Confidential Information.</p>
-  <h3>5. Ownership &amp; Deliverables</h3><p>Upon full release of escrow funds, ownership of the final approved deliverables transfers to the Disclosing Party, unless otherwise agreed in writing.</p>
-  <h3>6. Term</h3><p>Confidentiality obligations remain in effect during the engagement and for two (2) years following its completion or termination.</p>
-  <h3>7. Return / Destruction</h3><p>Upon request or completion, each party shall return or securely destroy the other party's Confidential Information, except one archival copy for legal record-keeping.</p>
-  <h3>8. Governing Law</h3><p>This Agreement is governed by the laws of India. Disputes are subject to the jurisdiction of the courts at the Disclosing Party's place of business.</p>
+    <li>Not reuse project-specific deliverables for any other client, or in a public portfolio, without the Disclosing Party's consent.</li>
+    <li>Not train, fine-tune or publish any model or dataset on the Confidential Information.</li>
+  </ol></div>
+
+  <div class="clause"><h3>4. Obligations of the Disclosing Party (Client)</h3>
+  <ol>
+    <li>Treat the creator's working files, methods, drafts and pricing as confidential.</li>
+    <li>Not use, publish, distribute or commercially exploit any deliverable — or any watermarked preview, review copy or progress checkpoint of it — before the escrow for this engagement is released or settled. Previews are provided so the work can be reviewed and approved, and for no other purpose.</li>
+    <li>Not remove, obscure or circumvent any watermark applied to a preview.</li>
+  </ol></div>
+
+  <div class="clause"><h3>5. Exclusions</h3><p>Confidential Information does not include information that becomes public through no fault of the receiving party, was lawfully known before disclosure, is received lawfully from a third party without restriction, or is independently developed without use of the Confidential Information.</p></div>
+
+  <div class="clause"><h3>6. Ownership &amp; transfer of deliverables</h3><p>Ownership of the final approved deliverables described in Schedule A transfers to the Disclosing Party upon full release of the escrow amount in Schedule B, unless otherwise agreed in writing. Until that release the deliverables remain the property of the Receiving Party. Where the escrow is settled only in part, ownership transfers only to the extent of the work paid for, and the parties shall record what that covers in writing.</p></div>
+
+  <div class="clause"><h3>7. Revisions &amp; scope</h3><p>The engagement includes the revisions stated in Schedule A. Work beyond the scope in Schedule A is not covered by this Agreement or by the escrow held against it, and requires a new booking or a written variation agreed by both parties.</p></div>
+
+  <div class="clause"><h3>8. Term</h3><p>The confidentiality obligations in this Agreement take effect on the Effective Date and remain in force during the engagement and for two (2) years after its completion, cancellation or termination. Obligations concerning credentials, personal data and trade secrets survive without limit.</p></div>
+
+  <div class="clause"><h3>9. Return or destruction</h3><p>On completion, cancellation, or written request, each party shall return or securely destroy the other's Confidential Information, save for one archival copy kept for legal and tax record-keeping, and save for the records Tokun retains as escrow agent (including this Agreement, the brief, the checkpoints and the delivered files) so that a dispute can be adjudicated on evidence.</p></div>
+
+  <div class="clause"><h3>10. Disputes &amp; Tokun's role</h3><p>Tokun holds the escrow and may release, refund or split it in accordance with its escrow terms, including on the decision of a Tokun administrator where the parties do not agree. Tokun is not a party to the underlying work contract and gives no warranty as to the work itself. Nothing in this clause prevents either party from pursuing its legal remedies.</p></div>
+
+  <div class="clause"><h3>11. Governing law</h3><p>This Agreement is governed by the laws of India, and the parties submit to the exclusive jurisdiction of the courts at the Disclosing Party's place of business.</p></div>
+
+  <div class="clause"><h3>12. Electronic execution</h3><p>Each party signs this Agreement electronically on Tokun. The parties agree that a signature captured and stored in this way, together with the timestamp recorded against it, is valid, binding and admissible, and that neither party will dispute its validity on the grounds of its electronic form alone.</p></div>
+
   <div class="sig">
     <div>
       <div class="name">${client}</div>
+      ${nda.clientEmail ? `<div class="email">${esc(nda.clientEmail)}</div>` : ""}
       ${sigBox(sigs?.client)}
-      <div class="line">Signature / Date <span class="role">&nbsp;•&nbsp; Disclosing Party</span></div>
+      <div class="line">${signedLine(nda.clientSignedAt)} <span class="role">&nbsp;•&nbsp; Disclosing Party</span></div>
     </div>
     <div>
       <div class="name">${freelancer}</div>
+      ${nda.freelancerEmail ? `<div class="email">${esc(nda.freelancerEmail)}</div>` : ""}
       ${sigBox(sigs?.freelancer)}
-      <div class="line">Signature / Date <span class="role">&nbsp;•&nbsp; Receiving Party</span></div>
+      <div class="line">${signedLine(nda.freelancerSignedAt)} <span class="role">&nbsp;•&nbsp; Receiving Party</span></div>
     </div>
   </div>
-  <div class="disclaimer">This document is generated automatically by Tokun as a convenience template and is not a substitute for professional legal advice. Both parties must sign and upload their copy to complete the NDA process.</div>
+
+  <div class="disclaimer">
+    Generated by Tokun for ${isService ? "booking" : "deal"} ${dealId} on ${today}. The details in Schedules A and B are taken from the engagement record as it stood at that moment; the live record on Tokun governs if the two ever differ.
+    This is a convenience template, not legal advice — for high-value or unusual work, have your own counsel review it. The NDA is complete once both parties have signed and submitted their copy.
+  </div>
 </div></body></html>`;
 }
 
@@ -543,29 +815,79 @@ export default function NdaButton({ dealId, token, apiBase, fallback, variant = 
     return () => { alive = false; };
   }, [dealId, token, apiBase, basePath, resource]);
 
+  /* Everything the signed document quotes comes from here.
+     The order endpoints already return all of it — the listing terms via the
+     populated `serviceId`, the brief, the fee breakdown, the escrow state — it
+     simply wasn't being read. `fallback` still covers the case where the NDA is
+     opened from a chat card before the fetch lands. */
   const nda: NdaData = useMemo(() => {
     if (resource === "service") {
+      const listing = deal?.serviceId || {};
       return {
+        engagement: "service",
         dealId: dealId || fallback?.dealId,
         projectTitle: deal?.serviceTitle || fallback?.projectTitle || fallback?.title,
+        serviceTitle: listing.title || deal?.serviceTitle,
+        serviceDescription: listing.description,
+        // The listing's "what you get" bullets, with the pre-2024 package
+        // fields as a fallback so an old listing still describes itself.
+        packageItems: (listing.deliverables?.length
+          ? listing.deliverables
+          : [listing.screens, listing.prototype && `Prototype: ${listing.prototype}`, listing.fileType]
+        )?.filter(Boolean),
         description: deal?.note || fallback?.description,
+        attachments: deal?.briefAttachments,
+        deliveryLabel: listing.delivery,
+        deliveryDays: deal?.deliveryDays,
+        deliveryDueAt: deal?.deliveryDueAt,
+        revisionsLabel: listing.revisions,
+        revisionsAllowed: deal?.revisionsAllowed,
         budget: deal?.amount ?? fallback?.budget ?? fallback?.amount,
         amount: deal?.amount ?? fallback?.amount,
+        clientFee: deal?.clientFee,
+        totalPayable: deal?.totalPayable,
+        currency: deal?.currency,
+        status: deal?.status,
+        paymentStatus: deal?.paymentStatus,
+        fundsStatus: deal?.fundsStatus,
+        escrowExpiresAt: deal?.escrowExpiresAt,
+        bookedAt: deal?.createdAt,
+        paidAt: deal?.paidAt,
         targetDate: deal?.preferredDate || fallback?.targetDate,
         clientName: deal?.buyerId?.name || fallback?.clientName,
+        clientEmail: deal?.buyerId?.email,
         freelancerName: deal?.sellerId?.name || fallback?.freelancerName,
+        freelancerEmail: deal?.sellerId?.email,
+        clientSignedAt: deal?.ndaBuyerSignedAt,
+        freelancerSignedAt: deal?.ndaSellerSignedAt,
         effectiveDate: deal?.createdAt || fallback?.effectiveDate,
       };
     }
     return {
+      engagement: "hire",
       dealId: dealId || fallback?.dealId,
       projectTitle: deal?.title || fallback?.projectTitle || fallback?.title,
       description: deal?.description || fallback?.description,
+      attachments: deal?.briefAttachments,
+      revisionsAllowed: deal?.revisionsAllowed,
       budget: deal?.amount ?? fallback?.budget ?? fallback?.amount,
       amount: deal?.amount ?? fallback?.amount,
+      clientFee: deal?.clientFee,
+      totalPayable: deal?.totalPayable,
+      currency: deal?.currency,
+      status: deal?.status,
+      paymentStatus: deal?.paymentStatus,
+      fundsStatus: deal?.fundsStatus,
+      escrowExpiresAt: deal?.escrowExpiresAt,
+      bookedAt: deal?.createdAt,
+      paidAt: deal?.paidAt,
       targetDate: deal?.deliveryDate || fallback?.targetDate,
       clientName: deal?.clientId?.name || fallback?.clientName,
+      clientEmail: deal?.clientId?.email,
       freelancerName: deal?.freelancerId?.name || fallback?.freelancerName,
+      freelancerEmail: deal?.freelancerId?.email,
+      clientSignedAt: deal?.ndaClientSignedAt,
+      freelancerSignedAt: deal?.ndaFreelancerSignedAt,
       effectiveDate: deal?.acceptedAt || fallback?.effectiveDate,
     };
   }, [deal, dealId, fallback, resource]);

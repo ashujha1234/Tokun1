@@ -26,6 +26,29 @@ const DeliverableSchema = new mongoose.Schema(
     // this. Empty on records created before the move off local disk, which the
     // same route falls back to serving from ../uploads/service-work.
     blobName: { type: String, default: "" },
+
+    /* ── Watermarked video review copy ─────────────────────────────────────
+       A video delivery can't be stamped per request the way an image can, so a
+       downscaled, watermark-burned re-encode is prepared once (see
+       utils/deliverableVideoPreview.js) and THAT is what a buyer gets while the
+       payment is held. These three fields are the record of that job:
+
+         previewBlobName  the derived blob, "" until it exists
+         previewStatus    "" (not applicable / not started) | PENDING | READY | FAILED
+         previewAttempts  guard against re-encoding an unencodable file on every
+                          page load
+         previewError     why it failed, for support — never shown verbatim
+
+       Only ever set on video files. Everything else is either stamped inline
+       (images) or stays locked until release. */
+    previewBlobName: { type: String, default: "" },
+    previewStatus: {
+      type: String,
+      enum: ["", "PENDING", "READY", "FAILED"],
+      default: "",
+    },
+    previewAttempts: { type: Number, default: 0 },
+    previewError: { type: String, default: "" },
   },
   { _id: false }
 );

@@ -199,6 +199,19 @@ const DeliverableSchema = new mongoose.Schema(
     kind: { type: String, enum: ["file", "link"], default: "file" },
     provider: { type: String, default: "" },
     blobName: { type: String, default: "" },
+
+    /* The watermarked video review copy — same fields, same meaning and the
+       same job as ServiceOrder's DeliverableSchema; see the long note there.
+       A client watching a video delivery before release is watching this
+       re-encode, not the master. */
+    previewBlobName: { type: String, default: "" },
+    previewStatus: {
+      type: String,
+      enum: ["", "PENDING", "READY", "FAILED"],
+      default: "",
+    },
+    previewAttempts: { type: Number, default: 0 },
+    previewError: { type: String, default: "" },
   },
   { _id: false }
 );

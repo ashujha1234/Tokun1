@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
-import { X, Download, Loader2, ShieldAlert } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { X, Download, Loader2, ShieldAlert, Lock } from "lucide-react";
 import {
   previewDeliverable,
   releasePreview,
   downloadDeliverable,
   isPreviewableVideo,
+  DeliverableError,
 } from "@/lib/serviceDeliverables";
 import { toast } from "@/components/ui/use-toast";
 
@@ -20,15 +21,15 @@ type Props = {
 };
 
 /* Repeating diagonal mark drawn OVER the player.
-   A video can't be stamped the way an image can — server/utils/
-   deliverableWatermark.js re-encodes an image in the time one request has, and
-   an ffmpeg pass over a delivery video does not fit in that budget. So the mark
-   is drawn here instead.
+   Kept only as a LAST RESORT, and it should now be unreachable for a buyer with
+   funds in escrow: the server burns the same mark into a downscaled re-encode
+   (server/utils/deliverableVideoPreview.js) and hands back that file instead of
+   the master, so the bytes are already marked and this would only double it.
 
-   Be clear about what that buys: a screen recording or a phone photo of the
-   review comes out marked, which is the common case. The bytes behind the
-   player are the original, so it is not a defence against someone reading the
-   network tab. Burning it in needs an ffmpeg pass at upload time.
+   It stays for the one honest use: a response that says the payment is held but
+   does NOT claim the pixels were marked (`burnedIn` false). That combination
+   means something new has been added on the server without a mark, and drawing
+   this is better than showing a clean player as if nothing were held.
 
    pointer-events:none matters — without it this sheet eats the play button. */
 const WatermarkOverlay = () => (
@@ -97,34 +98,64 @@ export default function DeliverablePreviewModal({
     isObjectUrl: boolean;
     watermarked?: boolean;
     heldInEscrow?: boolean;
+    burnedIn?: boolean;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /* Set while the server is still encoding the watermarked review copy of a
+     video. Distinct from `error`: nothing is wrong, the work just isn't done
+     yet, and this screen keeps asking. */
+  const [preparing, setPreparing] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const attemptsRef = useRef(0);
 
-  /* One answer to "is the buyer looking at this before paying out?", however the
-     server said it: `watermarked` on the image path (bytes were stamped), or
-     `heldInEscrow` on the JSON path (bytes couldn't be — a video). Both are set
-     only for the buyer while funds are unsettled. */
+  /* Is the buyer looking at this before paying out? Either flag means yes, and
+     both are the server's answer, not a guess: they are only ever set for the
+     buyer with funds unsettled. */
   const heldEscrow = !!preview && (preview.watermarked || preview.heldInEscrow);
 
   useEffect(() => {
     let cancelled = false;
     let opened: { url: string; isObjectUrl: boolean } | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
-    previewDeliverable(orderId, index, token, orderKind)
-      .then((res) => {
-        // Closing the modal mid-fetch must still free the blob, hence the local
-        // handle rather than relying on state that never lands.
-        if (cancelled) return releasePreview(res);
-        opened = res;
-        setPreview(res);
-      })
-      .catch((err: any) => {
-        if (!cancelled) setError(err?.message || "Couldn't load this file.");
-      });
+    /* Polls while a video's watermarked copy is still encoding.
+
+       Capped, because an encode that has run this long is either a very large
+       master or a job that died, and a modal that spins forever tells the buyer
+       nothing. ~20 attempts × 8s ≈ 2½ minutes, after which the server's own
+       message is shown and reopening tries again. */
+    const load = () => {
+      attemptsRef.current += 1;
+
+      previewDeliverable(orderId, index, token, orderKind)
+        .then((res) => {
+          // Closing the modal mid-fetch must still free the blob, hence the
+          // local handle rather than relying on state that never lands.
+          if (cancelled) return releasePreview(res);
+          opened = res;
+          setPreparing(null);
+          setPreview(res);
+        })
+        .catch((err: any) => {
+          if (cancelled) return;
+
+          const code = err instanceof DeliverableError ? err.code : "";
+          if (code === "preview_preparing" && attemptsRef.current < 20) {
+            setPreparing(err.message);
+            retryTimer = setTimeout(load, err.retryAfterMs || 8000);
+            return;
+          }
+
+          setPreparing(null);
+          setError(err?.message || "Couldn't load this file.");
+        });
+    };
+
+    load();
 
     return () => {
       cancelled = true;
+      clearTimeout(retryTimer);
       releasePreview(opened);
     };
   }, [orderId, orderKind, index, token]);
@@ -197,20 +228,37 @@ export default function DeliverablePreviewModal({
         </div>
 
         {/* Said plainly, because the client is looking at a degraded copy and
-            should know why rather than think the delivery itself is stamped. */}
+            should know why rather than think the delivery itself is stamped.
+            For video it now says "review copy": what they are playing is a
+            downscaled re-encode, not the master with something drawn on it. */}
         {heldEscrow && (
           <div className="flex items-start gap-2 px-4 py-2.5 bg-[#FABC4E]/[0.08] border-b border-[#FABC4E]/20">
             <ShieldAlert className="w-4 h-4 text-[#FABC4E] shrink-0 mt-px" />
             <p className="text-[11px] leading-relaxed text-[#FABC4E]">
-              Watermarked preview — the payment is still held in escrow. Approve the
-              work and the original file, without the watermark, is yours.
+              {isVideo
+                ? "Watermarked review copy, reduced in quality — the payment is still held in escrow. Approve the work and the full-quality original is yours."
+                : "Watermarked preview — the payment is still held in escrow. Approve the work and the original file, without the watermark, is yours."}
             </p>
           </div>
         )}
 
         <div className="flex-1 min-h-0 overflow-auto grid place-items-center p-4 bg-black/40">
           {error ? (
-            <p className="text-sm text-white/50 py-16">{error}</p>
+            /* A refusal, not a crash: most often "this file stays locked until
+               you approve" or "we couldn't prepare a protected copy". The
+               server writes this sentence — it knows which case it is. */
+            <div className="flex flex-col items-center gap-3 py-16 px-6 max-w-md text-center">
+              <Lock className="w-5 h-5 text-white/30" />
+              <p className="text-sm leading-relaxed text-white/55">{error}</p>
+            </div>
+          ) : preparing ? (
+            <div className="flex flex-col items-center gap-3 py-16 px-6 max-w-md text-center">
+              <Loader2 className="w-5 h-5 animate-spin text-white/40" />
+              <p className="text-sm leading-relaxed text-white/55">{preparing}</p>
+              <p className="text-[11px] text-white/30">
+                Checking again automatically — you can leave this open.
+              </p>
+            </div>
           ) : !preview ? (
             <div className="flex items-center gap-2 text-white/40 py-16">
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -221,7 +269,11 @@ export default function DeliverablePreviewModal({
                `window.open`, and for a video that arrives as a signed blob URL
                with an attachment disposition the browser answered by saving it
                — so "preview" put the delivery on the client's disk, unmarked,
-               before they had approved anything. */
+               before they had approved anything.
+
+               While the payment is held, this src points at the watermarked
+               re-encode, not the master — so copying it out of the DOM gets a
+               marked, downscaled file, which is the whole point. */
             <div className="relative max-w-full">
               <video
                 src={preview.url}
@@ -238,7 +290,10 @@ export default function DeliverablePreviewModal({
                   setError("This video couldn't be played here. Try downloading it.")
                 }
               />
-              {preview.heldInEscrow && <WatermarkOverlay />}
+              {/* Only when the bytes were NOT marked. The server burns the mark
+                  in now, so drawing this on top of a burned-in copy would just
+                  be a second watermark over the first. */}
+              {preview.heldInEscrow && !preview.burnedIn && <WatermarkOverlay />}
             </div>
           ) : (
             <img

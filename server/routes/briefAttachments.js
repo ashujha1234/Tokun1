@@ -21,6 +21,7 @@ const express = require("express");
 const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
+const { tempUploadDir } = require("../utils/privateUploadDirs");
 const mongoose = require("mongoose");
 const ServiceOrder = require("../models/ServiceOrder");
 const HireDeal = require("../models/HireDeal");
@@ -39,8 +40,10 @@ const router = express.Router();
 const BRIEF_FILE_MAX_BYTES = 25 * 1024 * 1024;
 const BRIEF_MAX_FILES = 5;
 
-const tempDir = path.join(__dirname, "../uploads/brief-temp");
-if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+/* Outside /uploads, which express.static serves to anyone. This is where the client's brief attachments
+   sits for the seconds between multer writing it and the Azure upload taking it
+   — a window in which it used to be readable over plain HTTP. */
+const tempDir = tempUploadDir("brief-temp");
 
 const briefStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, tempDir),

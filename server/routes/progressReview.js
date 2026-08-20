@@ -28,6 +28,7 @@ const mongoose = require("mongoose");
 const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
+const { tempUploadDir } = require("../utils/privateUploadDirs");
 const ProgressReview = require("../models/ProgressReview");
 const ServiceOrder = require("../models/ServiceOrder");
 const HireDeal = require("../models/HireDeal");
@@ -39,11 +40,10 @@ const {
   getWorkFileDownloadUrl,
   isAllowedWorkFile,
 } = require("../utils/serviceWorkStorage");
-const {
-  isWatermarkableImage,
-  isSettled,
-  watermarkImageBuffer,
-} = require("../utils/deliverableWatermark");
+const { isSettled } = require("../utils/deliverableWatermark");
+// The same gate the two deliverable routes use: marked bytes or nothing, while
+// the buyer's money is still held.
+const { serveHeldPreview } = require("../utils/escrowPreviewGate");
 
 const router = express.Router();
 
@@ -80,8 +80,10 @@ const KIND_CONFIG = {
 
 /* ── media upload ─────────────────────────────────────────────────────────── */
 
-const tempDir = path.join(__dirname, "../uploads/progress-temp");
-if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+/* Outside /uploads, which express.static serves to anyone. This is where checkpoint media
+   sits for the seconds between multer writing it and the Azure upload taking it
+   — a window in which it used to be readable over plain HTTP. */
+const tempDir = tempUploadDir("progress-temp");
 
 const reviewStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, tempDir),
@@ -328,21 +330,30 @@ router.get("/:reviewId/media/:index/download", requireAuth, async (req, res) => 
     const fundsStatus = isBuyer ? await parentFundsStatus(review) : "";
     const held = isBuyer && !isSettled(fundsStatus);
 
-    if (held && isWatermarkableImage(media.name, media.mimeType)) {
-      // Fetched server-side and re-encoded: handing over the SAS URL would hand
-      // over the original, which is the whole thing being prevented.
-      const upstream = await fetch(getWorkFileDownloadUrl(media.blobName));
-      if (!upstream.ok) throw new Error(`blob fetch failed: ${upstream.status}`);
-
-      const stamped = await watermarkImageBuffer(Buffer.from(await upstream.arrayBuffer()));
-
-      res.setHeader("Content-Type", "image/png");
-      res.setHeader("X-Tokun-Watermarked", "1");
-      res.setHeader(
-        "Content-Disposition",
-        `inline; filename="preview-${String(media.name || "image").replace(/[^\x20-\x7E]/g, "_")}"`
-      );
-      return res.send(stamped);
+    /* A screen recording is the most common checkpoint there is, and it used to
+       come back here as a signed URL to the untouched original with
+       `heldInEscrow: true` — the mark drawn in CSS over the player, the clean
+       file one network-tab copy away. Now a checkpoint video goes through the
+       same burned-in re-encode a video deliverable does, and an image that
+       can't be stamped is refused rather than handed over with a header
+       claiming it was. */
+    if (held) {
+      return serveHeldPreview({
+        res,
+        name: media.name,
+        mimeType: media.mimeType,
+        blobName: media.blobName,
+        state: media,
+        persist: (patch) =>
+          ProgressReview.updateOne(
+            { _id: review._id },
+            {
+              $set: Object.fromEntries(
+                Object.entries(patch).map(([k, v]) => [`media.${Number(index)}.${k}`, v])
+              ),
+            }
+          ),
+      });
     }
 
     return res.json({
@@ -350,10 +361,7 @@ router.get("/:reviewId/media/:index/download", requireAuth, async (req, res) => 
       name: media.name,
       kind: media.kind,
       url: getWorkFileDownloadUrl(media.blobName),
-      /* Bytes that couldn't be stamped — a video or a PDF — but are still
-         being looked at before payout. The client marks its own surface with
-         this, same as it does for deliverables. */
-      heldInEscrow: held,
+      heldInEscrow: false,
     });
   } catch (err) {
     console.error("progress media download error:", err);

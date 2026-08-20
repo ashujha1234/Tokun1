@@ -482,6 +482,19 @@ export default function OrderDetailPage() {
                     >
                       Preview
                     </button>
+                  ) : order.role === "buyer" && order.fundsStatus === "HELD_BY_TOKUN" ? (
+                    /* Locked, and said so instead of offering a button that now
+                       fails. The server refuses this file while the payment is
+                       still in escrow (deliverable_locked) — a zip or a PSD has
+                       no watermarked form, so for those the gate IS the
+                       protection. Images and video are still reviewable above
+                       via Preview. */
+                    <span
+                      title="Approve the work — or request a revision — to unlock the file."
+                      className="text-xs text-white/35 shrink-0"
+                    >
+                      🔒 Unlocks after approval
+                    </span>
                   ) : (
                     <button
                       type="button"

@@ -225,6 +225,54 @@ async function uploadWorkFileToAzure(tempPath, originalName, orderId) {
 }
 
 /**
+ * Pulls one blob down to a local path, for work this server has to do on the
+ * bytes themselves — burning a watermark into a video, in practice.
+ *
+ * Uses the account credential directly rather than fetching its own SAS URL:
+ * this is a server-side read of our own container, and minting a public-ish URL
+ * to hand back to ourselves would be one more thing that could leak.
+ */
+async function downloadWorkFileToPath(blobName, destPath) {
+  const blockBlobClient = getContainerClient().getBlockBlobClient(blobName);
+  await blockBlobClient.downloadToFile(destPath);
+  return destPath;
+}
+
+/** Does this blob exist? Used to check a cached preview is still really there. */
+async function workBlobExists(blobName) {
+  if (!blobName) return false;
+  try {
+    return await getContainerClient().getBlockBlobClient(blobName).exists();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Uploads a DERIVED file (a watermarked video preview) beside the original.
+ *
+ * Two differences from uploadWorkFileToAzure, both deliberate:
+ *   • the caller names the blob, because a derived file has to be findable
+ *     again from the source blob's name rather than a fresh timestamp;
+ *   • the disposition is `inline`, because this one is meant to be played in a
+ *     <video> in the browser, not saved. The original keeps `attachment`.
+ */
+async function uploadDerivedFileToAzure(tempPath, blobName, contentType) {
+  const containerClient = getContainerClient();
+  await containerClient.createIfNotExists();
+
+  const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+  await blockBlobClient.uploadFile(tempPath, {
+    blobHTTPHeaders: {
+      blobContentType: contentType || "application/octet-stream",
+      blobContentDisposition: `inline; filename="tokun-preview${path.extname(blobName) || ""}"`,
+    },
+  });
+
+  return { blobName, url: blockBlobClient.url };
+}
+
+/**
  * Short-lived read URL for one blob. Called by the gated download route only
  * after it has checked the caller is a party to the order.
  */
@@ -253,6 +301,9 @@ function getWorkFileDownloadUrl(blobName) {
 
 module.exports = {
   uploadWorkFileToAzure,
+  uploadDerivedFileToAzure,
+  downloadWorkFileToPath,
+  workBlobExists,
   getWorkFileDownloadUrl,
   isAllowedWorkFile,
   normalizeDeliverableLink,

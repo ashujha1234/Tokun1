@@ -4359,6 +4359,7 @@ const smartgenRoutes = require("./routes/smartgenRoutes");
 const savedCollectionRoutes = require("./routes/savedCollectionRoutes");
 const categoryRoutes = require("./routes/categoryRoutes");
 const promptRoutes = require("./routes/promptRoutes");
+const { PRIVATE_UPLOAD_PREFIXES } = require("./utils/privateUploadDirs");
 const orgMembers = require("./routes/orgMembers");
 const purchaseRoutes = require("./routes/purchaseRoutes");
 const llmProviderRoutes = require("./routes/llmproviderRoutes");
@@ -4963,6 +4964,30 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 app.use("/uploads", (_req, res, next) => {
   res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
   next();
+});
+
+/* PRIVATE subtrees, refused before the static handlers below ever see them.
+
+   /uploads is served with no auth, and several routes used to write private
+   material into it: escrow deliverables (uploads/service-work, uploads/hire-work),
+   signed NDAs, and the scratch copies of brief and checkpoint media. The gated
+   download routes for those files check auth, check that the caller is a party
+   to the order, and watermark an image the buyer hasn't paid out for — none of
+   which means anything while the same bytes also answer a plain GET.
+
+   New uploads no longer land here at all (see utils/privateUploadDirs.js). This
+   closes the door on what is already on disk, which cannot be un-uploaded: the
+   pre-Azure deliverables are still read from these directories by the download
+   routes, but as a filesystem read behind an auth check, never over HTTP.
+
+   404 rather than 403: whether a given file exists is not something an
+   unauthenticated caller should be able to learn either. */
+app.use("/uploads", (req, res, next) => {
+  const first = req.path.split("/").filter(Boolean)[0] || "";
+  if (PRIVATE_UPLOAD_PREFIXES.includes(first)) {
+    return res.status(404).json({ success: false, error: "not_found" });
+  }
+  return next();
 });
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));

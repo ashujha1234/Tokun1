@@ -42,6 +42,21 @@ export const formatBytes = (bytes?: number) => {
  * are still on the server's own disk: JSON carrying a signed URL for anything
  * in Azure, or the file streamed directly for those older records.
  */
+/** A refusal the UI has to be able to tell apart, not just print. */
+export class DeliverableError extends Error {
+  /** Server's machine code: deliverable_locked | preview_preparing | preview_unavailable | … */
+  code: string;
+  /** Set on preview_preparing — how long before asking again is worth it. */
+  retryAfterMs?: number;
+
+  constructor(message: string, code: string, retryAfterMs?: number) {
+    super(message);
+    this.name = "DeliverableError";
+    this.code = code;
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
 export async function resolveDeliverableUrl(
   orderId: string,
   index: number,
@@ -54,10 +69,13 @@ export async function resolveDeliverableUrl(
   name?: string;
   isObjectUrl: boolean;
   watermarked?: boolean;
-  /* True while the payment is still held in escrow and the server could NOT
-     stamp the bytes — a video, in practice. The player draws the watermark
-     itself in that case; see DeliverablePreviewModal. */
+  /* True while the payment is still held in escrow. What comes back in that
+     case is always a MARKED copy — stamped image bytes, or a watermark-burned
+     video re-encode — never the original. */
   heldInEscrow?: boolean;
+  /* The mark is in the pixels the server sent, so the player must not draw its
+     own on top. Set on the video path once the re-encode exists. */
+  burnedIn?: boolean;
 }> {
   const path =
     orderKind === "hire"
@@ -71,24 +89,38 @@ export async function resolveDeliverableUrl(
   if ((res.headers.get("content-type") || "").includes("application/json")) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.success || !data?.url) {
-      throw new Error(data?.message || data?.error || "This file is no longer available.");
+      // Typed, because "the watermarked copy is still encoding" (202, retry) and
+      // "this file stays locked until you approve" (403, don't) are the same
+      // string to a plain Error and completely different things to the user.
+      throw new DeliverableError(
+        data?.message || data?.error || "This file is no longer available.",
+        data?.error || "unavailable",
+        data?.retryAfterMs
+      );
     }
     return {
       url: data.url,
       name: data.name,
       isObjectUrl: false,
       heldInEscrow: !!data.heldInEscrow,
+      watermarked: !!data.watermarked,
+      burnedIn: !!data.burnedIn,
     };
   }
 
-  if (!res.ok) throw new Error("Download failed");
+  if (!res.ok) throw new DeliverableError("Download failed", "download_failed");
   const blob = await res.blob();
+  // Set when the server returned a watermarked copy instead of the original —
+  // an image the buyer hasn't released payment for, or a pre-Azure video whose
+  // burned-in re-encode is streamed from our own disk. Either way the mark is
+  // in the bytes, so nothing should be drawn over them.
+  const watermarked = res.headers.get("X-Tokun-Watermarked") === "1";
   return {
     url: URL.createObjectURL(blob),
     isObjectUrl: true,
-    // Set when the server returned a watermarked preview instead of the
-    // original, i.e. an image the buyer hasn't released payment for yet.
-    watermarked: res.headers.get("X-Tokun-Watermarked") === "1",
+    watermarked,
+    heldInEscrow: watermarked,
+    burnedIn: watermarked,
   };
 }
 
@@ -98,10 +130,17 @@ export function isPreviewableImage(name?: string, mimeType?: string) {
   return /\.(jpe?g|png|webp|gif|tiff|bmp|svg)$/i.test(String(name || ""));
 }
 
-/** Can this deliverable play in a <video>? */
+/** Can this deliverable play in a <video>?
+ *
+ * Matches the server's list (utils/deliverableWatermark.js) rather than what a
+ * browser can natively decode: while the payment is held, what actually arrives
+ * is an H.264 mp4 re-encode whatever the source container was, so an .mkv or
+ * .avi delivery IS playable here. After release the original comes back and an
+ * exotic container falls through to the player's own error, which offers the
+ * download. */
 export function isPreviewableVideo(name?: string, mimeType?: string) {
   if (String(mimeType || "").startsWith("video/")) return true;
-  return /\.(mp4|webm|mov|m4v|ogv)$/i.test(String(name || ""));
+  return /\.(mp4|webm|mov|m4v|ogv|mkv|avi)$/i.test(String(name || ""));
 }
 
 /** Anything the browser can show in place rather than only hand to the disk. */

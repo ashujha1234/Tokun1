@@ -1,4 +1,4 @@
-// Watermarking for delivered images, until the booking is settled.
+// Watermarking for delivered media, until the booking is settled.
 //
 // The problem this closes: a client can preview a delivery before approving it,
 // which they must be able to do — you can't fairly approve work you haven't
@@ -12,21 +12,61 @@
 // uploaded and is what the client gets. The watermark is applied on the way
 // OUT, per request, not baked into storage.
 //
-// Only images. A PDF, zip or video is either not previewable in the browser
-// anyway or would need a fundamentally different treatment; pretending to
-// protect those would be worse than being clear that we don't.
+// Video is handled by deliverableVideoPreview.js, which burns the same mark
+// into a downscaled re-encode. Everything else — a zip, a PSD, a font, a PDF —
+// has no protectable preview form at all, so the download routes keep it locked
+// until the money moves rather than pretending.
+//
+// ─── THE ONE RULE IN HERE ──────────────────────────────────────────────────
+//
+// renderWatermarkedImage() NEVER returns the original bytes. It returns
+// {ok:true, buffer} only when a mark was genuinely composited in, and
+// {ok:false, reason} otherwise. This function used to swallow every failure and
+// hand back the untouched original — and the caller then sent it with
+// `X-Tokun-Watermarked: 1` on it. So the one case where protection mattered
+// most (a format sharp couldn't decode) was the exact case where the buyer got
+// the clean file, with a header on it claiming otherwise, and no log line the
+// client could see. A refusal the caller has to handle is the only version of
+// this that can't lie.
 
 const sharp = require("sharp");
 
-const WATERMARKABLE = /\.(jpe?g|png|webp|gif|tiff|bmp)$/i;
+/* Formats we can decode and re-encode. HEIC/HEIF is in the list because
+   iPhone-shot work arrives as .heic constantly and this build of sharp
+   (libvips with libheif) decodes it — but the decision is still made at
+   RUN time by whether the composite actually succeeded, not by this regex. */
+const WATERMARKABLE = /\.(jpe?g|png|webp|gif|tiff?|bmp|avif|heics?|heifs?|svg)$/i;
+
+/* An SVG is text, not pixels — it can't be composited onto, so it is
+   RASTERISED first and the buyer's preview comes back as a PNG. Before, SVG was
+   excluded from watermarking altogether, which (once the download gate landed)
+   meant a logo delivery couldn't be previewed by the buyer at all: the one
+   deliverable type where "look at it before approving" is the entire review. */
+const SVG_RE = /(^|\/)svg(\+xml)?$/i;
 
 /** Is this something we can meaningfully watermark? */
 function isWatermarkableImage(name, mimeType) {
-  if (String(mimeType || "").startsWith("image/")) {
-    // SVG is text, not raster — compositing onto it doesn't work.
-    return !/svg/i.test(mimeType);
-  }
+  const mime = String(mimeType || "");
+  if (mime.startsWith("image/")) return true;
   return WATERMARKABLE.test(String(name || ""));
+}
+
+function isSvgInput(name, mimeType) {
+  return SVG_RE.test(String(mimeType || "")) || /\.svgz?$/i.test(String(name || ""));
+}
+
+/**
+ * Is this something a browser can PLAY in place?
+ *
+ * Needed because the escrow gate treats video differently from everything else:
+ * a client genuinely cannot approve a video delivery without watching it, so a
+ * watermarked re-encode is prepared for them (deliverableVideoPreview.js).
+ * A zip, a PSD, a font or a PDF has no such need — for those, "preview" and
+ * "have the file" are the same thing, so they stay locked until the money moves.
+ */
+function isPreviewableVideo(name, mimeType) {
+  if (String(mimeType || "").startsWith("video/")) return true;
+  return /\.(mp4|mov|webm|m4v|ogv|mkv|avi)$/i.test(String(name || ""));
 }
 
 /**
@@ -42,6 +82,19 @@ function isSettled(fundsStatus) {
   );
 }
 
+/* A preview is capped at this on its long edge.
+
+   Two reasons, and the second is the point: re-encoding a 10000px scan as PNG
+   per request is expensive, and a full-resolution "preview" is a print-ready
+   file with some text on it. 2000px is comfortably enough to judge the work. */
+const PREVIEW_MAX_EDGE = 2000;
+
+/* Ceiling on decoded pixels. An SVG (or a crafted TIFF) declaring enormous
+   dimensions would otherwise be a memory bomb aimed at the server by way of a
+   deliverable upload. sharp's own default is ~268MP, which is far past
+   anything a real delivery needs. */
+const MAX_INPUT_PIXELS = 60 * 1000 * 1000;
+
 /* Diagonal repeating text, sized to the image.
    Built as SVG and composited once rather than tiled by sharp, because a
    single overlay is one operation regardless of how many repetitions it draws.
@@ -50,8 +103,10 @@ function isSettled(fundsStatus) {
    genuinely reviewable, repeated across the whole frame so cropping it out
    takes the image with it. A corner badge would be a two-second crop. */
 function buildWatermarkSvg(width, height) {
-  // Scaled to the image so a thumbnail and a 4K render both look right.
-  const fontSize = Math.max(18, Math.round(Math.min(width, height) / 16));
+  // Scaled to the image so a thumbnail and a 4K render both look right. The
+  // floor is 10 rather than 18 so a 96px icon still gets marked instead of
+  // being waved through — every previewed pixel is marked or refused.
+  const fontSize = Math.max(10, Math.round(Math.min(width, height) / 16));
   const stepX = fontSize * 11;
   const stepY = fontSize * 5;
 
@@ -74,40 +129,90 @@ function buildWatermarkSvg(width, height) {
 }
 
 /**
- * Returns a watermarked copy of an image buffer.
+ * Renders a watermarked PNG preview of an image buffer.
  *
- * On any failure the ORIGINAL is returned rather than throwing. That direction
- * is deliberate: a client who can't preview the work at all can't approve it,
- * and a stuck approval is a worse outcome than an unwatermarked preview. The
- * failure is logged so it doesn't pass silently.
+ * @returns {Promise<{ok: true, buffer: Buffer, contentType: string}
+ *                 | {ok: false, reason: string}>}
+ *
+ * On failure the ORIGINAL IS NOT RETURNED — see the rule at the top of this
+ * file. The caller decides what a failure means, and for a buyer whose payment
+ * is still in escrow the only honest answer is "we couldn't prepare a protected
+ * preview of this one", never the clean file.
  */
-async function watermarkImageBuffer(buffer) {
+async function renderWatermarkedImage(buffer, { name, mimeType } = {}) {
   try {
-    const image = sharp(buffer, { failOn: "none" });
-    const meta = await image.metadata();
+    if (!buffer || !buffer.length) return { ok: false, reason: "empty_file" };
 
-    const width = meta.width || 0;
-    const height = meta.height || 0;
-    if (!width || !height) return buffer;
+    let pipeline = sharp(buffer, {
+      failOn: "none",
+      limitInputPixels: MAX_INPUT_PIXELS,
+      // Only read by the SVG loader. 96 renders a viewBox-only icon at a
+      // usable size instead of a 16px smudge; the resize below caps the top end.
+      density: isSvgInput(name, mimeType) ? 96 : 72,
+    });
 
-    // Below this the text would be illegible and the file is too small to be
-    // worth stealing anyway.
-    if (width < 120 || height < 120) return buffer;
+    const meta = await pipeline.metadata();
 
-    return await image
+    /* An SVG whose root is sized in percentages (or not sized at all) comes
+       back tiny or dimensionless. Rasterise it at a fixed width instead — a
+       vector has no natural resolution, so picking one is the only option. */
+    const vector = meta.format === "svg" || isSvgInput(name, mimeType);
+    if (vector && (!meta.width || !meta.height || meta.width < 600)) {
+      pipeline = sharp(buffer, {
+        failOn: "none",
+        limitInputPixels: MAX_INPUT_PIXELS,
+        density: 96,
+      }).resize({ width: 1200, fit: "inside", withoutEnlargement: false });
+    } else if ((meta.width || 0) > PREVIEW_MAX_EDGE || (meta.height || 0) > PREVIEW_MAX_EDGE) {
+      pipeline = pipeline.resize({
+        width: PREVIEW_MAX_EDGE,
+        height: PREVIEW_MAX_EDGE,
+        fit: "inside",
+        withoutEnlargement: true,
+      });
+    }
+
+    /* Flattened to PNG first, then measured. The dimensions the overlay has to
+       match are the ones AFTER the resize/rasterise above, and reading them off
+       the input metadata (as this used to) is how you get a mark that covers
+       part of the frame. One extra encode, and it is the only way the overlay
+       is guaranteed to line up. */
+    const base = await pipeline.png().toBuffer({ resolveWithObject: true });
+    const width = base.info.width || 0;
+    const height = base.info.height || 0;
+    if (!width || !height) return { ok: false, reason: "undecodable" };
+
+    const stamped = await sharp(base.data, { limitInputPixels: MAX_INPUT_PIXELS })
       .composite([{ input: buildWatermarkSvg(width, height), top: 0, left: 0 }])
-      // Re-encoded as PNG so transparency survives and every input format
-      // takes the same path out.
+      // PNG so transparency survives and every input format takes the same
+      // path out.
       .png()
       .toBuffer();
+
+    if (!stamped || !stamped.length) return { ok: false, reason: "encode_failed" };
+    return { ok: true, buffer: stamped, contentType: "image/png", width, height };
   } catch (err) {
-    console.error("Watermarking failed, serving the original:", err.message);
-    return buffer;
+    // Logged, not swallowed into a successful-looking response. The caller
+    // turns this into a refusal the buyer can actually read.
+    console.error(
+      `Watermarking failed for ${name || "image"} (${mimeType || "unknown type"}): ${err.message}`
+    );
+    return { ok: false, reason: "watermark_failed" };
   }
 }
 
+/* What the download routes tell the buyer when the mark couldn't be applied.
+   Kept here so all three routes say the same thing. */
+const PREVIEW_UNAVAILABLE_MESSAGE =
+  "We couldn't prepare a protected preview of this file, so it stays locked while the payment is held. Ask the creator to re-send it in a standard format (JPG, PNG, PDF or MP4) — or approve the work and download the original.";
+
 module.exports = {
   isWatermarkableImage,
+  isPreviewableVideo,
   isSettled,
-  watermarkImageBuffer,
+  renderWatermarkedImage,
+  // Exported so the video pass burns in the SAME mark, at the same angle and
+  // opacity, rather than a second one that drifts from this one over time.
+  buildWatermarkSvg,
+  PREVIEW_UNAVAILABLE_MESSAGE,
 };
