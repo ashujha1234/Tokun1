@@ -3967,6 +3967,7 @@ import {
   ShoppingCart,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { isTeamMember } from "@/lib/orgRoles";
 import { loadSaved, type SavedItem } from "@/lib/savedCollections";
 import DetailsPrompt, { type MarketplacePrompt } from "@/components/DetailsPrompt";
 /* The marketplace's own price rule, imported rather than re-derived. This page
@@ -4167,6 +4168,9 @@ export default function SavedCollection() {
   const { token, user } = useAuth() as any;
   // Same `_id`-first rule the rest of the app uses for the signed-in user.
   const currentUserId = user?._id || user?.id || null;
+  // Their org buys for them — the purchase routes reject them outright, so the
+  // cards below offer a request instead of a checkout.
+  const teamMember = isTeamMember(user);
 
   const [sections, setSections] = useState<ServerSections>({});
   const [loading, setLoading] = useState(true);
@@ -4550,21 +4554,16 @@ export default function SavedCollection() {
                 {!missing &&
                   String((mapped as any)?.uploaderId || "") !== String(currentUserId || "") &&
                   !((mapped as any)?.exclusive && (mapped as any)?.sold) && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(
-                            `/prompt-marketplace?prompt=${encodeURIComponent(String(mapped.id))}`,
-                          );
-                        }}
-                        className="mp-card__pill mp-card__pill--cart"
-                      >
-                        <ShoppingCart className="h-4 w-4" />
-                        Cart
-                      </button>
-
+                    /* A team member never buys: the server rejects cart
+                       checkout and create-order for them outright
+                       (blockOrgTeamMemberPurchase), so Cart and Buy Now here
+                       were two buttons whose only possible outcome was a 403.
+                       Every other card on the site had already been given this
+                       gate — the marketplace grid, the reel card, the details
+                       panel — and this one was missed, so the saved page stayed
+                       the one place a TM was still shown "Buy Now". Their route
+                       is the request modal, which lives on the marketplace. */
+                    teamMember ? (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -4575,9 +4574,38 @@ export default function SavedCollection() {
                         }}
                         className="mp-card__pill mp-card__pill--buy"
                       >
-                        Buy Now
+                        Request
                       </button>
-                    </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(
+                              `/prompt-marketplace?prompt=${encodeURIComponent(String(mapped.id))}`,
+                            );
+                          }}
+                          className="mp-card__pill mp-card__pill--cart"
+                        >
+                          <ShoppingCart className="h-4 w-4" />
+                          Cart
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(
+                              `/prompt-marketplace?prompt=${encodeURIComponent(String(mapped.id))}`,
+                            );
+                          }}
+                          className="mp-card__pill mp-card__pill--buy"
+                        >
+                          Buy Now
+                        </button>
+                      </>
+                    )
                   )}
               </>
             )}

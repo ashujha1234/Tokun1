@@ -7981,6 +7981,43 @@ const effectiveCategoryFilter =
     })();
   }, [token]);
 
+  /* ---------- What the member's ORGANIZATION owns on their behalf ----------
+     A team member has no Purchase rows of their own and never will — the money
+     routes reject them (blockOrgTeamMemberPurchase). So the history fetch above
+     always comes back empty for them, and every product their org had already
+     bought and shared still rendered with a "Request" button, inviting them to
+     ask for something they already have.
+
+     Folded into the same `purchasedPrompts` list rather than tracked separately:
+     every ownership question on this page already reads that one list — the
+     card state, the details panel's `owned`, the "don't re-offer what you own"
+     filters — and a second parallel list would have to be threaded into each of
+     them by hand. */
+  useEffect(() => {
+    if (!token || user?.userType !== "TM") return;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/prompt-collab/shared/team`, {
+          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
+        });
+        const body = await res.json();
+        if (!res.ok || !body?.success) return;
+        // Only the ones the org has actually paid for. A share made ahead of the
+        // purchase is still locked, and marking it owned would hide the very
+        // request button that gets it bought.
+        const unlockedIds = (body.sharedPrompts || [])
+          .filter((s: any) => s?.prompt?.unlocked)
+          .map((s: any) => String(s.prompt.id))
+          .filter(Boolean);
+        if (!unlockedIds.length) return;
+        setPurchasedPrompts((prev) => Array.from(new Set([...(prev || []), ...unlockedIds])));
+      } catch (e) {
+        console.error("[Shared] org-unlocked fetch failed", e);
+      }
+    })();
+  }, [token, user?.userType]);
+
 
 
 

@@ -1127,7 +1127,7 @@
 
 
 import { FaCaretLeft } from "react-icons/fa";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -1233,7 +1233,7 @@ export default function NotificationsPage() {
   const [sharedPrompts, setSharedPrompts] = useState<(Notif | SharedPrompt)[]>([]);
   const [orgPurchasedPrompts, setOrgPurchasedPrompts] = useState<SharedPrompt[]>([]);
   const [loading, setLoading] = useState(false);
-  const [tab, setTab] = useState<"all" | "shared" | "purchased" | "unread">("all");
+  const [tab, setTab] = useState<"all" | "shared" | "team" | "unread">("all");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsPrompt, setDetailsPrompt] = useState<any>(null);
   const [detailsOwned, setDetailsOwned] = useState(false);
@@ -1349,11 +1349,19 @@ export default function NotificationsPage() {
     }
   }, [token]);
 
+  /* Not gated on there being notifications any more.
+
+     Shares live in their own collection and outlast the notification that
+     announced them — one can be marked read, or simply scroll off — so keying
+     this off `notifications.length` meant a member whose notification list had
+     emptied lost the products their org had bought for them. For a team member
+     the shared list is fetched whether or not anything else is on the page. */
   useEffect(() => {
-    if (notifications.length > 0) {
+    if (!token) return;
+    if (notifications.length > 0 || user?.userType === "TM") {
       loadSharedPrompts();
     }
-  }, [notifications]);
+  }, [notifications, token, user?.userType]);
 
   const markNotificationRead = async (id: string) => {
     if (!token || !id) return;
@@ -1440,7 +1448,35 @@ export default function NotificationsPage() {
     }
   };
 
-  const openPromptDetails = (prompt: any) => {
+  /* Everything the org has shared with this member, keyed by prompt id.
+     /shared/team is the only endpoint that knows whether the org owns a given
+     product, and it's the only one that sends the promptText down. Every other
+     source of a prompt object on this page is thinner than that: the notification
+     feed populates just "title price free exclusive attachment userId sold", with
+     no promptText and no `unlocked`.
+
+     That gap is the whole bug. Opening a share from the All tab — the tab this
+     page lands on — went through the notification's own copy, so `unlocked` was
+     undefined, `owned` came out false, and a member whose org had already bought
+     the product was shown a locked listing with a purchase CTA they are barred
+     from using. Only the Shared tab happened to carry the richer object. */
+  const sharedByPromptId = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const item of orgPurchasedPrompts as any[]) {
+      const p = item?.prompt;
+      if (p?.id) map.set(String(p.id), { ...p, senderName: item?.senderName, sharedAt: item?.sharedAt });
+    }
+    return map;
+  }, [orgPurchasedPrompts]);
+
+  const openPromptDetails = (rawPrompt: any) => {
+    /* Whichever copy arrived, upgrade it with the authoritative one before
+       anything reads it — so All, Shared and Unread all open the same panel in
+       the same state. */
+    const incomingId = String(rawPrompt?._id || rawPrompt?.id || "");
+    const shared = incomingId ? sharedByPromptId.get(incomingId) : undefined;
+    const prompt = shared ? { ...rawPrompt, ...shared } : rawPrompt;
+
     if (!prompt?._id && !prompt?.id) {
       toast({
         title: "Product not found",
@@ -1896,6 +1932,14 @@ export default function NotificationsPage() {
           <div className="flex items-center gap-2 mb-6 flex-wrap">
             <TabPill id="all" label="All" count={notifications.length} />
             <TabPill id="shared" label="Shared" count={sharedPrompts.length} />
+            {/* A team member's own library. Reads the SharedPrompt collection
+                directly, so it survives the notification being read or aged out
+                — which is what "the org bought it for me, where did it go?"
+                was really about. Not shown to anyone else: nobody but a TM has
+                products shared to them. */}
+            {user?.userType === "TM" && (
+              <TabPill id="team" label="Team Library" count={orgPurchasedPrompts.length} />
+            )}
             <TabPill id="unread" label="Unread" count={unreadCount} />
           </div>
 
@@ -1938,6 +1982,51 @@ export default function NotificationsPage() {
                 });
               })}
               {!sharedPrompts.length && <EmptyState text="No shared products yet." />}
+            </div>
+          )}
+
+          {/* ── Team Library ──
+              Every product the organization has shared with this member, with
+              its live lock state. The endpoint re-checks ownership on each read,
+              so something shared before the org bought it turns from Locked to
+              Unlocked on the next load without needing to be re-shared. */}
+          {!loading && tab === "team" && (
+            <div>
+              {orgPurchasedPrompts.map((item: any, idx) => {
+                const p = item?.prompt || {};
+                const unlocked = !!p.unlocked || !!String(p.promptText || "").trim();
+
+                return NotifCard({
+                  id: p.id || idx,
+                  type: "ORG_SHARE_PURCHASED",
+                  message: p.title,
+                  title: unlocked
+                    ? "Unlocked — your organization owns this"
+                    : "Locked — waiting for your organization to buy it",
+                  attachmentPath: p.attachment?.path,
+                  senderName: item?.senderName || "Organization",
+                  senderEmail: item?.senderEmail,
+                  createdAt: item?.sharedAt,
+                  prompt: p,
+                  actionButton: unlocked
+                    ? actionBtn(
+                        "Copy prompt",
+                        async () => {
+                          try {
+                            await navigator.clipboard.writeText(p.promptText || "");
+                            toast({ title: "Copied", description: `"${p.title}" copied to clipboard.` });
+                          } catch {
+                            toast({ title: "Copy failed", description: "Unable to copy the prompt." });
+                          }
+                        },
+                        "ghost"
+                      )
+                    : undefined,
+                });
+              })}
+              {!orgPurchasedPrompts.length && (
+                <EmptyState text="Nothing shared with you yet. Your org owner can buy a product and share it with your team." />
+              )}
             </div>
           )}
 

@@ -704,7 +704,12 @@ router.post("/org/share/:promptId", requireAuth, async (req, res) => {
     const { promptId } = req.params;
     const { memberIds } = req.body;
 
-    if (user.userType !== "ORG" || user.role !== "Owner")
+    /* Owner OR an Admin on the org account.
+       This used to demand role === "Owner" exactly, while the panel shows the
+       "Share with team" button to userType ORG with role Owner *or* Admin
+       (isOrgOwner in lib/orgRoles.ts). An Admin pressing it got a 403 and the
+       share silently never happened. */
+    if (user.userType !== "ORG" || !["Owner", "Admin"].includes(user.role))
       return res.status(403).json({ success: false, error: "not_org_owner" });
 
     const org = await Organization.findById(user.orgId);
@@ -716,21 +721,36 @@ router.post("/org/share/:promptId", requireAuth, async (req, res) => {
     // Sharing itself is allowed even for a prompt the owner hasn't bought yet
     // (lets them line it up for the team in advance) — /shared/team is what
     // decides whether a member actually sees the full promptText, checked
-    // live against whether the owner has since purchased it.
-    const membersToShare = memberIds?.includes("all")
-      ? org.members.map((m) => m.userId)
-      : memberIds || [];
+    // live against whether the org has since purchased it.
+    const membersToShare = [
+      ...new Set(
+        (memberIds?.includes("all")
+          ? org.members.map((m) => m.userId)
+          : memberIds || []
+        )
+          .filter(Boolean)
+          .map(String)
+      ),
+    ];
 
     if (!membersToShare.length) {
       return res.status(400).json({ success: false, error: "no_members_selected" });
     }
 
-    await SharedPrompt.create({
-      orgId: org._id,
-      promptId,
-      sharedTo: membersToShare,
-      sharedBy: user._id,
-    });
+    /* One share record per (org, prompt), members merged into it.
+       Plain .create() wrote a new row every time the owner shared the same
+       prompt again — re-sharing after a purchase, or sharing to one more
+       person — so the member's library filled up with duplicate cards of the
+       same product, each with its own "shared at". $addToSet keeps one row and
+       just widens its audience. */
+    await SharedPrompt.findOneAndUpdate(
+      { orgId: org._id, promptId },
+      {
+        $addToSet: { sharedTo: { $each: membersToShare } },
+        $set: { sharedBy: user._id },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
     const notifs = membersToShare.map((id) => ({
       ...senderSnapshot(user),
@@ -801,7 +821,7 @@ router.get("/shared/team", requireAuth, async (req, res) => {
       return res.status(403).json({ success: false, error: "not_team_member" });
     }
 
-    const sharedRecords = await SharedPrompt.find({
+    const allShares = await SharedPrompt.find({
       sharedTo: { $in: [user._id] },
       orgId: user.orgId,
     })
@@ -809,28 +829,68 @@ router.get("/shared/team", requireAuth, async (req, res) => {
       .populate("sharedBy", "name email profileImage")
       .sort({ createdAt: -1 });
 
+    /* One card per product, newest share wins.
+
+       POST /org/share now keeps a single row per (org, prompt), but rows written
+       before that are still in the collection — every re-share of the same
+       product made another one — and they would render here as several
+       identical cards of the same thing. Sorted newest-first above, so the first
+       one seen is the one to keep. */
+    const seenPromptIds = new Set();
+    const sharedRecords = allShares.filter((sp) => {
+      const key = String(sp.promptId?._id || sp.promptId || "");
+      if (!key || seenPromptIds.has(key)) return false;
+      seenPromptIds.add(key);
+      return true;
+    });
+
     if (!sharedRecords.length)
       return res.json({ success: true, count: 0, sharedPrompts: [] });
 
-    // A shared prompt only *unlocks* (full promptText) once the sharer has
-    // actually bought it — checked live here, not at share-time, so a share
-    // made before purchase automatically unlocks once the owner does buy it,
-    // with no need to re-share.
-    const buyerIds = [...new Set(sharedRecords.map((sp) => String(sp.sharedBy?._id || sp.sharedBy)))];
+    /* A shared prompt unlocks (full promptText) once the ORGANIZATION owns it —
+       checked live here, not at share-time, so a share made before the purchase
+       unlocks by itself once the org does buy it, with no need to re-share.
+
+       "The organization" is the whole account, not one person. This used to ask
+       only whether `sharedBy` had a Purchase row, which is wrong in every case
+       where the buyer and the sharer aren't literally the same User: the Owner
+       buys and an Admin shares, an Admin buys and the Owner shares, or the
+       person who bought it has since left the team. In all of those the org
+       genuinely owned the product and the member was still shown a locked
+       listing with a purchase button — which they can't press anyway
+       (blockOrgTeamMemberPurchase). That was the dead end. */
     const promptIds = [...new Set(sharedRecords.map((sp) => String(sp.promptId?._id || sp.promptId)))];
 
+    const org = await Organization.findById(user.orgId).select("ownerId members.userId").lean();
+    const orgBuyerIds = [
+      ...new Set(
+        [
+          org?.ownerId,
+          ...(org?.members || []).map((m) => m.userId),
+          // Whoever shared it, even if they're no longer on the members list.
+          ...sharedRecords.map((sp) => sp.sharedBy?._id || sp.sharedBy),
+        ]
+          .filter(Boolean)
+          .map(String)
+      ),
+    ];
+
     const purchases = await Purchase.find({
-      buyer: { $in: buyerIds },
+      buyer: { $in: orgBuyerIds },
       prompt: { $in: promptIds },
       paymentStatus: "SUCCESS",
+      // A refunded purchase is not ownership — the org gave the product back.
+      refundStatus: { $ne: "REFUNDED" },
     }).lean();
 
-    const purchaseByKey = new Map();
+    // Keyed by prompt alone now: which member of the org paid is irrelevant to
+    // whether the org owns it.
+    const purchaseByPrompt = new Map();
     for (const p of purchases) {
-      const key = `${p.buyer}:${p.prompt}`;
-      const existing = purchaseByKey.get(key);
+      const key = String(p.prompt);
+      const existing = purchaseByPrompt.get(key);
       if (!existing || new Date(p.createdAt) > new Date(existing.createdAt)) {
-        purchaseByKey.set(key, p);
+        purchaseByPrompt.set(key, p);
       }
     }
 
@@ -854,23 +914,39 @@ router.get("/shared/team", requireAuth, async (req, res) => {
           };
         }
 
-        const key = `${String(sp.sharedBy?._id || sp.sharedBy)}:${String(sp.promptId?._id || sp.promptId)}`;
-        const purchase = purchaseByKey.get(key);
+        const purchase = purchaseByPrompt.get(String(sp.promptId?._id || sp.promptId));
         const unlocked = !!purchase;
         const snap = purchase?.promptSnapshot || {};
+
+        /* The live prompt text first, the purchase snapshot only as the fallback
+           for a listing that has since been deleted.
+
+           Order matters: POST /verify already watermarks what it stores in
+           promptSnapshot.promptText with the *buyer's* id. Reading the snapshot
+           first meant marking it a second time with the member's id, so the
+           text a team member copied carried two conflicting marks and neither
+           traced back cleanly. The live prompt is unmarked, so one pass over it
+           gives exactly one mark — this member's. */
+        const sourceText = fullPrompt.promptText || snap.promptText || "";
 
         const promptData = {
           id: fullPrompt._id,
           title: snap.title || fullPrompt.title,
           description: snap.description || fullPrompt.description,
           price: fullPrompt.price,
+          categories: fullPrompt.categories || [],
+          exclusive: !!fullPrompt.exclusive,
+          sold: !!fullPrompt.sold,
+          // Who uploaded it — the panel needs this to tell "my own product"
+          // apart from one the org bought, and without it every shared card
+          // looked like it might be the member's own upload.
+          userId: fullPrompt.userId,
           attachment: fullPrompt.attachment || snap.attachment || {},
           unlocked,
           // Only present once the org has actually purchased it — until
           // then the member sees the listing but not the content.
-          promptText: unlocked
-            ? embedWatermark(snap.promptText || fullPrompt.promptText || "", String(user._id))
-            : undefined,
+          promptText: unlocked ? embedWatermark(sourceText, String(user._id)) : undefined,
+          purchasedAt: purchase?.purchasedAt || purchase?.createdAt || null,
         };
 
         return {

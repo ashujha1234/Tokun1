@@ -1385,7 +1385,11 @@ const soldOut = !!prompt?.exclusive && !!prompt?.sold;
         color: owned ? "#BBF7D0" : "#000000",
       }}
     >
-      {owned ? "PURCHASED" : "PURCHASE TO UNLOCK"}
+      {owned
+        ? isTeamMember && !isOwnPrompt
+          ? "UNLOCKED BY YOUR ORG"
+          : "PURCHASED"
+        : "PURCHASE TO UNLOCK"}
     </span>
   )}
 </div>
@@ -1573,15 +1577,31 @@ const soldOut = !!prompt?.exclusive && !!prompt?.sold;
               {prompt.description}
             </p>
 
-            {/* The prompt text itself — your own upload, so there's nothing to
-                unlock. Buyers still see only the description above; this block
-                renders solely for the uploader, and only when the endpoint
-                actually sent the text (the public one strips it). */}
-            {isOwnPrompt && prompt.fullPrompt && (
+            {/* The prompt text itself.
+
+                This used to be `isOwnPrompt &&` — the uploader, and nobody else.
+                So the one thing a purchase actually buys was never rendered by
+                the panel that announces "PURCHASED" at the top of it. It hit
+                buyers and org team members alike, but it stranded team members
+                completely: the org buys a product and shares it, the server
+                sends the unlocked text down with it, and the member's panel
+                showed a description and a green badge with the prompt nowhere
+                on screen and no other page to find it on.
+
+                `owned` covers both routes to it — bought it yourself, or your
+                organization bought it and shared it (Notifications sets `owned`
+                from the server's own `unlocked` flag). The text is only ever in
+                `fullPrompt` when the server decided to send it, so this can't
+                reveal anything the endpoint withheld. */}
+            {(isOwnPrompt || owned) && prompt.fullPrompt && (
               <div className="mt-6 rounded-[12px] border border-white/10 bg-[#1C1C1E] p-4">
                 <div className="flex items-center justify-between gap-3 mb-2.5">
                   <span className="text-[12px] font-semibold tracking-wide text-white/50">
-                    YOUR PROMPT
+                    {isOwnPrompt
+                      ? "YOUR PROMPT"
+                      : isTeamMember
+                        ? "SHARED BY YOUR ORGANIZATION"
+                        : "YOUR PURCHASED PROMPT"}
                   </span>
                   <button
                     type="button"
@@ -1745,8 +1765,22 @@ const soldOut = !!prompt?.exclusive && !!prompt?.sold;
             {/* Primary action — big, full-width */}
             {!isOwnPrompt && (
               owned ? (
-                <div className="w-full h-12 rounded-[10px] bg-[#14532D] text-[#BBF7D0] text-[15px] font-semibold flex items-center justify-center">
-                  Purchased
+                /* Owned — by you, or by your org on your behalf. Either way the
+                   action here is to use it, not to buy it: the panel used to
+                   stop at a static "Purchased" chip, so someone who had the
+                   product had no button that did anything with it. */
+                <div className="space-y-2">
+                  <div className="w-full h-12 rounded-[10px] bg-[#14532D] text-[#BBF7D0] text-[15px] font-semibold flex items-center justify-center">
+                    {isTeamMember ? "Unlocked by your organization" : "Purchased"}
+                  </div>
+                  {prompt.fullPrompt && (
+                    <button
+                      onClick={handleCopy}
+                      className="w-full h-12 flex items-center justify-center rounded-[10px] font-semibold text-white text-[15px] transition-all bg-gradient-to-r from-[#FF14EF] to-[#1A73E8] hover:opacity-90"
+                    >
+                      Copy prompt
+                    </button>
+                  )}
                 </div>
               ) : comingSoon ? (
                 // Checked before the free-prompt branch: a free listing from an
