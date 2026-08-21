@@ -5779,6 +5779,11 @@ import {
   // For the three categories that only ever existed in the database and so
   // were never given an icon here: devotion, apparel, Anime.
   HandHeart, Shirt, Clapperboard,
+  // The headings added when the taxonomy was widened. Without a mark each they
+  // would all draw the generic Layers fallback, and a rail of twelve identical
+  // icons is a rail with no icons.
+  Bot, Film, Box, Camera, Home, ShoppingBag, UtensilsCrossed,
+  PartyPopper, Scale, Gamepad2, Music, Leaf,
 } from "lucide-react";
 import { User } from "lucide-react";
 // Category logos are stored as upload paths; mediaUrl resolves them against the
@@ -7159,6 +7164,21 @@ const CATEGORY_ICONS: Record<string, React.ComponentType<any>> = {
   devotion: HandHeart,
   apparel: Shirt,
   Anime: Clapperboard,
+  // Added with the wider taxonomy (see DEFAULT_CATEGORIES in
+  // server/routes/categoryRoutes.js) — keys match those names exactly, since
+  // the lookup is an exact match.
+  "AI & Automation": Bot,
+  "Video & Film": Film,
+  "3D & AR/VR": Box,
+  Photography: Camera,
+  "Real Estate": Home,
+  "E-commerce": ShoppingBag,
+  "Food & Beverage": UtensilsCrossed,
+  "Events & Weddings": PartyPopper,
+  Legal: Scale,
+  Gaming: Gamepad2,
+  "Music & Audio": Music,
+  Sustainability: Leaf,
 };
 const DEFAULT_CATEGORY_ICON = Layers;
 

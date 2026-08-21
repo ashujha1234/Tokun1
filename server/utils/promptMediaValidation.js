@@ -23,8 +23,23 @@ const { notifyAdmins } = require("./notifyAdmins");
 const VISION_MODEL = process.env.OPENAI_VISION_MODEL || "gpt-4o";
 const EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small";
 
-const APPROVE_THRESHOLD = 80;
-const REVIEW_THRESHOLD = 60;
+/* Auto-approve at 70, not 80.
+ *
+ * The score is a cosine similarity between two embeddings scaled to 0-100
+ * (see computeMatchScore), and that scale does not behave like a percentage:
+ * for text-embedding-3-small, two texts that genuinely describe the same thing
+ * land around 45-65, and 80+ effectively requires the seller's prompt and the
+ * vision description to be worded almost identically — which never happens,
+ * because one is marketing copy and the other is a flat list of what is visible
+ * in four frames. At 80 nearly everything fell short of auto-approval and the
+ * marketplace filled with prompts waiting on a human.
+ *
+ * Env-overridable so this can be retuned against real numbers without a
+ * deploy — the right threshold is the one a labelled set of genuine and
+ * deliberately-mismatched pairs separates at, not a number picked in advance.
+ */
+const APPROVE_THRESHOLD = Number(process.env.MEDIA_MATCH_APPROVE_THRESHOLD) || 70;
+const REVIEW_THRESHOLD = Number(process.env.MEDIA_MATCH_REVIEW_THRESHOLD) || 60;
 
 // ── ffmpeg binaries — same optional-static-binary fallback as addTokunIntro.js ──
 let FFMPEG = process.env.FFMPEG_PATH || "ffmpeg";

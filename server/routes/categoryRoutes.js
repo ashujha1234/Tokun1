@@ -29,29 +29,55 @@ const { SERVICE_CATEGORIES } = require("../constants/serviceCategories");
  * never in this list.
  */
 const DEFAULT_CATEGORIES = [
-  { name: "Coding", children: ["Web Development", "Mobile Apps", "Debugging & Fixes", "Code Review", "APIs & Backend", "DevOps & Scripts"] },
-  { name: "Design", children: ["Logo & Branding", "Illustration", "Product Mockups", "Presentations", "Print & Packaging"] },
-  { name: "UI/UX", children: ["Wireframes", "Design Systems", "User Flows", "Landing Pages", "Mobile UI"] },
-  { name: "Writing", children: ["Blog Posts", "Copywriting", "Storytelling", "Scripts", "Editing & Proofreading", "Technical Writing"] },
-  { name: "Marketing", children: ["Ad Copy", "SEO", "Email Campaigns", "Product Launches", "Brand Strategy"] },
-  { name: "Content", children: ["Video Scripts", "Podcasts", "Newsletters", "Captions", "Content Calendars"] },
-  { name: "Social Media", children: ["Instagram", "LinkedIn", "X (Twitter)", "YouTube", "Reels & Shorts"] },
-  { name: "Business", children: ["Business Plans", "Pitch Decks", "Market Research", "Operations", "Legal & Contracts"] },
-  { name: "Creative", children: ["Art Concepts", "Music & Audio", "Photography", "Character Design", "World Building"] },
-  { name: "Education", children: ["Lesson Plans", "Study Guides", "Quizzes & Tests", "Explainers", "Course Outlines"] },
-  { name: "Finance", children: ["Budgeting", "Investing", "Accounting", "Financial Models", "Taxes"] },
-  { name: "Productivity", children: ["Task Management", "Meeting Notes", "Automation", "Planning", "Summarisation"] },
-  { name: "Health", children: ["Fitness Plans", "Nutrition", "Mental Wellness", "Medical Explainers", "Habit Building"] },
-  { name: "Sales", children: ["Cold Outreach", "Sales Scripts", "Follow-ups", "Proposals", "Negotiation"] },
-  { name: "HR", children: ["Job Descriptions", "Interview Questions", "Onboarding", "Performance Reviews", "Policies"] },
-  { name: "Travel", children: ["Itineraries", "Destination Guides", "Budget Travel", "Packing Lists", "Local Food"] },
-  { name: "Research", children: ["Literature Review", "Data Analysis", "Surveys", "Citations", "Hypothesis Generation"] },
-  { name: "Data", children: ["SQL Queries", "Data Cleaning", "Visualisation", "Reporting", "Machine Learning"] },
-  { name: "Support", children: ["Help Articles", "Chat Replies", "Troubleshooting", "FAQs", "Escalation"] },
-  { name: "Enterprise", children: ["Internal Comms", "Compliance", "Training Material", "Process Docs", "Vendor Management"] },
-  { name: "devotion", children: ["Prayers", "Devotional Poetry", "Festival Content", "Scripture Explainers", "Meditation"] },
-  { name: "apparel", children: ["Product Descriptions", "Fashion Design", "Size & Fit Guides", "Lookbooks", "Trend Reports"] },
-  { name: "Anime", children: ["Character Art", "Manga Panels", "Fan Fiction", "Anime Backgrounds", "Cosplay"] },
+  { name: "Coding", children: ["Web Development", "Mobile Apps", "Debugging & Fixes", "Code Review", "APIs & Backend", "DevOps & Scripts", "Testing & QA", "Refactoring", "Game Development", "Browser Extensions", "Algorithms & Data Structures", "Documentation"] },
+
+  /* Design owns everything about how a thing LOOKS — on a screen, on paper, or
+     in a room. "Interior Design" and "Architecture & Exteriors" belong here for
+     that reason, and putting them here is also what retires the stray top-level
+     `interior` / `Interior` / `Interior Design` rows: seeding alone won't move
+     them (see scripts/reparent-stray-categories.js, which does). */
+  { name: "Design", children: ["Logo & Branding", "Illustration", "Product Mockups", "Presentations", "Print & Packaging", "Interior Design", "Architecture & Exteriors", "3D & CGI", "Motion Graphics", "Typography", "Icons & Iconography", "Poster & Album Art", "Colour & Palettes", "Moodboards"] },
+
+  { name: "UI/UX", children: ["Wireframes", "Design Systems", "User Flows", "Landing Pages", "Mobile UI", "Dashboards", "Prototyping", "Onboarding Flows", "Accessibility", "Microcopy", "Usability Testing"] },
+  { name: "Writing", children: ["Blog Posts", "Copywriting", "Storytelling", "Scripts", "Editing & Proofreading", "Technical Writing", "Resumes & Cover Letters", "Poetry", "Translation", "Summarising", "Ghostwriting", "Speeches"] },
+  { name: "Marketing", children: ["Ad Copy", "SEO", "Email Campaigns", "Product Launches", "Brand Strategy", "Landing Page Copy", "Performance Marketing", "Positioning & Messaging", "Case Studies", "Influencer Briefs", "Growth Experiments", "Analytics & Attribution"] },
+  { name: "Content", children: ["Video Scripts", "Podcasts", "Newsletters", "Captions", "Content Calendars", "Blog Outlines", "Titles & Thumbnails", "Repurposing", "Webinars", "Interviews"] },
+  { name: "Social Media", children: ["Instagram", "LinkedIn", "X (Twitter)", "YouTube", "Reels & Shorts", "TikTok", "Facebook", "Pinterest", "Threads", "Community Management", "Hashtags & Trends"] },
+  { name: "Business", children: ["Business Plans", "Pitch Decks", "Market Research", "Operations", "Legal & Contracts", "SOPs", "Investor Updates", "Competitive Analysis", "Pricing Strategy", "Partnerships", "Fundraising"] },
+  { name: "Creative", children: ["Art Concepts", "Music & Audio", "Photography", "Character Design", "World Building", "Comics & Storyboards", "Lyrics & Poetry", "Film & Cinematography", "Sound Design", "Game Narrative"] },
+  { name: "Education", children: ["Lesson Plans", "Study Guides", "Quizzes & Tests", "Explainers", "Course Outlines", "Flashcards", "Curriculum Design", "Assignment Feedback", "Language Learning", "Exam Prep"] },
+  { name: "Finance", children: ["Budgeting", "Investing", "Accounting", "Financial Models", "Taxes", "Personal Finance", "Crypto & Web3", "Insurance", "Payroll", "Invoicing"] },
+  { name: "Productivity", children: ["Task Management", "Meeting Notes", "Automation", "Planning", "Summarisation", "Email Drafting", "Note Taking", "Goal Setting", "Decision Making", "Time Blocking"] },
+  { name: "Health", children: ["Fitness Plans", "Nutrition", "Mental Wellness", "Medical Explainers", "Habit Building", "Yoga & Mobility", "Sleep", "Meal Prep & Recipes", "Recovery & Injury", "Mindfulness"] },
+  { name: "Sales", children: ["Cold Outreach", "Sales Scripts", "Follow-ups", "Proposals", "Negotiation", "Lead Qualification", "Demos & Pitches", "Objection Handling", "Account Plans", "CRM Hygiene"] },
+  { name: "HR", children: ["Job Descriptions", "Interview Questions", "Onboarding", "Performance Reviews", "Policies", "Recruiting Outreach", "Culture & Values", "Compensation", "Learning & Development", "Exit Interviews"] },
+  { name: "Travel", children: ["Itineraries", "Destination Guides", "Budget Travel", "Packing Lists", "Local Food", "Visa & Documents", "Solo Travel", "Family Trips", "Travel Writing", "Transport & Routes"] },
+  { name: "Research", children: ["Literature Review", "Data Analysis", "Surveys", "Citations", "Hypothesis Generation", "Interview Guides", "Competitive Research", "Fact Checking", "Grant Writing", "Systematic Reviews"] },
+  { name: "Data", children: ["SQL Queries", "Data Cleaning", "Visualisation", "Reporting", "Machine Learning", "Dashboards & BI", "Spreadsheets & Excel", "Statistics", "ETL Pipelines", "A/B Testing", "Data Modelling"] },
+  { name: "Support", children: ["Help Articles", "Chat Replies", "Troubleshooting", "FAQs", "Escalation", "Macros & Templates", "Billing & Refund Replies", "Tone & Empathy", "Knowledge Base", "Post-mortems"] },
+  { name: "Enterprise", children: ["Internal Comms", "Compliance", "Training Material", "Process Docs", "Vendor Management", "RFPs & Tenders", "Security Reviews", "Change Management", "Board Reporting", "SLA & Contracts"] },
+  { name: "devotion", children: ["Prayers", "Devotional Poetry", "Festival Content", "Scripture Explainers", "Meditation", "Bhajans & Aarti", "Rituals & Puja", "Spiritual Guidance", "Mantras"] },
+  { name: "apparel", children: ["Product Descriptions", "Fashion Design", "Size & Fit Guides", "Lookbooks", "Trend Reports", "Streetwear", "Ethnic Wear", "Textile & Print Design", "Catalogue Copy", "Sustainable Fashion"] },
+  { name: "Anime", children: ["Character Art", "Manga Panels", "Fan Fiction", "Anime Backgrounds", "Cosplay", "Chibi & Stickers", "Anime Posters", "Studio Styles", "Story Prompts"] },
+
+  /* ── New top-level buckets ───────────────────────────────────────────────
+     Added because sellers were filing this work under whichever of the 23
+     existing headings was least wrong — a product render under "Design", an
+     agent system prompt under "Coding", a listing description under "Writing" —
+     which is invisible to a buyer browsing by category. Each of these had
+     enough of that misfiled work to be worth its own heading. */
+  { name: "AI & Automation", children: ["System Prompts", "Agent Prompts", "Chatbots", "Workflow Automation", "RAG & Knowledge Bases", "Model Evaluation", "Fine-tuning Data", "Prompt Chaining"] },
+  { name: "Video & Film", children: ["Video Ads", "Explainer Videos", "Trailers", "Shorts & Reels", "Storyboards", "B-roll & Shot Lists", "Subtitles & Captions", "Colour Grading Briefs"] },
+  { name: "3D & AR/VR", children: ["3D Modelling", "Product Renders", "Game Assets", "Character Rigging", "AR Filters", "VR Environments", "Texturing & Materials"] },
+  { name: "Photography", children: ["Portraits", "Product Photography", "Editing & Retouching", "Lighting Setups", "Photo Prompts", "Event Photography", "Real Estate Photography"] },
+  { name: "Real Estate", children: ["Listing Descriptions", "Virtual Staging", "Property Marketing", "Investment Analysis", "Tenant Communication", "Site & Floor Plans"] },
+  { name: "E-commerce", children: ["Product Listings", "Marketplace SEO", "Store Design", "Reviews & UGC", "Abandoned Cart", "Bundling & Upsells", "Returns & Policies"] },
+  { name: "Food & Beverage", children: ["Recipes", "Menu Design", "Restaurant Marketing", "Food Photography", "Nutrition Labels", "Beverage & Cocktails", "Cloud Kitchen"] },
+  { name: "Events & Weddings", children: ["Invitations", "Event Planning", "Wedding Content", "Speeches & Toasts", "Decor Concepts", "Vendor Briefs", "Run Sheets"] },
+  { name: "Legal", children: ["Contracts", "Privacy & Terms", "IP & Trademarks", "Compliance Checklists", "Legal Summaries", "Notices & Letters", "Employment Law"] },
+  { name: "Gaming", children: ["Game Design", "Level Design", "Game Lore", "Quest & Dialogue", "Esports Content", "Stream Overlays", "Patch Notes"] },
+  { name: "Music & Audio", children: ["Lyrics", "Song Concepts", "Voiceover Scripts", "Podcast Editing", "Sound Effects", "Mixing & Mastering Briefs", "Jingles"] },
+  { name: "Sustainability", children: ["ESG Reporting", "Green Marketing", "Carbon Accounting", "Circular Design", "Impact Reports"] },
 ];
 
 /**

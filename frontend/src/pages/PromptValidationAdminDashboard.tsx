@@ -65,7 +65,11 @@ function ScoreDial({ score }: { score: number | null }) {
   if (score === null || score === undefined) {
     return <span style={{ color: "#4B5563", fontSize: 12 }}>—</span>;
   }
-  const color = score >= 80 ? "#10B981" : score >= 60 ? "#3B82F6" : "#EF4444";
+  /* The same cut-offs the server routes on (APPROVE/REVIEW_THRESHOLD in
+     utils/promptMediaValidation.js). Green was pinned at 80 while auto-approval
+     moved to 70, so a 72 — a prompt that went live on its own — showed up in
+     this queue coloured the same blue as one still waiting for a human. */
+  const color = score >= 70 ? "#10B981" : score >= 60 ? "#3B82F6" : "#EF4444";
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
       <span style={{ width: 8, height: 8, borderRadius: "50%", background: color }} />

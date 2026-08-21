@@ -93,6 +93,19 @@ export default function TagPicker({
 
   useEffect(() => setHighlight(0), [query]);
 
+  /* Keep the arrow-key selection inside the visible window.
+     A search can return 24 tags into roughly 260px of list, so pressing Down
+     past the fifth moved the highlight onto a row that had scrolled out of
+     sight — the selection was still correct and Enter still added the right
+     tag, but there was nothing on screen saying so. `block: "nearest"` scrolls
+     the list by the minimum needed and leaves it alone when the row is already
+     visible, rather than jumping the highlight to the middle on every step. */
+  useEffect(() => {
+    if (!open) return;
+    const row = listRef.current?.children?.[highlight] as HTMLElement | undefined;
+    row?.scrollIntoView({ block: "nearest" });
+  }, [highlight, open]);
+
   useEffect(() => {
     const onClickOutside = (e: MouseEvent) => {
       const target = e.target as Node;
@@ -108,15 +121,65 @@ export default function TagPicker({
   useEffect(() => {
     if (!open) return;
     measure();
+
+    /* Scrolling the SUGGESTION LIST doesn't move the input, so re-measuring on
+       it is pointless — and because the capture-phase listener below sees every
+       scroll in the document, including the list's own, it fired on each wheel
+       tick and handed back a fresh rect object that re-rendered the list under
+       the cursor. */
+    const onScroll = (e: Event) => {
+      const target = e.target as Node | null;
+      if (target && listRef.current?.contains(target)) return;
+      measure();
+    };
+
     // Capture phase: the dialog body is the element that scrolls, and a scroll
     // event on it doesn't bubble to window.
-    window.addEventListener("scroll", measure, true);
+    window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", measure);
     return () => {
-      window.removeEventListener("scroll", measure, true);
+      window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", measure);
     };
   }, [open, measure]);
+
+  /* Lets the list scroll at all.
+   *
+   * The upload form is a Radix modal Dialog, and a modal Dialog wraps its
+   * content in react-remove-scroll, which stops the page moving behind it by
+   * listening for `wheel` and `touchmove` ON THE DOCUMENT and calling
+   * preventDefault() for anything that didn't originate inside DialogContent.
+   *
+   * This list is portalled to <body> — deliberately, so it isn't clipped by the
+   * dialog's scrolling body — which puts it outside that container. So the lock
+   * classified every wheel tick over the suggestions as "the page trying to
+   * scroll behind the modal" and cancelled it: the list had `overflow-y: auto`
+   * and a maxHeight, a search can return up to 24 tags against ~260px of room,
+   * and the ones past the fifth were simply unreachable with a mouse or a
+   * finger. The keyboard's arrow keys worked the whole time, which is the same
+   * tell as the pointer-events bug noted below — anything routed through the
+   * pointer was being intercepted, anything else was fine.
+   *
+   * Those document listeners are on the BUBBLE phase, so stopping propagation
+   * at the list is enough: the event never reaches them, nothing calls
+   * preventDefault, and the browser scrolls the list natively. Registered on the
+   * node directly rather than via onWheel — React attaches its own listeners at
+   * the root container, which a <body> portal doesn't bubble through. Passive
+   * false to match how the lock registers, so ordering is not left to chance. */
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+
+    const keepInside = (e: Event) => e.stopPropagation();
+    el.addEventListener("wheel", keepInside, { passive: false });
+    el.addEventListener("touchmove", keepInside, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", keepInside);
+      el.removeEventListener("touchmove", keepInside);
+    };
+    // `rect` is in here because the list only mounts once it has been measured —
+    // on the first open the ref is still null when this would otherwise run.
+  }, [open, full, rect]);
 
   /* Committing on mousedown fixed one bug and left a subtler one behind.
      mousedown tears this list down, and Chrome then dispatches the click on
