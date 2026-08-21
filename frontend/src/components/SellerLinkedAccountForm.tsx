@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import {
   peekPayoutStatus,
@@ -689,7 +690,14 @@ export default function SellerLinkedAccountForm({
     return message ? <p className="text-[11px] text-amber-300/90 mt-1">{message}</p> : null;
   };
 
-  return (
+  /* PORTALLED TO <body> — same reason as BecomeFreelancerWizard, which opens
+     from the same menu. `position: fixed` stops meaning "the viewport" as soon
+     as an ancestor has a transform, a filter, `contain`, or just
+     `will-change: transform` — and `.site-header__actions`, which holds the
+     account dropdown this can be opened from, has exactly that so the header
+     can slide its two ends on scroll. Anchored there, `inset-0` became the size
+     of that corner cluster and `overflow-hidden` cropped the form to a sliver. */
+  return createPortal(
     <div className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-sm overflow-hidden">
       <div className="h-full w-full flex items-center justify-center p-2 sm:p-3 md:p-4">
         {/* max-h-full, not `calc(100dvh - 16px)`.
@@ -1114,6 +1122,7 @@ export default function SellerLinkedAccountForm({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

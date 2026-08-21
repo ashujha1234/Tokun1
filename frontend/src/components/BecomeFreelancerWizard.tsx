@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertCircle, BadgeCheck, ChevronLeft, Loader2, X } from "lucide-react";
 import {
   ABOUT_MAX,
@@ -798,7 +799,23 @@ export default function BecomeFreelancerWizard({
   const secondaryBtn =
     "rounded-lg px-5 py-2.5 text-sm font-medium text-white/80 border border-white/15 hover:text-white hover:border-white/25 transition-colors";
 
-  return (
+  /* PORTALLED TO <body>, and this is load-bearing rather than tidiness.
+
+     `position: fixed` is only relative to the viewport while no ancestor has
+     created a containing block — and `transform`, `filter`, `contain` or even a
+     bare `will-change: transform` does exactly that. This dialog is opened from
+     the account dropdown, which on the landing page lives inside
+     `.site-header__actions`: that element carries `will-change: transform` so
+     the header's two ends can slide on scroll (index.css). So `fixed inset-0`
+     resolved against that little cluster in the top-right corner instead of the
+     screen, and `overflow-hidden` below then cropped the dialog to it — the form
+     appeared as a sliver in the corner of the header, which is exactly the bug
+     this fixes.
+
+     Mounting into <body> puts the overlay outside every one of those ancestors,
+     so it can't be re-anchored or clipped by a header, a card with a transform,
+     or anything else a future caller happens to sit inside. */
+  return createPortal(
     <div className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-sm overflow-hidden">
       <div className="h-full w-full flex items-center justify-center p-2 sm:p-4">
         <div
@@ -1020,6 +1037,7 @@ export default function BecomeFreelancerWizard({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
