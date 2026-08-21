@@ -2049,6 +2049,32 @@ export default function SellPromptModal({
   const textareaBase =
     "w-full rounded-lg bg-[#131419] border border-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/10";
 
+  /* The look of the two toggles below ("Set this product as paid", "One-time
+     sale"), in one place because they must not drift apart.
+   *
+   * Both were invisible when OFF. The track was painted #17171A and the thumb
+   * #0D0D0E, on a dialog whose background is #0E0F12 (contentStyle, just below)
+   * — three shades of near-black within a few points of each other, so an
+   * un-toggled switch was a label with nothing beside it. Nobody could tell
+   * there was a control there at all, let alone that it was off; the only way
+   * to find it was to click where one ought to be and watch the gradient
+   * appear.
+   *
+   * OFF now reads as a real, unfilled control: a lit track and a pale knob, both
+   * clearly above the dialog surface. ON is untouched — the gradient already
+   * carried it. The track colours are inline rather than classes because the
+   * base Switch sets `data-[state=unchecked]:bg-input`, and an attribute
+   * selector outranks a plain utility class; the thumb goes through `[&>span]`,
+   * which already outranks the thumb's own class. */
+  const switchSkin = (on: boolean) => ({
+    className: on ? "[&>span]:bg-[#0D0D0E]" : "[&>span]:bg-white/80",
+    style: {
+      backgroundImage: on ? GRAD : undefined,
+      backgroundColor: on ? undefined : "rgba(255,255,255,0.16)",
+      borderColor: on ? "transparent" : "rgba(255,255,255,0.28)",
+    } as React.CSSProperties,
+  });
+
   const contentStyle: React.CSSProperties = {
     width: "min(720px, 92vw)",
     maxHeight: "min(95vh, 1100px)",
@@ -2503,11 +2529,7 @@ export default function SellPromptModal({
                   setIsFree(!on);
                   if (!on) { setPrice(""); setOneTimeSale(false); }
                 }}
-                className="[&>span]:bg-[#0D0D0E]"
-                style={{
-                  backgroundImage: isPaid ? GRAD : undefined,
-                  backgroundColor: isPaid ? undefined : "#17171A",
-                }}
+                {...switchSkin(isPaid)}
               />
             </div>
 
@@ -2518,11 +2540,7 @@ export default function SellPromptModal({
                   id="one-time-sale"
                   checked={oneTimeSale}
                   onCheckedChange={setOneTimeSale}
-                  className="[&>span]:bg-[#0D0D0E]"
-                  style={{
-                    backgroundImage: oneTimeSale ? GRAD : undefined,
-                    backgroundColor: oneTimeSale ? undefined : "#17171A",
-                  }}
+                  {...switchSkin(oneTimeSale)}
                 />
               </div>
             )}

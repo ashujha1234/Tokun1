@@ -177,9 +177,13 @@ export default function TagPicker({
       el.removeEventListener("wheel", keepInside);
       el.removeEventListener("touchmove", keepInside);
     };
-    // `rect` is in here because the list only mounts once it has been measured —
-    // on the first open the ref is still null when this would otherwise run.
-  }, [open, full, rect]);
+    /* Every condition the list's own render is gated on, so the listener is
+       attached the moment the node exists. `rect` because it only mounts once
+       measured; `optionCount` because it also only mounts once there is
+       something to show — typing the first matching letter brings the panel up
+       without touching any of the others, and an effect that didn't watch it
+       would leave that panel unscrollable. */
+  }, [open, full, rect, optionCount]);
 
   /* Committing on mousedown fixed one bug and left a subtler one behind.
      mousedown tears this list down, and Chrome then dispatches the click on
@@ -308,9 +312,23 @@ export default function TagPicker({
         {tags.length}/{max} tags · buyers search by these, so pick the words they'd type.
       </p>
 
+      {/* No panel unless there is something in it to pick.
+       *
+       * `optionCount` is the suggestions plus the "Add …" row. Without it the
+       * list rendered whenever the field had focus, and since suggestions are
+       * empty until something is typed (see the note on `suggestions`), simply
+       * clicking into the field dropped a panel over the form saying "No
+       * suggestions left." — an empty dropdown that answered a question nobody
+       * had asked and covered the attachment dropzone directly beneath it. The
+       * same panel came back on any query that matched nothing.
+       *
+       * That empty state is gone rather than reworded: a dropdown with no
+       * options is not a dropdown. The field's own placeholder already says what
+       * to type, and the chips above say what has been picked. */}
       {open &&
         !full &&
         rect &&
+        optionCount > 0 &&
         createPortal(
           <div
             ref={listRef}
@@ -381,11 +399,6 @@ export default function TagPicker({
               </button>
             )}
 
-            {!suggestions.length && !canCreate && (
-              <p className="px-3 py-4 text-sm text-white/40">
-                {trimmed ? "Nothing matched — try a shorter word." : "No suggestions left."}
-              </p>
-            )}
           </div>,
           document.body
         )}
