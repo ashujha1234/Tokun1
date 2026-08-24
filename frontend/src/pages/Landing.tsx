@@ -11979,6 +11979,9 @@ import {
   LogOut,
   MessageSquarePlus,
   Gift,
+  Bookmark,
+  ShoppingBag,
+  Store,
   Mouse,
   Package,
   Play,
@@ -12003,6 +12006,8 @@ import CanvasErrorBoundary from '@/components/CanvasErrorBoundary'
    below. TokunLogo comes from there too, so the mark is one component. */
 import SiteNav, { TokunLogo } from '@/components/SiteNav'
 import { prefetchLandingRoutes } from '@/lib/prefetchRoutes'
+import { useMode } from '@/contexts/ModeContext'
+import { MODE_UI_ENABLED } from '@/lib/mode'
 import './landing-page.css'
 
 const TOKUN_LOGO_SRC = '/icons/Tokun.png'
@@ -12127,6 +12132,10 @@ function HeroAccountMenu() {
   // the menu doesn't take the wizard with it.
   const freelancerMenu = useFreelancerMenu()
 
+  // Which half of the app this menu is being read in — the other copy of this
+  // menu splits its items the same way, so both have to ask.
+  const { mode, setMode, canShowToggle, shows } = useMode()
+
   const toTitleCase = (value: string) =>
     value
       .split(' ')
@@ -12198,20 +12207,56 @@ function HeroAccountMenu() {
        different items depending on which page you opened it from. Hidden for
        the same reason: payments settle through Razorpay and seller earnings go
        to a linked account, so there is no balance to manage day to day. */
-    { label: 'Dashboard', icon: LayoutDashboard, onClick: () => go('/self-dash') },
-    // Kept in step with the Header's account menu — same entry, same target:
-    // the dashboard's "My Products" tab (purchased + uploaded).
-    { label: 'My Products', icon: Package, onClick: () => go('/self-dash?tab=prompts&p=purchased') },
+    /* The mode switch, same row the Header's menu carries. Without it the
+       landing page is the one place you cannot change mode from the menu —
+       and the pill in the bar hides its labels on a narrow screen, so on a
+       phone this row IS the switch. */
+    ...(MODE_UI_ENABLED && canShowToggle
+      ? [{
+          label: mode === 'creator' ? 'Switch to buyer mode' : 'Switch to creator mode',
+          icon: mode === 'creator' ? ShoppingBag : Store,
+          onClick: () => {
+            setOpen(false)
+            setMode(mode === 'creator' ? 'buyer' : 'creator')
+          },
+        }]
+      : []),
+    ...(shows('sellerDashboard') || !MODE_UI_ENABLED
+      ? [{ label: 'Dashboard', icon: LayoutDashboard, onClick: () => go('/self-dash') }]
+      : []),
+    /* Kept in step with the Header's account menu — one page, two sub-tabs,
+       two names. This still said "My Products" and pointed at the purchased
+       half while the Header had already split them, so the same dropdown
+       named the same destination differently depending on where you opened
+       it from. */
+    ...(!MODE_UI_ENABLED
+      ? [{ label: 'My Products', icon: Package, onClick: () => go('/self-dash?tab=prompts&p=purchased') }]
+      : [
+          // Purchases in both modes; listings only where there is a selling
+          // half. Same as the Header's copy of this menu.
+          { label: 'My Purchases', icon: Package, onClick: () => go('/self-dash?tab=prompts&p=purchased') },
+          ...(shows('listings')
+            ? [{ label: 'My Listings', icon: Package, onClick: () => go('/self-dash?tab=prompts&p=uploaded') }]
+            : []),
+        ]),
+    /* Saved. In BOTH modes and on every page that has this menu — you save
+       products and you save creators, and neither stops being worth keeping
+       because you switched which half of the app you are looking at. It was
+       missing here entirely: the Header grew it when the mode pill took its
+       slot in the action row, and this copy never got it. */
+    { label: 'Saved', icon: Bookmark, onClick: () => go('/saved') },
     // Kept in step with the Header's account menu — same entry, same target.
     { label: 'Refer & Earn', icon: Gift, onClick: () => go('/refer') },
   ]
 
   const secondaryItems = [
-    { label: 'My Feedback', onClick: () => go('/my-feedback') },
+    // Buyer-side, matching the Header's menu — feedback and refunds are things
+    // you left or asked for as a buyer.
+    ...(shows('feedback') ? [{ label: 'My Feedback', onClick: () => go('/my-feedback') }] : []),
     // Kept in step with the Header's account menu — this is a second copy of the
     // same menu, so anything added there has to be added here too or the landing
     // page quietly falls behind (the footer had exactly this problem).
-    { label: 'My Refunds', onClick: () => go('/my-refunds') },
+    ...(shows('refunds') ? [{ label: 'My Refunds', onClick: () => go('/my-refunds') }] : []),
     { label: 'Pricing', onClick: () => go('/subscription') },
     { label: 'Support', onClick: () => go('/support') },
   ]

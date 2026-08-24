@@ -4594,17 +4594,24 @@ useEffect(() => {
             icon: Package,
             onClick: () => navigate("/self-dash?tab=prompts&p=purchased"),
           }]
-        : mode === "creator"
-          ? [{
-              label: "My Listings",
-              icon: Package,
-              onClick: () => navigate("/self-dash?tab=prompts&p=uploaded"),
-            }]
-          : [{
+        : [
+            /* Both, not one or the other. Creator mode showed only My Listings,
+               which meant a creator who had bought something had nowhere to go
+               and see it — see the note on SURFACE_MODE. Purchases are always
+               here; listings appear once there is a selling half to look at. */
+            {
               label: "My Purchases",
               icon: Package,
               onClick: () => navigate("/self-dash?tab=prompts&p=purchased"),
-            }]),
+            },
+            ...(shows("listings")
+              ? [{
+                  label: "My Listings",
+                  icon: Package,
+                  onClick: () => navigate("/self-dash?tab=prompts&p=uploaded"),
+                }]
+              : []),
+          ]),
 
       // Took the action row's slot when the mode pill arrived — see the note
       // there. A destination, not a control you use in passing.

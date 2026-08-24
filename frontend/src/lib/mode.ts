@@ -68,6 +68,26 @@ export type ModeSurface =
   | "team"
   | "saved";
 
+/* The rule this table follows, arrived at the hard way:
+ *
+ *   a mode hides what is MEANINGLESS in it — not what merely leans the other way.
+ *
+ * Only the creator half has things that qualify. Listings, payouts, the seller
+ * dashboard and the upload button do not exist for someone who has never sold;
+ * showing them is showing an empty room.
+ *
+ * Nothing on the buyer side is like that. Purchases, refunds and feedback are
+ * YOUR OWN records, and they do not stop existing because you switched to the
+ * half of the app where you sell — creators buy references and tools like
+ * everybody else. They were "buyer" here, which left a creator with no route to
+ * their own purchases at all: no menu entry, the dashboard's sub-tab pill gone,
+ * /purchases not linked from anywhere. The only way to see what you had bought
+ * was to leave Creator mode.
+ *
+ * `cart` is the one buyer-side exception, and only because it is a control
+ * rather than a record — and even it stays visible while it has anything in it
+ * (see Header.tsx).
+ */
 const SURFACE_MODE: Record<ModeSurface, AppMode | "both"> = {
   upload: "creator",
   listings: "creator",
@@ -76,10 +96,10 @@ const SURFACE_MODE: Record<ModeSurface, AppMode | "both"> = {
   freelancer: "creator",
 
   cart: "buyer",
-  purchases: "buyer",
-  refunds: "buyer",
-  feedback: "buyer",
 
+  purchases: "both",
+  refunds: "both",
+  feedback: "both",
   orders: "both",
   team: "both",
   saved: "both",

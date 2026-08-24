@@ -1094,7 +1094,7 @@ import { avatarFor } from "@/lib/avatar";
 
 
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import { useAuth } from "@/contexts/AuthContext";
 import ShareWithTeamModal from "@/components/ShareWithTeamModal";
@@ -2058,6 +2058,8 @@ const SelfDash = () => {
   const avatar = avatarFor(user);
 
   const location = useLocation();
+  // Used to keep ?p= in step with the mode — see the mode-change effect below.
+  const navigate = useNavigate();
   const initialParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
 
   /* ?tab= used to be understood only when it said "prompts", so every other
@@ -2072,12 +2074,18 @@ const SelfDash = () => {
   const [activeTab, setActiveTab] = useState<DashTab>(
     () => readTabParam(initialParams.get("tab")) ?? "dashboard"
   );
-  const [promptsTab, setPromptsTab] = useState<PromptsTab>(
-    initialParams.get("p") === "uploaded" ? "uploaded" : "purchased"
-  );
-
-  // Which half of the product this reader is in — see the effect below.
+  // Which half of the product this reader is in — see promptsTab below.
   const { mode } = useMode();
+
+  /* Which half of My Products is on screen.
+     THE URL DECIDES; the mode is only the default when the URL doesn't say.
+     Both menus link here with an explicit `p`, and a menu entry that opened a
+     different list than the one it named would be worse than not having it. */
+  const [promptsTab, setPromptsTab] = useState<PromptsTab>(() => {
+    const p = initialParams.get("p");
+    if (p === "uploaded" || p === "purchased") return p;
+    return MODE_UI_ENABLED && mode === "creator" ? "uploaded" : "purchased";
+  });
 
   // The account menu links here while the user may already be on this page —
   // without this, the URL changes but the visible tab doesn't.
@@ -2085,22 +2093,32 @@ const SelfDash = () => {
     const tab = readTabParam(initialParams.get("tab"));
     const p = initialParams.get("p");
     if (tab) setActiveTab(tab);
-    /* `p` is ignored while the Buyer/Creator toggle is running — the mode is
-       the single source of truth for which list this is, and the effect below
-       applies it. Reading both would let them disagree: arriving at
-       ?p=purchased in Creator mode, the two would take turns setting the tab
-       and which one won came down to the order the effects happened to run. */
-    if (!MODE_UI_ENABLED && (p === "purchased" || p === "uploaded")) setPromptsTab(p);
+    // An explicit `p` always wins — it is what the reader asked for by name.
+    if (p === "purchased" || p === "uploaded") setPromptsTab(p);
   }, [initialParams]);
 
-  /* Which half of My Products this is, decided by the mode.
-     ModeContext turns ?p=uploaded into Creator mode on the way in (see
-     pathImpliesCreator), so a link still lands on the list it asked for — it
-     just gets there by setting the mode rather than by setting the tab behind
-     the mode's back. */
+  /* Switching mode moves the list — but only on a real change.
+     Not on mount: there the URL is authoritative, and re-deriving from the mode
+     would immediately overwrite the `p` the menu just linked to. That is the
+     race this used to lose, and it is why My Purchases opened the uploads list
+     when a creator pressed it.
+
+     The URL is rewritten to match rather than left behind, so what is on screen
+     and what a copied link would open are the same thing. */
+  const prevModeRef = useRef(mode);
   useEffect(() => {
     if (!MODE_UI_ENABLED) return;
-    setPromptsTab(mode === "creator" ? "uploaded" : "purchased");
+    if (prevModeRef.current === mode) return;
+    prevModeRef.current = mode;
+
+    const want: PromptsTab = mode === "creator" ? "uploaded" : "purchased";
+    setPromptsTab(want);
+
+    if (initialParams.get("p") && initialParams.get("p") !== want) {
+      const next = new URLSearchParams(location.search);
+      next.set("p", want);
+      navigate({ pathname: location.pathname, search: `?${next.toString()}` }, { replace: true });
+    }
   }, [mode]);
 
   /* The clock next to the date. Ticks on the minute rather than every second —

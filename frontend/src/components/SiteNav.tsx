@@ -75,21 +75,28 @@ export default function SiteNav({
         </div>
 
         <div className="site-header__actions landing-nav__actions">
-          {/* Signed OUT it is a marketing CTA — selling is half of what this
+          {/* Upload sits LEFT of the toggle.
+              The other way round it landed between the toggle and the account
+              menu — two account-level controls with a page action wedged
+              through the middle of them. Reading right to left, the cluster
+              nearest the avatar should be the ones that belong to the account:
+              which mode you are in, and who you are.
+
+              Signed OUT this is a marketing CTA — selling is half of what this
               product is, and the bar a first-time visitor sees never said so.
               Signed IN it is a tool, and a tool belongs to Creator mode: a
               buyer who has chosen the buying half of the app should not be
-              carrying an Upload button around the landing page.
-              Two different jobs for the same button, which is why the condition
-              is on the session rather than on the mode alone. */}
+              carrying an Upload button around the landing page. Two different
+              jobs for one button, which is why the condition is on the session
+              rather than on the mode alone. */}
+          {showUpload && <UploadProductButton />}
+
           {/* Here as well as in the app header, because this is the bar a
               signed-out visitor actually sees — putting the Buyer/Creator
               choice only behind a login means nobody meets it until after they
               have picked a side. Pressing Creator without an account goes to
               signup and lands there in Creator mode (see ModeToggle). */}
           <ModeToggle />
-
-          {showUpload && <UploadProductButton />}
 
           {children ?? (
             <>
