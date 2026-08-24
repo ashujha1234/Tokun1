@@ -958,7 +958,30 @@ router.get("/browse", async (req, res) => {
     const q = str(req.query.q, 80);
     const specialization = str(req.query.specialization, 80);
 
+    /* `ids` — these specific people, however far down the list they are.
+       The Saved page needs the directory's own rows for the creators someone
+       saved, and it cannot get them by filtering a page of this endpoint: the
+       page cap is 60, so anyone further down would silently vanish from their
+       own saved list. Asking for them by id is the difference between "the
+       first 60 freelancers" and "the ones you asked for".
+
+       Same shaping code below either way, which is the point — a second
+       endpoint would be a second answer to "what does a directory row look
+       like". Capped at 120 so the parameter can't be used to dump the table. */
+    const ids = String(req.query.ids || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => mongoose.Types.ObjectId.isValid(s))
+      .slice(0, 120);
+
     const filter = { status: "ACTIVE" };
+
+    if (req.query.ids !== undefined) {
+      // An `ids` list that survived validation empty matches nobody, rather
+      // than falling through to "everyone" — which would hand a saved list the
+      // whole directory.
+      filter.userId = { $in: ids };
+    }
 
     if (specialization) {
       const spec = await Specialization.findOne({ slug: specialization }).select("_id").lean();
@@ -995,8 +1018,11 @@ router.get("/browse", async (req, res) => {
         // Newest live profiles first. There is no ranking signal worth using
         // yet — ratings live on User and aren't populated for most freelancers.
         .sort({ activatedAt: -1, updatedAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
+        /* An `ids` request is already bounded by the list it asked for, so it
+           is not paged — paging it would mean the caller had to ask twice for
+           a set it already had in hand, and a saved list is not a feed. */
+        .skip(ids.length ? 0 : (page - 1) * limit)
+        .limit(ids.length ? ids.length : limit)
         .populate("userId", "name avatarUrl isVerified sellerStatus isDeleted")
         .populate("specializations", "name slug")
         .lean(),

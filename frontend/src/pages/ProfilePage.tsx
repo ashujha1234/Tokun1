@@ -2823,6 +2823,9 @@ import FreelancerSectionEditor, {
 import BecomeFreelancerWizard from "@/components/BecomeFreelancerWizard";
 import BriefAttachmentPicker from "@/components/escrow/BriefAttachmentPicker";
 import ReviewSection, { WriteReviewButton } from "@/components/escrow/ReviewSection";
+import ProfileAvatar from "@/components/ProfileAvatar";
+import SaveButton from "@/components/SaveButton";
+import { fetchSavedCreatorIds, saveCreator, unsaveCreator } from "@/lib/savedCreators";
 import type { BriefAttachment } from "@/lib/escrowApi";
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
@@ -3031,6 +3034,12 @@ const [payoutFormOpen, setPayoutFormOpen] = useState(false);
 // Guards the Message button while the conversation is being opened.
 const [openingChat, setOpeningChat] = useState(false);
 
+/* Is this creator in the viewer's saved list? Asked rather than assumed: an
+   unfilled bookmark on someone you already saved offers a save that has already
+   happened, and pressing it is how duplicates got made elsewhere in the app. */
+const [creatorSaved, setCreatorSaved] = useState(false);
+const [savingCreator, setSavingCreator] = useState(false);
+
 useEffect(() => {
   if (!userId) return;
   let cancelled = false;
@@ -3105,6 +3114,65 @@ const publishFreelancerProfile = async () => {
   });
 };
 
+/* Only ever asked on someone else's profile. Saving yourself is refused by the
+   server (cannot_save_self) and the button isn't rendered there either, so
+   there is nothing to look up. Reset on the way in so the previous profile's
+   answer can't show while this one's is in flight. */
+useEffect(() => {
+  setCreatorSaved(false);
+  if (!token || !userId || isOwnProfile) return;
+
+  let cancelled = false;
+  fetchSavedCreatorIds(token).then((ids) => {
+    if (!cancelled) setCreatorSaved(ids.includes(String(userId)));
+  });
+  return () => {
+    cancelled = true;
+  };
+}, [token, userId, isOwnProfile]);
+
+/* Applied locally first and rolled back if the server disagrees — the
+   round-trip is long enough that waiting for it reads as the press being
+   ignored, and the second press then undoes the first. */
+const toggleSaveCreator = async () => {
+  if (!userId || savingCreator) return;
+
+  if (!token) {
+    toast({
+      title: "Sign in to save",
+      description: "Saved creators are kept on your account.",
+    });
+    navigate("/login");
+    return;
+  }
+
+  const wasSaved = creatorSaved;
+  setSavingCreator(true);
+  setCreatorSaved(!wasSaved);
+
+  const ok = wasSaved
+    ? await unsaveCreator(String(userId), token)
+    : (await saveCreator(String(userId), token, userName)).ok;
+
+  setSavingCreator(false);
+
+  if (!ok) {
+    setCreatorSaved(wasSaved);
+    toast({
+      title: wasSaved ? "Couldn't remove" : "Couldn't save",
+      description: "Please try again.",
+    });
+    return;
+  }
+
+  toast({
+    title: wasSaved ? "Removed from saved" : "Creator saved",
+    description: wasSaved
+      ? `${userName || "They"} are no longer in your saved creators.`
+      : "Find them under Creators Profile on your Saved page.",
+  });
+};
+
 const focusAvatar = () => {
   setPhotoHighlight(true);
   fileRef.current?.click();
@@ -3168,13 +3236,18 @@ useEffect(() => {
   // otherwise viewing someone else's profile would show the viewer's own
   // photo instead of the profile owner's (see the prompts-fetch effect
   // below for how another user's avatar gets loaded instead).
-  if (userId !== user?._id) return;
+  if (userId !== user?._id) {
+    /* Cleared, not left alone: this state outlives the route change, so until
+       their photo arrives with the prompts fetch below the header would keep
+       showing whoever's profile you were on a moment ago. */
+    setAvatar(null);
+    return;
+  }
   /* `user.avatar` was never in the auth payload — only `avatarUrl` is — so this
      branch never ran and "My Account" showed an empty frame no matter how many
      times the picture was uploaded. uploadedAvatar() takes the whole user and
      checks both names, so it works whichever one an endpoint sends. */
-  const own = uploadedAvatar(user);
-  if (own) setAvatar(own);
+  setAvatar(uploadedAvatar(user) || null);
 }, [user, userId]);
  
 const [messagePopupTab, setMessagePopupTab] = useState<
@@ -3407,9 +3480,14 @@ return {
 
         // Viewing someone else's profile — their avatar comes from this
         // fetch (not AuthContext, which only ever holds the viewer's own).
-        if (userId !== user?._id && data.user?.avatarUrl) {
-          const url = data.user.avatarUrl;
-          setAvatar(url.startsWith("http") ? url : API_BASE + url);
+        // Set unconditionally, including to null: the state survives a
+        // client-side navigation, so going from your own profile to a creator
+        // who has never uploaded a photo used to leave YOUR photo on THEIR
+        // header — the one case where the picture on a profile wasn't the
+        // profile owner's at all.
+        if (userId !== user?._id) {
+          const url = data.user?.avatarUrl;
+          setAvatar(url ? uploadedAvatar({ avatarUrl: url }) : null);
         }
       })
       .finally(() => setLoading(false));
@@ -3777,57 +3855,21 @@ const sendMessage = () => {
           {/* ═══════════════════════ HERO ═══════════════════════ */}
           <section className="rounded-3xl border border-white/[0.08] bg-white/[0.035] backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)] p-6 sm:p-8 mb-6">
             <div className="flex flex-col sm:flex-row sm:items-start gap-6">
-              {/* Avatar. Only the owner gets the upload affordance; the ring is
-                  the "Upload a profile photo" checklist row pointing at it. */}
+              {/* Avatar. Clicking it opens the photo — for the owner, via a
+                  view/upload choice, since their click used to go straight to
+                  the file picker and left them no way to see their own photo.
+                  See ProfileAvatar for the whole rule. The ring is the "Upload
+                  a profile photo" checklist row pointing at it, which is why
+                  the input's ref still lives on this page. */}
               <div className="shrink-0">
-                {isOwnProfile ? (
-                  <div
-                    onClick={() => fileRef.current?.click()}
-                    className="relative w-24 h-24 rounded-2xl overflow-hidden cursor-pointer group transition-all"
-                    style={
-                      photoHighlight
-                        ? { boxShadow: "0 0 0 3px rgba(255,20,239,0.65)" }
-                        : undefined
-                    }
-                  >
-                    {avatar ? (
-                      <img src={avatar} alt={userName} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full bg-white/[0.06] grid place-items-center">
-                        <User className="w-9 h-9 text-white/30" />
-                      </div>
-                    )}
-
-                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 grid place-items-center text-[11px] text-white transition-opacity">
-                      Change photo
-                    </div>
-
-                    <div
-                      className="absolute bottom-1.5 right-1.5 w-6 h-6 rounded-full grid place-items-center border-2 border-[#101012]"
-                      style={{ background: GRADIENT }}
-                    >
-                      <Camera className="w-3 h-3 text-white" />
-                    </div>
-
-                    <input
-                      ref={fileRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleAvatarUpload}
-                    />
-                  </div>
-                ) : (
-                  <div className="w-24 h-24 rounded-2xl overflow-hidden">
-                    {avatar ? (
-                      <img src={avatar} alt={userName} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full bg-white/[0.06] grid place-items-center">
-                        <User className="w-9 h-9 text-white/30" />
-                      </div>
-                    )}
-                  </div>
-                )}
+                <ProfileAvatar
+                  photoUrl={avatar}
+                  name={userName}
+                  isOwner={isOwnProfile}
+                  highlight={photoHighlight}
+                  fileInputRef={fileRef}
+                  onSelectFile={handleAvatarUpload}
+                />
               </div>
 
               {/* Identity */}
@@ -3898,6 +3940,27 @@ const sendMessage = () => {
                     )}
                   </div>
 
+                  {/* Save, top-right of the card.
+                      It was down in the action row next to Hire and Message,
+                      which is the row of things you do TO this creator — and
+                      saving isn't one of them, it acts on your own list. Up here
+                      it reads as a property of the card you are looking at,
+                      which is what it is, and it stops competing with the two
+                      buttons that actually start something.
+
+                      `justify-between` on this row was already leaving the right
+                      side empty, so it fills a gap rather than making one.
+                      shrink-0 because the name beside it truncates and a button
+                      that gives up width to a long name would jump around. */}
+                  {!isOwnProfile && (
+                    <div className="shrink-0">
+                      <SaveButton
+                        saved={creatorSaved}
+                        busy={savingCreator}
+                        onClick={toggleSaveCreator}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Stats — real counts only. */}
@@ -4032,6 +4095,11 @@ const sendMessage = () => {
                         <MessageCircle className="w-4 h-4" />
                         {openingChat ? "Opening…" : "Message"}
                       </button>
+
+                      {/* Save moved to the top-right of this card — see the
+                          identity row above. It sat here, in the row of actions
+                          you take ON the creator (hire, message), and it is not
+                          one of those: it acts on your own list, not on them. */}
                     </>
                   ) : ownProfile ? (
                     <button
@@ -4492,6 +4560,37 @@ const sendMessage = () => {
                                   ₹{Number(service.price || 0).toLocaleString("en-IN")}
                                 </span>
                               </div>
+
+                              {/* Same button the directory's service cards
+                                  carry, and the same `?order=1` shortcut: it
+                                  opens the brief on arrival instead of landing
+                                  the reader on the page to find the button
+                                  again.
+
+                                  Not "Buy now" — a service is not bought on the
+                                  spot. The brief goes to the seller, they
+                                  accept, and payment happens on the card that
+                                  lands in the chat. "Request to order" is what
+                                  the destination page calls it, so the card and
+                                  the page agree.
+
+                                  Hidden on your own profile: you cannot order
+                                  your own service, and the detail page refuses
+                                  it anyway — better not to offer it than to
+                                  offer it and refuse. */}
+                              {!isOwnProfile && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/service/${service._id}?order=1`);
+                                  }}
+                                  className="mt-3 h-9 w-full rounded-full text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
+                                  style={{ background: GRADIENT }}
+                                >
+                                  Request to order
+                                </button>
+                              )}
                             </div>
                           </div>
                         ))}

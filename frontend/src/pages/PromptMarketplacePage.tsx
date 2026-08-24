@@ -6392,14 +6392,16 @@ const LibHeroBanner = ({
     <div className="relative z-10 px-6 sm:px-10 py-16 sm:py-24 flex flex-col items-center text-center">
       {/* Now that the image shows through, the copy can't rely on the scrim
           alone — a shadow keeps it legible if it lands on a bright patch. */}
-      {/* "Product Verse" — the name this page goes by everywhere else now (the
-          footer link and the app nav both say it). The gradient stays on the
-          second word, matching the treatment this heading already had. */}
+      {/* "ProductVerse" — one word, the name this page goes by everywhere else
+          (the footer link and the app nav both say it). It was set as two words
+          here, which made the heading the odd one out. The gradient still falls
+          on the second half, which is the treatment this heading already had —
+          the space between them is what went. */}
       <h1
         className="mt-4 text-white text-[32px] sm:text-[44px] md:text-[52px] font-semibold leading-[1.05]"
         style={{ fontFamily: "Inter", textShadow: "0 2px 24px rgba(0,0,0,0.55)" }}
       >
-        Product{" "}
+        Product
         <span style={{ background: GRADIENT_90, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
           Verse
         </span>
@@ -7455,12 +7457,29 @@ const matchesPriceBand = (p: Prompt, band: PriceBand) => {
    offers by name — matched nothing unless the seller happened to repeat those
    words in their own copy. One definition, shared by the browse filter and the
    search view, so the two can never disagree about what "matches". */
+/* What a listing COSTS, as words you can type.
+   Searching "free" used to return whatever happened to have the word "free"
+   written in its title or description — and nothing at all if no free product
+   said so. The one thing the query obviously means was the one thing the
+   haystack didn't hold: price is a field, and a field isn't text.
+
+   The vocabulary is the license filter's own ("free", "premium", "one-time"),
+   so typing what a chip says finds what the chip finds. */
+const pricingWords = (p: Prompt): string[] => {
+  if (p.isFree) return ["free"];
+  const words = ["paid", "premium"];
+  // Both spellings, because people type it both ways and neither is wrong.
+  if (p.exclusive) words.push("one-time", "onetime", "exclusive");
+  return words;
+};
+
 const promptHaystack = (p: Prompt) =>
   [
     p.title,
     p.description || "",
     ...(p.categoryNames?.length ? p.categoryNames : [p.category]),
     ...(p.tags || []),
+    ...pricingWords(p),
   ]
     .join(" ")
     .toLowerCase();
@@ -7488,6 +7507,12 @@ const relevanceScore = (p: Prompt, q: string) => {
 
   if ((p.tags || []).some((t) => String(t).toLowerCase().includes(q))) score += 8;
   if ((p.description || "").toLowerCase().includes(q)) score += 3;
+
+  /* "free" IS what this listing is, not something it mentions. Scored above a
+     description hit for exactly that reason: without it, a paid product whose
+     blurb happens to say "free" outranked every actually-free product in a
+     search for "free" — the right answers buried under a wrong one. */
+  if (pricingWords(p).includes(q)) score += 15;
 
   // Tie-breaker only — a 5★ prompt never outranks a title match.
   score += Math.min(p.rating ?? 0, 5);

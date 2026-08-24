@@ -14,6 +14,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { canManageTeam } from "@/lib/orgRoles";
 import OrgPromptCard from "@/components/OrgPromptCard";
 import DetailsPrompt from "@/components/DetailsPrompt";
+import type { MarketplacePrompt } from "@/components/DetailsPrompt";
+import { toMarketplacePrompt } from "@/lib/promptDetails";
 
 type Role = "Admin" | "Member";
 // "Invited" is a real membership state, not a stand-in for "hasn't verified
@@ -569,10 +571,26 @@ export default function BlogPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [teamMembersLimit, setTeamMembersLimit] = useState(0);
   const [teamMembersLimitRemaining, setTeamMembersLimitRemaining] = useState(0);
+  /* Same prompt fields as the two panels below — all three render one card and
+     open one product panel, so they carry one shape. `prompt` is the populated
+     document the panel is built from; `owned` is what unlocks the body inside
+     it (bought, so always true here). */
   const [teamPurchases, setTeamPurchases] = useState<{
     count: number;
     totalSpent: number;
-    recent: { id: string; promptTitle: string; buyerName: string; pricePaid: number; purchasedAt: string }[];
+    recent: {
+      id: string;
+      promptId: string | null;
+      promptTitle: string;
+      thumbnail: string | null;
+      category: string | null;
+      promptDeleted: boolean;
+      buyerName: string;
+      pricePaid: number;
+      purchasedAt: string;
+      owned: boolean;
+      prompt: any | null;
+    }[];
   }>({ count: 0, totalSpent: 0, recent: [] });
   // Shape mirrors teamRequests below — both panels render the same prompt card,
   // so they carry the same prompt fields.
@@ -590,6 +608,8 @@ export default function BlogPage() {
       sharedByName: string;
       sharedToCount: number;
       sharedAt: string;
+      owned: boolean;
+      prompt: any | null;
     }[];
   }>({ count: 0, recent: [] });
   // What team members have asked the owner to buy. Members can't purchase, so
@@ -611,6 +631,8 @@ export default function BlogPage() {
       message: string;
       read: boolean;
       requestedAt: string;
+      owned: boolean;
+      prompt: any | null;
     }[];
   }>({ count: 0, unread: 0, recent: [] });
   const { token, user, isReady } = useAuth() as any;
@@ -730,12 +752,35 @@ export default function BlogPage() {
     fetchOrgDashboard();
   }, [fetchOrgDashboard]);
 
-  /* The product popup, opened from a team request. "View & buy" used to
-     `navigate("/prompt-marketplace")` — the bare marketplace, no product, so the
-     owner landed on a grid and had to find by hand the thing they had just
-     clicked on. The popup is the same one the marketplace opens, and it carries
-     Buy Now. */
-  const [buyPrompt, setBuyPrompt] = useState<any>(null);
+  /* The product popup, opened from any of the three activity panels. "View &
+     buy" used to `navigate("/prompt-marketplace")` — the bare marketplace, no
+     product, so the owner landed on a grid and had to find by hand the thing
+     they had just clicked on. The popup is the same one the marketplace opens,
+     and it carries Buy Now.
+
+     `owned` travels with it: on a request the org hasn't bought, the panel shows
+     the locked listing and Buy Now; on a purchase or a share it opens unlocked
+     with the prompt body, which is the whole point of being able to open it. */
+  const [detailPrompt, setDetailPrompt] = useState<MarketplacePrompt | null>(null);
+  const [detailOwned, setDetailOwned] = useState(false);
+
+  /* One opener for all three panels, so a row can never open a panel built
+     differently from the row next to it. The server sends the populated Prompt
+     document and toMarketplacePrompt() is the same mapper the marketplace, the
+     cart and the Saved page go through — the panel here is that panel, not a
+     lookalike fed zeroes. */
+  const openPromptDetails = (row: { prompt?: any; owned?: boolean; promptTitle?: string }) => {
+    const mapped = toMarketplacePrompt(row?.prompt);
+    if (!mapped?.id) {
+      toast({
+        title: "Product unavailable",
+        description: "This listing has been removed from the marketplace.",
+      });
+      return;
+    }
+    setDetailOwned(!!row.owned);
+    setDetailPrompt(mapped);
+  };
 
   const totalDistributed = useMemo(
     () => members.reduce((s, m) => s + m.tokens, 0),
@@ -1117,23 +1162,17 @@ const handleResendInvite = async (memberId: string) => {
                         {new Date(r.requestedAt).toLocaleDateString("en-IN")}
                       </>
                     }
+                    // The row opens the same panel this button does — the button
+                    // stays because "View & buy" names what the owner came here
+                    // to do, which a bare clickable row doesn't.
+                    onOpen={
+                      r.promptId && !r.promptDeleted ? () => openPromptDetails(r) : undefined
+                    }
                     action={
                       r.promptId && !r.promptDeleted ? (
                         <button
                           type="button"
-                          onClick={() =>
-                            setBuyPrompt({
-                              id: r.promptId,
-                              title: r.promptTitle,
-                              description: "",
-                              price: r.price,
-                              rating: 0,
-                              downloads: 0,
-                              category: r.category || "General",
-                              imageUrl: r.thumbnail || undefined,
-                              isFree: r.isFree,
-                            })
-                          }
+                          onClick={() => openPromptDetails(r)}
                           className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white hover:bg-white/10"
                         >
                           View &amp; buy
@@ -1157,15 +1196,33 @@ const handleResendInvite = async (memberId: string) => {
             ) : (
               <div className="divide-y divide-white/10">
                 {teamPurchases.recent.map((p) => (
-                  <div key={p.id} className="flex items-center justify-between px-5 py-3 bg-white/[0.02]">
-                    <div>
-                      <div className="text-sm text-white/90">{p.promptTitle}</div>
-                      <div className="text-xs text-white/45">
-                        {p.buyerName} · {new Date(p.purchasedAt).toLocaleDateString("en-IN")}
-                      </div>
-                    </div>
-                    <div className="text-sm font-medium text-white/80">₹{p.pricePaid}</div>
-                  </div>
+                  /* Was a bare title and a date — the one panel on this page
+                     that didn't look like a prompt and couldn't be opened, so
+                     the owner could see they had bought something without any
+                     way to read what they'd paid for. Same card, same panel as
+                     the two panels around it; the price shown is what was
+                     actually paid, not the current list price. */
+                  <OrgPromptCard
+                    key={p.id}
+                    title={p.promptTitle}
+                    thumbnail={p.thumbnail}
+                    category={p.category}
+                    price={p.pricePaid}
+                    isFree={!p.pricePaid}
+                    deleted={p.promptDeleted}
+                    meta={
+                      <>
+                        Bought by {p.buyerName} ·{" "}
+                        {new Date(p.purchasedAt).toLocaleDateString("en-IN")}
+                      </>
+                    }
+                    /* Opens unlocked, with the prompt body: the org owns this
+                       one. Still opens for a listing since taken down — the
+                       copy they paid for is theirs to read, which is exactly
+                       when being able to open it matters most. Only a prompt
+                       deleted outright (no document left) has no panel. */
+                    onOpen={p.prompt ? () => openPromptDetails(p) : undefined}
+                  />
                 ))}
               </div>
             )}
@@ -1195,6 +1252,11 @@ const handleResendInvite = async (memberId: string) => {
                         {new Date(s.sharedAt).toLocaleDateString("en-IN")}
                       </>
                     }
+                    onOpen={
+                      s.promptId && !s.promptDeleted && s.prompt
+                        ? () => openPromptDetails(s)
+                        : undefined
+                    }
                   />
                 ))}
               </div>
@@ -1207,18 +1269,19 @@ const handleResendInvite = async (memberId: string) => {
   <Footer />
 </div>
 
-      {/* Buy a requested product without leaving the page. Same popup the
-          marketplace opens; onPurchase refreshes the two panels above so the
+      {/* Open — or buy — any product on this page without leaving it. Same popup
+          the marketplace opens; onPurchase refreshes the panels above so the
           request drops out of the queue and the purchase shows up under
           "Purchases by You". */}
       <DetailsPrompt
-        open={!!buyPrompt}
+        open={!!detailPrompt}
         onOpenChange={(next) => {
-          if (!next) setBuyPrompt(null);
+          if (!next) setDetailPrompt(null);
         }}
-        prompt={buyPrompt}
+        prompt={detailPrompt}
+        owned={detailOwned}
         onPurchase={() => {
-          setBuyPrompt(null);
+          setDetailPrompt(null);
           fetchOrgDashboard();
         }}
       />

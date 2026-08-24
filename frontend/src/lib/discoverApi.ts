@@ -157,12 +157,27 @@ async function get<T>(path: string, token?: string | null): Promise<DiscoverResu
 }
 
 export function browseFreelancers(
-  params: { q?: string; specialization?: string; page?: number; limit?: number } = {},
+  params: {
+    q?: string;
+    specialization?: string;
+    page?: number;
+    limit?: number;
+    /**
+     * These people specifically, unpaged — for the Saved page, which needs the
+     * directory's own rows for the creators someone saved. Filtering a page of
+     * this endpoint can't do it: the server caps a page at 60, so a saved
+     * creator further down the list would quietly not appear.
+     */
+    ids?: string[];
+  } = {},
   token?: string | null
 ) {
   const search = new URLSearchParams();
   if (params.q) search.set("q", params.q);
   if (params.specialization) search.set("specialization", params.specialization);
+  // Set even when empty: the server reads a present-but-empty `ids` as "nobody",
+  // which is the right answer for a saved list with nothing in it.
+  if (params.ids) search.set("ids", params.ids.join(","));
   search.set("page", String(params.page ?? 1));
   search.set("limit", String(params.limit ?? 48));
 

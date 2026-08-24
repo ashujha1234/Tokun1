@@ -10,6 +10,10 @@ import { Link, useNavigate } from "react-router-dom";
    headers drifted apart in the first place. Same module Landing imports, so it
    is one stylesheet in the bundle, not two. */
 import "@/pages/landing-page.css";
+import UploadProductButton from "@/components/UploadProductButton";
+import ModeToggle from "@/components/ModeToggle";
+import { useAuth } from "@/contexts/AuthContext";
+import { useMode } from "@/contexts/ModeContext";
 
 const TOKUN_LOGO_SRC = "/icons/Tokun.png";
 
@@ -43,6 +47,14 @@ export default function SiteNav({
   children?: ReactNode;
 }) {
   const scrolled = useHeaderScrolled();
+  const { isAuthenticated } = useAuth() as any;
+  const { shows } = useMode();
+
+  /* Nobody signed in → the CTA. Signed in → only in Creator mode.
+     `shows` already answers "true" for everything when the mode feature is
+     switched off (MODE_UI_ENABLED), so turning that flag off puts this button
+     back on the bar unconditionally, exactly as it was. */
+  const showUpload = !isAuthenticated || shows("upload");
 
   return (
     <nav
@@ -63,6 +75,22 @@ export default function SiteNav({
         </div>
 
         <div className="site-header__actions landing-nav__actions">
+          {/* Signed OUT it is a marketing CTA — selling is half of what this
+              product is, and the bar a first-time visitor sees never said so.
+              Signed IN it is a tool, and a tool belongs to Creator mode: a
+              buyer who has chosen the buying half of the app should not be
+              carrying an Upload button around the landing page.
+              Two different jobs for the same button, which is why the condition
+              is on the session rather than on the mode alone. */}
+          {/* Here as well as in the app header, because this is the bar a
+              signed-out visitor actually sees — putting the Buyer/Creator
+              choice only behind a login means nobody meets it until after they
+              have picked a side. Pressing Creator without an account goes to
+              signup and lands there in Creator mode (see ModeToggle). */}
+          <ModeToggle />
+
+          {showUpload && <UploadProductButton />}
+
           {children ?? (
             <>
               {/* Links, not buttons: middle-click and open-in-new-tab both

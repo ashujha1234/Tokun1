@@ -865,6 +865,35 @@ body.is-loading { overflow: hidden; }
   user-select: none;
 }
 
+/* ── Floating tool rail (ToolRail in Landing.tsx) ──
+   SmartGen and the Optimiser, on the opposite edge to Feedback above.
+
+   They were the hero's two CTAs, which meant the only way back to either one
+   was to scroll to the top of the page. As edge tabs they are reachable from
+   anywhere in it, and the hero's two buttons are free to be the marketplace and
+   its creators — the destination, not the tools.
+
+   Centred rather than pinned at Feedback's 38svh: this is a stack of two, so
+   matching that offset would hang the pair well below the middle. Same
+   `%` → `svh` fallback pair as .feedback-tab, and for the same reason — see the
+   note on it above. */
+.tool-rail {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  top: 50svh;
+  transform: translateY(-50%);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* A press that turns into a scroll must not select text or flash a tap
+     highlight, and manipulation drops the 300ms double-tap-zoom wait. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
 /* .hero__fab — the round "→" jump-to-CTA — is gone; see the note where it used
    to be rendered in Landing.tsx. */
 

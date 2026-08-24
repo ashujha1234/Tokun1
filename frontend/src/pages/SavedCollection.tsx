@@ -3965,7 +3965,18 @@ import {
   Pencil,
   Trash,
   ShoppingCart,
+  Users,
 } from "lucide-react";
+/* The directory's own card and data layer. The Creators tab renders the same
+   card /find-creators does, from the same rows — see renderCreatorCard. */
+import CreatorCard from "@/components/CreatorCard";
+import {
+  browseFreelancers,
+  browseSellers,
+  mergePeople,
+  type DirectoryPerson,
+} from "@/lib/discoverApi";
+import { startConversation } from "@/lib/startConversation";
 import { useAuth } from "@/contexts/AuthContext";
 import { isTeamMember } from "@/lib/orgRoles";
 import { loadSaved, type SavedItem } from "@/lib/savedCollections";
@@ -3995,6 +4006,11 @@ const TABS = [
   { id: "smartgen", label: "Smartgen", icon: "/icons/smartgen.svg" },
   { id: "prompt-optimization", label: "Prompt Optimiser", icon: "/icons/prompt-optimization.svg" },
   { id: "prompt-marketplace", label: "Product Marketplace", icon: "/icons/prompt-marketplace.png" },
+  /* People, not products. Saved from the directory, which could help you find
+     someone and then had no way for you to keep them — see lib/savedCreators.ts.
+     Next to Product Marketplace because those two are the two halves of the
+     same place: what's for sale, and who makes it. */
+  { id: "creators", label: "Creators Profile", icon: "" },
   /* "Product Library" was here. Removed: it read the SAME "prompt" section as
      Product Marketplace, so the two tabs were two doors onto one identical
      list — switching between them changed nothing but the highlight. Prompt
@@ -4002,11 +4018,12 @@ const TABS = [
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
-type SectionKey = "smartgen" | "prompt" | "promptOptimizer";
+type SectionKey = "smartgen" | "prompt" | "promptOptimizer" | "creator";
 const SECTION_BY_TAB: Record<TabId, SectionKey> = {
   smartgen: "smartgen",
   "prompt-optimization": "promptOptimizer",
   "prompt-marketplace": "prompt",
+  creators: "creator",
 };
 
 const mockImages = ["/icons/pl1.png", "/icons/pl2.png", "/icons/pl3.png", "/icons/pl4.png"];
@@ -4225,6 +4242,85 @@ export default function SavedCollection() {
     if (!mapped?.id) return;
     setDetailsPrompt(mapped);
     setDetailsOpen(true);
+  };
+
+  /* ── Saved creators ──
+     The card on this tab is the directory's card (components/CreatorCard), and
+     it takes a DirectoryPerson. The saved document only holds a User ref, so the
+     rows are fetched from the directory's own endpoints — by id, unpaged, which
+     is what the `ids` parameter on /freelancer/browse exists for. Filtering a
+     page of that endpoint would have silently dropped anyone past the 60th
+     freelancer from their own saved list.
+
+     Both halves, because the directory is a merge of two populations that
+     overlap: freelancers and product sellers. mergePeople is the same function
+     /find-creators uses, so a saved creator's card says exactly what it said
+     where you saved it. */
+  const [directoryPeople, setDirectoryPeople] = useState<Map<string, DirectoryPerson>>(new Map());
+  const [messagingCreatorId, setMessagingCreatorId] = useState<string | null>(null);
+  const [unsavingCreatorId, setUnsavingCreatorId] = useState<string | null>(null);
+
+  const savedCreatorIds = useMemo(() => {
+    const block = (sections as any)?.creator as SectionBlock | undefined;
+    if (!block) return [] as string[];
+    const loose = block.directItems || [];
+    const filed = (block.collections || []).flatMap((c: any) => c.items || []);
+    return [...new Set([...loose, ...filed].map((it: any) => getDocId(it?.ref)).filter(Boolean))];
+  }, [sections]);
+
+  // Keyed on the joined ids rather than the array, so a re-render with the same
+  // set doesn't refetch. Nothing runs until the tab is actually open — this is
+  // two requests, one of which aggregates over every product ever uploaded.
+  const savedCreatorKey = savedCreatorIds.join(",");
+
+  useEffect(() => {
+    if (section !== "creator" || !savedCreatorKey) {
+      return;
+    }
+    let cancelled = false;
+
+    (async () => {
+      const [f, s] = await Promise.all([
+        browseFreelancers({ ids: savedCreatorKey.split(",") }, token),
+        browseSellers(token),
+      ]);
+      if (cancelled) return;
+
+      const merged = mergePeople(
+        f.ok ? f.data.freelancers || [] : [],
+        s.ok ? s.data.sellers || [] : []
+      );
+      // Only the saved ones: browseSellers returns the whole seller list (it is
+      // cached and shared with the directory, so it is not refetched here).
+      const wanted = new Set(savedCreatorKey.split(","));
+      setDirectoryPeople(new Map(merged.filter((p) => wanted.has(p.userId)).map((p) => [p.userId, p])));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [section, savedCreatorKey, token]);
+
+  const messageCreator = async (person: DirectoryPerson) => {
+    if (!person.userId) return;
+    setMessagingCreatorId(person.userId);
+    const conversationId = await startConversation(token, person.userId);
+    setMessagingCreatorId(null);
+    if (!conversationId) {
+      toast({ title: "Couldn't open the chat", description: "Please try again." });
+      return;
+    }
+    navigate("/chat", { state: { conversationId } });
+  };
+
+  /* Unsave, from the card's own save control. Routed through the same
+     deleteSingleItem the other tabs use, so the list refreshes the one way it
+     already knows how. */
+  const unsaveCreatorCard = async (refId: string) => {
+    if (!refId || unsavingCreatorId) return;
+    setUnsavingCreatorId(refId);
+    await deleteSingleItem(refId);
+    setUnsavingCreatorId(null);
   };
 
   const fetchAll = async () => {
@@ -4462,6 +4558,11 @@ export default function SavedCollection() {
               <span className="mp-card__unlock" style={{ background: "#14532D", color: "#BBF7D0" }}>
                 PURCHASED
               </span>
+            ) : (mapped as any)?.isFree ? (
+              /* Nothing here for a free listing — same rule as the marketplace
+                 card: the FREE pill in the footer already says it, and this slot
+                 was telling the reader to purchase it. */
+              null
             ) : (
               <span
                 className="mp-card__unlock"
@@ -4633,6 +4734,67 @@ export default function SavedCollection() {
   // The Product Marketplace and Product Library tabs both read the "prompt"
   // section, and both should look like the marketplace they came from.
   const isPromptSection = section === "prompt";
+  const isCreatorSection = section === "creator";
+
+  /* A saved creator, drawn by the directory's own card.
+     This used to be a card built here — an avatar, a name, and the word
+     "Creator" — against the directory's title, location, tier badges,
+     specializations, skills and rate. Two cards for the same person, and the
+     thinner one was on the page where you had already decided they mattered.
+
+     `directoryPeople` holds the real rows, fetched by id (see the effect
+     above). Anyone it doesn't have — a profile that has since gone inactive, a
+     seller who has taken their products down — falls back to the name and photo
+     stored with the save. The card draws whatever is true and skips the rest,
+     so that renders as a quieter version of the same card rather than a broken
+     one. */
+  const renderCreatorCard = (it: SectionItem, idx: number) => {
+    const refId = getDocId(it.ref);
+    // `ref` is a populated User doc; `name` is the label saved alongside it,
+    // which is what's left if the account was since deleted.
+    const savedRef = typeof it.ref === "object" && it.ref ? it.ref : null;
+    const name = savedRef?.name || it.name || "Creator";
+
+    const person: DirectoryPerson =
+      directoryPeople.get(refId) || {
+        userId: refId,
+        name,
+        avatar: savedRef?.avatarUrl || null,
+        verified: false,
+        isFreelancer: false,
+        isSeller: false,
+        professionalTitle: "",
+        location: "",
+        skills: [],
+        skillCount: 0,
+        specializations: [],
+        hourlyRate: null,
+        availability: null,
+        hasIntroVideo: false,
+        superCreator: false,
+        rating: 0,
+        reviewsCount: 0,
+        totalUploadedPrompts: 0,
+        totalSoldPrompts: 0,
+        payoutReady: false,
+      };
+
+    return (
+      <CreatorCard
+        key={refId || `${name}_${idx}`}
+        person={person}
+        onMessage={messageCreator}
+        messaging={messagingCreatorId === refId}
+        /* Everything on this tab is saved by definition, so the card's save
+           control is an unsave — which is what removes it from this list. The
+           "…" menu the other tabs use isn't needed here; the card already has
+           the one action that applies. */
+        saved
+        savingSave={unsavingCreatorId === refId}
+        onToggleSave={() => unsaveCreatorCard(refId)}
+      />
+    );
+  };
 
 
   const renderAllSaved = () => {
@@ -4651,7 +4813,9 @@ export default function SavedCollection() {
           {/* No longer mentions saving "with a Name/Title to group them into a
               folder" — there are no folders to group into. */}
           <p className="text-white/70 mt-2 text-sm sm:text-base">
-            Anything you save from Smartgen, the Optimiser or Product Verse shows up here.
+            {isCreatorSection
+              ? "Save a creator from Find Creators and they'll show up here."
+              : "Anything you save from Smartgen, the Optimiser or ProductVerse shows up here."}
           </p>
         </div>
       );
@@ -4677,7 +4841,9 @@ export default function SavedCollection() {
                 menuForDirect === getDocId(it.ref)
               )
             )}
-          {!isPromptSection && directItems.map((it, idx) => {
+          {isCreatorSection && directItems.map((it, idx) => renderCreatorCard(it, idx))}
+
+          {!isPromptSection && !isCreatorSection && directItems.map((it, idx) => {
             const refId = getDocId(it.ref);
             const title = getItemTitle(it);
             const text = pickTextFromRef(section, it.ref);
@@ -4797,7 +4963,13 @@ export default function SavedCollection() {
                         : "bg-transparent hover:bg-white/10"
                     }`}
                   >
-                    <img src={t.icon} alt="" className="h-4 w-4" />
+                    {/* Creators has no PNG of its own — a lucide glyph rather
+                        than an <img src=""> that renders as a broken image. */}
+                    {t.icon ? (
+                      <img src={t.icon} alt="" className="h-4 w-4" />
+                    ) : (
+                      <Users className="h-4 w-4" />
+                    )}
                     {t.label}
                   </button>
                 );

@@ -1143,6 +1143,8 @@ import RefundReasonPicker from "@/components/RefundReasonPicker";
 import ConfirmModal from "@/components/ConfirmModal";
 import ProductGridCard from "@/components/ProductGridCard";
 import { withTokunBranding } from "@/lib/razorpayTheme";
+import { useMode } from "@/contexts/ModeContext";
+import { MODE_UI_ENABLED } from "@/lib/mode";
 
 const GRADIENT = "linear-gradient(270deg,#FF14EF 0%, #1A73E8 100%)";
 const GRAD = "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)";
@@ -2074,14 +2076,32 @@ const SelfDash = () => {
     initialParams.get("p") === "uploaded" ? "uploaded" : "purchased"
   );
 
+  // Which half of the product this reader is in — see the effect below.
+  const { mode } = useMode();
+
   // The account menu links here while the user may already be on this page —
   // without this, the URL changes but the visible tab doesn't.
   useEffect(() => {
     const tab = readTabParam(initialParams.get("tab"));
     const p = initialParams.get("p");
     if (tab) setActiveTab(tab);
-    if (p === "purchased" || p === "uploaded") setPromptsTab(p);
+    /* `p` is ignored while the Buyer/Creator toggle is running — the mode is
+       the single source of truth for which list this is, and the effect below
+       applies it. Reading both would let them disagree: arriving at
+       ?p=purchased in Creator mode, the two would take turns setting the tab
+       and which one won came down to the order the effects happened to run. */
+    if (!MODE_UI_ENABLED && (p === "purchased" || p === "uploaded")) setPromptsTab(p);
   }, [initialParams]);
+
+  /* Which half of My Products this is, decided by the mode.
+     ModeContext turns ?p=uploaded into Creator mode on the way in (see
+     pathImpliesCreator), so a link still lands on the list it asked for — it
+     just gets there by setting the mode rather than by setting the tab behind
+     the mode's back. */
+  useEffect(() => {
+    if (!MODE_UI_ENABLED) return;
+    setPromptsTab(mode === "creator" ? "uploaded" : "purchased");
+  }, [mode]);
 
   /* The clock next to the date. Ticks on the minute rather than every second —
      it only ever shows hours and minutes, so a per-second interval would be
@@ -3093,36 +3113,64 @@ const handleAcceptRequest = async (item: any) => {
   const successRate =
     ordersStarted > 0 ? Math.round((ordersCompleted / ordersStarted) * 1000) / 10 : 0;
 
+  /* The badges used to repeat the value they sat next to — "+4" above a 4 — and
+     the one that didn't was wrong: EARNINGS carried an order count while the
+     figure under it also included product sales. A badge that restates the
+     number tells you nothing; one that describes a different number than the
+     one it is attached to tells you something false. Each one now says
+     something the value doesn't.
+
+     `hint` is the breakdown, on hover. The money itself is right and always
+     was — net on both sides (Prompt.totalRevenue is a running sum of
+     sellerNet; /api/my-orders?side=selling returns sellerAmount /
+     freelancerAmount, not what the client paid) and there is no overlap
+     between them, because my-orders deliberately excludes product purchases.
+     What it never said was WHICH earnings it meant, on a page that shows three
+     different ones. */
   const stats = [
   {
     title: "NEEDS YOUR ACTION",
     value: String(ordersNeedingAction.length),
-    badge: `+${ordersNeedingAction.length}`,
+    badge: `of ${sellerOrders.length}`,
     badgeColor: "#19E66C",
+    hint: `${ordersNeedingAction.length} of your ${sellerOrders.length} order${sellerOrders.length === 1 ? "" : "s"} are waiting on you`,
   },
   {
     title: "EARNINGS",
-    value: `₹${(totalEarningsINR + ordersEarned).toLocaleString()}`,
-    /* Was a hardcoded "+19%". */
-    badge: `${sellerOrders.length} order${sellerOrders.length === 1 ? "" : "s"}`,
+    value: `₹${(totalEarningsINR + ordersEarned).toLocaleString("en-IN")}`,
+    /* Was a hardcoded "+19%", then an order count that ignored half the sum.
+       "all time" is the thing the figure genuinely needs said about it — with
+       no period on the card it reads as this month's. */
+    badge: "all time",
     badgeColor: "#DDB7FF",
+    hint:
+      `₹${totalEarningsINR.toLocaleString("en-IN")} from product sales + ` +
+      `₹${ordersEarned.toLocaleString("en-IN")} from completed orders. ` +
+      `Both are your share, after platform fees.`,
   },
   {
     title: "TOTAL PROJECTS",
     value: String(sellerOrders.length),
-    badge: `+${sellerOrders.length}`,
+    badge: `${ordersCompleted} done`,
     badgeColor: "#DDB7FF",
+    hint: "Service bookings and hire projects. Product sales aren't projects — they're in My Listings.",
   },
  {
   title: "SUCCESS RATE",
-  value: `${successRate}%`,
-  badge: `${ordersCompleted}/${ordersStarted}`,
+  /* 0 out of 0 is not a 0% success rate, it is no answer yet — and printing it
+     in red told a new seller they were failing at something they hadn't
+     started. */
+  value: ordersStarted > 0 ? `${successRate}%` : "—",
+  badge: ordersStarted > 0 ? `${ordersCompleted}/${ordersStarted}` : "no orders yet",
   badgeColor:
-    successRate >= 70
+    ordersStarted === 0
+      ? "#8F8996"
+      : successRate >= 70
       ? "#19E66C"
       : successRate >= 40
       ? "#FABC4E"
       : "#FF6B6B",
+  hint: "Completed orders as a share of every order that reached the money.",
 },
 ];
 
@@ -3359,7 +3407,7 @@ const RequestCard = ({ item }: { item: any }) => {
     <>
       <div className="relative z-10 mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:mt-8 lg:grid-cols-4 lg:gap-7" style={{ filter: showCalendar ? "blur(3px)" : "none", opacity: showCalendar ? 0.65 : 1, transition: "filter 0.2s ease, opacity 0.2s ease", pointerEvents: showCalendar ? "none" : "auto" }}>
         {stats.map((item) => (
-          <div key={item.title} className="relative overflow-hidden" style={{ minHeight: 112, borderRadius: 22, background: "#00000080", border: "1px solid #FFFFFF33", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", padding: "22px", boxSizing: "border-box" }}>
+          <div key={item.title} title={item.hint} className="relative overflow-hidden" style={{ minHeight: 112, borderRadius: 22, background: "#00000080", border: "1px solid #FFFFFF33", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", padding: "22px", boxSizing: "border-box" }}>
             <div className="flex items-center justify-between gap-3">
               <p className="truncate" style={{ margin: 0, fontFamily: "Inter, sans-serif", fontWeight: 700, fontSize: 9, lineHeight: "100%", letterSpacing: "0.8px", color: "#71717A", textTransform: "uppercase", whiteSpace: "nowrap", maxWidth: 130 }}>{item.title}</p>
               <span className="grid h-[22px] min-w-[36px] shrink-0 place-items-center rounded-full bg-black px-2" style={{ fontFamily: "Inter, sans-serif", fontWeight: 700, fontSize: 10, lineHeight: "100%", color: item.badgeColor }}>{item.badge}</span>
@@ -3503,7 +3551,13 @@ const RequestCard = ({ item }: { item: any }) => {
         <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-4 shrink-0">
           {[
             { label: "Active Requests", value: summary?.activeRequests ?? 0 },
-            { label: "Earnings", value: `₹${(summary?.totalEarnings ?? 0).toLocaleString("en-IN")}` },
+            /* Scoped in the label for the same reason as My Listings above:
+               this panel is Service Bookings, so this is what those bookings
+               earned — not the account's earnings, which the dashboard's own
+               card shows and which is a bigger number. Three tiles reading
+               "Earnings" with three different figures is how a seller ends up
+               trusting none of them. */
+            { label: "Booking Earnings", value: `₹${(summary?.totalEarnings ?? 0).toLocaleString("en-IN")}` },
             { label: "Total Projects", value: summary?.totalProjects ?? 0 },
           ].map((s) => (
             <div
@@ -3726,7 +3780,12 @@ const RequestCard = ({ item }: { item: any }) => {
     /* Stats */
     const statLabel1 = isPurchased ? "Total Purchased" : "Total Uploaded";
     const statVal1 = isPurchased ? purchaseHistory.length : uploadHistory.length;
-    const statLabel2 = isPurchased ? "Total Bill" : "Total Earnings";
+    /* "Product Earnings", not "Total Earnings".
+       This counts product sales only, and the dashboard's own EARNINGS card
+       adds completed orders on top of it — so two tiles on one page both said
+       "Total Earnings" and showed different numbers, with nothing to say which
+       was the real one. Each figure names its own scope now. */
+    const statLabel2 = isPurchased ? "Total Bill" : "Product Earnings";
     const statVal2 = isPurchased
       ? `₹${totalPurchasedBill.toFixed(2)}`
       : `₹${totalEarningsINR.toFixed(2)}`;
@@ -3737,11 +3796,24 @@ const RequestCard = ({ item }: { item: any }) => {
       <div className="relative z-10">
         {/* Header row */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          {/* Named for the half you're actually looking at, matching the
+              account-menu entry that brought you here. "My Products" over a
+              list of purchases, next to a tab offering uploads, never said
+              which of the two you were reading. */}
           <h2 style={{ margin: 0, fontFamily: "Inter, sans-serif", fontWeight: 800, fontSize: 22, lineHeight: "100%", color: "#FFFFFF" }}>
-            My Products
+            {!MODE_UI_ENABLED
+              ? "My Products"
+              : promptsTab === "uploaded"
+                ? "My Listings"
+                : "My Purchases"}
           </h2>
 
-          {/* Toggle pill */}
+          {/* Toggle pill.
+              Hidden while the Buyer/Creator toggle is running: it switched the
+              same thing the header pill switches, so the page could sit in
+              Buyer mode showing an Uploaded tab — two controls over one piece
+              of state, disagreeing. The header pill is the control now. */}
+          {!MODE_UI_ENABLED && (
           <div
             className="flex items-center rounded-full p-1 gap-1"
             style={{ background: "#1C1C1C", border: "1px solid #35343C" }}
@@ -3773,6 +3845,7 @@ const RequestCard = ({ item }: { item: any }) => {
               Uploaded
             </button>
           </div>
+          )}
         </div>
 
         {/* Stat cards */}

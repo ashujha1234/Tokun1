@@ -2464,6 +2464,34 @@ router.get("/", requireAuth, async (req, res) => {
   }
 });
 
+/* What every panel on the org dashboard needs of a prompt.
+   Written once because the three panels below now render the same card and open
+   the same product panel — they used to disagree about which fields they asked
+   for, which is how "Purchases by You" ended up as a line of text while the
+   other two showed a thumbnail. `toMarketplacePrompt()` on the client reads a
+   Prompt document as-is, so this is exactly the set it maps from. */
+const DASHBOARD_PROMPT_SELECT =
+  "title description price tokun_price free exclusive sold deleted attachment categories userId promptText reviewAverage averageRating salesCount";
+
+const DASHBOARD_PROMPT_POPULATE = [
+  { path: "categories", select: "name" },
+  // The panel decides "is this mine?" from the uploader id, and an unpopulated
+  // ObjectId has no `_id` for it to read.
+  { path: "userId", select: "name" },
+];
+
+/* The populated prompt, in the shape the client's product panel takes.
+
+   `promptText` is the paid content, so it rides along only when the org is
+   actually entitled to it — bought it, or uploaded it. On a team request (the
+   one panel showing something the org does NOT own) it is stripped, which is
+   also what keeps the panel's Buy Now state honest. */
+function dashboardPromptPayload(doc, owned) {
+  if (!doc || !doc._id) return null;
+  const { promptText, ...rest } = doc;
+  return owned ? { ...rest, promptText: promptText || "" } : rest;
+}
+
 // ✅ GET /api/org/members/dashboard — org-wide overview for the Owner (or a
 // TM with the "Admin" role): org/quota state, the team roster, and rolled-up
 // activity (what the team has bought, what's been shared) computed live from
@@ -2519,7 +2547,14 @@ router.get("/dashboard", requireAuth, async (req, res) => {
       ]),
       Purchase.find({ buyer: { $in: orgBuyerIds }, paymentStatus: "SUCCESS" })
         .populate("buyer", "name email")
-        .populate("prompt", "title")
+        // Was `"title"` alone, which is why this panel could only ever be a
+        // line of text: there was nothing else in it to draw a card with, let
+        // alone open. The org bought these, so the body comes down too.
+        .populate({
+          path: "prompt",
+          select: DASHBOARD_PROMPT_SELECT,
+          populate: DASHBOARD_PROMPT_POPULATE,
+        })
         .sort({ createdAt: -1 })
         .limit(10)
         .lean(),
@@ -2530,8 +2565,8 @@ router.get("/dashboard", requireAuth, async (req, res) => {
         // uses. categories is a ref array, so it needs its own nested populate.
         .populate({
           path: "promptId",
-          select: "title price tokun_price free attachment categories deleted",
-          populate: { path: "categories", select: "name" },
+          select: DASHBOARD_PROMPT_SELECT,
+          populate: DASHBOARD_PROMPT_POPULATE,
         })
         .populate("sharedBy", "name email")
         .sort({ createdAt: -1 })
@@ -2548,8 +2583,8 @@ router.get("/dashboard", requireAuth, async (req, res) => {
         // identical prompt card.
         .populate({
           path: "promptId",
-          select: "title price tokun_price free attachment categories deleted",
-          populate: { path: "categories", select: "name" },
+          select: DASHBOARD_PROMPT_SELECT,
+          populate: DASHBOARD_PROMPT_POPULATE,
         })
         .sort({ createdAt: -1 })
         .limit(10)
@@ -2571,13 +2606,20 @@ router.get("/dashboard", requireAuth, async (req, res) => {
       .map((n) => n.promptId?._id)
       .filter(Boolean);
 
-    const alreadyBoughtIds = requestedPromptIds.length
+    /* One lookup for both questions, because they are the same question asked of
+       two lists: has the org bought this prompt? The requests panel uses the
+       answer to drop finished work out of the queue; the shares panel uses it to
+       decide whether the product panel may reveal the prompt body. */
+    const sharedPromptIds = recentShares.map((sp) => sp.promptId?._id).filter(Boolean);
+    const ownershipLookupIds = [...requestedPromptIds, ...sharedPromptIds];
+
+    const orgPurchasedIds = ownershipLookupIds.length
       ? new Set(
           (
             await Purchase.find({
               buyer: { $in: orgBuyerIds },
               paymentStatus: "SUCCESS",
-              prompt: { $in: requestedPromptIds },
+              prompt: { $in: ownershipLookupIds },
             })
               .select({ prompt: 1 })
               .lean()
@@ -2585,9 +2627,37 @@ router.get("/dashboard", requireAuth, async (req, res) => {
         )
       : new Set();
 
+    /* Narrowed back to the requests before it is counted: `orgPurchasedIds`
+       spans both lists, and subtracting its full size from the request count
+       would deduct purchases that no member ever asked for. */
+    const alreadyBoughtIds = new Set(
+      requestedPromptIds.map(String).filter((id) => orgPurchasedIds.has(id))
+    );
+
     const openRequests = recentRequests.filter(
       (n) => !alreadyBoughtIds.has(String(n.promptId?._id || ""))
     );
+
+    /* A prompt the ORG is entitled to read: bought, or the owner's own upload.
+       Both routes matter — an owner can share something they listed themselves,
+       and there is no Purchase row for that. */
+    const ownerId = String(org.ownerId || "");
+    const orgOwnsPrompt = (doc) =>
+      !!doc?._id &&
+      (orgPurchasedIds.has(String(doc._id)) ||
+        String(doc.userId?._id || doc.userId || "") === ownerId);
+
+    /* …and whether THIS viewer may read it, which is a narrower question.
+       An Admin team member can open this page, and the org owning a product is
+       not the same as that member having been given it: the body is paid content,
+       and a share is how it changes hands. So the Owner reads anything the org
+       owns, and an Admin TM reads only what was actually shared with them —
+       exactly what /api/prompt-collab/shared/team would already send them.
+       Everyone still sees the card and can open the panel; only the body is
+       withheld. */
+    const viewerId = String(req.user._id);
+    const sharedWithViewer = (share) =>
+      (share?.sharedTo || []).some((t) => String(t?._id || t) === viewerId);
 
     return res.json({
       success: true,
@@ -2609,10 +2679,23 @@ router.get("/dashboard", requireAuth, async (req, res) => {
         totalSpent: purchaseAgg[0]?.totalSpent || 0,
         recent: recentPurchases.map((p) => ({
           id: p._id,
+          promptId: p.prompt?._id || null,
           promptTitle: p.prompt?.title || p.promptSnapshot?.title || "Untitled",
+          // Same three card fields the other two panels send, so all three
+          // render one card instead of three shapes.
+          thumbnail: p.prompt?.attachment?.type === "image" ? p.prompt.attachment.path : null,
+          category: p.prompt?.categories?.[0]?.name || null,
+          // The listing can be taken down after it was bought; the buyer keeps
+          // their copy, so this labels the row rather than hiding it.
+          promptDeleted: Boolean(p.prompt?.deleted),
           buyerName: p.buyer?.name || p.buyer?.email || "Unknown",
           pricePaid: p.pricePaid,
           purchasedAt: p.purchasedAt || p.createdAt,
+          /* Bought by the org, so the panel opens unlocked with the body — for
+             the Owner, who is the account that bought it. An Admin TM reading
+             this page gets the listing, not the paid content. */
+          owned: isOwner,
+          prompt: dashboardPromptPayload(p.prompt, isOwner),
         })),
       },
       sharedPrompts: {
@@ -2631,6 +2714,12 @@ router.get("/dashboard", requireAuth, async (req, res) => {
           sharedByName: sp.sharedBy?.name || sp.sharedBy?.email || "Owner",
           sharedToCount: (sp.sharedTo || []).length,
           sharedAt: sp.createdAt,
+          ...(() => {
+            // The org owns it AND this viewer is entitled to it — computed once
+            // per row rather than twice, since both fields answer to it.
+            const readable = orgOwnsPrompt(sp.promptId) && (isOwner || sharedWithViewer(sp));
+            return { owned: readable, prompt: dashboardPromptPayload(sp.promptId, readable) };
+          })(),
         })),
       },
       teamRequests: {
@@ -2651,6 +2740,11 @@ router.get("/dashboard", requireAuth, async (req, res) => {
           message: n.message || "",
           read: Boolean(n.read),
           requestedAt: n.createdAt,
+          /* The one panel listing something the org does NOT own — every row
+             here is a product still to be bought (bought ones are filtered out
+             above), so the body is withheld and the panel shows Buy Now. */
+          owned: false,
+          prompt: dashboardPromptPayload(n.promptId, false),
         })),
       },
     });

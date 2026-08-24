@@ -13324,9 +13324,16 @@ function Hero() {
           variants={heroFadeUp}
           custom={3}
         >
-          <GradientButton variant="primary" to={ROUTES.smartgen}>Try Smartgen</GradientButton>
-          <Link to={ROUTES.marketplace} className="hero-btn hero-btn--ghost">
-            <span className="hero-btn__text">Product Verse</span>
+          {/* The two halves of the marketplace, together: what's for sale, and
+              who makes it. They used to be Try Smartgen + ProductVerse, which
+              put a tool and a storefront side by side and left Find Creators —
+              the other half of the same destination — unmentioned above the
+              fold. The tools moved to the rail on the left (ToolRail below),
+              where they stay reachable from anywhere on the page instead of
+              only from the top of it. */}
+          <GradientButton variant="primary" to={ROUTES.marketplace}>ProductVerse</GradientButton>
+          <Link to={ROUTES.findCreators} className="hero-btn hero-btn--ghost">
+            <span className="hero-btn__text">Find Creators</span>
           </Link>
         </motion.div>
 
@@ -13387,6 +13394,7 @@ const OFFERS = [
   {
     num: '01',
     icon: Zap,
+    iconSrc: '/icons/prompt-optimization.svg',
     title: 'Prompt Optimiser',
     description:
       'Reduce token usage by up to 60% while maintaining meaning and effectiveness across all LLM platforms.',
@@ -13396,6 +13404,7 @@ const OFFERS = [
   {
     num: '02',
     icon: Sparkles,
+    iconSrc: '/icons/smartgen.svg',
     title: 'Smartgen',
     description:
       'Transform simple ideas into powerful, optimized products with our AI-powered generation system.',
@@ -13405,7 +13414,7 @@ const OFFERS = [
   {
     num: '03',
     icon: TrendingUp,
-    title: 'Product Verse',
+    title: 'ProductVerse',
     description:
       'Built a great product? Trade it. Monetize your creativity and earn from your best product innovations.',
     accent: '#ec4899',
@@ -13466,8 +13475,23 @@ function WhatWeOffer() {
             >
               <div className="offer-card__body">
                 <div className="offer-card__top">
+                  {/* The two tools that have a mark of their own use it; the
+                      rest fall back to a lucide glyph. Same files the signed-in
+                      nav and the tool rail render, so all three places name a
+                      tool with one picture — see TOOL_TABS. */}
                   <span className="offer-card__icon">
-                    <offer.icon size={18} strokeWidth={2} />
+                    {offer.iconSrc ? (
+                      <img
+                        src={offer.iconSrc}
+                        alt=""
+                        aria-hidden="true"
+                        width={18}
+                        height={18}
+                        style={{ display: 'block' }}
+                      />
+                    ) : (
+                      <offer.icon size={18} strokeWidth={2} />
+                    )}
                   </span>
                   <span className="offer-card__num">{offer.num}</span>
                 </div>
@@ -13524,8 +13548,8 @@ function WhatWeOffer() {
    removed was ALSO the highlighted one: dropping it from this array left the
    strip with nothing active at all, and the next person to edit the list would
    have hit the same thing. */
-const TABS = ['Smartgen', 'Prompt Optimiser', 'Product Verse']
-const ACTIVE_TAB = 'Product Verse'
+const TABS = ['Smartgen', 'Prompt Optimiser', 'ProductVerse']
+const ACTIVE_TAB = 'ProductVerse'
 
 const SAVED_ITEMS = [
   { title: 'SEO Blog Writer', tag: 'Marketing', tokens: '-42%' },
@@ -14565,6 +14589,203 @@ function LoadingScreen({ onComplete }) {
 }
 
 /* ============================================================
+   Edge tabs — the rail on the left, Feedback on the right
+   ============================================================ */
+
+/** A media query, answered on the FIRST render rather than in an effect. */
+function useMediaQuery(query: string, serverFallback: boolean) {
+  /* Starting at a fixed value and correcting in an effect is what made the
+     feedback tab paint the desktop-sized slab and swap it for the compact one a
+     frame later — a visible jump from big to small, on the phone where it is
+     most obviously wrong. */
+  const [matches, setMatches] = useState(() =>
+    typeof window === 'undefined' ? serverFallback : window.matchMedia(query).matches
+  )
+
+  useEffect(() => {
+    const mq = window.matchMedia(query)
+    const sync = () => setMatches(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [query])
+
+  return matches
+}
+
+/**
+ * The two things every edge tab needs to know. Both edges ask, so it is asked
+ * once here.
+ *
+ * `isCompact` — the tab is sized for a desktop edge: 18px of vertical padding
+ * around a tracked-out vertical word and a 32px icon tile come to a ~130px slab
+ * down the side of a 390px screen.
+ *
+ * `hasPointer` — whether this is a real mouse, and NOT the same question. The
+ * feedback tab's hover animation was gated on `isCompact`, whose query is an OR,
+ * so a wide screen reporting `hover: none` still got hover and a phone whose
+ * browser claims `hover: hover` (some Android builds do) got it too. On a touch
+ * screen hover fires on tap and never leaves: the tab sat at 1.02 scale, then
+ * 0.95 on the next press, then back — that is the size flapping between
+ * presses. This is the test that actually means "a mouse".
+ */
+function useEdgeTabMode() {
+  return {
+    isCompact: useMediaQuery('(max-width: 640px), (hover: none)', false),
+    hasPointer: useMediaQuery('(hover: hover) and (pointer: fine)', true),
+  }
+}
+
+/* The tools, in the order they're used: generate, then tighten.
+   The icons are the app's own marks — the same two files the signed-in nav
+   renders (components/AppNavigation.tsx maps `id` to `/icons/<id>.<ext>`).
+   These were lucide stand-ins, Sparkles and Zap, so the landing page named the
+   same two tools with different pictures than the product does: someone who
+   clicked "SmartGen" here arrived at a nav item they had no reason to recognise.
+   Both files are drawn in white, which is what the tile below needs. */
+const TOOL_TABS = [
+  {
+    label: 'SmartGen',
+    to: ROUTES.smartgen,
+    iconSrc: '/icons/smartgen.svg',
+    gradient: 'linear-gradient(160deg, #d946ef 0%, #a855f7 45%, #7c3aed 100%)',
+    glow: 'rgba(168,85,247,0.55)',
+  },
+  {
+    label: 'Optimiser',
+    to: ROUTES.optimizer,
+    iconSrc: '/icons/prompt-optimization.svg',
+    gradient: 'linear-gradient(160deg, #2563eb 0%, #1d4ed8 45%, #1e3a8a 100%)',
+    glow: 'rgba(37,99,235,0.55)',
+  },
+] as const
+
+/**
+ * SmartGen and the Optimiser, pinned to the left edge.
+ *
+ * Same object as the Feedback tab on the other side, mirrored — the radii, the
+ * highlight and the vertical label all match, because two edge tabs that don't
+ * match read as two unrelated bits of furniture stuck to the same page.
+ *
+ * Links rather than buttons: middle-click and open-in-new-tab both work, which
+ * is what people do with a tool they're about to use on something they already
+ * have open.
+ */
+function ToolRail() {
+  const { isCompact, hasPointer } = useEdgeTabMode()
+
+  return (
+    /* Anchoring lives in .tool-rail (landing-page.css) because it needs a
+       `top: 50%` → `top: 50svh` fallback pair, and an inline style can only hold
+       one value per property — on a browser without svh the declaration is
+       simply dropped and the rail loses its position entirely. */
+    <div className="tool-rail">
+      {TOOL_TABS.map((tab) => (
+        <motion.div
+          key={tab.label}
+          initial={false}
+          whileHover={hasPointer ? { x: 5, scale: 1.02 } : undefined}
+          /* Pointer-only, like Feedback's: a tap that turns into a scroll leaves
+             framer waiting on a pointerup it never gets on some mobile browsers,
+             so the tab stays shrunk mid-scroll — which reads as the thing
+             resizing on its own. */
+          whileTap={hasPointer ? { scale: 0.95 } : undefined}
+        >
+          <Link
+            to={tab.to}
+            aria-label={tab.label}
+            style={{
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: isCompact ? 7 : 10,
+              // Mirrored: the rounded corners face the page, the flat edge the
+              // screen edge.
+              borderRadius: isCompact ? '0 11px 11px 0' : '0 14px 14px 0',
+              background: tab.gradient,
+              paddingTop: isCompact ? 11 : 18,
+              paddingBottom: isCompact ? 11 : 18,
+              paddingLeft: isCompact ? 7 : 11,
+              paddingRight: isCompact ? 7 : 11,
+              boxShadow: isCompact
+                ? `2px 0 16px ${tab.glow}, inset 0 1px 0 rgba(255,255,255,0.15)`
+                : `4px 0 32px ${tab.glow}, 1px 0 0 rgba(255,255,255,0.08), inset 0 1px 0 rgba(255,255,255,0.15)`,
+              textDecoration: 'none',
+            }}
+          >
+            {/* Shiny top-left highlight */}
+            <span
+              aria-hidden
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: '45%',
+                borderRadius: isCompact ? '0 11px 0 0' : '0 14px 0 0',
+                background: 'linear-gradient(180deg, rgba(255,255,255,0.14) 0%, transparent 100%)',
+                pointerEvents: 'none',
+              }}
+            />
+
+            {/* The icon leads on this edge — it is the first thing the eye
+                reaches coming in from the left. On a phone it is all there is:
+                two labelled slabs plus Feedback is more furniture than a 390px
+                screen has room for. */}
+            <span
+              style={{
+                width: isCompact ? 24 : 32,
+                height: isCompact ? 24 : 32,
+                borderRadius: isCompact ? 7 : 9,
+                background: 'rgba(255,255,255,0.18)',
+                backdropFilter: 'blur(4px)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.2)',
+              }}
+            >
+              <img
+                src={tab.iconSrc}
+                alt=""
+                aria-hidden="true"
+                width={isCompact ? 13 : 16}
+                height={isCompact ? 13 : 16}
+                style={{ display: 'block' }}
+              />
+            </span>
+
+            {!isCompact && (
+              /* vertical-rl, and no rotation: on this edge the label should read
+                 downwards. Feedback's rotate(180deg) is what makes its label
+                 read upwards on the right, which is correct there and wrong
+                 here. */
+              <span
+                style={{
+                  writingMode: 'vertical-rl',
+                  textOrientation: 'mixed',
+                  color: '#fff',
+                  fontSize: 11.5,
+                  fontWeight: 800,
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  lineHeight: 1,
+                  textShadow: '0 1px 4px rgba(0,0,0,0.3)',
+                }}
+              >
+                {tab.label}
+              </span>
+            )}
+          </Link>
+        </motion.div>
+      ))}
+    </div>
+  )
+}
+
+/* ============================================================
    FeedbackButton — floating feedback tab on the right side
    ============================================================ */
 
@@ -14594,51 +14815,11 @@ const fbLabelStyle: React.CSSProperties = {
 }
 
 function FeedbackButton() {
-  /* Two separate things this tab got wrong on a phone.
-     One: it was sized for a desktop edge — 18px of vertical padding around a
-     tracked-out vertical word and a 32px icon tile came to a ~130px slab down
-     the side of a 390px screen.
-     Two: it drifted. `whileHover` moved it 5px left, and a touch device fires
-     hover on tap and never fires the leave, so after one press the tab sat
-     offset from the edge with a gap of page showing through — and did it again,
-     differently, on the next press. Hover is a pointer idiom; below this width
-     the press feedback alone is enough. */
-  /* Read on the FIRST render, not in an effect.
-     Starting at `false` meant every load painted the desktop-sized slab and
-     then swapped it for the compact one a frame later — a visible jump from
-     big to small, on the phone where it is most obviously wrong. */
-  const [isCompact, setIsCompact] = useState(() =>
-    typeof window === 'undefined'
-      ? false
-      : window.matchMedia('(max-width: 640px), (hover: none)').matches
-  )
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 640px), (hover: none)')
-    const sync = () => setIsCompact(mq.matches)
-    sync()
-    mq.addEventListener('change', sync)
-    return () => mq.removeEventListener('change', sync)
-  }, [])
-
-  /* Whether this is a real pointer. The hover animation was gated on
-     `isCompact`, whose query is an OR — so a wide screen that reports
-     `hover: none` still got hover, and a phone whose browser claims
-     `hover: hover` (some Android builds do) got it too. On a touch screen
-     hover fires on tap and never leaves, so the tab sat at 1.02 scale, then
-     0.95 on the next press, then back — that is the size flapping between
-     presses. This is the test that actually means "a mouse". */
-  const [hasPointer, setHasPointer] = useState(() =>
-    typeof window === 'undefined'
-      ? true
-      : window.matchMedia('(hover: hover) and (pointer: fine)').matches
-  )
-  useEffect(() => {
-    const mq = window.matchMedia('(hover: hover) and (pointer: fine)')
-    const sync = () => setHasPointer(mq.matches)
-    sync()
-    mq.addEventListener('change', sync)
-    return () => mq.removeEventListener('change', sync)
-  }, [])
+  /* Both of these used to be four state-and-effect blocks right here, and the
+     tool rail on the other edge needed the same two answers. The reasoning for
+     each — why they're read on the first render, and why "compact" and "has a
+     mouse" are not the same question — moved with them; see useEdgeTabMode. */
+  const { isCompact, hasPointer } = useEdgeTabMode()
 
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<'form' | 'otp'>('form')
@@ -15125,6 +15306,10 @@ export default function LandingPage() {
         )}
       </div>
 
+      {/* The two edge rails. Outside `.app-shell` for the same reason the nav
+          is outside `.hero`: a fixed child of a container with `contain: layout`
+          anchors to that container, not the viewport. */}
+      <ToolRail />
       <FeedbackButton />
       {showCurtain && <LoadingScreen onComplete={handleComplete} />}
       {!showCurtain && <CookieConsentBanner />}

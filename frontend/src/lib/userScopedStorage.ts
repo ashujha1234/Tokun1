@@ -45,6 +45,9 @@ const USER_SCOPED_KEYS = [
   "purchaseHistory",
 
   // Misc per-user state
+  // Buyer/Creator mode. Here because it is per-person: on a shared browser the
+  // next person to sign in must not land in the last one's Creator header.
+  "tokun_app_mode",
   "tokun_notifications",
   "llm_provider",
   "SHOW_SUB_POPUP",

@@ -11,8 +11,15 @@ import { mediaUrl } from "@/lib/mediaUrl";
  * same shape they already recognise from the marketplace: thumbnail, title,
  * category and price.
  *
- * Kept generic (`meta` + `action`) so the two panels stay visually identical
+ * Kept generic (`meta` + `action`) so the three panels stay visually identical
  * while saying different things underneath.
+ *
+ * The whole row is the click target when `onOpen` is given, because that is how
+ * a prompt behaves everywhere else in the product — in the marketplace, in
+ * Saved, in Notifications, you click the card and the product panel opens. Here
+ * the only way in was a "View & buy" button on the requests panel, and the other
+ * two rows didn't open at all: the owner could see that something had been
+ * shared or bought without ever being able to look at it.
  */
 export default function OrgPromptCard({
   title,
@@ -24,6 +31,7 @@ export default function OrgPromptCard({
   meta,
   note,
   action,
+  onOpen,
 }: {
   title: string;
   thumbnail?: string | null;
@@ -37,9 +45,28 @@ export default function OrgPromptCard({
   note?: string | null;
   /** Buttons on the right. */
   action?: ReactNode;
+  /** Opens the product panel. Omitted when there's no product left to open. */
+  onOpen?: () => void;
 }) {
   return (
-    <div className="flex items-center gap-4 px-5 py-4 bg-white/[0.02]">
+    <div
+      onClick={onOpen}
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onKeyDown={
+        onOpen
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onOpen();
+              }
+            }
+          : undefined
+      }
+      className={`flex items-center gap-4 px-5 py-4 bg-white/[0.02] ${
+        onOpen ? "cursor-pointer transition-colors hover:bg-white/[0.06]" : ""
+      }`}
+    >
       <PromptThumb src={mediaUrl(thumbnail || "")} alt={title} className="w-12 h-12" />
 
       <div className="min-w-0 flex-1">
@@ -68,7 +95,9 @@ export default function OrgPromptCard({
         )}
       </div>
 
-      <div className="flex items-center gap-3 shrink-0">
+      {/* The row itself opens the panel, so a button inside it must not also
+          fire that — its own handler is the more specific one. */}
+      <div className="flex items-center gap-3 shrink-0" onClick={(e) => e.stopPropagation()}>
         {isFree ? (
           <span className="text-xs font-medium text-emerald-400">Free</span>
         ) : (

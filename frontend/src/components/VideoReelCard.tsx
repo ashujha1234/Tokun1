@@ -189,13 +189,26 @@ export default function VideoReelCard({
 
       {/* Top badges */}
       <div className="reel-card__top">
-        <span className="reel-card__cat">{prompt.category?.toUpperCase()}</span>
+        {/* `title` because this is the pill that truncates when the row is
+            tight — see .reel-card__cat. A long category name is readable on
+            hover instead of being lost to the ellipsis. */}
+        <span className="reel-card__cat" title={prompt.category || undefined}>
+          {prompt.category?.toUpperCase()}
+        </span>
         {isPurchased ? (
           <span className="reel-card__badge reel-card__badge--owned">PURCHASED</span>
         ) : comingSoon ? (
           // Replaces the unlock badge rather than joining it — telling someone
           // to "purchase to unlock" something they can't buy yet is nonsense.
           <span className="reel-card__badge reel-card__badge--soon">COMING SOON</span>
+        ) : prompt.isFree ? (
+          /* Nothing, on purpose. This slot answers "what do you have to do to
+             get this", and for a free listing the answer is already on the card
+             — the FREE pill in the footer below. It used to read "PURCHASE TO
+             UNLOCK" here while that pill said FREE two inches down. Printing
+             FREE in both places would just be the same contradiction resolved
+             into a repetition. */
+          null
         ) : (
           <span className="reel-card__badge reel-card__badge--lock">
             {prompt.exclusive ? "ONE-TIME" : "PURCHASE TO UNLOCK"}

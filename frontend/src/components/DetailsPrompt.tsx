@@ -1037,6 +1037,7 @@ import { useCart } from "@/contexts/CartContext";
 import { isTeamMember as isTeamMemberUser, isOrgOwner } from "@/lib/orgRoles";
 import ProductReviews from "@/components/ProductReviews";
 import { StarRating } from "@/components/StarRating";
+import SaveButton from "@/components/SaveButton";
 
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 const PURCHASE_BASE = `${API_BASE}/api/purchase`;
@@ -1133,6 +1134,13 @@ export default function DetailsPrompt({
   const listPrice = Number(prompt?.price || 0);
   const chargedPrice = Number(prompt?.tokunPrice || 0) > 0 ? Number(prompt.tokunPrice) : listPrice;
   const platformFee = +(chargedPrice - listPrice).toFixed(2);
+
+  /* Free — as in nothing to pay, so nothing to price.
+     `isFree` is the seller's own flag where the caller sends it; a charge of
+     zero is the same thing said arithmetically, and this panel already treats
+     it that way (Buy Now is gated on `price > 0` further down). Without this
+     the panel printed a literal "₹0" and a badge telling the reader to buy. */
+  const isFreeListing = !!(prompt as any)?.isFree || chargedPrice <= 0;
 
    const currentUserId = user?._id || user?.id || null;
 
@@ -1381,15 +1389,20 @@ const soldOut = !!prompt?.exclusive && !!prompt?.sold;
     <span
       className="px-3 py-1 text-[12px] font-semibold rounded-full"
       style={{
-        background: owned ? "#14532D" : "#FFFFFF",
-        color: owned ? "#BBF7D0" : "#000000",
+        background: owned ? "#14532D" : isFreeListing ? "#14532D" : "#FFFFFF",
+        color: owned ? "#BBF7D0" : isFreeListing ? "#BBF7D0" : "#000000",
       }}
     >
       {owned
         ? isTeamMember && !isOwnPrompt
           ? "UNLOCKED BY YOUR ORG"
           : "PURCHASED"
-        : "PURCHASE TO UNLOCK"}
+        : /* Nothing to purchase, so it doesn't say purchase. A free listing
+             read "PURCHASE TO UNLOCK" on a white pill and then showed ₹0 for a
+             price — telling the reader to buy something that isn't for sale. */
+          isFreeListing
+          ? "FREE"
+          : "PURCHASE TO UNLOCK"}
     </span>
   )}
 </div>
@@ -1538,28 +1551,17 @@ const soldOut = !!prompt?.exclusive && !!prompt?.sold;
               <h2 className="font-semibold text-[24px] leading-snug tracking-tight">
                 {prompt.title}
               </h2>
+              {/* Was a 42px circle with cop1.png in it — an icon you had to
+                  hover to identify, on the one control here that changes what's
+                  in your account. It says what it does now. */}
               {!hideSave && (
-                <button
-                  type="button"
+                <SaveButton
+                  saved={isSaved}
+                  busy={savingPrompt}
+                  disabled={!promptRefId}
                   onClick={toggleSavePrompt}
-                  disabled={savingPrompt || !promptRefId}
-                  title={isSaved ? "Remove from saved" : "Save to your collection"}
-                  aria-label={isSaved ? "Remove from saved" : "Save to your collection"}
-                  aria-pressed={isSaved}
-                  className="flex items-center justify-center rounded-full justify-self-end transition disabled:cursor-default"
-                  style={{
-                    backgroundColor: isSaved ? "#7c3aed" : "#333335",
-                    width: 42,
-                    height: 42,
-                    opacity: savingPrompt ? 0.6 : 1,
-                  }}
-                >
-                  <img
-                    src="/icons/cop1.png"
-                    alt=""
-                    className="w-5 h-5 object-contain"
-                  />
-                </button>
+                  className="justify-self-end"
+                />
               )}
             </div>
 
@@ -1647,7 +1649,8 @@ const soldOut = !!prompt?.exclusive && !!prompt?.sold;
             <div className="flex items-center justify-between gap-3">
               <div className="shrink-0">
                 <div className="text-[22px] font-semibold text-white">
-                  ₹{chargedPrice.toLocaleString()}
+                  {/* "₹0" is not a price, it's the absence of one. */}
+                  {isFreeListing ? "Free" : `₹${chargedPrice.toLocaleString()}`}
                 </div>
                 {/* Spelled out so the total isn't a surprise at the payment
                     sheet. Only when there is actually a fee to explain. */}

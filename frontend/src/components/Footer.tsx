@@ -302,7 +302,7 @@ const LINK_GROUPS: { heading: string; links: { label: string; href: string }[] }
   {
     heading: "Product",
     links: [
-      { label: "Product Verse", href: "/prompt-marketplace" },
+      { label: "ProductVerse", href: "/prompt-marketplace" },
       // "Product Library" was here and has been removed on request.
       { label: "SmartGen", href: "/smartgen" },
       // "Optimiser", not "Optimizer" — every other place the product is named

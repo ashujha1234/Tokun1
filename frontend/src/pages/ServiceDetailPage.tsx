@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { avatarFor, onAvatarError } from "@/lib/avatar";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   ChevronLeft,
   ChevronRight,
@@ -375,6 +375,7 @@ function ContactPanel({
 export default function ServiceDetailPage() {
   const { serviceId } = useParams<{ serviceId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, token } = useAuth() as any;
 
   const [data, setData] = useState<ServiceDetailPayload | null>(null);
@@ -390,6 +391,35 @@ export default function ServiceDetailPage() {
   // descriptors alongside the booking.
   const [briefFiles, setBriefFiles] = useState<BriefAttachment[]>([]);
   const [orderOpen, setOrderOpen] = useState(false);
+
+  /* `?order=1` opens the brief straight away.
+     The directory's service card links here to start an order, and without this
+     it would land the reader on the page and leave them to find the same button
+     again — a shortcut that shortcuts nothing.
+
+     Every condition the button itself carries is repeated here, because a URL
+     is typed and shared and cannot be trusted to have been reached by pressing
+     anything: signed out goes to login instead, and a draft, a suspended
+     seller or your own service opens nothing at all. Runs off `data` rather
+     than the destructured `service`/`isOwn` below, which live after this
+     component's early returns.
+
+     `once` so closing the brief on a page whose URL still says order=1 doesn't
+     reopen it on the next render. */
+  const orderDeepLinkDone = useRef(false);
+  useEffect(() => {
+    if (orderDeepLinkDone.current || !data?.service) return;
+    if (new URLSearchParams(location.search).get("order") !== "1") return;
+
+    orderDeepLinkDone.current = true;
+    if (!token) {
+      navigate("/login");
+      return;
+    }
+    const ownService = user?._id && String(user._id) === data.seller?.userId;
+    if (ownService || data.seller?.suspended || data.service.status === "draft") return;
+    setOrderOpen(true);
+  }, [data, location.search, token, user, navigate]);
 
   const load = useCallback(async () => {
     if (!serviceId) return;

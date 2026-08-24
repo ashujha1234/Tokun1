@@ -2593,13 +2593,17 @@ import { useCart } from "@/contexts/CartContext";
  import { Zap } from "lucide-react";
 import { Crown } from "lucide-react";
 import { MessageCircle } from "lucide-react";
-import { Users, ReceiptText, Briefcase, Package, Gift } from "lucide-react";
+import { Users, ReceiptText, Briefcase, Package, Gift, Bookmark, Store, ShoppingBag } from "lucide-react";
 import { LuBadgeCheck } from "react-icons/lu";
 // Shared with Landing.tsx's HeroAccountMenu, which is a second copy of this
 // dropdown — the hook keeps the freelancer entry identical in both.
 import { useFreelancerMenu } from "@/hooks/useFreelancerMenu";
 import SellerLinkedAccountForm from "@/components/SellerLinkedAccountForm";
-import { primeSellerData, peekPayoutStatus, getPayoutStatus } from "@/lib/sellerPrefetch";
+import { primeSellerData } from "@/lib/sellerPrefetch";
+import { resolveUploadGate } from "@/lib/uploadGate";
+import ModeToggle from "@/components/ModeToggle";
+import { useMode } from "@/contexts/ModeContext";
+import { MODE_UI_ENABLED } from "@/lib/mode";
 import { isTeamMember, canManageTeam, TEAM_MEMBER_SELL_TOAST } from "@/lib/orgRoles";
 import { userInitials, userAvatarUrl } from "@/lib/userInitials";
 import DetailsPrompt, { type MarketplacePrompt } from "@/components/DetailsPrompt";
@@ -2655,6 +2659,11 @@ const setStoredChatBadge = (count: number) => {
   const { user, logout, token, isAuthenticated, isReady } = useAuth() as any;
  // Drives the Team button in the action row below.
  const canManageTeamNav = canManageTeam(user);
+
+ /* Buyer or creator half. `shows` is the whole vocabulary this component needs
+    — which surfaces belong to which mode is stated once, in lib/mode.ts,
+    rather than as conditions scattered down the JSX. */
+ const { mode, setMode, canUseCreatorMode, shows } = useMode();
  const { cart, removeFromCart, fetchCart, welcomeDiscount } = useCart();
  /* The cart review dialog — see handleCheckout. */
  const [confirmCartOpen, setConfirmCartOpen] = useState(false);
@@ -2901,41 +2910,30 @@ const warmSellerData = () => {
 };
 
 const handlePostPrompt = () => {
-  if (!token) {
-    toast({
-      title: "Please log in",
-      description: "You must be logged in to upload products.",
-    });
-    navigate("/login");
-    return;
+  /* The gate itself moved to lib/uploadGate.ts — the landing bar carries this
+     same button now, and two copies of "who is allowed to sell" is how the two
+     bars would come to disagree about it. What to do with each answer stays
+     here, because these modals are this header's. */
+  switch (resolveUploadGate(token, user, API_BASE)) {
+    case "login":
+      toast({
+        title: "Please log in",
+        description: "You must be logged in to upload products.",
+      });
+      navigate("/login");
+      return;
+    // A team member can't sell — their org lists and gets paid on its own
+    // account. Stopped here rather than in the form, so they never see a payout
+    // onboarding screen for an account they'd have no use for.
+    case "team-blocked":
+      toast(TEAM_MEMBER_SELL_TOAST);
+      return;
+    case "sell":
+      setSellOpen(true);
+      return;
+    default:
+      setSellerFormOpen(true);
   }
-
-  // A team member can't sell — their org lists and gets paid on its own
-  // account. Stopped here rather than in the form, so they never see a payout
-  // onboarding screen for an account they'd have no use for.
-  if (isTeamMember(user)) {
-    toast(TEAM_MEMBER_SELL_TOAST);
-    return;
-  }
-
-  // Read synchronously, not with await: even an already-resolved promise costs
-  // a tick, and the whole point is that the modal is up in the same frame as
-  // the click. Null means the prefetch hasn't landed yet — the payout form
-  // handles that case itself and awaits the same cached request.
-  const status = peekPayoutStatus(token);
-  if (status?.ok && status.canSell !== false && status.hasPayoutSetup) {
-    setSellOpen(true);
-    // Revalidate behind the open modal. The snapshot could be minutes old and
-    // the account suspended since; this costs the user nothing and means the
-    // next click is right even if this one raced.
-    void getPayoutStatus(API_BASE, token, { force: true });
-    return;
-  }
-
-  // Old identity-KYC gate removed — sellers now go through Route payout
-  // setup first (SellerLinkedAccountForm below skips straight through to
-  // Sell modal if they've already set it up).
-  setSellerFormOpen(true);
 };
 
 
@@ -4107,16 +4105,22 @@ useEffect(() => {
     </div>
   )}
 
-  <button
-    type="button"
-    onClick={goToSaved}
-    className="relative flex items-center justify-center rounded-md p-2 hover:bg-white/10 transition"
-    title="Saved"
-  >
-    {/* Sized down to sit level with the lucide icons either side of it — as a
-        raster mark it read a size larger than them at the same box. */}
-    <img src="/icons/cop.png" alt="" className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-  </button>
+  {/* Saved moved into the account menu when the mode toggle took its slot —
+      the action row was already full, and Saved is a destination you visit
+      rather than a control you use in passing. It is still here, unchanged,
+      for when MODE_UI_ENABLED is off. */}
+  {!MODE_UI_ENABLED && (
+    <button
+      type="button"
+      onClick={goToSaved}
+      className="relative flex items-center justify-center rounded-md p-2 hover:bg-white/10 transition"
+      title="Saved"
+    >
+      {/* Sized down to sit level with the lucide icons either side of it — as a
+          raster mark it read a size larger than them at the same box. */}
+      <img src="/icons/cop.png" alt="" className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+    </button>
+  )}
 </div>
 
 
@@ -4299,7 +4303,12 @@ useEffect(() => {
 
 
 
-  {/* CART */}
+  {/* CART — buyer mode.
+
+      `|| cart.length > 0` is not a loophole, it's the point: hiding a cart with
+      three things in it reads as the three things having been lost. A creator
+      who filled a cart and then switched keeps seeing it until it's empty. */}
+    {(shows("cart") || cart.length > 0) && (
     <button
       type="button"
       onClick={() => setCartOpen(true)}
@@ -4313,11 +4322,16 @@ useEffect(() => {
         </span>
       )}
     </button>
+    )}
 
 
 
 
-          {/* Upload Prompt (force one line) */}
+          {/* Upload Product — creator mode only. The one control this whole
+              toggle exists for: it is the loudest thing in the row, and most
+              people never list anything. */}
+          {shows("upload") && (
+          <>
           <button
       type="button"
       onClick={handlePostPrompt}
@@ -4343,6 +4357,13 @@ useEffect(() => {
     >
       <Plus className="w-4 h-4 text-white" />
     </button>
+    </>
+    )}
+
+    {/* The toggle, immediately left of the avatar — the mode belongs to the
+        account, so it reads as part of that cluster. Renders nothing for anyone
+        with only one mode available (signed out, team members). */}
+    <ModeToggle />
 
           {/* Profile dropdown — signed in only.
 
@@ -4529,9 +4550,22 @@ useEffect(() => {
       // the profile is ACTIVE it renders inside My Account and is edited there,
       // so a second entry pointing at the same place just made the menu look
       // like it had two profiles in it.
-      ...(freelancerMenu.status === "ACTIVE"
+      ...(freelancerMenu.status === "ACTIVE" || !shows("freelancer")
         ? []
         : [{ label: freelancerMenu.label, icon: Briefcase, onClick: freelancerMenu.open }]),
+
+      /* The mode switch, spelled out. The pill in the action row hides its
+         labels below `lg` and vanishes entirely on a narrow screen, so this is
+         where the switch actually lives for a phone. Named as the action rather
+         than the state — "Switch to creator mode", not "Creator". */
+      ...(MODE_UI_ENABLED && canUseCreatorMode
+        ? [{
+            label: mode === "creator" ? "Switch to buyer mode" : "Switch to creator mode",
+            // Same pair as the pill in the action row — see ModeToggle.
+            icon: mode === "creator" ? ShoppingBag : Store,
+            onClick: () => setMode(mode === "creator" ? "buyer" : "creator"),
+          }]
+        : []),
 
       /* "My Wallet" sat here. Hidden for now, not deleted: money moves through
          Razorpay directly — a buyer pays on the checkout sheet and a seller's
@@ -4539,19 +4573,56 @@ useEffect(() => {
          balance most people never needed to look at. `goToWallet` and the
          /wallet route are left intact, so restoring this is one line.
          See the note in Landing.tsx, which carries a second copy of this menu. */
-      { label: "Dashboard",      icon: LayoutDashboard, onClick: () => navigate("/self-dash") },
-      // The same "My Products" the dashboard's own sidebar has — everything you
-      // bought and everything you uploaded. It was only reachable by going to
-      // the dashboard first and finding the tab, which is a long way round for
-      // the screen a buyer wants immediately after paying.
-      { label: "My Products",    icon: Package,         onClick: () => navigate("/self-dash?tab=prompts&p=purchased") },
+      ...(shows("sellerDashboard")
+        ? [{ label: "Dashboard", icon: LayoutDashboard, onClick: () => navigate("/self-dash") }]
+        : []),
+
+      /* One page, two sub-tabs, two names.
+         This was a single "My Products" row pointing at `p=purchased` — so the
+         label said products and the page showed purchases, and the uploaded
+         half beside it had no entry at all. Calling both of them "My Products"
+         would be worse than either: the same words for two different lists, and
+         no way to know which one you were about to open.
+
+         Written as an explicit either/or rather than two independent `shows`
+         checks, because with the feature flag off both would report visible and
+         the menu would carry two rows where it used to carry one — a "revert"
+         that changed the menu is not a revert. */
+      ...(!MODE_UI_ENABLED
+        ? [{
+            label: "My Products",
+            icon: Package,
+            onClick: () => navigate("/self-dash?tab=prompts&p=purchased"),
+          }]
+        : mode === "creator"
+          ? [{
+              label: "My Listings",
+              icon: Package,
+              onClick: () => navigate("/self-dash?tab=prompts&p=uploaded"),
+            }]
+          : [{
+              label: "My Purchases",
+              icon: Package,
+              onClick: () => navigate("/self-dash?tab=prompts&p=purchased"),
+            }]),
+
+      // Took the action row's slot when the mode pill arrived — see the note
+      // there. A destination, not a control you use in passing.
+      ...(MODE_UI_ENABLED
+        ? [{ label: "Saved", icon: Bookmark, onClick: goToSaved }]
+        : []),
+
       /* Refer & Earn. Also in Landing.tsx's copy of this menu — the two are
          separate lists and drift the moment only one is edited. */
       { label: "Refer & Earn",   icon: Gift,            onClick: () => navigate("/refer") },
-      { label: "My Feedback",    icon: MessageCircle,   onClick: () => navigate("/my-feedback") },
+      ...(shows("feedback")
+        ? [{ label: "My Feedback", icon: MessageCircle, onClick: () => navigate("/my-feedback") }]
+        : []),
       // Sits next to My Feedback because it's the same kind of thing: a list of
       // requests you've made and what came of them.
-      { label: "My Refunds",     icon: ReceiptText,     onClick: () => navigate("/my-refunds") },
+      ...(shows("refunds")
+        ? [{ label: "My Refunds", icon: ReceiptText, onClick: () => navigate("/my-refunds") }]
+        : []),
     ].map(({ label, icon: Icon, onClick }) => (
       <button
         key={label}

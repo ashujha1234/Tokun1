@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "//typecheck": "Points at tsconfig.app.json, NOT tsconfig.json — the root config is `files: []` plus project references, so `tsc -p tsconfig.json` compiles nothing and reports success on anything.",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview"

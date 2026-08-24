@@ -15,6 +15,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Download, Loader2, X, ExternalLink } from "lucide-react";
 import useBodyScrollLock from "@/hooks/useBodyScrollLock";
 
@@ -73,7 +74,17 @@ export default function ImageLightbox({
     }
   };
 
-  return (
+  /* PORTALLED TO <body>, and that is the whole reason a chat image opened
+     halfway down the screen instead of over it.
+
+     `position: fixed` resolves against the nearest ancestor carrying a filter,
+     transform or backdrop-filter — not the viewport. The chat is rendered
+     inside a `fixed inset-0 … backdrop-blur-md` panel (see ChatPage), so this
+     overlay took ITS box as the viewport: a "fullscreen" lightbox laid out
+     inside a panel that is itself inset and top-aligned with 60px of padding,
+     which is exactly the low, cropped result. No amount of z-index or inset
+     fixes it from in here — it has to leave the subtree. */
+  return createPortal(
     <div
       className="fixed inset-0 z-[9999999] flex flex-col bg-black/90"
       role="dialog"
@@ -126,6 +137,7 @@ export default function ImageLightbox({
           onClick={(e) => e.stopPropagation()}
         />
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

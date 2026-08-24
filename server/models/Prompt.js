@@ -43,6 +43,14 @@ const MediaValidationSchema = new mongoose.Schema({
     default: "pending",
   },
   score: { type: Number, default: null }, // 0-100, cosine similarity scaled
+  /* Which of the three comparisons produced `score`, and what each of them
+     said — "whole" (the full prompt text), "intent" (the prompt reduced to what
+     the result should look like) or "section" (its best-matching passage). See
+     scoreMatchDetail in utils/promptMediaValidation.js. Recorded so the
+     approve/review thresholds can be retuned against real uploads rather than
+     against a guess; absent on everything validated before this existed. */
+  scoreBasis: { type: String, default: null },
+  scoreBreakdown: { type: Object, default: null },
   aiDescription: { type: String, default: "" },
   checkedAt: { type: Date, default: null },
   error: { type: String, default: null }, // set if the AI pipeline itself failed

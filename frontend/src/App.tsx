@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { SellPromptModalProvider } from "@/contexts/SellPromptModalContext";
 import { CartProvider } from "@/contexts/CartContext";
+import { ModeProvider } from "@/contexts/ModeContext";
 import ScrollToTop from "@/components/ScrollToTop";
 import PageControls from "@/components/PageControls";
 import RouteFallback from "@/components/RouteFallback";
@@ -118,6 +119,11 @@ export default function App() {
           <Toaster />
           <Sonner />
           <BrowserRouter>
+          {/* Inside the router on purpose: the provider follows a deep link to
+              a creator page by switching the mode to match it, which means it
+              has to be able to read the location. Above every route, because
+              the header is what it drives. */}
+          <ModeProvider>
           <ScrollToTop />
           {/* Sits outside <Routes>, so back and back-to-top are on every page
               rather than on whichever ones someone remembered. */}
@@ -292,6 +298,7 @@ export default function App() {
 
             </Routes>
             </Suspense>
+          </ModeProvider>
           </BrowserRouter>
         </TooltipProvider>
          </CartProvider>

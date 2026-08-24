@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   History, Zap, Sparkles, Copy, RotateCcw,
-  ChevronDown, Bookmark, Pencil, Code2, Video,
+  ChevronDown, Pencil, Code2, Video,
   Image, Share2, Loader2, ArrowRight, X, Check, Search,
   AlertTriangle, Paperclip, FileText, Download, FileDown, Wand2,
 } from "lucide-react";
@@ -13,6 +13,7 @@ import type { DetectionResult, DeepQuestion } from "@/services/llmService";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/use-toast";
 import { isOutOfTokens, TOKEN_LIMIT_TOAST } from "@/lib/tokenGate";
+import SaveButton from "@/components/SaveButton";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 interface SmarterPromptProps {
@@ -1313,9 +1314,24 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
                 </button>
               </div>
             ) : (
+              /* The one control in this row that isn't a mode toggle — it brings
+                 something in from outside — so it carries a live gradient ring
+                 instead of sitting flat like the rest. Highlighted at rest,
+                 on purpose: it is the affordance people miss, and a border that
+                 only appears on hover can't advertise anything to someone who
+                 hasn't found it yet. Hover and press are deliberately small
+                 (see .attach-btn in the stylesheet at the foot of this file) —
+                 the button is already the loudest thing here. */
               <button type="button" onClick={()=>fileInputRef.current?.click()} title="Attach a PDF, Word, Excel, PowerPoint, CSV or text file"
-                style={{...btnDark,display:"flex",alignItems:"center",gap:6,height:36,padding:"0 14px",borderRadius:100,fontSize:13,cursor:"pointer"}}>
-                <Paperclip size={14}/> Attach File
+                className="attach-btn">
+                <span className="attach-btn__ring" aria-hidden="true"/>
+                {/* The travelling highlight. Its own layer so the static ring
+                    underneath keeps its colour — the light passes OVER the
+                    border rather than replacing it. */}
+                <span className="attach-btn__spark" aria-hidden="true"/>
+                <span className="attach-btn__face">
+                  <Paperclip size={14}/> Attach File
+                </span>
               </button>
             )}
           </div>
@@ -1427,18 +1443,11 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
                   <Pencil size={14}/> {isEditing?"Done":"Edit"}
                 </button>
                 <LlmButtons text={displayText} onToast={msg=>toast({title:msg})}/>
-                <button
-                  onClick={toggleBookmark}
-                  disabled={savingBookmark}
-                  title={isBookmarked ? "Remove from saved" : "Save to your collection"}
-                  aria-label={isBookmarked ? "Remove from saved" : "Save to your collection"}
-                  aria-pressed={isBookmarked}
-                  style={{width:38,height:38,borderRadius:"50%",border:"1px solid rgba(255,255,255,0.12)",background:"#1a1a1b",cursor:savingBookmark?"default":"pointer",opacity:savingBookmark?0.6:1,display:"flex",alignItems:"center",justifyContent:"center"}}
-                >
-                  {savingBookmark
-                    ? <Loader2 size={15} className="animate-spin" color="rgba(255,255,255,0.55)"/>
-                    : <Bookmark size={15} fill={isBookmarked?"#8b5cf6":"none"} color={isBookmarked?"#8b5cf6":"rgba(255,255,255,0.55)"}/>}
-                </button>
+                {/* Was a 38px circle with a bookmark glyph, in a row where
+                    every other control is a labelled pill — the only one you
+                    had to hover to identify. Same component the product panel
+                    and the creator cards use. */}
+                <SaveButton saved={isBookmarked} busy={savingBookmark} onClick={toggleBookmark}/>
                 {tokensUsed != null && (
                   <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,height:38,padding:"0 16px",borderRadius:100,background:"rgba(124,58,237,0.12)",border:"1px solid rgba(124,58,237,0.25)",color:"#c4b5fd",fontSize:13,fontWeight:600}}>
                     <Zap size={14}/> {tokensUsed.toLocaleString()} tokens used
@@ -1490,6 +1499,132 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes pulse { 0%,100%{opacity:.5} 50%{opacity:1} }
+
+        /* ── Attach File ──
+           A gradient ring drawn as a 2px padded layer behind an opaque face:
+           the ring is the parent's background showing through the gap, which is
+           how you get a gradient border without border-image (which can't do
+           rounded corners in every engine we ship to).
+
+           The ring is at full strength at rest rather than fading in on hover —
+           it is there to be noticed, and 36px of dark pill in a row of dark
+           pills was not being noticed. */
+        .attach-btn {
+          position: relative;
+          display: inline-flex;
+          height: 36px;
+          padding: 2px;
+          border: none;
+          border-radius: 100px;
+          background: transparent;
+          cursor: pointer;
+          /* Clips the spinning square below back to the pill's shape — without
+             it the highlight is a rotating rectangle sticking out of the
+             button's corners. */
+          overflow: hidden;
+          /* Safari ignores overflow on a rounded box for a transformed child
+             unless the element gets its own paint layer. */
+          isolation: isolate;
+          /* Two properties, so the lift and the press don't fight over one
+             transition and land at different speeds. */
+          transition: transform 0.18s ease, filter 0.18s ease;
+        }
+        .attach-btn__ring {
+          position: absolute;
+          inset: 0;
+          border-radius: 100px;
+          background: linear-gradient(100deg, #2dd4bf 0%, #3b82f6 50%, #a855f7 100%);
+          /* The glow, not the ring, is what moves on hover — see below. */
+          box-shadow: 0 0 0 0 rgba(59,130,246,0);
+          transition: box-shadow 0.25s ease;
+        }
+        .attach-btn__face {
+          position: relative;
+          z-index: 1;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          height: 100%;
+          padding: 0 14px;
+          border-radius: 100px;
+          background: #0d0d0e;
+          color: rgba(255,255,255,0.88);
+          font-size: 13px;
+          /* Inherited from the button, which is a <button> and so does not get
+             the page font by default in every browser. */
+          font-family: inherit;
+        }
+        /* ── The light going round the ring ──
+           A conic gradient — one bright arc, transparent the rest of the way —
+           on a SQUARE that spins behind the face. Square and oversized on
+           purpose: rotating a conic gradient sized to the pill would sweep its
+           corners through the visible area and the highlight would speed up and
+           slow down twice per turn. A square wider than the pill is diagonal
+           keeps the arc travelling at one rate, and the parent's overflow clips
+           it back to the pill.
+
+           Rotating a background-image is not an option — only the element can
+           be transformed — which is why this is its own layer rather than an
+           animated background on the ring. */
+        .attach-btn__spark {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          /* Comfortably past the pill's diagonal at any label length. */
+          width: 260%;
+          aspect-ratio: 1;
+          background: conic-gradient(
+            from 0deg,
+            transparent 0deg,
+            rgba(255,255,255,0.0) 28deg,
+            rgba(255,255,255,0.55) 44deg,
+            #ffffff 52deg,
+            rgba(255,255,255,0.55) 60deg,
+            rgba(255,255,255,0.0) 76deg,
+            transparent 360deg
+          );
+          opacity: 0;
+          transition: opacity 0.25s ease;
+          animation: attachSpin 1.8s linear infinite;
+          /* Runs only while it can be seen. An animation ticking on a button
+             nobody is pointing at is a compositor layer repainting for nothing,
+             and this row can hold six of these pills. */
+          animation-play-state: paused;
+          pointer-events: none;
+          transform: translate(-50%, -50%);
+        }
+        @keyframes attachSpin {
+          to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+
+        /* Subtle on purpose: a 1px lift, a soft glow, and the light starting
+           its lap. The reference design scaled 1.05 and slid its label, which on
+           a control sitting in a row of five other pills reads as the row
+           twitching. */
+        .attach-btn:hover {
+          transform: translateY(-1px);
+        }
+        .attach-btn:hover .attach-btn__ring,
+        .attach-btn:focus-visible .attach-btn__ring {
+          box-shadow: 0 0 14px 0 rgba(99,102,241,0.45);
+        }
+        .attach-btn:hover .attach-btn__spark,
+        .attach-btn:focus-visible .attach-btn__spark {
+          opacity: 1;
+          animation-play-state: running;
+        }
+        .attach-btn:active {
+          transform: translateY(0) scale(0.985);
+          filter: brightness(0.95);
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .attach-btn, .attach-btn__ring, .attach-btn__spark { transition: none; }
+          .attach-btn:hover, .attach-btn:active { transform: none; }
+          /* No lap. The ring still brightens on hover, so the control still
+             answers the pointer — it just doesn't move to do it. */
+          .attach-btn__spark { animation: none; }
+          .attach-btn:hover .attach-btn__spark { opacity: 0.35; }
+        }
         textarea::placeholder { color: rgba(255,255,255,0.28); }
         input::placeholder { color: rgba(255,255,255,0.28); }
         select option { background: #1c1c1e; color: #fff; }

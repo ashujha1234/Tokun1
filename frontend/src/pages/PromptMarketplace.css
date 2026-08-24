@@ -1102,7 +1102,17 @@
   opacity: 0.85;
 }
 
-/* Top badges */
+/* Top badges.
+   ── Both of these are one-line labels, and neither used to say so.
+
+   A flex item's `min-width` defaults to `auto`, i.e. "never shrink below your
+   content" — so on a card too narrow to fit both pills side by side, neither
+   would shrink and both wrapped to two lines instead. Two double-height pills,
+   one of them "INTERIOR / DESIGN", which reads as a broken layout rather than
+   as a category.
+
+   It went unnoticed because the marketplace grid gives a card ~320px, where
+   they fit. The profile page's grid is ~260px, and that is where it showed. */
 .reel-card__top {
   position: absolute;
   top: 12px;
@@ -1124,6 +1134,14 @@
   padding: 3px 9px;
   border-radius: 20px;
   border: 1px solid rgba(255,255,255,0.18);
+  /* This is the one that gives way when the row is tight: the category is
+     stated again at the top of the details panel, whereas "purchase to unlock"
+     is stated nowhere else on the card — truncating the lock state would hide
+     the one thing a buyer needs to know before clicking. */
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .reel-card__badge {
   font-size: 9px;
@@ -1131,6 +1149,8 @@
   letter-spacing: 0.05em;
   padding: 3px 9px;
   border-radius: 20px;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 .reel-card__badge--lock {
   background: linear-gradient(135deg, #FF14EF, #1A73E8);

@@ -658,7 +658,39 @@ const BankAccount = require("../models/BankAccount");
 const { requireAuth, blockIfSuspended } = require("../utils/auth");
 const { logActivity } = require("../utils/activityLogger");
 const { runPromptMediaValidation } = require("../utils/promptMediaValidation");
-const { applyPublicPromptFilter, excludeSoldOut } = require("../utils/promptVisibility");
+const {
+  applyPublicPromptFilter,
+  excludeSoldOut,
+  PUBLIC_PROMPT_PROJECTION,
+} = require("../utils/promptVisibility");
+
+/**
+ * Puts `promptText` back on the free listings in a public payload, in place.
+ *
+ * The public reads project the prompt text away because it is the product. A
+ * FREE listing is the exception and not a small one: its text is the entire
+ * thing on offer, and the details panel's Copy button reads this field
+ * directly, so a free prompt without it is a button that copies nothing.
+ *
+ * One extra query for the free ids only, and it does nothing at all when there
+ * are none. Kept as a separate step so the rule is legible: paid text is never
+ * read on these paths, free text is added back deliberately.
+ */
+async function attachFreePromptText(docs) {
+  const list = Array.isArray(docs) ? docs : [docs];
+  const freeIds = list.filter((d) => d && d.free).map((d) => d._id);
+  if (!freeIds.length) return docs;
+
+  const texts = await Prompt.find({ _id: { $in: freeIds } })
+    .select("promptText")
+    .lean();
+
+  const byId = new Map(texts.map((t) => [String(t._id), t.promptText]));
+  for (const d of list) {
+    if (d && d.free) d.promptText = byId.get(String(d._id)) || "";
+  }
+  return docs;
+}
 const {
   perceptualHash,
   looksLikeDuplicate,
@@ -1272,7 +1304,7 @@ router.get("/user/:userId", async (req, res) => {
          note in ProfilePage.tsx), which stopped it being displayed — not sent.
          Owners read their own uploads through GET /my, which still carries it. */
       Prompt.find(applyPublicPromptFilter({ userId }))
-        .select("-promptText")
+        .select(PUBLIC_PROMPT_PROJECTION)
         .populate("categories", "name")
         .populate("userId", "name") // REQUIRED for uploader info
         .sort({ createdAt: -1 }),
@@ -1562,12 +1594,42 @@ router.get("/others", async (req, res) => {
        load), and with only the parent names in the payload a card filed under
        "Design / Logo & Branding" was indistinguishable from any other Design
        card — so picking a child narrowed nothing. */
+    /* The marketplace feed. Public, unauthenticated, and until now projected
+       NOTHING — `Prompt.find(filter)` returns the whole document and the
+       decoration below spreads it with `...p`.
+
+       So the browse endpoint was handing out `promptText` — the product itself —
+       for every paid listing on the page. The UI hides it (DetailsPrompt only
+       renders it when owned), which is why it went unnoticed: it was never on
+       screen, it was in the response. One look at the network tab was the whole
+       catalogue. `uploadCode`, the ratings rows and the anti-duplicate hashes
+       went with it.
+
+       Same list the other three public reads use — see PUBLIC_PROMPT_PROJECTION.
+       One consequence worth knowing: mapPromptDoc's `preview` fell back to the
+       first 140 characters of promptText when a listing had no description, and
+       that fallback is now empty. A teaser cut from paid content is a thing to
+       build on purpose, server-side, not something to get by shipping all of
+       it. */
     const prompts = await Prompt.find(filter)
+      .select(PUBLIC_PROMPT_PROJECTION)
       .populate("categories", "name")
       .populate("subCategories", "name")
       .populate("userId", "name")
       .sort({ createdAt: -1 })
       .lean();
+
+    /* Free listings get their text back.
+       A free prompt's text is not paid content — it is the whole thing being
+       given away, and the details panel's Copy button on a free listing reads
+       exactly this field. Stripping it wholesale above would have left that
+       button copying an empty string.
+
+       A second query rather than keeping promptText in the projection and
+       blanking it here: this way the paid text is never fetched on this path at
+       all, so there is no line for someone to later delete and silently ship
+       the catalogue again. */
+    await attachFreePromptText(prompts);
 
     // Payout verification now LABELS instead of hiding: the listing shows as
     // "coming soon" and the UI locks its buy button. Nothing here weakens the
@@ -1642,7 +1704,7 @@ router.get("/public/:id", async (req, res) => {
        buyer reaches their copy through Orders / My Products, not through this
        route — this one exists to show a stranger something they might buy. */
     const prompt = await Prompt.findOne(excludeSoldOut(applyPublicPromptFilter({ _id: id })))
-      .select("-promptText")
+      .select(PUBLIC_PROMPT_PROJECTION)
       .populate("categories", "name")
       // Same shape the feed sends, so a prompt opened from a shared link
       // carries its sub-category too.
@@ -1670,10 +1732,12 @@ router.get("/public/:id", async (req, res) => {
       sellerVerificationPending = !activated;
     }
 
-    return res.json({
-      success: true,
-      prompt: { ...prompt.toObject(), sellerVerificationPending },
-    });
+    // Free listings carry their text here too — a shared link to a free prompt
+    // opens the same panel with the same Copy button. See attachFreePromptText.
+    const payload = { ...prompt.toObject(), sellerVerificationPending };
+    await attachFreePromptText(payload);
+
+    return res.json({ success: true, prompt: payload });
   } catch (err) {
     console.error("GET /public/:id error:", err);
     return res.status(500).json({ success: false, error: "server_error" });
@@ -1745,7 +1809,7 @@ router.get("/by-seller/:sellerId", async (req, res) => {
        -promptText for the same reason as /user/:userId above: the paid content
        was going out with every listing here too. */
     const prompts = await Prompt.find(applyPublicPromptFilter({ userId: sellerId }))
-      .select("-promptText")
+      .select(PUBLIC_PROMPT_PROJECTION)
       .populate(
         "userId",
         "name email avatarUrl location sellerStatus isVerified"

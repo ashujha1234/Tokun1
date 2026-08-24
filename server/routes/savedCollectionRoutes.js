@@ -16,6 +16,28 @@ const PROMPT_REF_POPULATE = [
 ];
 const SavedCollection = require("../models/SavedCollection");
 
+/* The sections that exist, and the model each one's refs point at.
+
+   These were four separate inline arrays before — POST, GET /ids and the two
+   DELETEs each carried their own copy, already written with different spacing,
+   which is the tell that they were edited one at a time. Adding a section meant
+   finding all four, and missing one meant a section you could save into but not
+   list, or list but not remove from. */
+const SECTION_MODEL = {
+  smartgen: "Smartgen",
+  prompt: "Prompt",
+  promptOptimizer: "PromptOptimizer",
+  // A saved creator is a person, so the ref is their User document.
+  creator: "User",
+};
+const SECTIONS = Object.keys(SECTION_MODEL);
+
+/* What a saved creator is allowed to carry out of the API: enough to draw their
+   card and link to their profile, and nothing else. A User document holds an
+   email, a token balance and an org membership, none of which is the business of
+   whoever saved them. */
+const SAVED_CREATOR_FIELDS = "name avatarUrl";
+
 const router = express.Router();
 
 /**
@@ -33,7 +55,7 @@ router.post("/", requireAuth, async (req, res) => {
     const { section, refId, collectionTitle, name } = req.body;
 
     // ✅ Validate section
-    if (!section || !["smartgen", "prompt", "promptOptimizer"].includes(section)) {
+    if (!section || !SECTIONS.includes(section)) {
       return res.status(400).json({ success: false, error: "invalid_section" });
     }
 
@@ -48,13 +70,15 @@ router.post("/", requireAuth, async (req, res) => {
       savedCollection = await SavedCollection.create({ userId: req.user._id });
     }
 
-    // ✅ Set correct "on" field based on section
-    let onField;
-    if (section === "smartgen") onField = "Smartgen";
-    else if (section === "prompt") onField = "Prompt";
-    else if (section === "promptOptimizer") onField = "PromptOptimizer";
+    // ✅ The refPath value for this section — one table, checked above.
+    const newItem = { ref: refId, on: SECTION_MODEL[section], name };
 
-    const newItem = { ref: refId, on: onField, name };
+    /* Saving yourself is not a thing. It would put your own card in your own
+       list of people to come back to, and the directory doesn't list you to
+       begin with. */
+    if (section === "creator" && String(refId) === String(req.user._id)) {
+      return res.status(400).json({ success: false, error: "cannot_save_self" });
+    }
 
     /* Saving the same thing twice adds nothing and costs a duplicate row.
 
@@ -117,7 +141,7 @@ router.post("/", requireAuth, async (req, res) => {
 router.get("/ids", requireAuth, async (req, res) => {
   try {
     const section = String(req.query.section || "prompt");
-    if (!["smartgen", "prompt", "promptOptimizer"].includes(section)) {
+    if (!SECTIONS.includes(section)) {
       return res.status(400).json({ success: false, error: "invalid_section" });
     }
 
@@ -194,6 +218,14 @@ router.get("/", requireAuth, async (req, res) => {
         path: "sections.promptOptimizer.collections.items.ref",
         model: "PromptOptimizer",
       })
+      /* Saved creators. Name and photo only — see SAVED_CREATOR_FIELDS. The
+         card links to their profile, which is where everything else about them
+         already lives and is already access-checked. */
+      .populate({
+        path: "sections.creator.directItems.ref",
+        model: "User",
+        select: SAVED_CREATOR_FIELDS,
+      })
       .lean();
 
     if (!savedCollection) return res.json({ success: true, sections: {} });
@@ -214,7 +246,7 @@ router.delete("/:section/:refId", requireAuth, async (req, res) => {
   try {
     const { section, refId } = req.params;
 
-    if (!section || !["smartgen", "prompt","promptOptimizer"].includes(section)) {
+    if (!section || !SECTIONS.includes(section)) {
       return res.status(400).json({ success: false, error: "invalid_section" });
     }
 
@@ -293,7 +325,7 @@ router.delete("/collection", requireAuth, async (req, res) => {
   try {
     const { section, title } = req.body;
 
-    if (!section || !["smartgen", "prompt","promptOptimizer"].includes(section)) {
+    if (!section || !SECTIONS.includes(section)) {
       return res.status(400).json({ success: false, error: "invalid_section" });
     }
     if (!title) return res.status(400).json({ success: false, error: "title_required" });

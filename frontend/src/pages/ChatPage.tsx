@@ -6753,13 +6753,40 @@ const startMeetCall = () => {
                   {activeConvo ? (
                     <div className="flex items-center gap-2 sm:gap-4 min-w-0">
                       <button onClick={() => setMobileView("list")} className="sm:hidden mr-1 grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white shrink-0"><ArrowLeft size={16} /></button>
-                      <UserAvatar
-                        user={activeConvo.otherUser}
-                        size="md"
-                        online={onlineUsers.has(String(activeConvo.otherUser?._id))}
-                      />
+                      {/* Photo and name open their profile.
+                          They looked like a link and behaved like a label — the
+                          one place you are already thinking about a person was
+                          the one place you couldn't look them up, so checking
+                          who you were talking to meant going back to the
+                          directory and searching for them by name.
+                          The row is split rather than wrapped whole: the
+                          presence line under the name is a status, not a link,
+                          and dragging to select the name shouldn't navigate. */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const id = activeConvo.otherUser?._id;
+                          if (id) navigate(`/profile/${id}`);
+                        }}
+                        title={`View ${activeConvo.otherUser?.name || "profile"}`}
+                        className="shrink-0 rounded-full transition hover:opacity-80"
+                      >
+                        <UserAvatar
+                          user={activeConvo.otherUser}
+                          size="md"
+                          online={onlineUsers.has(String(activeConvo.otherUser?._id))}
+                        />
+                      </button>
                       <div className="min-w-0">
-                        <h1 className="truncate text-[13px] sm:text-[14px] font-semibold leading-[20px] text-white" style={{ fontFamily: "Inter, sans-serif" }}>{activeConvo.otherUser?.name || "Unknown User"}</h1>
+                        <h1
+                          onClick={() => {
+                            const id = activeConvo.otherUser?._id;
+                            if (id) navigate(`/profile/${id}`);
+                          }}
+                          title={`View ${activeConvo.otherUser?.name || "profile"}`}
+                          className="truncate text-[13px] sm:text-[14px] font-semibold leading-[20px] text-white cursor-pointer hover:underline decoration-white/40 underline-offset-2"
+                          style={{ fontFamily: "Inter, sans-serif" }}
+                        >{activeConvo.otherUser?.name || "Unknown User"}</h1>
                         {/* Was a hardcoded green "Active Now" on every thread.
                             Reflects real presence now, and typing takes priority
                             over it while it's happening. */}

@@ -128,6 +128,54 @@ function promptUnavailableReason(prompt) {
 /** Convenience for the read paths: true when the listing may be shown. */
 const isPromptPubliclyVisible = (prompt) => promptUnavailableReason(prompt) === null;
 
+/**
+ * What a public read of a Prompt must NOT include.
+ *
+ * The three unauthenticated endpoints (`/public/:id`, `/user/:userId`,
+ * `/by-seller/:sellerId`) each carried their own `.select("-promptText")`. That
+ * shape is the problem, not the field: an exclusion list names the things you
+ * remembered, so every field added to the schema afterwards is public by
+ * default and nobody is asked about it.
+ *
+ * `uploadCode` is what that cost. It is the second thing a buyer pays for — the
+ * seller's code files — and it went out, with working URLs, on all three routes
+ * to callers with no session. The blobs live in a container created with
+ * `access: "container"` (see utils/uploadToAzure.js), so the URL IS the access
+ * control: anyone handed one could download the file without buying anything.
+ * Buyers still receive it the way they always did, through the copy taken into
+ * Purchase.promptSnapshot at checkout.
+ *
+ * The rest are internal and have no reader outside the server:
+ *   promptHash / attachmentHash / attachmentPhash — the duplicate- and
+ *     stolen-media detectors. Publishing them tells anyone trying to slip a
+ *     copy past those checks exactly what they are being compared against.
+ *   ratings — the embedded `{userId, rating}` rows. Who rated what is nobody
+ *     else's business; the aggregate lives in averageRating/reviewAverage,
+ *     which stay.
+ *
+ * ── ADDING A FIELD TO THE PROMPT SCHEMA ──
+ * If it is paid content, a secret, or somebody's private business, add it here.
+ * One list, three routes, so it cannot be remembered in two of them.
+ *
+ * Two knowingly left in, because a client reads them and removing them blind
+ * would break a screen — both worth a second look on their own:
+ *   mediaValidation  a moderation decision about the seller, public today.
+ *                    components/historyDetail.tsx reads it back off
+ *                    `/public/:id` to draw its badge.
+ *   totalRevenue     the seller's earnings on that listing.
+ */
+const PUBLIC_PROMPT_EXCLUDED_FIELDS = [
+  "promptText",
+  "uploadCode",
+  "promptHash",
+  "attachmentHash",
+  "attachmentPhash",
+  "ratings",
+];
+
+/** Ready to hand to `.select()` — `"-promptText -uploadCode …"`. */
+const PUBLIC_PROMPT_PROJECTION = PUBLIC_PROMPT_EXCLUDED_FIELDS.map((f) => `-${f}`).join(" ");
+
 module.exports = {
   CLEARED_VALIDATION_STATUSES,
   VALIDATION_CLEARED,
@@ -135,4 +183,6 @@ module.exports = {
   excludeSoldOut,
   promptUnavailableReason,
   isPromptPubliclyVisible,
+  PUBLIC_PROMPT_EXCLUDED_FIELDS,
+  PUBLIC_PROMPT_PROJECTION,
 };

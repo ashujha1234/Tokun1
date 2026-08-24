@@ -1,0 +1,149 @@
+/**
+ * The save control, everywhere.
+ *
+ * The mechanic: the gradient icon tile grows to fill the pill while the label
+ * slides into it and collapses to nothing. One transition, both directions, so
+ * the button reads as the icon "swallowing" its own label rather than two
+ * things animating near each other.
+ *
+ * Sized entirely off three custom properties so a dense card can run the same
+ * animation smaller instead of a second, nearly-identical button being written
+ * for it. Override them on the element (see the `sm` variant below).
+ */
+.save-btn {
+  --save-btn-h: 40px;
+  --save-btn-w: 100px;
+  --save-btn-icon: 30px;
+  --save-btn-font: 13.5px;
+
+  width: var(--save-btn-w);
+  height: var(--save-btn-h);
+  flex-shrink: 0;
+  border-radius: calc(var(--save-btn-h) / 2);
+  border: 1px solid rgba(255, 255, 255, 0.349);
+  background-color: rgb(12, 12, 12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition-duration: 0.3s;
+  /* The tile grows past the pill's edge; without this it would paint over the
+     rounded corners and the button would go square mid-animation. */
+  overflow: hidden;
+}
+
+/* Card scale. Deliberately small: it sits at the corner of a card whose avatar
+   is 48px, and at 32px tall it read as the loudest thing there — which it is
+   not. Same animation, just less of it. */
+.save-btn--sm {
+  --save-btn-h: 26px;
+  --save-btn-w: 70px;
+  --save-btn-icon: 20px;
+  --save-btn-font: 10.5px;
+}
+
+.save-btn__icon {
+  width: var(--save-btn-icon);
+  height: var(--save-btn-icon);
+  background: linear-gradient(to bottom, rgb(255, 136, 255), rgb(172, 70, 255));
+  border-radius: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  z-index: 2;
+  transition-duration: 0.3s;
+}
+
+/* Already saved: the tile stops being an invitation and becomes a state, so it
+   drops the gradient for a flat violet — the same colour the old bookmark icon
+   filled with, so "saved" looks the way it always has. */
+.save-btn[data-saved="true"] .save-btn__icon {
+  background: #7c3aed;
+}
+
+.save-btn__text {
+  height: 100%;
+  width: calc(var(--save-btn-w) - var(--save-btn-icon));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  z-index: 1;
+  transition-duration: 0.3s;
+  font-size: var(--save-btn-font);
+  /* A label that wraps mid-collapse jumps the pill's height. */
+  white-space: nowrap;
+}
+
+.save-btn:hover .save-btn__icon {
+  /* Everything but the tile's own left inset, so it fills the pill. */
+  width: calc(var(--save-btn-w) - 10px);
+  transition-duration: 0.3s;
+}
+
+.save-btn:hover .save-btn__text {
+  transform: translate(10px);
+  width: 0;
+  font-size: 0;
+  transition-duration: 0.3s;
+}
+
+.save-btn:active {
+  transform: scale(0.95);
+  transition-duration: 0.3s;
+}
+
+/* Mid-request, and while there is nothing to save. Both hold the button still:
+   an expanding tile under a spinner reads as the press having done something
+   other than what it did. */
+.save-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.save-btn:disabled:hover .save-btn__icon,
+.save-btn:disabled:hover .save-btn__text {
+  width: unset;
+  transform: none;
+  font-size: var(--save-btn-font);
+}
+
+.save-btn:disabled:hover .save-btn__icon {
+  width: var(--save-btn-icon);
+}
+
+.save-btn:disabled:active {
+  transform: none;
+}
+
+/* A press that turns into a scroll must not select the label or flash a tap
+   highlight. Hover on a touch screen fires on tap and never leaves, so the
+   expand would stick — the press feedback below is enough there. */
+@media (hover: none) {
+  .save-btn:hover .save-btn__icon {
+    width: var(--save-btn-icon);
+  }
+  .save-btn:hover .save-btn__text {
+    transform: none;
+    width: calc(var(--save-btn-w) - var(--save-btn-icon));
+    font-size: var(--save-btn-font);
+  }
+}
+
+.save-btn {
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .save-btn,
+  .save-btn__icon,
+  .save-btn__text {
+    transition-duration: 0s;
+  }
+  .save-btn:active {
+    transform: none;
+  }
+}
