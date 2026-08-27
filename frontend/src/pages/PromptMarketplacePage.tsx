@@ -5800,6 +5800,7 @@ import { useUserTokenUsage } from "@/hooks/useUserTokenUsage";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import Footer from "@/components/Footer";
 import DetailsPrompt from "@/components/DetailsPrompt";
+import type { PromptCodeMeta } from "@/components/PromptCodePanel";
 import VideoReelCard, { authorInitials, cardPrice } from "@/components/VideoReelCard";
 import { StarRating } from "@/components/StarRating";
 import { Button } from "@/components/ui/button";
@@ -5862,6 +5863,13 @@ type Prompt = {
   isFree?: boolean;
   createdAt?: string;
   fullPrompt?: string;
+  /**
+   * Public summary of the code attached to the listing (Prompt.codeMeta) —
+   * languages, file names and a server-truncated teaser. Drives the card's
+   * "code included" chip and the details panel's locked preview. Never the
+   * source: that is `codeAssets`, which no public read returns.
+   */
+  code?: PromptCodeMeta;
   exclusive?: boolean;
   sold?: boolean;
   /**
@@ -6775,8 +6783,79 @@ const LibPromptRow = ({
   renderCard: (p: Prompt) => React.ReactNode;
 }) => {
   const railRef = useRef<HTMLDivElement>(null);
-  const scroll = (dir: "left" | "right") =>
-    railRef.current?.scrollBy({ left: dir === "left" ? -280 : 280, behavior: "smooth" });
+
+  /* Move by ONE CARD, measured — not by a magic number.
+   *
+   * This was `scrollBy(±280)`. A card is 300px wide (see LibOldStyleCard) and
+   * the rail's `gap-5` is 20px, so one card-step is 320px: every click fell 40px
+   * short, and the error accumulated. Two clicks in and no card had an edge
+   * anywhere near the viewport's — which is the half-a-card the rail shows on a
+   * phone, where only one card fits at a time and there is nothing to hide the
+   * drift.
+   *
+   * So the geometry is read off the DOM instead. Nothing here knows the card is
+   * 300px or that the gap is 20px, which is the point: the last two attempts at
+   * this were a number in a JS file that had to agree with a number in a
+   * stylesheet, and they stopped agreeing.
+   *
+   * PHONE CENTRES, DESKTOP PAGES. When a card fills most of the rail there is
+   * one card on screen and centring it is the only sensible resting place. When
+   * five are visible, centring the "next" one would jump the rail two cards
+   * sideways, so it aligns to the left edge and pages the way a carousel should.
+   *
+   * The first and last cards clamp to the ends rather than centring — a centred
+   * first card would mean scrolling to a negative offset, and empty space before
+   * the start of a list is not a resting place either.
+   */
+  const scroll = (dir: "left" | "right") => {
+    const rail = railRef.current;
+    if (!rail) return;
+
+    const cards = Array.from(rail.children) as HTMLElement[];
+    if (!cards.length) return;
+
+    /* getBoundingClientRect, not offsetLeft: `offsetLeft` is measured from the
+       nearest positioned ancestor, which is not necessarily this rail, and the
+       result then has nothing to do with `scrollLeft`. Rects are in viewport
+       space, so the difference is always the right one. */
+    const railRect = rail.getBoundingClientRect();
+    const leftInContent = (el: HTMLElement) =>
+      el.getBoundingClientRect().left - railRect.left + rail.scrollLeft;
+
+    const viewCentre = rail.scrollLeft + rail.clientWidth / 2;
+
+    // Where we are now: the card sitting closest to the middle of the viewport.
+    // Derived rather than remembered in state, so a drag or a flick — which this
+    // component never hears about — leaves the arrows still correct.
+    let current = 0;
+    let closest = Infinity;
+    cards.forEach((card, i) => {
+      const distance = Math.abs(leftInContent(card) + card.offsetWidth / 2 - viewCentre);
+      if (distance < closest) {
+        closest = distance;
+        current = i;
+      }
+    });
+
+    const next = Math.min(cards.length - 1, Math.max(0, current + (dir === "left" ? -1 : 1)));
+    const target = cards[next];
+
+    /* "Can a second card fit beside it?" — asked in card widths rather than as a
+       fraction of the rail, because that is the thing the answer depends on. A
+       viewport too narrow for two cards has one card to look at, and its resting
+       place is the middle; anything wider is a row, and a row pages. */
+    const singleCardView = rail.clientWidth < target.offsetWidth * 2;
+    const desired = singleCardView
+      ? leftInContent(target) + target.offsetWidth / 2 - rail.clientWidth / 2
+      : leftInContent(target);
+
+    rail.scrollTo({
+      // Clamped, so the ends don't ask for an offset that doesn't exist and the
+      // browser silently lands somewhere else.
+      left: Math.max(0, Math.min(desired, rail.scrollWidth - rail.clientWidth)),
+      behavior: "smooth",
+    });
+  };
 
   if (items.length === 0) return null;
 
@@ -7805,6 +7884,12 @@ const mapPromptDoc = (doc: any): Prompt => {
     // The details panel shows it to the uploader and uses it for Copy on free
     // prompts, which until now copied an empty string because nothing set it.
     fullPrompt: doc.promptText || undefined,
+    /* The public half of the listing's code — see utils/promptCode.js. Safe on
+       the feed: it carries names, languages and a pre-cut teaser, never the
+       source. The card reads `hasCode` off it for its badge, the details panel
+       renders the teaser, and the full assets come from an authenticated
+       fetch once the viewer owns the product. */
+    code: doc.codeMeta?.hasCode ? doc.codeMeta : undefined,
     imageUrl: att?.type === "image" ? mediaPath : undefined,
     videoUrl: att?.type === "video" ? previewPath : undefined,
     posterUrl: att?.type === "video" ? posterPath : undefined,

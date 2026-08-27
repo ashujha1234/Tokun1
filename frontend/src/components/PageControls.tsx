@@ -80,15 +80,35 @@ export default function PageControls() {
 
   const showBack = !NO_BACK_ON.includes(pathname);
 
+  /* The ONE page with a fixed bottom nav bar to clear.
+   *
+   * That bar is `md:hidden fixed bottom-0` in pages/Dashboard.tsx and is about
+   * 55px tall, so the controls have to sit above it — but only here. The offset
+   * used to be unconditional (`bottom-20` on every phone), which paid for a nav
+   * bar that 47 of the 48 routes don't have: on all of those the arrow floated
+   * 80px off the bottom edge for no reason, which is what reads as it being too
+   * high up.
+   *
+   * The breakpoint matters as much as the route. It was `bottom-20 sm:bottom-6`,
+   * and the nav bar is `md:hidden` — so between 640px and 767px the bar was on
+   * screen while the controls had already dropped to 24px, and the arrow sat on
+   * top of the very thing the offset existed to avoid. Matching `md` here is
+   * what actually closes that.
+   */
+  const clearsBottomNav = pathname === "/admin/dashboard";
+
   const button =
     "grid h-11 w-11 place-items-center rounded-full text-white shadow-lg transition-all duration-300 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60";
 
   return (
-    /* bottom-20 on a phone, bottom-6 from `sm` up: the dashboard puts a fixed
-       bottom nav bar on small screens and at bottom-6 these landed on top of it.
-       z-[9998] keeps them under every modal and under the cookie banner, both of
-       which should cover them. */
-    <div className="fixed bottom-20 sm:bottom-6 right-6 z-[9998] flex flex-col items-center gap-3">
+    /* z-[9998] keeps these under every modal and under the cookie banner, both
+       of which should cover them. The bottom offset is per-route — see
+       clearsBottomNav above. */
+    <div
+      className={`fixed ${
+        clearsBottomNav ? "bottom-20 md:bottom-6" : "bottom-6"
+      } right-6 z-[9998] flex flex-col items-center gap-3`}
+    >
       <button
         type="button"
         onClick={() =>

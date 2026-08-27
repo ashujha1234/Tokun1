@@ -1139,9 +1139,10 @@ import {
   composeRefundReason,
   hasRefundReason,
 } from "@/lib/refundReasons";
-import RefundReasonPicker from "@/components/RefundReasonPicker";
+import RefundReasonPicker, { RefundCodeNotice } from "@/components/RefundReasonPicker";
 import ConfirmModal from "@/components/ConfirmModal";
 import ProductGridCard from "@/components/ProductGridCard";
+import type { PromptCodeMeta } from "@/components/PromptCodePanel";
 import { withTokunBranding } from "@/lib/razorpayTheme";
 import { useMode } from "@/contexts/ModeContext";
 import { MODE_UI_ENABLED } from "@/lib/mode";
@@ -1278,6 +1279,13 @@ type Prompt = {
     score?: number | null;
     adminAction?: { action?: string | null; note?: string };
   };
+  /** Public code summary (Prompt.codeMeta) — never the source. */
+  code?: PromptCodeMeta;
+  /**
+   * This buyer has copied or downloaded the code (Purchase.codeAccess). Reading
+   * it never sets this — see the mapper.
+   */
+  codeTaken?: boolean;
 };
 
 /* ─── Category helper ───────────────────────────────────── */
@@ -2787,6 +2795,13 @@ const handleAcceptRequest = async (item: any) => {
              changes, and offer a refund the API then refuses. */
           refundEligibleUntil: p?.refundEligibleUntil || null,
           refundEligible: !!p?.refundEligible,
+          /* Public code summary off the live listing, so a purchase that ships
+             code carries its badge and its code panel here too. /history
+             populates this; the code itself is never in that response. */
+          code: pop && typeof pop === "object" && pop.codeMeta?.hasCode ? pop.codeMeta : undefined,
+          /* Takes only. A read is how the buyer finds out the code is broken, so
+             it must never change what the refund dialog tells them. */
+          codeTaken: Number(p?.codeAccess?.takeCount || 0) > 0,
         } as Prompt;
       });
 
@@ -2953,6 +2968,8 @@ const handleAcceptRequest = async (item: any) => {
           preview: description || (promptText?.slice(0, 140) || ""),
           isFree, uploadedAt, isUploadedByMe: true, promptText, fullPrompt,
           mediaValidation: doc.mediaValidation,
+          // /api/prompt/my returns the seller's own document in full.
+          code: doc.codeMeta?.hasCode ? doc.codeMeta : undefined,
         } as Prompt;
       });
       setUploadHistory(mapped);
@@ -2992,6 +3009,8 @@ const handleAcceptRequest = async (item: any) => {
           isFree, purchasedAt: purchase?.purchasedAt, promptText, fullPrompt,
           purchaseId: String(purchase?._id || ""),
           refundStatus: purchase?.refundStatus || "NONE",
+          // Same as the /history mapper above.
+          code: pop && typeof pop === "object" && pop.codeMeta?.hasCode ? pop.codeMeta : undefined,
         };
         setPurchaseHistory((prev) => {
           if (prev.some((x) => String(x.id) === String(mappedOne.id))) return prev;
@@ -4600,6 +4619,9 @@ const RequestCard = ({ item }: { item: any }) => {
             Tell us why "{refundTarget?.title}" isn't what you expected. An admin will review
             this before any refund is processed.
           </p>
+          {/* Before the reason list — it changes what the buyer should write. */}
+          <RefundCodeNotice show={!!refundTarget?.codeTaken} />
+
           {/* Preset reasons first, free text second — same as the dialog in
               PromptHistory, and now literally the same component, so the two
               screens can't offer the same choice in two different shapes. */}

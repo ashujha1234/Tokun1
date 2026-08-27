@@ -17,9 +17,10 @@ import DetailsPrompt, { MarketplacePrompt } from "./historyDetail";
 import { useAuth } from "@/contexts/AuthContext";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import RefundReasonPicker from "@/components/RefundReasonPicker";
+import RefundReasonPicker, { RefundCodeNotice } from "@/components/RefundReasonPicker";
 import ConfirmModal from "@/components/ConfirmModal";
 import ProductGridCard from "@/components/ProductGridCard";
+import type { PromptCodeMeta } from "@/components/PromptCodePanel";
 // Shared with the second refund dialog in pages/self-dash.tsx — see that module.
 import {
   composeRefundReason,
@@ -70,6 +71,14 @@ type Prompt = {
   purchaseId?: string;
   refundStatus?: "NONE" | "REQUESTED" | "APPROVED" | "REJECTED" | "REFUNDED";
   mediaValidation?: { status?: string };
+  /** Public code summary (Prompt.codeMeta) — never the code itself. */
+  code?: PromptCodeMeta;
+  /**
+   * This buyer has copied or downloaded the code (Purchase.codeAccess). Only
+   * used to tell them, in the refund dialog, that their request will be reviewed
+   * by a person — reading the code alone never sets it.
+   */
+  codeTaken?: boolean;
 };
 
 const GRAD = "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)";
@@ -960,6 +969,17 @@ const mapped: Prompt[] = (body.purchases || []).map((p: any) => {
   fullPrompt,
   purchaseId: String(p?._id || ""),
   refundStatus: p?.refundStatus || "NONE",
+  /* The listing's public code summary, carried through so the card can badge
+     a purchase that ships code and the details panel knows to render its code
+     section. Only present while the listing still exists — /history populates
+     it off the live prompt, since a snapshot taken before code assets existed
+     has none. The code itself is never in this response; the panel asks
+     GET /api/prompt/:id/code for it. */
+  code: pop && typeof pop === "object" && pop.codeMeta?.hasCode ? pop.codeMeta : undefined,
+  /* Takes only — `viewCount` is deliberately ignored. Reading the code is how a
+     buyer discovers it is broken, so a read must never change what the refund
+     dialog says to them. */
+  codeTaken: Number(p?.codeAccess?.takeCount || 0) > 0,
 } as Prompt;
 });
 
@@ -1029,6 +1049,8 @@ const mapped: Prompt[] = (body.purchases || []).map((p: any) => {
   purchasedAt: purchase?.purchasedAt,
   promptText,
   fullPrompt,
+  // Same as the /history mapper above — see the note there.
+  code: pop && typeof pop === "object" && pop.codeMeta?.hasCode ? pop.codeMeta : undefined,
 };
 
 
@@ -1168,6 +1190,9 @@ const mapped: Prompt[] = (body.purchases || []).map((p: any) => {
   promptText,
   fullPrompt,
   mediaValidation: doc.mediaValidation,
+  // /api/prompt/my returns the seller's own document in full, so the summary is
+  // right there — no extra request to badge your own upload as shipping code.
+  code: doc.codeMeta?.hasCode ? doc.codeMeta : undefined,
 } as Prompt;
 });
 
@@ -1619,6 +1644,10 @@ useEffect(() => {
       Tell us why "{refundTarget?.title}" isn't what you expected. An admin will review this
       before any refund is processed.
     </p>
+
+    {/* Before the reason list, not after: it changes what the buyer should
+        write, so it has to be read first. */}
+    <RefundCodeNotice show={!!refundTarget?.codeTaken} />
 
     {/* Preset reasons first, free text second. Asking for a written reason and
         nothing else meant every request arrived phrased differently, so the

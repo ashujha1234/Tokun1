@@ -12,7 +12,6 @@ import { Link, useNavigate } from "react-router-dom";
 import "@/pages/landing-page.css";
 import UploadProductButton from "@/components/UploadProductButton";
 import ModeToggle from "@/components/ModeToggle";
-import { useAuth } from "@/contexts/AuthContext";
 import { useMode } from "@/contexts/ModeContext";
 
 const TOKUN_LOGO_SRC = "/icons/Tokun.png";
@@ -47,14 +46,30 @@ export default function SiteNav({
   children?: ReactNode;
 }) {
   const scrolled = useHeaderScrolled();
-  const { isAuthenticated } = useAuth() as any;
+  /* No `useAuth` here any more. The session used to decide whether Upload
+     Product was shown; the mode decides it now, and ModeContext already folds
+     the session into that (a visitor with no account cannot be in Creator
+     mode). One question asked in one place. */
   const { shows } = useMode();
 
-  /* Nobody signed in → the CTA. Signed in → only in Creator mode.
-     `shows` already answers "true" for everything when the mode feature is
-     switched off (MODE_UI_ENABLED), so turning that flag off puts this button
-     back on the bar unconditionally, exactly as it was. */
-  const showUpload = !isAuthenticated || shows("upload");
+  /* CREATOR MODE ONLY, session or no session.
+   *
+   * This was `!isAuthenticated || shows("upload")` — always shown to a
+   * signed-out visitor, as a marketing CTA for the selling half of the product.
+   * That argument doesn't survive the toggle being on the same bar: it read
+   * "Buyer", highlighted, two inches to the right of an Upload Product button.
+   * A control that states the mode and a bar that contradicts it is worse than
+   * a missed CTA.
+   *
+   * WHAT THIS MEANS IN PRACTICE: an anonymous visitor never sees it. They are
+   * always in Buyer mode — pressing Creator on the toggle sends them to signup
+   * rather than switching (see ModeToggle), and ModeContext resolves `shows`
+   * against "buyer" for anyone who can't be in Creator mode. So the button now
+   * appears only once someone has an account and has chosen the creator side.
+   *
+   * `shows` still answers true for everything when MODE_UI_ENABLED is off, so
+   * turning that flag off puts the button back unconditionally, as before. */
+  const showUpload = shows("upload");
 
   return (
     <nav

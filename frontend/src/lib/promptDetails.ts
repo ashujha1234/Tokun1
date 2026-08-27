@@ -51,6 +51,12 @@ export const toMarketplacePrompt = (doc: any): MarketplacePrompt | null => {
     // Never present from /public/:id, which strips it. Listed so the field is
     // explicit rather than accidentally absent.
     fullPrompt: doc.promptText || undefined,
+    /* The PUBLIC summary of the listing's code — languages, file names and a
+       teaser the server already cut to twelve lines. `codeAssets`, which holds
+       the source itself, is stripped by the same projection that strips
+       promptText; PromptCodePanel fetches it separately once it knows the
+       viewer owns the product. */
+    code: doc.codeMeta?.hasCode ? doc.codeMeta : undefined,
     uploaderId: doc.userId?._id ? String(doc.userId._id) : undefined,
     exclusive: !!doc.exclusive,
     sold: !!doc.sold,

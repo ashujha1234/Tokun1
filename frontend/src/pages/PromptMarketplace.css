@@ -1162,6 +1162,40 @@
   border: 1px solid rgba(74,222,128,0.3);
 }
 
+/* "Code included", on its own row under the top badges.
+   Deliberately NOT a third pill inside .reel-card__top: that row is
+   space-between with two items that already refuse to shrink (see the note
+   above it), and a third one is exactly how the wrapping bug there comes back.
+   Its own absolute slot cannot crowd anything. Muted glass rather than the
+   gradient, because this is a fact about the product, not a call to action. */
+.reel-card__code {
+  position: absolute;
+  top: 40px;
+  left: 12px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 24px);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  border-radius: 20px;
+  background: rgba(15, 16, 19, 0.72);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,0.16);
+  color: rgba(255,255,255,0.82);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.reel-card__code svg {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+}
+
 /* Bottom gradient overlay */
 .reel-card__bottom {
   position: absolute;

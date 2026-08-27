@@ -16,6 +16,7 @@ import SharePromptMenu from "@/components/SharePromptMenu";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/use-toast";
 import ProductReviews from "@/components/ProductReviews";
+import PromptCodePanel, { type PromptCodeMeta } from "@/components/PromptCodePanel";
 
 /* ================== Types ================== */
 export interface MarketplacePrompt {
@@ -33,6 +34,12 @@ export interface MarketplacePrompt {
   ownerEmail?: string; // used for TM to show owner email in modal
   isUploadedByMe?: boolean; // true when the viewer is the prompt's own uploader
   mediaValidation?: { status?: string };
+  /**
+   * Public code summary (Prompt.codeMeta) — languages, file names, teaser.
+   * Never the source: PromptCodePanel fetches that from
+   * GET /api/prompt/:id/code, which checks the purchase itself.
+   */
+  code?: PromptCodeMeta;
 }
 
 interface DetailsPromptProps {
@@ -382,6 +389,22 @@ pb-8 sm:pb-10
         className="px-4 h-9 rounded-lg text-sm text-white border border-white/15 bg-[#1C1C1E] hover:bg-[#2A2A2D] transition-colors inline-flex items-center gap-1.5"
       />
     </div>
+  </div>
+)}
+
+{/* The code that came with it. Outside the `owned && fullPrompt` block above
+    because a product can ship code and no prompt text, and because the panel
+    handles its own locked state — this screen shows purchases AND your own
+    uploads, and both are unlocked. Renders nothing when there is no code. */}
+{prompt.code?.hasCode && (
+  <div className="mt-2">
+    <PromptCodePanel
+      promptId={String(prompt.id)}
+      code={prompt.code}
+      owned={owned || !!prompt.isUploadedByMe}
+      // A free claim has no refund, so the note inside has nothing to state.
+      isFree={Number(prompt.price || 0) <= 0}
+    />
   </div>
 )}
 

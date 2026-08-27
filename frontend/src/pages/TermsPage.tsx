@@ -5,7 +5,7 @@ const SECTIONS = [
   {
     title: "1. Acceptance of Terms",
     body: [
-      "By creating an account or using Tokun (Smartgen, Product Optimizer, Product Marketplace, Product Library, Hire, and Wallet), you agree to these Terms & Conditions.",
+      "By creating an account or using Tokun (Smartgen, Product Optimiser, Product Marketplace, Product Library, Hire, and Wallet), you agree to these Terms & Conditions.",
       "If you are using Tokun on behalf of an organization, you confirm you have the authority to bind that organization to these terms.",
     ],
   },
@@ -19,7 +19,7 @@ const SECTIONS = [
   {
     title: "3. Subscriptions & Token Usage",
     body: [
-      "Free, Pro, and Enterprise plans include a monthly token allowance used across Smartgen and Product Optimizer.",
+      "Free, Pro, and Enterprise plans include a monthly token allowance used across Smartgen and Product Optimiser.",
       "Unused tokens do not roll over between billing periods unless explicitly stated for your plan.",
       "Subscription fees are billed in advance and are non-refundable except where required by law.",
     ],
@@ -110,7 +110,7 @@ export default function TermsPage() {
           </h1>
           <p className="mt-4 text-white/60 text-sm">Last updated: 2026</p>
           <p className="mt-6 text-white/75 max-w-2xl mx-auto leading-relaxed">
-            These terms govern your use of Tokun, including Smartgen, Product Optimizer,
+            These terms govern your use of Tokun, including Smartgen, Product Optimiser,
             the Product Marketplace, Hire, and Wallet.
           </p>
         </section>

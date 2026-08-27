@@ -433,13 +433,27 @@ body.is-loading { overflow: hidden; }
   background: var(--tokun-bg);
   color: var(--tokun-text);
   contain: layout style;
-  /* No top padding for the bar on a desktop, on purpose. It's fixed, so it
-     floats over this section rather than sitting above it, and the hero starts
-     at the top of the viewport with its backdrop running full-bleed behind the
-     logo. The content is centred in the full height, and there is enough of it
-     that the title lands well clear of the bar.
-     A phone is where that stops being true — see the padding at the bottom of
-     this file. */
+
+  /* RESERVE THE BAR'S HEIGHT, at every width.
+   *
+   * The bar is `fixed`, so it floats over this section and reserves nothing of
+   * its own — which means `justify-content: center` on .hero__content was
+   * centring the content in the WHOLE viewport, bar included. Optically that
+   * pushes everything up by half the bar's height, and "TOKUN" is the topmost
+   * thing here, so it ended up about 50px under the account pill instead of
+   * clear of it.
+   *
+   * This used to be desktop-exempt on the theory that there was enough content
+   * below the title for it to land clear anyway. It isn't: the title is 110px
+   * tall on its own and the bar is 142px, so on a 900px-tall window the two are
+   * within a hair of touching.
+   *
+   * `--landing-nav-h` already steps down with the logo at each breakpoint
+   * (142 → 120 → 104), so this one declaration follows it — which is why the
+   * two media queries that used to carry their own copy of this line no longer
+   * need to. `box-sizing: border-box` is global, so the reserve comes out of the
+   * 100svh rather than adding to it. */
+  padding-top: var(--landing-nav-h);
 }
 
 /* The landing bar.
@@ -901,28 +915,15 @@ body.is-loading { overflow: hidden; }
   /* .hero-nav styles removed with the landing-only nav — see index.css for
      the shared .site-header this page now uses. */
 
-  /* Reserve the bar's height on a phone.
-
-     On a desktop the hero centres its content in the full viewport height and
-     the title lands far below the fixed bar, so nothing is needed. A phone has
-     the same content in a third of the width: it wraps to roughly twice the
-     lines, the block is taller than the screen, and `justify-content: center`
-     has nothing left to centre — so the top of it rode up UNDER the bar and
-     "TOKUN" sat level with the logo and the account pill.
-
-     The reserve is the bar's real height, which the logo sets: 88px of mark plus
-     16px of padding either side. That is what --landing-nav-h holds (declared
-     with the nav, and already narrowed to 120px by this breakpoint), so the
-     figure is stated once instead of being copied here and kept in step by
-     hand. `box-sizing: border-box` is global here, so this comes out of the
-     100svh rather than adding to it. */
-  .hero { padding-top: var(--landing-nav-h); }
+  /* The hero's reserve for the fixed bar is on the base `.hero` rule now, and
+     `--landing-nav-h` narrows to 120px here — so the reserve follows on its own
+     and the copy of `padding-top` that used to sit in this block would only
+     restate it. Removing it keeps the value in one place. */
 }
 
 @media (max-width: 480px) {
-  /* 72px logo at this width, so --landing-nav-h is 104px and the reserve
-     shrinks with it — see the 768px block above. */
-  .hero { padding-top: var(--landing-nav-h); }
+  /* 72px logo at this width, so --landing-nav-h is 104px and the hero's reserve
+     shrinks with it — see the base `.hero` rule. */
   .hero-nav__link { display: none; }
   .hero__subtitle-line { display: none; }
   .hero__subtitle-text { text-align: center; }

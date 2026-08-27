@@ -12213,7 +12213,8 @@ function HeroAccountMenu() {
        phone this row IS the switch. */
     ...(MODE_UI_ENABLED && canShowToggle
       ? [{
-          label: mode === 'creator' ? 'Switch to buyer mode' : 'Switch to creator mode',
+          // Capitalised to match the pill and the Header's copy of this menu.
+          label: mode === 'creator' ? 'Switch to Buyer mode' : 'Switch to Creator mode',
           icon: mode === 'creator' ? ShoppingBag : Store,
           onClick: () => {
             setOpen(false)
@@ -12712,7 +12713,7 @@ function TokunTitle() {
    ============================================================ */
 
 const QUIET = 'Enter the'
-const ACCENT = 'Productverse'
+const ACCENT = 'ProductVerse'
 const FULL_TEXT = `${QUIET} ${ACCENT}`
 
 const TYPE_MS = 85
@@ -14388,7 +14389,7 @@ const PROMPT_STEPS = [
   'Analyzing token patterns…',
   'Optimizing neural pathways…',
   'Compressing context window…',
-  'Entering the Productverse…',
+  'Entering the ProductVerse…',
 ]
 
 // How long the curtain is guaranteed to stay up. It's a floor, not a timer —

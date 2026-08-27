@@ -100,6 +100,18 @@ type RefundRequest = {
     razorpayPaymentId?: string;
     routeTransferId?: string | null;
     purchasedAt?: string;
+    /* What the buyer did with the code, if the product had any — see
+       Purchase.codeAccess. Reading is inspection and carries no implication;
+       a copy or a download is possession, and the gap between that and the
+       refund request is the thing worth looking at. */
+    codeAccess?: {
+      firstViewedAt?: string | null;
+      lastViewedAt?: string | null;
+      viewCount?: number;
+      firstTakenAt?: string | null;
+      lastTakenAt?: string | null;
+      takeCount?: number;
+    };
     promptSnapshot?: {
       title?: string;
       description?: string;
@@ -126,6 +138,102 @@ function productOf(request: RefundRequest) {
       ? `Listed ₹${request.prompt.price}`
       : null,
   };
+}
+
+/**
+ * What the buyer did with the code, as a timeline relative to the purchase.
+ *
+ * Renders nothing at all when there is no code access on record — most products
+ * are prompt-only, and an empty "Code access" heading on every row would be
+ * noise that trains the admin to stop reading this area.
+ *
+ * IT DOES NOT RECOMMEND A DECISION, on purpose. There is no colour coding by
+ * verdict and no "likely abuse" label, because the same numbers describe both a
+ * scam and the most legitimate complaint there is: a buyer downloads the code,
+ * finds it broken, and asks for their money back. What decides the refund is the
+ * reason, which is in the two blocks above this one. This is what makes that
+ * reason checkable.
+ *
+ * The two facts worth reading off it are the ORDER and the GAP. Taken → refund
+ * four minutes later is one story; taken → six hours → "a dependency is missing"
+ * is a different one. Both are shown as offsets from the purchase rather than
+ * wall-clock times, because the offsets are the part that means anything.
+ */
+function CodeAccessTimeline({ request }: { request: RefundRequest }) {
+  const access = request.purchase?.codeAccess;
+  if (!access) return null;
+
+  const viewed = Number(access.viewCount || 0);
+  const taken = Number(access.takeCount || 0);
+  if (!viewed && !taken) return null;
+
+  const purchasedAt = request.purchase?.purchasedAt
+    ? new Date(request.purchase.purchasedAt).getTime()
+    : null;
+
+  /* "12 min after purchase" rather than a timestamp. An admin comparing three
+     absolute times in their head is doing arithmetic the page can do for them,
+     and the arithmetic is the entire point of the row. */
+  const since = (iso?: string | null) => {
+    if (!iso || !purchasedAt) return null;
+    const mins = Math.round((new Date(iso).getTime() - purchasedAt) / 60000);
+    if (mins < 1) return "within a minute of purchase";
+    if (mins < 60) return `${mins} min after purchase`;
+    const hours = mins / 60;
+    if (hours < 48) return `${hours < 10 ? hours.toFixed(1) : Math.round(hours)} h after purchase`;
+    return `${Math.round(hours / 24)} days after purchase`;
+  };
+
+  const rows = [
+    viewed && {
+      label: "Read the code",
+      detail: since(access.firstViewedAt),
+      count: viewed > 1 ? `${viewed}×` : null,
+      // Reading is inspection. Stated plainly so nobody reads this line as an
+      // accusation — a buyer who never opened the file has a WEAKER complaint,
+      // not a stronger one.
+      note: "Inspection — expected before any judgement about quality",
+    },
+    taken && {
+      label: "Took a copy",
+      detail: since(access.firstTakenAt),
+      count: taken > 1 ? `${taken}×` : null,
+      note: "Copied or downloaded — the buyer has the files",
+    },
+  ].filter(Boolean) as {
+    label: string;
+    detail: string | null;
+    count: string | null;
+    note: string;
+  }[];
+
+  const requestedAt = since(request.createdAt);
+
+  return (
+    <div>
+      <p className="text-[11px] uppercase tracking-wider text-white/40 mb-1.5">
+        Code access
+      </p>
+      <div className="space-y-2 rounded-lg bg-black/25 p-3">
+        {rows.map((r) => (
+          <div key={r.label} className="text-sm">
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <span className="text-white/85">{r.label}</span>
+              {r.detail && <span className="text-white/50">— {r.detail}</span>}
+              {r.count && <span className="text-white/35 text-[12px]">({r.count})</span>}
+            </div>
+            <p className="text-[11px] text-white/35">{r.note}</p>
+          </div>
+        ))}
+
+        {requestedAt && (
+          <div className="border-t border-white/10 pt-2 text-sm text-white/70">
+            Refund requested — {requestedAt}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /* The product, full size, without leaving the queue.
@@ -289,6 +397,8 @@ function ProductModal({
               </>
             );
           })()}
+
+          <CodeAccessTimeline request={request} />
 
           {!!request.attachments?.length && (
             <div>

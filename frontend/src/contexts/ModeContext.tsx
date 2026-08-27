@@ -19,6 +19,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { isTeamMember } from "@/lib/orgRoles";
 import {
   DEFAULT_MODE,
+  SIGNED_OUT_DEFAULT_MODE,
   MODE_STORAGE_KEY,
   MODE_UI_ENABLED,
   PENDING_CREATOR_KEY,
@@ -48,57 +49,107 @@ type ModeContextValue = {
 
 const ModeContext = createContext<ModeContextValue | null>(null);
 
-function readStoredMode(): AppMode {
+/**
+ * The stored choice, or `null` for "has never chosen".
+ *
+ * That distinction is the whole reason this returns null rather than
+ * DEFAULT_MODE: the default now depends on whether there is a session (see
+ * SIGNED_OUT_DEFAULT_MODE), and this function runs on the first render, before
+ * auth has resolved. Answering "buyer" here would bake in the wrong default for
+ * a visitor and there would be no way to tell it apart from a real preference.
+ */
+function readStoredMode(): AppMode | null {
   try {
     const raw = localStorage.getItem(MODE_STORAGE_KEY);
-    return isAppMode(raw) ? raw : DEFAULT_MODE;
+    return isAppMode(raw) ? raw : null;
   } catch {
-    // Private browsing, storage disabled — the default is a fine answer.
-    return DEFAULT_MODE;
+    // Private browsing, storage disabled — no stored choice is a fine answer.
+    return null;
   }
 }
 
 export function ModeProvider({ children }: { children: ReactNode }) {
-  const { user, isAuthenticated } = useAuth() as any;
+  const { user, isAuthenticated, isReady } = useAuth() as any;
   const location = useLocation();
 
-  // Read on the FIRST render, not in an effect: starting on "buyer" and
-  // correcting a frame later would flash the buyer header at a creator on every
-  // single page load.
-  const [mode, setModeState] = useState<AppMode>(readStoredMode);
+  /* The explicit choice, or null for "never chosen". Read on the FIRST render,
+     not in an effect: correcting a frame later would flash the wrong header on
+     every single page load. */
+  const [storedMode, setStoredMode] = useState<AppMode | null>(readStoredMode);
 
-  /* A team member can't sell — their org lists and gets paid on its own account
-     (blockOrgTeamMemberPurchase, and TEAM_MEMBER_SELL_TOAST wherever they try).
-     Offering them a Creator mode would be offering a room with nothing in it
-     and no way to put anything there.
-     Signed-out is NOT the same case: see needsAccountForCreator below. */
-  const canUseCreatorMode = Boolean(isAuthenticated && user && !isTeamMember(user));
+  /* ONLY A TEAM MEMBER IS BARRED.
+   *
+   * This used to require a session (`isAuthenticated && user && !isTeamMember`),
+   * which made "signed out" and "team member" the same case — and they are not.
+   * A team member can never sell: their org lists and gets paid on its own
+   * account (blockOrgTeamMemberPurchase, TEAM_MEMBER_SELL_TOAST wherever they
+   * try), so Creator mode for them is a room with nothing in it and no way to
+   * put anything there.
+   *
+   * A signed-out visitor is simply someone without an account yet. Barring them
+   * meant `shows()` resolved against "buyer" no matter what the toggle said — so
+   * the toggle could read Creator while the bar rendered the buyer half.
+   *
+   * Mode remains a VIEW preference and never a permission (see lib/mode.ts):
+   * every creator action keeps its own gate, and Upload Product still sends
+   * someone with no session to login. */
+  const isBarredTeamMember = Boolean(isAuthenticated && user && isTeamMember(user));
+  const canUseCreatorMode = !isBarredTeamMember;
 
-  /* A signed-out visitor is not barred from Creator mode — they just haven't
-     got an account yet, which is a different thing and has a different answer
-     (signup, not a hidden button). A team member IS barred, permanently, so the
-     toggle stays off for them in both states. */
+  /* Still true, and still worth knowing — a visitor in Creator mode can look at
+     the creator half but cannot list anything until they have an account. It no
+     longer BLOCKS the toggle; the action behind the button does that. */
   const needsAccountForCreator = !isAuthenticated;
-  const canShowToggle = Boolean(
-    MODE_UI_ENABLED && (needsAccountForCreator || canUseCreatorMode)
-  );
 
-  /* They pressed Creator on their way in. Honour it once they have an account,
-     then forget it — otherwise every later sign-in on this tab would drag them
-     back into Creator mode. */
+  const canShowToggle = Boolean(MODE_UI_ENABLED && canUseCreatorMode);
+
+  /* The default when nothing was ever chosen, which depends on whether there is
+     a session — see SIGNED_OUT_DEFAULT_MODE.
+     Gated on `isReady`: mid-restore we do not yet know, and asserting the
+     signed-out default then would flash Creator at a returning buyer. */
+  const defaultMode: AppMode =
+    isReady && !isAuthenticated ? SIGNED_OUT_DEFAULT_MODE : DEFAULT_MODE;
+
+  const mode = storedMode ?? defaultMode;
+
+  /* CARRY A VISITOR'S SIDE ACROSS SIGNUP.
+   *
+   * A signed-out visitor now sits in Creator mode by default. Without this they
+   * would sign up from the creator half of the landing page and arrive signed in
+   * as a buyer — because nothing was ever stored, and the signed-in default is
+   * buyer. The half of the product they came for would vanish at the exact
+   * moment they committed to it.
+   *
+   * sessionStorage, so it belongs to this one journey and never leaks into a
+   * later visit or a second tab. Written whenever a session-less visitor is on
+   * the creator side (chosen or defaulted) and cleared the moment they choose
+   * the buyer side, so it always reflects the last thing they actually saw. */
   useEffect(() => {
-    if (!canUseCreatorMode) return;
+    if (!isReady || isAuthenticated) return;
+    try {
+      if (mode === "creator") sessionStorage.setItem(PENDING_CREATOR_KEY, "1");
+      else sessionStorage.removeItem(PENDING_CREATOR_KEY);
+    } catch {
+      // Storage unavailable — they land in the signed-in default, which is a
+      // smaller loss than a crash on the first screen.
+    }
+  }, [isReady, isAuthenticated, mode]);
+
+  /* And honour it once they have an account, then forget it — otherwise every
+     later sign-in on this tab would drag them back into Creator mode. */
+  useEffect(() => {
+    if (!isAuthenticated || !canUseCreatorMode) return;
     try {
       if (sessionStorage.getItem(PENDING_CREATOR_KEY)) {
         sessionStorage.removeItem(PENDING_CREATOR_KEY);
-        setModeState("creator");
+        setStoredMode("creator");
         localStorage.setItem(MODE_STORAGE_KEY, "creator");
       }
     } catch {
       // Storage unavailable — they land in whatever mode they were in, which is
       // a smaller loss than a crash on the first screen after signup.
     }
-  }, [canUseCreatorMode]);
+  }, [isAuthenticated, canUseCreatorMode]);
 
   /* "Have they listed anything yet?" belonged here and has been taken out. It
      was guessing at fields (`isSeller`, `hasPayoutSetup`) the auth payload does
@@ -111,7 +162,7 @@ export function ModeProvider({ children }: { children: ReactNode }) {
     (next: AppMode) => {
       if (!MODE_UI_ENABLED) return;
       if (next === "creator" && !canUseCreatorMode) return;
-      setModeState(next);
+      setStoredMode(next);
       try {
         localStorage.setItem(MODE_STORAGE_KEY, next);
       } catch {
@@ -121,12 +172,21 @@ export function ModeProvider({ children }: { children: ReactNode }) {
     [canUseCreatorMode]
   );
 
-  /* Someone who can't be in Creator mode must not be left in it — a team member
-     added to an org while sitting in Creator mode, for instance. Corrected
-     rather than hidden, so the header and the stored value agree. */
+  /* A team member must not be left in Creator mode — added to an org while
+     sitting in it, for instance. Corrected rather than hidden, so the header and
+     the stored value agree.
+     `setStoredMode` directly, because `setMode` is a no-op for a mode you are
+     not entitled to and this is precisely that case. */
   useEffect(() => {
-    if (mode === "creator" && !canUseCreatorMode) setMode("buyer");
-  }, [mode, canUseCreatorMode, setMode]);
+    if (mode === "creator" && !canUseCreatorMode) {
+      setStoredMode("buyer");
+      try {
+        localStorage.setItem(MODE_STORAGE_KEY, "buyer");
+      } catch {
+        // Not persisting is survivable — the correction still applies this session.
+      }
+    }
+  }, [mode, canUseCreatorMode]);
 
   /* Follow a deep link instead of blocking it.
      A shared seller-dashboard link, or a validation email pointing at a

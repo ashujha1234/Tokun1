@@ -3464,6 +3464,10 @@ return {
   // promptText for everyone's listings too, but there's no reason to hold
   // another seller's paid content in this page's state.
   fullPrompt: viewingOwnUploads ? doc.promptText || undefined : undefined,
+  /* Unlike fullPrompt above, this is safe for everyone's listings — it is the
+     public summary (names, languages, a truncated teaser), which is exactly
+     what a visitor browsing someone else's profile should see. */
+  code: doc.codeMeta?.hasCode ? doc.codeMeta : undefined,
   imageUrl,
   videoUrl,
   isFree: !!doc.free,

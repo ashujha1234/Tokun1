@@ -14,7 +14,7 @@ const SECTIONS = [
   {
     title: "2. How We Use Your Information",
     body: [
-      "To provide, operate, and maintain the Tokun platform, including Smartgen, Product Optimizer, the Product Marketplace, and Hire.",
+      "To provide, operate, and maintain the Tokun platform, including Smartgen, Product Optimiser, the Product Marketplace, and Hire.",
       "To process payments, subscriptions, wallet top-ups, and withdrawals.",
       "To communicate with you about your account, transactions, and service updates.",
       "To detect, prevent, and address fraud, abuse, or security issues.",

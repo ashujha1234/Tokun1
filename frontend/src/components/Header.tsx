@@ -4155,16 +4155,30 @@ useEffect(() => {
      creator needs the same for what they've been hired to do. Previously both
      were buried — service bookings four clicks inside Service Bookings, hire
      deals only inside their chat. */}
+ {/* GONE BELOW md, where it lives in the account menu instead.
+
+     The label was already `hidden md:inline` "so the action row still fits",
+     which it did not: on a 390px phone the row measures around 476px against
+     ~358px of usable width, and it was the whole row that overflowed rather
+     than this one button. Icon-only is not small enough when there are eight of
+     them — the fix is fewer items, not narrower ones.
+
+     Orders is the right one to drop first because it is a DESTINATION. Chat,
+     notifications and the cart are all things you glance at and act on in
+     passing, and each carries a live count; Orders is a page you go to. Same
+     reasoning that moved Saved into the menu (see the note further up).
+
+     The badge is not lost with it: the avatar picks up a dot below md, so
+     "something needs you" still reaches the phone. */}
  <button
    type="button"
    onClick={() => navigate("/orders")}
    title="Orders — work you've hired for, and work you've been hired for"
    aria-label="Orders"
-   className="relative flex items-center gap-1.5 rounded-full px-2 py-2 sm:px-3 hover:bg-white/10 transition"
+   className="relative hidden md:flex items-center gap-1.5 rounded-full px-2 py-2 sm:px-3 hover:bg-white/10 transition"
  >
    <Package className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-   {/* Label hidden on the narrowest screens so the action row still fits. */}
-   <span className="hidden md:inline text-sm text-white">Orders</span>
+   <span className="text-sm text-white">Orders</span>
 
    {ordersNeedingAction > 0 && (
      <span className="absolute -top-1 -right-1 bg-[#C084FC] text-white text-[10px] sm:text-xs w-4 h-4 sm:w-5 sm:h-5 grid place-items-center rounded-full">
@@ -4362,7 +4376,13 @@ useEffect(() => {
 
     {/* The toggle, immediately left of the avatar — the mode belongs to the
         account, so it reads as part of that cluster. Renders nothing for anyone
-        with only one mode available (signed out, team members). */}
+        with only one mode available (signed out, team members).
+
+        STAYS ON PHONES. It was briefly hidden below `sm` to win back ~76px in
+        this row, which is more than any two icons here — but the pill is how
+        someone knows which mode they're in, and without it there is no
+        explaining why Upload Product comes and goes. The account menu's
+        "Switch to …" row is a fallback for the label, not for the pill. */}
     <ModeToggle />
 
           {/* Profile dropdown — signed in only.
@@ -4386,8 +4406,19 @@ useEffect(() => {
     type="button"
     aria-label="Account menu"
     title={fullName}
-    className="group inline-flex items-center gap-2 px-2 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#2C2C2C] text-white whitespace-nowrap"
+    className="group relative inline-flex items-center gap-2 px-2 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#2C2C2C] text-white whitespace-nowrap"
   >
+    {/* Orders needs you, and its own button isn't on screen.
+        `md:hidden` exactly mirrors the `hidden md:flex` on that button, so the
+        signal is in precisely one place at any width — never both, never
+        neither. A dot rather than the number: the count is on the menu row one
+        tap away, and this only has to say "there is something in here". */}
+    {ordersNeedingAction > 0 && (
+      <span
+        aria-hidden="true"
+        className="md:hidden absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-[#C084FC] ring-2 ring-[#2C2C2C]"
+      />
+    )}
 
     {/* Avatar stands in for "Hello, <full name>", which pushed the header wide
         enough to crowd everything left of it — and grew with the name. Uploaded
@@ -4560,7 +4591,11 @@ useEffect(() => {
          than the state — "Switch to creator mode", not "Creator". */
       ...(MODE_UI_ENABLED && canUseCreatorMode
         ? [{
-            label: mode === "creator" ? "Switch to buyer mode" : "Switch to creator mode",
+            /* "Buyer" and "Creator" capitalised, matching the pill in the action
+               row. They are the names of the two modes, not adjectives — and the
+               pill has always spelled them that way, so a lowercase menu row was
+               the same word written two ways on one screen. */
+            label: mode === "creator" ? "Switch to Buyer mode" : "Switch to Creator mode",
             // Same pair as the pill in the action row — see ModeToggle.
             icon: mode === "creator" ? ShoppingBag : Store,
             onClick: () => setMode(mode === "creator" ? "buyer" : "creator"),
@@ -4613,6 +4648,26 @@ useEffect(() => {
               : []),
           ]),
 
+      /* ORDERS. The action-row button is `hidden md:flex`, so below that
+         breakpoint this row IS Orders — the row was overflowing on a phone and
+         a destination is the right thing to move into a menu.
+
+         Present at every width rather than only on mobile, for the same reason
+         the mode switch below is: a dropdown rendered from an array cannot hold
+         a responsive item without a media query per row, and an entry that
+         appears and disappears as the window resizes is worse than one that is
+         simply always there. Duplication with the action row on desktop is the
+         existing pattern here — the mode pill and its menu row do exactly this.
+
+         `badge` is what makes the move honest: the count is the only reason
+         Orders was in the action row at all, so it travels with it. */
+      {
+        label: "Orders",
+        icon: Package,
+        onClick: () => navigate("/orders"),
+        badge: ordersNeedingAction,
+      },
+
       // Took the action row's slot when the mode pill arrived — see the note
       // there. A destination, not a control you use in passing.
       ...(MODE_UI_ENABLED
@@ -4630,7 +4685,7 @@ useEffect(() => {
       ...(shows("refunds")
         ? [{ label: "My Refunds", icon: ReceiptText, onClick: () => navigate("/my-refunds") }]
         : []),
-    ].map(({ label, icon: Icon, onClick }) => (
+    ].map(({ label, icon: Icon, onClick, badge }: any) => (
       <button
         key={label}
         type="button"
@@ -4659,6 +4714,27 @@ useEffect(() => {
       >
         <Icon size={16} />
         {label}
+
+        {/* Only when there is something to count. A "0" pill on every row would
+            be worse than no pill at all — the whole job of this thing is to be
+            noticed, and one that is always present stops being noticed. */}
+        {Number(badge) > 0 && (
+          <span
+            style={{
+              marginLeft: "auto",
+              background: "#C084FC",
+              color: "#fff",
+              fontSize: 11,
+              lineHeight: 1,
+              minWidth: 18,
+              padding: "3px 5px",
+              borderRadius: 9,
+              textAlign: "center",
+            }}
+          >
+            {Number(badge) > 9 ? "9+" : badge}
+          </span>
+        )}
       </button>
     ))}
 

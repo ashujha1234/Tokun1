@@ -1508,6 +1508,10 @@ export default function NotificationsPage() {
           ? `${API_BASE}${prompt.attachment?.path}`
           : undefined,
       fullPrompt: prompt.promptText || "",
+      /* The listing's public code summary, so a shared coding product shows its
+         code panel too — locked until the org has bought it, in step with the
+         prompt text right above. Never the source itself. */
+      code: prompt.codeMeta?.hasCode ? prompt.codeMeta : undefined,
       uploaderId,
       exclusive: !!prompt.exclusive,
       sold: !!prompt.sold,
@@ -1805,7 +1809,7 @@ export default function NotificationsPage() {
       return NotifCard({
         ...base,
         message: n.message || "You have a collaboration invite",
-        title: "Product Optimizer Collaboration",
+        title: "Product Optimiser Collaboration",
         attachmentPath: undefined,
         prompt: null,
         actionButton: actionBtn("Accept & Join", () => acceptInvite(n.sessionId || "")),

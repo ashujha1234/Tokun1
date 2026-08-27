@@ -111,12 +111,54 @@ const PurchaseSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+    /* What the buyer has actually DONE with the code they bought.
+     *
+     * Exists to answer one question an admin could not previously ask at all:
+     * "did this person read the code, or did they take a copy and then ask for
+     * their money back?" Before this, a refund on a code product was decided
+     * with no information whatsoever about whether the product had been
+     * consumed.
+     *
+     * THE DISTINCTION IS READ vs TAKE, and it is deliberately not
+     * "opened vs unopened". Nobody can judge whether code is worth keeping
+     * without reading it, so treating a read as consumption would refuse
+     * refunds to exactly the buyer with the most legitimate complaint — the one
+     * who opened the file and found it broken. Reading is inspection. Copying
+     * or downloading is possession, and that is the line worth recording.
+     *
+     * A SIGNAL, NOT A LOCK. `viewed` cannot be enforced — DevTools, select-all
+     * and a screenshot all defeat it. The value is in the timeline it gives an
+     * admin: "viewed 6 min after purchase, downloaded at 7, refund requested at
+     * 12" reads very differently from "viewed, downloaded, refund six hours
+     * later because a dependency is missing". Neither number decides the refund;
+     * the reason does. These make the reason checkable.
+     *
+     * Counts only ever grow, and reads are LIVE rather than frozen at
+     * request-time on purpose — a download that happens after the refund is
+     * filed is itself something the admin should see.
+     */
+    codeAccess: {
+      firstViewedAt: { type: Date, default: null },
+      lastViewedAt: { type: Date, default: null },
+      viewCount: { type: Number, default: 0 },
+      firstTakenAt: { type: Date, default: null },
+      lastTakenAt: { type: Date, default: null },
+      takeCount: { type: Number, default: 0 },
+    },
+
     promptSnapshot: {
       title: String,
       description: String,
       promptText: String,
       attachment: Object,
       uploadCode: [Object],
+      /* The buyer's own copy of the code, frozen at the moment of sale.
+         `uploadCode` above only ever held uploaded FILES; a pasted snippet lives
+         nowhere else, so without this a seller deleting their listing would take
+         the buyer's code with it. GET /api/prompt/:id/code falls back to this
+         when the live prompt is gone. Absent on purchases made before code
+         assets existed, which had none to copy. */
+      codeAssets: [Object],
     },
   },
   {

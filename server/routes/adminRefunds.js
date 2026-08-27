@@ -64,9 +64,20 @@ router.get("/", async (req, res) => {
          the refund as arithmetic — "₹2,000 (₹2,060 paid − ₹60 non-refundable
          fee)" — rather than a bare figure the admin has to take on trust and
          which looked short of what the buyer paid. */
+      /* codeAccess too, on a code product: whether the buyer read the code or
+         took a copy of it, and when. Without it this decision was made blind —
+         "the code doesn't work" and "I downloaded it and want my money back"
+         arrived as the same row.
+
+         It does not decide the refund; the reason does. What it does is make the
+         reason checkable: a take four minutes after purchase followed by a
+         refund request four minutes later tells a different story from a take,
+         six hours, and then "a dependency is missing". Read LIVE off the
+         purchase rather than frozen at request time, so a download that happens
+         AFTER the refund is filed shows up too. */
       .populate(
         "purchase",
-        "pricePaid platformFee platformFeeGst razorpayPaymentId routeTransferId purchasedAt promptSnapshot.title promptSnapshot.description promptSnapshot.attachment"
+        "pricePaid platformFee platformFeeGst razorpayPaymentId routeTransferId purchasedAt codeAccess promptSnapshot.title promptSnapshot.description promptSnapshot.attachment"
       )
       .sort({ createdAt: -1 })
       .limit(200);

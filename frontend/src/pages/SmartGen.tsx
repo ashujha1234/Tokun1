@@ -106,7 +106,13 @@ export default function SmartGenPage() {
           <AppNavigation />
         </div>
 
-        <div className="mt-5 text-center px-4">
+        {/* No `px-4` here. The container above already applies it, so this one
+            was a second 16px on top — that heading alone sat 32px in from each
+            edge while the "What would you like to create today?" line above it
+            and the generator below it sat at 16px. On a phone it showed as this
+            line wrapping earlier than anything else on the page, for no reason
+            anyone could see. */}
+        <div className="mt-5 text-center">
           <h1 className="m-0 leading-tight text-[20px] sm:text-[24px] lg:text-[32px]">
             {/* Same treatment as the optimiser's "Dashboard" and the
                 marketplace hero's "Marketplace": the product name carries the

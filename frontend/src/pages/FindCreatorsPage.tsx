@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Award,
   Briefcase,
+  ChevronDown,
   Clock,
   MapPin,
   MessageCircle,
@@ -207,6 +208,47 @@ function ServiceCard({ service }: { service: BrowseService }) {
   );
 }
 
+/* ══════════════════════ specialization buckets ══════════════════════ */
+
+/**
+ * Five headings over the specialization catalogue.
+ *
+ * The filter was one flat wrap of all 41 specializations, centred. On a desktop
+ * that is four dense rows you skim past; on a phone it is eight or nine, roughly
+ * 350px of chips standing between the search box and the first creator — so the
+ * page opened on a wall of filters and you had to scroll to discover there were
+ * any people on it at all.
+ *
+ * The catalogue is already grouped — `models/Specialization.js` carries a
+ * `group` per row and GET /api/freelancer/specializations returns them bucketed —
+ * and this page was deliberately throwing that away ("the grouping is useful in
+ * a picker, not here"). It turns out to be useful here too, once there are 41 of
+ * them.
+ *
+ * WHY FIVE AND NOT THE SERVER'S EIGHT. Eight headings is still most of a phone
+ * screen before anything is expanded, and three of the eight are small enough to
+ * read as an afterthought next to Development's nine. These pairings are the ones
+ * a person searching for a creator would not think to separate: Engineering Ops
+ * is who you hire when you needed a developer, and Video & Audio sits with Design
+ * because both are "someone who makes the thing look and sound right".
+ *
+ * AI stays on its own despite having five items. It is the reason most people are
+ * on this platform, and folding it under Development would bury the one heading
+ * they came to press.
+ *
+ * The `groups` strings must match `group` in server/constants/freelancerCatalog.js.
+ * A group added there and not named here still appears — see the orphan handling
+ * in `specBuckets` — so the failure mode is an extra heading, never a
+ * specialization nobody can filter by.
+ */
+const SPEC_SUPERGROUPS: { label: string; groups: string[] }[] = [
+  { label: "AI", groups: ["AI"] },
+  { label: "Development", groups: ["Development", "Engineering Ops"] },
+  { label: "Design & Media", groups: ["Design", "Video & Audio"] },
+  { label: "Marketing & Writing", groups: ["Marketing", "Content"] },
+  { label: "Business", groups: ["Business"] },
+];
+
 /* ══════════════════════ page ══════════════════════ */
 
 const FindCreatorsPage = () => {
@@ -385,19 +427,109 @@ const FindCreatorsPage = () => {
     }
   };
 
-  // Flattened for the chip row — the grouping is useful in a picker, not here.
-  const allSpecializations = useMemo(
-    () => specGroups.flatMap((g) => g.items),
-    [specGroups]
+  /* The five headings, filled from the server's eight groups — see
+     SPEC_SUPERGROUPS. Empty buckets are dropped rather than rendered as a
+     heading that opens onto nothing. */
+  const specBuckets = useMemo(() => {
+    const byGroup = new Map(specGroups.map((g) => [g.group, g.items]));
+
+    const named = SPEC_SUPERGROUPS.map((sg) => ({
+      label: sg.label,
+      items: sg.groups.flatMap((g) => byGroup.get(g) || []),
+    })).filter((b) => b.items.length > 0);
+
+    /* Any group the map doesn't claim gets its own heading.
+       Without this, adding a group to the server catalogue would silently drop
+       every specialization in it from this filter — the kind of bug that is
+       invisible until a creator asks why nobody can find them. An unexpected
+       extra heading is a much better failure than a missing one. */
+    const claimed = new Set(SPEC_SUPERGROUPS.flatMap((sg) => sg.groups));
+    const orphans = specGroups
+      .filter((g) => !claimed.has(g.group) && g.items.length > 0)
+      .map((g) => ({ label: g.group, items: g.items }));
+
+    return [...named, ...orphans];
+  }, [specGroups]);
+
+  /* Which heading is expanded. One at a time, and null on arrival — collapsed is
+     the state that gives the page back to the creators it is meant to be
+     listing. */
+  const [openBucket, setOpenBucket] = useState<string | null>(null);
+
+  /* ONCE SOMETHING IS PICKED, THE FILTER SHRINKS TO IT.
+   *
+   * The filter takes one value, so the moment "Frontend Development" is chosen
+   * the other twelve specializations under Development are twelve chips you are
+   * not looking at, and the four other headings are four more. Together that was
+   * most of a phone screen still standing between the search box and the
+   * creators — after the choice that was supposed to narrow things down.
+   *
+   * So a selection collapses the whole control to the heading it lives under and
+   * the one chip, with Clear beside it. Same rule the Services tab follows.
+   *
+   * `activeSpec` is the only input, and Clear is the only way back — which keeps
+   * this honest: there is exactly one thing on screen and it is exactly what is
+   * being applied to the list below. */
+  const visibleBuckets = useMemo(
+    () =>
+      activeSpec
+        ? specBuckets.filter((b) => b.items.some((s) => s.slug === activeSpec))
+        : specBuckets,
+    [specBuckets, activeSpec]
   );
+
+  /* The heading whose chips are on screen. A selection pins this to whichever
+     bucket owns it — a picked filter must never be hidden inside a collapsed
+     heading purely because `openBucket` says something else. */
+  const expandedBucket = useMemo(
+    () =>
+      activeSpec
+        ? visibleBuckets[0] || null
+        : specBuckets.find((b) => b.label === openBucket) || null,
+    [activeSpec, visibleBuckets, specBuckets, openBucket]
+  );
+
+  const expandedItems = useMemo(() => {
+    if (!expandedBucket) return [];
+    return activeSpec
+      ? expandedBucket.items.filter((s) => s.slug === activeSpec)
+      : expandedBucket.items;
+  }, [expandedBucket, activeSpec]);
 
   const activeFilter = tab === "people" ? activeSpec : activeCategory;
   const clearFilter = () => (tab === "people" ? setActiveSpec("") : setActiveCategory(""));
 
+  /* The Services tab keeps the flat row: nine top-level categories fit in two
+     lines even on a phone, and bucketing nine things under five headings is
+     ceremony rather than help. Only the People tab had 41.
+   *
+   * ONE CHIP ONCE ONE IS PICKED. These categories are mutually exclusive — the
+   * filter takes a single value — so once you have chosen "Programming & Tech"
+   * the other eight are eight rows of things you are not looking at, sitting
+   * between the filter and the results. Collapsing to the chosen one (with its
+   * Clear beside it) says what is applied in one line and gives the rest of the
+   * screen back to the services.
+   *
+   * Pressing the chip still clears it — see `setChip`, which toggles — so the
+   * way back to the full list is the same control that narrowed it. */
   const chips =
     tab === "people"
-      ? allSpecializations.map((s) => ({ key: s.slug, label: s.name }))
-      : categories.map((c) => ({ key: c._id, label: c.name }));
+      ? []
+      : categories
+          .filter((c) => !activeCategory || c._id === activeCategory)
+          .map((c) => ({ key: c._id, label: c.name }));
+
+  /* The name of whatever is filtered, for the pill that stands in for it while
+     its heading is collapsed. Nothing about the filter may become invisible just
+     because the list it came from is closed. */
+  const activeSpecName = useMemo(() => {
+    if (tab !== "people" || !activeSpec) return "";
+    for (const b of specBuckets) {
+      const hit = b.items.find((s) => s.slug === activeSpec);
+      if (hit) return hit.name;
+    }
+    return "";
+  }, [tab, activeSpec, specBuckets]);
 
   const setChip = (key: string) => {
     if (tab === "people") setActiveSpec(activeSpec === key ? "" : key);
@@ -650,7 +782,145 @@ const FindCreatorsPage = () => {
           )}
         </div>
 
-        {/* Filter chips */}
+        {/* ── SPECIALIZATION FILTER (People tab) ────────────────────────────
+            Three states, each showing only what it needs to:
+
+              nothing picked, nothing open   five headings          (≤3 rows)
+              a heading open                 five headings + chips
+              a specialization picked        one heading + one chip  (1–2 rows)
+
+            The last one is the point. This started as one flat wrap of all 41
+            specializations — eight or nine rows of chips on a phone, standing
+            between the search box and the first creator — and grouping them under
+            five headings only fixed the "nothing picked" case. Picking one still
+            left twelve siblings and four other headings on screen, after the
+            action that was supposed to narrow things down. See visibleBuckets.
+
+            ONE LAYOUT FOR BOTH desktop and phone. Two implementations of the same
+            control is how they drift, and there is nothing here a phone needs
+            that a desktop doesn't — what made the old version unusable on a
+            phone was the count of things on screen, not their arrangement, so the
+            same fix serves every width. */}
+        {tab === "people" && specBuckets.length > 0 && (
+          <div className="mb-8 space-y-3">
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {visibleBuckets.map((bucket) => {
+                const open = expandedBucket?.label === bucket.label;
+                // Holds the current filter. Distinct from `open`, and it has to
+                // be: a heading you collapsed while its filter is still applied
+                // must not look like every other unpressed heading.
+                const holdsActive =
+                  !!activeSpec && bucket.items.some((s) => s.slug === activeSpec);
+
+                return (
+                  <button
+                    key={bucket.label}
+                    /* While a specialization is picked this heading is the only
+                       one on screen and its chips are pinned open, so there is
+                       nothing for a collapse to do — pressing it releases the
+                       filter and brings the other four headings back. That makes
+                       it the same gesture as pressing the chip itself, which is
+                       what someone reaches for to undo a choice. */
+                    onClick={() => {
+                      if (holdsActive) {
+                        clearFilter();
+                        setOpenBucket(bucket.label);
+                        return;
+                      }
+                      setOpenBucket(open ? null : bucket.label);
+                    }}
+                    aria-expanded={open}
+                    className="inline-flex items-center gap-1.5 px-3.5 h-9 rounded-full text-xs font-medium transition-all"
+                    style={{
+                      background: holdsActive
+                        ? "rgba(26,115,232,0.18)"
+                        : open
+                          ? "rgba(255,255,255,0.10)"
+                          : "rgba(255,255,255,0.04)",
+                      border: `1px solid ${
+                        holdsActive
+                          ? "#1A73E8"
+                          : open
+                            ? "rgba(255,255,255,0.22)"
+                            : "rgba(255,255,255,0.08)"
+                      }`,
+                      color: holdsActive || open ? "#fff" : "rgba(255,255,255,0.6)",
+                    }}
+                  >
+                    {bucket.label}
+                    {/* The count is a reason to open a heading. Once one of its
+                        specializations is applied it is answering a question
+                        nobody is asking any more. */}
+                    {!holdsActive && (
+                      <span className="text-white/35">{bucket.items.length}</span>
+                    )}
+                    <ChevronDown
+                      className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* The applied filter, while its heading is closed. The whole point
+                of collapsing is that you stop looking at the list — so the one
+                thing that must survive being closed is what it is currently
+                doing to the results. */}
+            {activeSpecName && !expandedBucket && (
+              <div className="flex justify-center">
+                <button
+                  onClick={clearFilter}
+                  className="inline-flex items-center gap-1.5 px-3 h-8 rounded-full text-xs text-white"
+                  style={{ background: "rgba(26,115,232,0.18)", border: "1px solid #1A73E8" }}
+                >
+                  {activeSpecName}
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+
+            {expandedItems.length > 0 && (
+              <div
+                className="flex flex-wrap items-center justify-center gap-2 rounded-2xl p-3"
+                style={{
+                  background: "rgba(255,255,255,0.02)",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                }}
+              >
+                {activeSpec && (
+                  <button
+                    onClick={clearFilter}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs text-white"
+                    style={{ background: "rgba(255,255,255,0.10)" }}
+                  >
+                    <X className="w-3 h-3" />
+                    Clear
+                  </button>
+                )}
+                {expandedItems.map((s) => {
+                  const active = activeSpec === s.slug;
+                  return (
+                    <button
+                      key={s.slug}
+                      onClick={() => setActiveSpec(active ? "" : s.slug)}
+                      title={s.description || undefined}
+                      className="px-3 py-1.5 rounded-full text-xs transition-all"
+                      style={{
+                        background: active ? "rgba(26,115,232,0.18)" : "rgba(255,255,255,0.04)",
+                        border: `1px solid ${active ? "#1A73E8" : "rgba(255,255,255,0.08)"}`,
+                        color: active ? "#fff" : "rgba(255,255,255,0.6)",
+                      }}
+                    >
+                      {s.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Services tab — still the flat row. Nine categories, two lines. */}
         {chips.length > 0 && (
           <div className="mb-8 flex flex-wrap items-center justify-center gap-2">
             {activeFilter && (

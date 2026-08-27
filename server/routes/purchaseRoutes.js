@@ -867,6 +867,9 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
         promptText: embedWatermark(prompt.promptText, String(req.user._id)), // ← marked
         attachment: prompt.attachment,
         uploadCode: prompt.uploadCode,
+        // The complete code record — pasted snippets included, which
+        // `uploadCode` never held. See the note on Purchase.promptSnapshot.
+        codeAssets: prompt.codeAssets,
         originalPrice: prompt.price,
       },
 
@@ -1227,10 +1230,17 @@ router.get("/history", requireAuth, async (req, res) => {
          `categories` is a list of ObjectIds, which resolves to no name just as
          surely as an empty list did. */
       .populate({
+        /* codeMeta, so My Products can badge a purchase that ships code and
+           the details panel knows to render its code section at all. The
+           SUMMARY only — file names, languages, a teaser. The code itself is
+           `codeAssets`, which this list deliberately never carries (see the
+           strip below) and GET /api/prompt/:id/code serves one product at a
+           time instead. */
         path: "prompt",
-        select: "title free price deleted categories exclusive sold",
+        select: "title free price deleted categories exclusive sold codeMeta",
         populate: { path: "categories", select: "name" },
       })
+      .select("-promptSnapshot.codeAssets")
       .lean();
 
     /* When each purchase stops being refundable, computed here rather than in

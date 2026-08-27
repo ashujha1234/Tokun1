@@ -691,6 +691,9 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
                     promptText: p.promptText,
                     attachment: p.attachment,
                     uploadCode: p.uploadCode,
+                    // Same reason as the direct-purchase snapshot: pasted
+                    // snippets exist nowhere else once a listing is deleted.
+                    codeAssets: p.codeAssets,
                     originalPrice: p.price,
                   },
                 },

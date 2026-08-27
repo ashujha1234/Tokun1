@@ -942,6 +942,13 @@ router.get("/shared/team", requireAuth, async (req, res) => {
           // looked like it might be the member's own upload.
           userId: fullPrompt.userId,
           attachment: fullPrompt.attachment || snap.attachment || {},
+          /* The public code SUMMARY — file names, languages, a teaser. Safe to
+             send whether or not the org has bought it, which is why it sits
+             outside the `unlocked` gate below: a locked share is meant to show
+             the member what the product is, and "it ships three Python files"
+             is part of that. The code itself is never here — the panel asks
+             GET /api/prompt/:id/code, which re-checks the org purchase. */
+          codeMeta: fullPrompt.codeMeta || undefined,
           unlocked,
           // Only present once the org has actually purchased it — until
           // then the member sees the listing but not the content.

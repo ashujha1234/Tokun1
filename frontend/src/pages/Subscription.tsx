@@ -1156,61 +1156,88 @@ export default function Subscription() {
           </span>
         </div>
 
-        {/* Cards */}
+        {/* Cards.
+
+            Each card and its phone-only feature panel share ONE grid cell (the
+            wrapping div), rather than the panel being a grid item of its own.
+            As a sibling it would take the next cell, and at `sm` — two columns,
+            where the panels are still visible — the grid would fill as
+            card/panel/card/panel across the rows and the three plans would stop
+            lining up. Inside a cell it always sits under its own card, at every
+            width. */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-x-2 lg:gap-y-4 justify-items-center">
-          <PlanCard
-            selected={selected === "Free"}
-            onSelect={() => setSelected("Free")}
-            onChoose={() => {
-              if (!creating) setSelected("Free");
-              startPurchase("Free");
-            }}
-            {...ctaFor("Free")}
-            title="Free"
-            subtitle="(Individuals)"
-            price={priceFor("Free")}
-            tokens={tokens.Free}
-            extras={[{ label: "Extra Tokens Feature", value: "No" }]}
-          />
+          <div className="flex w-full flex-col items-center">
+            <PlanCard
+              selected={selected === "Free"}
+              onSelect={() => setSelected("Free")}
+              onChoose={() => {
+                if (!creating) setSelected("Free");
+                startPurchase("Free");
+              }}
+              {...ctaFor("Free")}
+              title="Free"
+              subtitle="(Individuals)"
+              price={priceFor("Free")}
+              tokens={tokens.Free}
+              extras={[{ label: "Extra Tokens Feature", value: "No" }]}
+            />
+            {/* md:hidden — from md up the comparison table renders below, and
+                showing both would print the same nine facts twice. */}
+            <div className="md:hidden">
+              <PlanFeatureList plan="free" title="Free" />
+            </div>
+            <PlanGroupDivider />
+          </div>
 
-          <PlanCard
-            selected={selected === "Pro"}
-            onSelect={() => setSelected("Pro")}
-            onChoose={() => {
-              if (!creating) setSelected("Pro");
-              startPurchase("Pro");
-            }}
-            {...ctaFor("Pro")}
-            title="Pro"
-            subtitle="(Individuals)"
-            price={priceFor("Pro")}
-            tokens={tokens.Pro}
-            highlight="Most Popular"
-            extras={[
-              { label: "Extra Tokens Feature", value: "Yes" },
-              { label: "No. of Extra Tokens", value: "50,000" },
-              { label: "Extra Token Price", value: "₹200" },
-            ]}
-          />
+          <div className="flex w-full flex-col items-center">
+            <PlanCard
+              selected={selected === "Pro"}
+              onSelect={() => setSelected("Pro")}
+              onChoose={() => {
+                if (!creating) setSelected("Pro");
+                startPurchase("Pro");
+              }}
+              {...ctaFor("Pro")}
+              title="Pro"
+              subtitle="(Individuals)"
+              price={priceFor("Pro")}
+              tokens={tokens.Pro}
+              highlight="Most Popular"
+              extras={[
+                { label: "Extra Tokens Feature", value: "Yes" },
+                { label: "No. of Extra Tokens", value: "50,000" },
+                { label: "Extra Token Price", value: "₹200" },
+              ]}
+            />
+            <div className="md:hidden">
+              <PlanFeatureList plan="pro" title="Pro" />
+            </div>
+            <PlanGroupDivider />
+          </div>
 
-          <PlanCard
-            selected={selected === "Enterprise"}
-            onSelect={() => setSelected("Enterprise")}
-            onChoose={() => {
-              if (!creating) setSelected("Enterprise");
-              startEnterprisePurchase();
-            }}
-            {...ctaFor("Enterprise")}
-            title="Enterprise"
-            subtitle="(Organization)"
-            price={priceFor("Enterprise")}
-            tokens={tokens.Enterprise}
-            extras={[
-              { label: "Extra Tokens Feature", value: "Yes" },
-              { label: "No. of Extra Tokens", value: "100,000" },
-              { label: "Extra Token Price", value: "₹199" },
-            ]}
-          />
+          <div className="flex w-full flex-col items-center">
+            <PlanCard
+              selected={selected === "Enterprise"}
+              onSelect={() => setSelected("Enterprise")}
+              onChoose={() => {
+                if (!creating) setSelected("Enterprise");
+                startEnterprisePurchase();
+              }}
+              {...ctaFor("Enterprise")}
+              title="Enterprise"
+              subtitle="(Organization)"
+              price={priceFor("Enterprise")}
+              tokens={tokens.Enterprise}
+              extras={[
+                { label: "Extra Tokens Feature", value: "Yes" },
+                { label: "No. of Extra Tokens", value: "100,000" },
+                { label: "Extra Token Price", value: "₹199" },
+              ]}
+            />
+            <div className="md:hidden">
+              <PlanFeatureList plan="ent" title="Enterprise" />
+            </div>
+          </div>
         </div>
 
         {/* Comparison Table */}
@@ -1249,7 +1276,16 @@ function PlanCard({
   return (
     <Card
       onClick={onSelect}
-      className="relative cursor-pointer flex flex-col w-[250px] h-[400px]"
+      /* Full width of its grid cell below md, the original 250px from md up.
+       *
+       * 250px on a 361px phone left ~55px of dead margin down each side while
+       * every other block on the page — the heading, the search, the comparison
+       * — ran to the container's own `px-4`. The card looked like a desktop card
+       * that had been dropped onto a phone, which is what it was.
+       *
+       * The height stays 400px: the card holds the same price, token count and
+       * three lines it always did, and they need no more room for being wider. */
+      className="relative cursor-pointer flex flex-col w-full md:w-[250px] h-[400px]"
       style={{
         borderRadius: 16,
         border: "1px solid #35343C",
@@ -1355,44 +1391,173 @@ function PlanCard({
   );
 }
 
-/* -------------------- Comparison table -------------------- */
+/* -------------------- Plan comparison -------------------- */
+
+/**
+ * What the three plans differ on, as data.
+ *
+ * It used to be nine `row(...)` calls with JSX baked into each cell, which meant
+ * the only way to show this information was as that one table — and that table is
+ * `min-w-[650px]`, so on a phone the whole comparison sat behind a sideways drag
+ * most people never discovered. Nine features and three plans, and the answer to
+ * "what do I get for ₹200" was off-screen.
+ *
+ * Plain values, so the same nine facts can be drawn two ways: the table on a wide
+ * screen, and one list per plan inside that plan's own card on a narrow one. A
+ * cell holds `true`/`false` (a tick or a cross) or a string (shown as text) —
+ * never markup, because markup is what tied this to a single layout before.
+ *
+ * The parentheses are gone from the strings: "(up to 5 entries)" was written that
+ * way to stop a bare fragment reading oddly under a column header, and both
+ * renderers now put the feature name right beside the value, so "History — up to
+ * 5 entries" needs no bracket to make sense.
+ */
+/* `PlanColumn`, not `PlanKey` — that name is already taken further up by the
+   plan's display name ("Free" | "Pro" | "Enterprise"), and two types one
+   capital letter apart is a trap. This one names a COLUMN of the comparison
+   data below, which each card passes explicitly. */
+type PlanColumn = "free" | "pro" | "ent";
+type Cell = boolean | string;
+
+const COMPARISON_ROWS: { label: string; free: Cell; pro: Cell; ent: Cell }[] = [
+  { label: "Basic Access to AI Tools (SmartGen, Product Optimiser)", free: true, pro: true, ent: true },
+  { label: "Chat Support", free: false, pro: true, ent: true },
+  { label: "Email Support", free: true, pro: true, ent: true },
+  { label: "Team Features", free: false, pro: false, ent: true },
+  { label: "No. of Team Members", free: false, pro: false, ent: true },
+  { label: "History", free: "up to 5 entries", pro: "unlimited entries", ent: "unlimited entries" },
+  {
+    label: "Token Usage (Counted monthly only)",
+    free: "section-wise",
+    pro: "section-wise",
+    ent: "section-wise",
+  },
+  {
+    label: "Extra Tokens Feature",
+    free: false,
+    pro: "50,000 for ₹200",
+    ent: "100,000 for ₹199",
+  },
+  {
+    label: "Phone Support",
+    free: "9:00–18:00, MON–SUN",
+    pro: "9:00–18:00, MON–SUN",
+    ent: "24/7 Dedicated Support",
+  },
+];
+
+/**
+ * The line between one plan and the next, on a phone.
+ *
+ * BETWEEN GROUPS, not between a card and its own feature list. A plan is two
+ * blocks now — the pricing card and the list under it — and the boundary that
+ * needs marking is where that pair ends and the next plan begins. A rule between
+ * a card and its own list would say the opposite of the truth: that the two
+ * belong to different things.
+ *
+ * Full width, and that is the point of it: an edge-to-edge rule reads as "a
+ * section ended here", which is exactly what happened.
+ *
+ * `md:hidden` because from md up the plans sit side by side in columns, where
+ * the gap between them already says this and a horizontal rule would be
+ * pointing the wrong way entirely.
+ *
+ * Rendered after Free and after Pro, and NOT after Enterprise — a divider below
+ * the last plan separates it from nothing.
+ */
+function PlanGroupDivider() {
+  return (
+    <div
+      className="mt-6 mb-2 h-px w-full md:hidden"
+      style={{ background: "rgba(255,255,255,0.12)" }}
+    />
+  );
+}
+
+/**
+ * One plan's column of the comparison, as a list — the phone layout.
+ *
+ * A SEPARATE PANEL BELOW ITS CARD, not content inside it. The card is a fixed
+ * 400px tall holding a price, a token count and three lines, and it is that size
+ * on purpose; nine more rows do not go in it without either clipping them or
+ * changing a card design that was already right. So the card is left exactly as
+ * it is and this sits underneath it — with PlanGroupDivider marking where the
+ * pair ends, rather than a rule between the two halves of one plan.
+ *
+ * Position is what says which plan it belongs to, and the heading confirms it —
+ * the card is 400px tall, so by the time you have scrolled to the bottom of this
+ * list its card may be off the top of the screen.
+ *
+ * Crosses are kept rather than filtered out. "No chat support" is a reason to
+ * upgrade, and a list of only the good news is a worse answer to "what is the
+ * difference between these" than a list with gaps in it.
+ */
+function PlanFeatureList({ plan, title }: { plan: PlanColumn; title: string }) {
+  return (
+    /* The card's own width, tracking it at both breakpoints, so the panel reads
+       as belonging to the thing above it rather than as a new section that
+       happens to follow it. */
+    <div className="mt-3 w-full md:w-[250px]">
+      <div
+        className="rounded-[16px] px-4 py-4"
+        style={{ border: "1px solid #35343C", background: "#0D0D0E" }}
+      >
+        <div className='mb-3 font-["Inter"] text-[11px] uppercase tracking-wider text-white/40'>
+          {title} includes
+        </div>
+
+        <ul className="space-y-2.5">
+          {COMPARISON_ROWS.map((r) => {
+            const v = r[plan];
+            const yes = v !== false;
+
+            return (
+              <li key={r.label} className="flex items-start gap-2">
+                {yes ? (
+                  <Check className="mt-[2px] h-[13px] w-[13px] shrink-0" />
+                ) : (
+                  <X className="mt-[2px] h-[13px] w-[13px] shrink-0 text-white/35" />
+                )}
+
+                <span
+                  className={`font-["Inter"] text-[12px] leading-snug ${
+                    yes ? "text-white/80" : "text-white/35"
+                  }`}
+                >
+                  {r.label}
+                  {/* Only when the value says something the label doesn't. A
+                      tick beside "Chat Support" already means yes; printing
+                      "yes" after it would be noise. */}
+                  {typeof v === "string" && <span className="text-white"> — {v}</span>}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </div>
+  );
+}
 
 function ComparisonTable() {
-  type Cell = boolean | string | JSX.Element;
-
-  const cell = (v: Cell) => {
-    if (typeof v === "boolean") {
-      return v ? (
+  const cell = (v: Cell) =>
+    typeof v === "boolean" ? (
+      v ? (
         <Check className="inline-block h-4 w-4" />
       ) : (
         <X className="inline-block h-4 w-4" />
-      );
-    }
-
-    return v;
-  };
-
-  const checkText = (text: string) => (
-    <span className='inline-flex items-center justify-center gap-1 text-[11px] font-["Inter"]'>
-      <Check className="h-4 w-4" />
-      <span>{text}</span>
-    </span>
-  );
-
-  const row = (label: string, free: Cell, pro: Cell, ent: Cell) => (
-    <tr className="border-t border-white/10">
-      <td className='py-3 pr-4 text-left text-[12px] font-["Inter"] whitespace-nowrap'>
-        {label}
-      </td>
-
-      <td className="py-3 text-center">{cell(free)}</td>
-      <td className="py-3 text-center">{cell(pro)}</td>
-      <td className="py-3 text-center">{cell(ent)}</td>
-    </tr>
-  );
+      )
+    ) : (
+      <span className="text-[11px]">{v}</span>
+    );
 
   return (
-    <div className="mt-6 overflow-x-auto">
+    /* `hidden md:block`, and no `overflow-x-auto` any more.
+       Below md the same facts are inside the cards (PlanFeatureList), so keeping
+       this here as well would print the entire comparison twice on a phone. The
+       horizontal scroller went with it: the table only renders at widths where
+       its 650px fits, so there is nothing left to scroll. */
+    <div className="mt-6 hidden md:block">
       <table className="w-full min-w-[650px] text-center text-sm text-white">
         <thead>
           <tr className='text-[14px] font-["Inter"]'>
@@ -1404,45 +1569,16 @@ function ComparisonTable() {
         </thead>
 
         <tbody>
-          {row("Basic Access to AI Tools (SmartGen, Product Optimizer)", true, true, true)}
-          {row("Chat Support", false, true, true)}
-          {row("Email Support", true, true, true)}
-          {row("Team Features", false, false, true)}
-
-          {row(
-            "No. of Team Members",
-            <X className="inline-block h-4 w-4" />,
-            <X className="inline-block h-4 w-4" />,
-            <Check className="inline-block h-4 w-4" />
-          )}
-
-          {row(
-            "History",
-            <span className="text-[11px]">(up to 5 entries)</span>,
-            <span className="text-[11px]">(unlimited entries)</span>,
-            <span className="text-[11px]">(unlimited entries)</span>
-          )}
-
-          {row(
-            "Token Usage (Counted monthly only)",
-            <span className="text-[11px]">(section-wise)</span>,
-            <span className="text-[11px]">(section-wise)</span>,
-            <span className="text-[11px]">(section-wise)</span>
-          )}
-
-          {row(
-            "Extra Tokens Feature",
-            false,
-            checkText("Extra Tokens: 50,000  Price: ₹200"),
-            checkText("Extra Tokens: 100,000  Price: ₹199")
-          )}
-
-          {row(
-            "Phone Support",
-            <span className="text-[11px]">9:00–18:00, MON–SUN</span>,
-            <span className="text-[11px]">9:00–18:00, MON–SUN</span>,
-            <span className="text-[11px]">24/7 Dedicated Support</span>
-          )}
+          {COMPARISON_ROWS.map((r) => (
+            <tr key={r.label} className="border-t border-white/10">
+              <td className='py-3 pr-4 text-left text-[12px] font-["Inter"] whitespace-nowrap'>
+                {r.label}
+              </td>
+              <td className="py-3 text-center">{cell(r.free)}</td>
+              <td className="py-3 text-center">{cell(r.pro)}</td>
+              <td className="py-3 text-center">{cell(r.ent)}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>

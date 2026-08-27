@@ -167,6 +167,13 @@ const isPromptPubliclyVisible = (prompt) => promptUnavailableReason(prompt) === 
 const PUBLIC_PROMPT_EXCLUDED_FIELDS = [
   "promptText",
   "uploadCode",
+  /* The same reasoning as uploadCode, one field newer. `codeAssets` carries the
+     pasted source itself, not just a URL to it, so leaking this one needs no
+     download at all — the code would simply be sitting in the JSON. What a
+     non-buyer is meant to see of it is `codeMeta`, which stays: it holds file
+     names, languages and a teaser already cut to twelve lines by
+     buildCodeMeta(). See utils/promptCode.js. */
+  "codeAssets",
   "promptHash",
   "attachmentHash",
   "attachmentPhash",

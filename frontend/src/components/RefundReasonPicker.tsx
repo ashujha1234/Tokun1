@@ -23,6 +23,42 @@ import { REFUND_REASON_PRESETS } from "@/lib/refundReasons";
 /* The same gradient the primary buttons use, in the same direction. */
 const GRADIENT = "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)";
 
+/**
+ * Says out loud that this request will be looked at by a person, because the
+ * buyer already took a copy of the code.
+ *
+ * Lives beside the picker for the same reason the picker exists — the refund
+ * dialog is duplicated across components/PromptHistory.tsx and pages/self-dash.tsx.
+ *
+ * IT IS NOT A WARNING AND NOT A REFUSAL. Downloading the code is how a buyer
+ * finds out the code is broken, so it cannot be treated as bad faith; the
+ * request goes through exactly as it would otherwise. What this prevents is the
+ * worse outcome of saying nothing: the buyer expects the automatic refund the
+ * product page implied, waits, and reads the delay as the platform stalling.
+ *
+ * Which is also why it asks for detail. A reviewed request is decided on its
+ * reason, so the most useful thing the buyer can do at this exact moment is give
+ * the reviewer something to check.
+ */
+export function RefundCodeNotice({ show }: { show: boolean }) {
+  if (!show) return null;
+
+  return (
+    <div
+      className="rounded-lg px-3 py-2.5 text-[12px] leading-relaxed"
+      style={{
+        background: "rgba(251,191,36,0.08)",
+        border: "1px solid rgba(251,191,36,0.25)",
+        color: "#FCD34D",
+      }}
+    >
+      You've downloaded this product's code, so this request goes to a person
+      rather than being processed automatically. Please say what went wrong in as
+      much detail as you can — that's what the review looks at.
+    </div>
+  );
+}
+
 export default function RefundReasonPicker({
   selected,
   onToggle,

@@ -11,9 +11,8 @@
  */
 
 import { ShoppingBag, Store } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import { useMode } from "@/contexts/ModeContext";
-import { PENDING_CREATOR_KEY, type AppMode } from "@/lib/mode";
+import { type AppMode } from "@/lib/mode";
 
 /* A bag you carry and a shop you keep — the two sides of the same transaction,
    which is exactly what the two modes are.
@@ -23,14 +22,23 @@ import { PENDING_CREATOR_KEY, type AppMode } from "@/lib/mode";
    in another; and it says nothing about selling to someone who hasn't been
    told. Swap `Store` for `Rocket`, `PenTool` or `BadgeDollarSign` if you'd
    rather lead on making than on shopkeeping — one word, nothing else moves. */
+/* CREATOR FIRST.
+ *
+ * Buyer led, which read as the primary of the two — and for a signed-out visitor
+ * it now isn't: they start on the Creator side (SIGNED_OUT_DEFAULT_MODE), so the
+ * highlighted half was the second one and the pill looked like it had been
+ * switched away from its default. Selling is also the half nobody discovers on
+ * their own, which is the reason the toggle is on the landing bar at all. */
 const OPTIONS: { id: AppMode; label: string; Icon: typeof ShoppingBag }[] = [
-  { id: "buyer", label: "Buyer", Icon: ShoppingBag },
   { id: "creator", label: "Creator", Icon: Store },
+  { id: "buyer", label: "Buyer", Icon: ShoppingBag },
 ];
 
 export default function ModeToggle({ className = "" }: { className?: string }) {
-  const { mode, setMode, canShowToggle, needsAccountForCreator } = useMode();
-  const navigate = useNavigate();
+  /* `needsAccountForCreator` is no longer read here — it used to turn this pill
+     into a signup link. The context still exposes it for anything that wants to
+     say "you'll need an account to list"; this control just switches a view. */
+  const { mode, setMode, canShowToggle } = useMode();
 
   /* Hidden only for a team member, whose org sells for them — for them Creator
      mode is barred rather than pending, and a toggle with one usable side is a
@@ -41,21 +49,21 @@ export default function ModeToggle({ className = "" }: { className?: string }) {
      anyone commits to one. */
   if (!canShowToggle) return null;
 
-  const press = (next: AppMode) => {
-    if (next === "creator" && needsAccountForCreator) {
-      /* Remembered across the trip so the press still means something on the
-         way back — see PENDING_CREATOR_KEY. Without it they sign up, land as a
-         buyer, and the button they pressed to start selling did nothing. */
-      try {
-        sessionStorage.setItem(PENDING_CREATOR_KEY, "1");
-      } catch {
-        // They'll just land in Buyer mode and can press it again.
-      }
-      navigate("/signup");
-      return;
-    }
-    setMode(next);
-  };
+  /* Just switches. Both halves, session or no session.
+   *
+   * Pressing Creator while signed out used to navigate straight to /signup. That
+   * cannot stand now that a visitor STARTS on the creator side: the first press
+   * of Buyer followed by Creator would have thrown them out of the landing page
+   * into a signup form they had not asked for.
+   *
+   * The signup nudge belongs on the creator ACTION, not on the view — and it is
+   * already there: Upload Product runs the same four-way gate as everywhere else
+   * and sends a session-less visitor to login (see UploadProductButton). Mode
+   * stays what lib/mode.ts says it is, a view preference and never a permission.
+   *
+   * Carrying the choice across signup is handled in ModeContext, which writes
+   * PENDING_CREATOR_KEY for as long as a session-less visitor is on this side. */
+  const press = (next: AppMode) => setMode(next);
 
   return (
     <div
@@ -71,13 +79,13 @@ export default function ModeToggle({ className = "" }: { className?: string }) {
             type="button"
             onClick={() => press(id)}
             aria-pressed={active}
-            title={
-              id === "creator"
-                ? needsAccountForCreator
-                  ? "Sign up to start selling"
-                  : "Switch to creator mode"
-                : "Switch to buyer mode"
-            }
+            /* Same capitalisation as the pill's own labels and as the account
+               menu's row — the mode names are proper nouns here, and the tooltip
+               on a button reading "Buyer" should not say "buyer".
+               No "Sign up to start selling" branch any more: this button switches
+               a view now, for everybody, and promising signup from a control that
+               does not go there was the confusing half of the old behaviour. */
+            title={id === "creator" ? "Switch to Creator mode" : "Switch to Buyer mode"}
             className={`inline-flex items-center gap-1.5 rounded-full px-2.5 sm:px-3 h-7 text-xs font-medium whitespace-nowrap transition-colors ${
               active ? "text-white" : "text-white/45 hover:text-white/75"
             }`}

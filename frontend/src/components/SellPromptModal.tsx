@@ -1980,7 +1980,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Upload, Image, Video, FileX, Check } from "lucide-react";
+import { Upload, Image, Video, FileX, Code2, Link2, FileCode, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { getPromptCategories, clearPromptCategories } from "@/lib/sellerPrefetch";
@@ -2004,6 +2004,37 @@ const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").repla
    server/routes/promptRoutes.js. */
 const MAX_ATTACHMENT_MB = 100;
 const MAX_ATTACHMENT_BYTES = MAX_ATTACHMENT_MB * 1024 * 1024;
+
+/* ── CODE ATTACHMENTS ──────────────────────────────────────────────────────
+   All three ceilings mirror utils/promptCode.js on the server, which is where
+   they are enforced. Repeated here so a rejection happens in the form, next to
+   the field that caused it, instead of arriving as a toast after the whole
+   upload has been sent — the same reason MAX_ATTACHMENT_MB above is duplicated.
+   Change one, change both. */
+const MAX_CODE_ITEMS = 10;
+const MAX_CODE_FILE_MB = 10;
+const MAX_CODE_FILE_BYTES = MAX_CODE_FILE_MB * 1024 * 1024;
+const MAX_INLINE_CHARS = 100_000;
+
+type CodeLanguage = { id: string; label: string; ext: string };
+
+/* One attached piece of code, in the form's own shape.
+ *
+ * `id` is a client-only key for React and for the remove button — it is never
+ * sent. Everything else maps onto the server's CodeAssetSchema, except that a
+ * "file" here holds the real File object and only becomes a URL after the
+ * upload. */
+type CodeItem =
+  | { id: string; kind: "inline"; language: string; filename: string; content: string }
+  | { id: string; kind: "file"; file: File }
+  | { id: string; kind: "link"; url: string; filename: string };
+
+/* Counter rather than Date.now() or Math.random(): two items added inside the
+   same millisecond would collide on a timestamp, and a random key that changes
+   identity across renders makes React remount the textarea and lose the
+   cursor. */
+let codeItemSeq = 0;
+const nextCodeItemId = () => `code-${++codeItemSeq}`;
 
 export default function SellPromptModal({
   onPromptSubmitted,
@@ -2031,11 +2062,21 @@ export default function SellPromptModal({
   const [tags, setTags] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<File[]>([]);
 
-  const [codeFile, setCodeFile] = useState<File | null>(null);
-  const [progress, setProgress] = useState(0);
-  const [success, setSuccess] = useState(false);
+  /* Code attachments.
+   *
+   * This replaces a single `codeFile` and a progress bar that was driven by
+   * setInterval — it counted 0→100% and announced "Upload successful!" without
+   * making a request, while the real upload only happened on submit. A seller
+   * who saw that message and then pressed Cancel had uploaded nothing.
+   *
+   * `codeEnabled` is a deliberate toggle rather than `category === "coding"`,
+   * which is what gated the old section: automation, data and design prompts
+   * ship code too, and a seller in one of those categories had no way to attach
+   * any. Picking Coding turns it on as a default, not as a rule. */
+  const [codeEnabled, setCodeEnabled] = useState(false);
+  const [codeItems, setCodeItems] = useState<CodeItem[]>([]);
+  const [codeLanguages, setCodeLanguages] = useState<CodeLanguage[]>([]);
   const [uploading, setUploading] = useState(false);
-  const uploadTimerRef = useRef<number | null>(null);
 
   const { toast } = useToast();
   const { token } = useAuth?.() || ({} as any);
@@ -2098,24 +2139,47 @@ export default function SellPromptModal({
     [categories]
   );
 
+  /* Coding suggests the section, it doesn't own it.
+   *
+   * Only ever turns the toggle ON, and only while nothing has been attached —
+   * switching away from Coding used to wipe the code the seller had already
+   * added, silently, which is the wrong way round: the seller chose to attach
+   * it, and a category change is not a request to throw it away. */
   useEffect(() => {
-    if (!isCodingCategory) {
-      setCodeFile(null);
-      setProgress(0);
-      setSuccess(false);
-      setUploading(false);
-      if (uploadTimerRef.current) {
-        window.clearInterval(uploadTimerRef.current);
-        uploadTimerRef.current = null;
-      }
-    }
+    if (isCodingCategory) setCodeEnabled(true);
   }, [isCodingCategory]);
 
+  /* The language list lives on the server (utils/promptCode.js) because that is
+     where an unrecognised value gets rewritten to "other". Fetching it means the
+     picker can only ever offer ids the server accepts.
+
+     A failure is survivable and deliberately not surfaced: the select falls back
+     to a single "Other" entry, which is a real, valid language id — the seller
+     can still paste and upload, they just can't label it. Blocking the whole
+     code section over a cosmetic list would be worse. */
   useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/prompt/code-languages`);
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled && data?.success && Array.isArray(data.languages)) {
+          setCodeLanguages(data.languages);
+        }
+      } catch {
+        // See above — the fallback below covers it.
+      }
+    })();
+
     return () => {
-      if (uploadTimerRef.current) window.clearInterval(uploadTimerRef.current);
+      cancelled = true;
     };
-  }, []);
+  }, [open]);
+
+  const languageOptions: CodeLanguage[] =
+    codeLanguages.length ? codeLanguages : [{ id: "other", label: "Other", ext: ".txt" }];
 
   // ✅ FIX: reusable loader + retry support
   // Served from the prefetch cache, which the header warms as soon as the user
@@ -2229,6 +2293,86 @@ export default function SellPromptModal({
 
   const removeAttachment = (i: number) => setAttachments((p) => p.filter((_, idx) => idx !== i));
 
+  /* ── Code items ─────────────────────────────────────────────────────────── */
+
+  /* Guarded in one place rather than at each of the three call sites, so the
+     "Add" buttons and the file picker can't disagree about the ceiling. Returns
+     false when the item was refused, so a multi-file pick knows to stop rather
+     than firing one toast per remaining file. */
+  const addCodeItem = (item: CodeItem): boolean => {
+    let added = false;
+    setCodeItems((prev) => {
+      if (prev.length >= MAX_CODE_ITEMS) return prev;
+      added = true;
+      return [...prev, item];
+    });
+
+    if (!added) {
+      toast({
+        title: "That's the limit",
+        description: `A product can carry at most ${MAX_CODE_ITEMS} code items.`,
+      });
+    }
+    return added;
+  };
+
+  const addSnippet = () =>
+    addCodeItem({
+      id: nextCodeItemId(),
+      kind: "inline",
+      // Whatever the picker offers first — "javascript" in practice, "other" if
+      // the language list failed to load.
+      language: languageOptions[0].id,
+      filename: "",
+      content: "",
+    });
+
+  const addLink = () =>
+    addCodeItem({ id: nextCodeItemId(), kind: "link", url: "", filename: "" });
+
+  const handleCodeFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    for (const file of Array.from(e.target.files || [])) {
+      if (file.size > MAX_CODE_FILE_BYTES) {
+        toast({
+          title: "Code file too large",
+          description: `"${file.name}" is over ${MAX_CODE_FILE_MB}MB. A big project travels better as a .zip of just the source.`,
+        });
+        continue;
+      }
+      /* The extension whitelist itself stays on the server — a second copy here
+         is a second list to keep in step, and the picker's `accept` steers the
+         common case anyway. A type that slips through comes back as
+         `unsupported_code_file` naming the file. */
+      if (!addCodeItem({ id: nextCodeItemId(), kind: "file", file })) break;
+    }
+    // Lets the same file be picked again after being removed — without this the
+    // input's value is unchanged and onChange never fires a second time.
+    e.target.value = "";
+  };
+
+  const updateCodeItem = (id: string, patch: Record<string, unknown>) =>
+    setCodeItems((prev) => prev.map((c) => (c.id === id ? ({ ...c, ...patch } as CodeItem) : c)));
+
+  const removeCodeItem = (id: string) => setCodeItems((prev) => prev.filter((c) => c.id !== id));
+
+  /* Everything the seller actually filled in.
+     An empty snippet or blank link is the "Add" button's own placeholder, not a
+     mistake worth refusing an upload over — the server drops these too. What is
+     refused is a row filled in wrongly, which is the two checks below. */
+  const codeItemsToSend = codeEnabled
+    ? codeItems.filter((c) =>
+        c.kind === "inline" ? c.content.trim() : c.kind === "link" ? c.url.trim() : true
+      )
+    : [];
+
+  const badLink = codeItemsToSend.find(
+    (c) => c.kind === "link" && !/^https?:\/\/.+/i.test(c.url.trim())
+  );
+
+  const oversizeSnippet = codeItemsToSend.find(
+    (c) => c.kind === "inline" && c.content.length > MAX_INLINE_CHARS
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -2242,6 +2386,24 @@ export default function SellPromptModal({
 
     if (attachments.length === 0) {
       toast({ title: "Attachment required", description: "Please upload one image or video." });
+      return;
+    }
+
+    /* Caught here rather than server-side so the seller isn't told about a typo
+       in a URL only after a 100MB video has finished uploading. */
+    if (badLink) {
+      toast({
+        title: "Check that link",
+        description: "Repository links need to start with http:// or https://",
+      });
+      return;
+    }
+
+    if (oversizeSnippet) {
+      toast({
+        title: "Snippet too long",
+        description: `Pasted code is capped at ${MAX_INLINE_CHARS / 1000}k characters — attach that one as a file instead.`,
+      });
       return;
     }
 
@@ -2284,7 +2446,30 @@ export default function SellPromptModal({
       if (subCategory) fd.append("subCategories", subCategory);
       if (oneTimeSale) fd.append("exclusive", "true");
       fd.append("attachment", attachments[0]);
-      if (codeFile) fd.append("uploadCode", codeFile);
+
+      /* Two channels because multipart has only one shape for structured data.
+         Pasted snippets and links go as a single JSON text field; the files go
+         as real parts under `uploadCode` — the field name the single-file
+         version already used, so nothing on the server had to be renamed.
+         collectCodeAssets() puts the two halves back together in order. */
+      const authoredCode = codeItemsToSend
+        .filter((c) => c.kind !== "file")
+        .map((c) =>
+          c.kind === "inline"
+            ? {
+                kind: "inline",
+                language: c.language,
+                filename: c.filename.trim(),
+                content: c.content,
+              }
+            : { kind: "link", url: c.url.trim(), filename: c.filename.trim() }
+        );
+
+      if (authoredCode.length) fd.append("codeAssets", JSON.stringify(authoredCode));
+
+      for (const c of codeItemsToSend) {
+        if (c.kind === "file") fd.append("uploadCode", c.file);
+      }
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3 * 60 * 1000); // 3 min timeout
@@ -2350,14 +2535,9 @@ export default function SellPromptModal({
       setIsFree(true);
       setTags([]);
       setAttachments([]);
-      setCodeFile(null);
-      setProgress(0);
-      setSuccess(false);
+      setCodeEnabled(false);
+      setCodeItems([]);
       setUploading(false);
-      if (uploadTimerRef.current) {
-        window.clearInterval(uploadTimerRef.current);
-        uploadTimerRef.current = null;
-      }
       setOpen(false);
     } catch (err: any) {
       setUploading(false);
@@ -2370,6 +2550,15 @@ export default function SellPromptModal({
 
   const attachRef = useRef<HTMLInputElement>(null);
   const codeRef = useRef<HTMLInputElement>(null);
+
+  /* What the file picker offers by default. Not a security boundary — `accept`
+     is a hint the OS dialog can be talked out of, and the real whitelist is
+     isAllowedCodeFile() on the server. This just stops the dialog defaulting to
+     "All files" and showing the seller their photo library. */
+  const CODE_FILE_ACCEPT =
+    ".js,.mjs,.cjs,.jsx,.ts,.tsx,.vue,.svelte,.py,.ipynb,.rb,.go,.rs,.java,.kt,.swift," +
+    ".c,.h,.cc,.cpp,.hpp,.cs,.php,.scala,.dart,.sh,.bash,.ps1,.sql,.r,.lua," +
+    ".html,.css,.scss,.json,.yaml,.yml,.toml,.xml,.md,.txt,.csv,.sol,.tf,.zip,.tar,.gz";
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -2612,82 +2801,211 @@ export default function SellPromptModal({
             )}
           </div>
 
-          {isCodingCategory && (
-            <div className="space-y-3">
-              <h3 className="text-base font-semibold">Upload Code</h3>
-              <p className="text-sm text-white/70">Add a new version of your code to the portal. (Optional)</p>
-
-              <div
-                onClick={() => codeRef.current?.click()}
-                className="cursor-pointer rounded-lg border border-dashed border-white/15 bg-transparent p-8 text-center hover:bg-white/[0.03] transition"
-              >
-                <Upload className="mx-auto mb-3 h-5 w-5 text-white/60" />
-                <p className="text-sm text-white/70">Drag &amp; drop or click to select file</p>
-                <input
-                  ref={codeRef}
-                  type="file"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] || null;
-                    setCodeFile(file);
-                    setProgress(0);
-                    setSuccess(false);
-                    setUploading(false);
-                    if (uploadTimerRef.current) {
-                      window.clearInterval(uploadTimerRef.current);
-                      uploadTimerRef.current = null;
-                    }
-                  }}
-                />
+          {/* ── CODE ──────────────────────────────────────────────────────────
+              Was a single file picker behind a fake progress bar, shown only to
+              the Coding category. It is now the second half of the product:
+              pasted snippets are the primary way in (most coding prompts ship
+              one file, and the first twelve lines of the first one become the
+              public teaser), files cover real projects, and a repo link is
+              reference material — never the thing being sold, which is why it
+              says so on the row. */}
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-semibold">Code (Optional)</h3>
+                <p className="mt-1 text-sm text-white/70">
+                  Ship the code your prompt produces. Buyers see the first few lines
+                  before they buy, and the whole thing after.
+                </p>
               </div>
+              <Switch
+                checked={codeEnabled}
+                onCheckedChange={(v) => setCodeEnabled(!!v)}
+                {...switchSkin(codeEnabled)}
+              />
+            </div>
 
-              {codeFile && <p className="text-xs text-white/70">{codeFile.name}</p>}
+            {codeEnabled && (
+              <div className="space-y-3 rounded-lg border border-white/10 bg-white/[0.02] p-4">
+                {codeItems.length === 0 && (
+                  <p className="text-sm text-white/50">
+                    Nothing attached yet — paste a snippet, or upload the files.
+                  </p>
+                )}
 
-              <div className="flex flex-col gap-3">
-                <Button
-                  className="w-full rounded-xl px-4 py-3 text-sm font-medium text-white shadow-md"
-                  style={{ backgroundImage: GRAD }}
-                  type="button"
-                  disabled={!codeFile || uploading}
-                  onClick={() => {
-                    if (!codeFile || uploading) return;
-                    setSuccess(false);
-                    setProgress(0);
-                    setUploading(true);
-                    if (uploadTimerRef.current) window.clearInterval(uploadTimerRef.current);
-                    uploadTimerRef.current = window.setInterval(() => {
-                      setProgress((p) => {
-                        const next = Math.min(p + 10, 100);
-                        if (next === 100) {
-                          if (uploadTimerRef.current) window.clearInterval(uploadTimerRef.current);
-                          uploadTimerRef.current = null;
-                          setUploading(false);
-                          setSuccess(true);
-                        }
-                        return next;
-                      });
-                    }, 200);
-                  }}
-                >
-                  {uploading ? "Uploading…" : "Upload Code"}
-                </Button>
+                {codeItems.map((item, index) => (
+                  <div
+                    key={item.id}
+                    className="space-y-2.5 rounded-lg border border-white/10 bg-[#131419] p-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="inline-flex items-center gap-2 text-xs font-medium text-white/60">
+                        {item.kind === "inline" ? (
+                          <Code2 className="h-3.5 w-3.5" />
+                        ) : item.kind === "file" ? (
+                          <FileCode className="h-3.5 w-3.5" />
+                        ) : (
+                          <Link2 className="h-3.5 w-3.5" />
+                        )}
+                        {item.kind === "inline"
+                          ? "Snippet"
+                          : item.kind === "file"
+                            ? "File"
+                            : "Repository link"}
+                        {/* Says which one is the teaser, at the moment the
+                            seller can still reorder it by deleting and
+                            re-pasting. Without this the choice of preview looks
+                            arbitrary once the listing is live. */}
+                        {index === 0 && item.kind === "inline" && (
+                          <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/50">
+                            PREVIEWED
+                          </span>
+                        )}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeCodeItem(item.id)}
+                        className="h-7 text-red-500 hover:text-red-600"
+                      >
+                        <FileX className="h-4 w-4" />
+                      </Button>
+                    </div>
 
-                <div className="w-full">
-                  <div className="h-1.5 w-full rounded-full bg-white/10">
-                    <div className="h-1.5 rounded-full" style={{ width: `${progress}%`, backgroundImage: GRAD }} />
+                    {item.kind === "inline" && (
+                      <>
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <Select
+                            value={item.language}
+                            onValueChange={(v) => updateCodeItem(item.id, { language: v })}
+                          >
+                            <SelectTrigger className={`${fieldBase} sm:w-[190px]`}>
+                              <SelectValue placeholder="Language" />
+                            </SelectTrigger>
+                            <SelectContent className="z-[1200] bg-[#131419] text-white border-white/10">
+                              {languageOptions.map((l) => (
+                                <SelectItem key={l.id} value={l.id}>
+                                  {l.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            value={item.filename}
+                            onChange={(e) => updateCodeItem(item.id, { filename: e.target.value })}
+                            placeholder="File name (optional) — e.g. scraper.py"
+                            className={`${fieldBase} flex-1`}
+                          />
+                        </div>
+                        <Textarea
+                          value={item.content}
+                          onChange={(e) => updateCodeItem(item.id, { content: e.target.value })}
+                          placeholder="Paste your code here…"
+                          rows={8}
+                          /* Monospace and no spellcheck: this is source, and the
+                             browser underlining every identifier in red makes it
+                             unreadable. */
+                          spellCheck={false}
+                          className={`${textareaBase} p-3 font-mono text-[13px] leading-relaxed`}
+                        />
+                        <div className="flex justify-between text-[11px] text-white/40">
+                          <span>{item.content.split("\n").length} lines</span>
+                          <span
+                            className={
+                              item.content.length > MAX_INLINE_CHARS ? "text-red-400" : undefined
+                            }
+                          >
+                            {item.content.length.toLocaleString()} / {MAX_INLINE_CHARS.toLocaleString()}
+                          </span>
+                        </div>
+                      </>
+                    )}
+
+                    {item.kind === "file" && (
+                      <p className="text-sm text-white/75">
+                        {item.file.name}
+                        <span className="ml-2 text-xs text-white/45">
+                          {formatFileSize(item.file.size)}
+                        </span>
+                      </p>
+                    )}
+
+                    {item.kind === "link" && (
+                      <>
+                        <Input
+                          value={item.url}
+                          onChange={(e) => updateCodeItem(item.id, { url: e.target.value })}
+                          placeholder="https://github.com/you/your-repo"
+                          className={fieldBase}
+                        />
+                        <Input
+                          value={item.filename}
+                          onChange={(e) => updateCodeItem(item.id, { filename: e.target.value })}
+                          placeholder="Label (optional) — e.g. Full source on GitHub"
+                          className={fieldBase}
+                        />
+                        {/* The one thing a seller has to understand about links:
+                            a repo they later make private leaves the buyer with
+                            nothing, and us with the refund. */}
+                        <p className="text-[11px] leading-relaxed text-amber-300/70">
+                          Links are shown as a reference. Anything the buyer is paying
+                          for should be pasted or uploaded — a repo that goes private
+                          later takes the product with it.
+                        </p>
+                      </>
+                    )}
                   </div>
-                  <div className="mt-1 text-right text-xs text-white/70">{progress}%</div>
+                ))}
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addSnippet}
+                    className="rounded-lg border-white/15 bg-transparent text-white/85 hover:bg-white/5 hover:text-white"
+                  >
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    Paste snippet
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => codeRef.current?.click()}
+                    className="rounded-lg border-white/15 bg-transparent text-white/85 hover:bg-white/5 hover:text-white"
+                  >
+                    <Upload className="mr-1.5 h-3.5 w-3.5" />
+                    Upload files
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addLink}
+                    className="rounded-lg border-white/15 bg-transparent text-white/85 hover:bg-white/5 hover:text-white"
+                  >
+                    <Link2 className="mr-1.5 h-3.5 w-3.5" />
+                    Add repo link
+                  </Button>
+
+                  <input
+                    ref={codeRef}
+                    type="file"
+                    multiple
+                    accept={CODE_FILE_ACCEPT}
+                    className="hidden"
+                    onChange={handleCodeFiles}
+                  />
                 </div>
 
-                {success && progress === 100 && (
-                  <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-emerald-300">
-                    <Check className="h-4 w-4" />
-                    <span className="text-sm">Upload successful!</span>
-                  </div>
-                )}
+                <p className="text-[11px] text-white/40">
+                  Up to {MAX_CODE_ITEMS} items · {MAX_CODE_FILE_MB}MB per file
+                </p>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           <div className="flex items-center justify-end gap-3 pt-2">
             {/* hover:text-white is load-bearing, not decoration.

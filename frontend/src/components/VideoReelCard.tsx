@@ -11,10 +11,12 @@ import React, { useEffect, useRef, useState } from "react";
    import, so pages that already have it are unaffected. */
 import "@/pages/PromptMarketplace.css";
 import { useCart } from "@/contexts/CartContext";
-import { ShoppingCart, Lock, Check } from "lucide-react";
+import { ShoppingCart, Lock, Check, Code2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { isTeamMember } from "@/lib/orgRoles";
 import { StarRating } from "@/components/StarRating";
+// Shared with the details panel so a language is spelled the same in both.
+import { codeLanguageLabel } from "@/components/PromptCodePanel";
 
 /* ---------- author initials (UI only) ---------- */
 export const authorInitials = (name?: string) =>
@@ -215,6 +217,26 @@ export default function VideoReelCard({
           </span>
         )}
       </div>
+
+      {/* Code included — the single most useful thing to know about a coding
+          product before opening it, and until now invisible everywhere: a
+          listing with three source files looked identical to a prompt-only one.
+          `codeMeta` is the public summary, so this costs no extra request. */}
+      {prompt.code?.hasCode && (
+        <span
+          className="reel-card__code"
+          title={
+            prompt.code.files?.length
+              ? prompt.code.files.map((f) => f.filename).join(", ")
+              : undefined
+          }
+        >
+          <Code2 />
+          {prompt.code.languages?.length
+            ? prompt.code.languages.map(codeLanguageLabel).join(" · ").toUpperCase()
+            : "CODE"}
+        </span>
+      )}
 
       {/* Bottom overlay.
           No title here — it's the first thing the details modal shows, and on

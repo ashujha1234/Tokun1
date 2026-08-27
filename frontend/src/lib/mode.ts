@@ -25,7 +25,23 @@ export const MODE_UI_ENABLED = true;
 
 export type AppMode = "buyer" | "creator";
 
+/**
+ * Where someone starts, when they have never touched the toggle.
+ *
+ * TWO DEFAULTS, because the two audiences are asking different questions.
+ *
+ * A signed-in account is overwhelmingly a buyer — most people never list
+ * anything — so an Upload button and no cart is the wrong first screen for them.
+ *
+ * A signed-out VISITOR is not a buyer yet; they are deciding what this product
+ * is. Selling is half of the answer and the landing page is the only place they
+ * will be told, so they start on the Creator side with Upload Product on the
+ * bar. It is not a promise they can act on without an account — pressing it goes
+ * to login through the same gate as everywhere else (see UploadProductButton) —
+ * but it is the half of the story that was previously invisible.
+ */
 export const DEFAULT_MODE: AppMode = "buyer";
+export const SIGNED_OUT_DEFAULT_MODE: AppMode = "creator";
 
 /* Read and written through userScopedStorage's owner check, and listed in its
    USER_SCOPED_KEYS — on a shared browser the next person to sign in must not

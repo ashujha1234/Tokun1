@@ -1038,6 +1038,7 @@ import { isTeamMember as isTeamMemberUser, isOrgOwner } from "@/lib/orgRoles";
 import ProductReviews from "@/components/ProductReviews";
 import { StarRating } from "@/components/StarRating";
 import SaveButton from "@/components/SaveButton";
+import PromptCodePanel, { type PromptCodeMeta } from "@/components/PromptCodePanel";
 
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 const PURCHASE_BASE = `${API_BASE}/api/purchase`;
@@ -1056,6 +1057,13 @@ export interface MarketplacePrompt {
   videoUrl?: string;
   imageUrl?: string;
   fullPrompt?: string;
+  /**
+   * The public summary of the listing's attached code (Prompt.codeMeta) — file
+   * names, languages and a teaser the server already truncated. Absent on the
+   * many listings that are prompt-only, and never the source itself: that lives
+   * behind GET /api/prompt/:id/code and is fetched by PromptCodePanel.
+   */
+  code?: PromptCodeMeta;
 
   uploaderId?: string;
   ownerEmail?: string;
@@ -1620,6 +1628,21 @@ const soldOut = !!prompt?.exclusive && !!prompt?.sold;
                 </p>
               </div>
             )}
+
+            {/* The second half of a coding product, sitting directly under the
+                prompt text it goes with. Renders nothing when the listing has
+                no code attached, and decides its own locked/unlocked state — see
+                PromptCodePanel. `isOwnPrompt || owned` matches the block above
+                so the seller previewing their own listing sees what they
+                uploaded rather than the buyer's teaser. */}
+            <PromptCodePanel
+              promptId={String(prompt.id)}
+              code={prompt.code}
+              owned={isOwnPrompt || owned}
+              // No money changed hands, so there is no refund for the note
+              // inside to have terms about.
+              isFree={isFreeListing}
+            />
 
             {/* Green tick features */}
             <div className="mt-8 space-y-3">

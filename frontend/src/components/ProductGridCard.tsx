@@ -17,9 +17,10 @@
  */
 
 import { useRef } from "react";
-import { Trash, Pencil, Users, RotateCcw } from "lucide-react";
+import { Trash, Pencil, Users, RotateCcw, Code2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { StarRating } from "@/components/StarRating";
+import { codeLanguageLabel } from "@/components/PromptCodePanel";
 import "@/pages/PromptMarketplace.css";
 
 /** The AI/admin review state of an upload, as a badge. Sellers only. */
@@ -248,6 +249,24 @@ export default function ProductGridCard({
           )
         )}
       </div>
+
+      {/* Same chip as the marketplace card — a product you own looks like the
+          same product you bought it as. */}
+      {prompt.code?.hasCode && (
+        <span
+          className="reel-card__code"
+          title={
+            prompt.code.files?.length
+              ? prompt.code.files.map((f: any) => f.filename).join(", ")
+              : undefined
+          }
+        >
+          <Code2 />
+          {prompt.code.languages?.length
+            ? prompt.code.languages.map(codeLanguageLabel).join(" · ").toUpperCase()
+            : "CODE"}
+        </span>
+      )}
 
       <div className="reel-card__bottom">
         <div className="reel-card__bottom-top">

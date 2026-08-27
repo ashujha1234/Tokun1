@@ -26,6 +26,56 @@ const AttachmentSchema = new mongoose.Schema({
 });
 
 
+/* One piece of code attached to a listing.
+ *
+ * Three shapes behind one schema, because they are three ways of delivering the
+ * same thing and every reader wants them in one list:
+ *
+ *   inline  the seller pasted it. `content` holds the source; this is the only
+ *           kind the public teaser can be cut from.
+ *   file    the seller uploaded it. `url` is an Azure blob.
+ *   link    a repo/sandbox URL. Reference material, NOT the paid deliverable —
+ *           the modal says so, because a repo that goes private later leaves the
+ *           buyer with nothing and us with the refund.
+ *
+ * Separate from `uploadCode` below rather than replacing it: that field is what
+ * every purchase made before this shipped copied into its snapshot, and rewriting
+ * it would rewrite what those buyers own. New uploads write both — `uploadCode`
+ * keeps the file entries so the existing purchase path is untouched, `codeAssets`
+ * is the complete record.
+ */
+const CodeAssetSchema = new mongoose.Schema({
+  kind: { type: String, enum: ["inline", "file", "link"], required: true },
+  language: { type: String, default: "other" },
+  filename: { type: String, default: "" },
+  content: { type: String, default: "" },
+  url: { type: String, default: "" },
+  mimetype: { type: String, default: "" },
+  size: { type: Number, default: 0 },
+}, { _id: false });
+
+/* The public half of the above — see the header of utils/promptCode.js for why
+   the split exists. Everything here is safe on an unauthenticated read; `preview`
+   is already cut to a fixed number of lines by the time it is written. */
+const CodeMetaSchema = new mongoose.Schema({
+  hasCode: { type: Boolean, default: false },
+  languages: [String],
+  inlineCount: { type: Number, default: 0 },
+  fileCount: { type: Number, default: 0 },
+  linkCount: { type: Number, default: 0 },
+  totalLines: { type: Number, default: 0 },
+  preview: { type: String, default: "" },
+  previewLanguage: { type: String, default: "" },
+  previewTruncated: { type: Boolean, default: false },
+  files: [{
+    kind: String,
+    filename: String,
+    language: String,
+    size: Number,
+    _id: false,
+  }],
+}, { _id: false });
+
 const ratingSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   rating: { type: Number, required: true, min: 1, max: 5 },
@@ -128,6 +178,19 @@ const PromptSchema = new mongoose.Schema(
       type: [AttachmentSchema], // array of attachments
       default: [], // empty array if none
     },
+
+    /* The code the buyer pays for — pasted snippets, uploaded files and repo
+       links, in the order the seller attached them. PAID CONTENT: listed in
+       PUBLIC_PROMPT_EXCLUDED_FIELDS and served only by GET /api/prompt/:id/code,
+       which checks for a purchase first. Empty on every listing uploaded before
+       this existed, which reads as "this product has no code" — correct, since
+       those sellers had no way to attach any beyond a bare file. */
+    codeAssets: { type: [CodeAssetSchema], default: [] },
+
+    /* The shop window for the above: languages, file names, sizes and a
+       twelve-line teaser. Public on purpose, and derived — never written by a
+       client. Rebuilt by buildCodeMeta() whenever codeAssets changes. */
+    codeMeta: { type: CodeMetaSchema, default: () => ({}) },
 
 
       // Soft delete

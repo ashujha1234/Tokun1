@@ -655,6 +655,12 @@ const Notification = require("../models/Notification");
 const uploadToAzure = require("../utils/uploadToAzure");
 const Category = require("../models/Category");
 const BankAccount = require("../models/BankAccount");
+// Both read only by GET /:id/code, to answer "did this member's ORGANIZATION buy
+// it?" the same way promptCollab.js does for promptText.
+const SharedPrompt = require("../models/SharedPrompt");
+// Lowercase filename on disk — matters on a case-sensitive filesystem, which is
+// what this runs on in production even though macOS forgives it.
+const Organization = require("../models/organization");
 const { requireAuth, blockIfSuspended } = require("../utils/auth");
 const { logActivity } = require("../utils/activityLogger");
 const { runPromptMediaValidation } = require("../utils/promptMediaValidation");
@@ -663,6 +669,16 @@ const {
   excludeSoldOut,
   PUBLIC_PROMPT_PROJECTION,
 } = require("../utils/promptVisibility");
+const {
+  MAX_CODE_ASSETS,
+  MAX_CODE_FILE_MB,
+  MAX_CODE_FILE_BYTES,
+  CODE_LANGUAGES,
+  isAllowedCodeFile,
+  languageFromFilename,
+  normalizeAuthoredCodeAssets,
+  buildCodeMeta,
+} = require("../utils/promptCode");
 
 /**
  * Puts `promptText` back on the free listings in a public payload, in place.
@@ -763,6 +779,88 @@ async function screenImageUpload(buffer, { excludeId } = {}) {
 
   return { phash, rejection: null };
 }
+
+/**
+ * Every code attachment on one upload, from both places they arrive.
+ *
+ * The pasted snippets and repo links come up as one JSON text field
+ * (`codeAssets`) because multipart has no way to send an array of objects; the
+ * files come up as real parts under `uploadCode`, the field name the old
+ * single-file version already used, so an older client still works.
+ *
+ * Order matters and is preserved: the seller's first item is the one the public
+ * teaser gets cut from, and the one the viewer opens on. Files are appended
+ * after the authored entries rather than interleaved, since multipart gives no
+ * way to know where in the list a given part belonged.
+ *
+ * Validation happens BEFORE anything is uploaded to Azure — a rejected listing
+ * must not leave blobs behind, the same rule the image screening follows.
+ *
+ * Returns `{ assets }`, or `{ error, message }` to be sent straight back as 400.
+ */
+async function collectCodeAssets(req) {
+  const authored = normalizeAuthoredCodeAssets(req.body?.codeAssets);
+  if (authored.error) return authored;
+
+  const files = req.files?.uploadCode || [];
+
+  if (authored.assets.length + files.length > MAX_CODE_ASSETS) {
+    return {
+      error: "too_many_code_assets",
+      message: `You can attach at most ${MAX_CODE_ASSETS} code items to one product.`,
+    };
+  }
+
+  /* Checked in full before the first upload starts. Rejecting on file three
+     after two have already been written would leave two orphans in the
+     container that nothing will ever reference or clean up. */
+  for (const f of files) {
+    if (!isAllowedCodeFile(f.originalname)) {
+      return {
+        error: "unsupported_code_file",
+        message: `"${f.originalname}" isn't a supported code file. Attach source files, notebooks, or a .zip.`,
+      };
+    }
+    if (f.size > MAX_CODE_FILE_BYTES) {
+      return {
+        error: "code_file_too_large",
+        message: `"${f.originalname}" is over the ${MAX_CODE_FILE_MB}MB limit for code files.`,
+      };
+    }
+  }
+
+  const assets = [...authored.assets];
+
+  for (const f of files) {
+    const url = await uploadToAzure(f.buffer, f.originalname, "prompt-code");
+    assets.push({
+      kind: "file",
+      language: languageFromFilename(f.originalname),
+      filename: f.originalname,
+      content: "",
+      url,
+      mimetype: f.mimetype,
+      size: f.size,
+    });
+  }
+
+  return { assets };
+}
+
+/* The file entries only, in the shape the pre-codeAssets `uploadCode` array
+   used. Written alongside codeAssets so the purchase snapshot
+   (purchaseRoutes.js) and the collab routes keep seeing exactly what they always
+   saw; nothing that reads uploadCode had to change. */
+const toLegacyUploadCode = (assets) =>
+  assets
+    .filter((a) => a.kind === "file")
+    .map((a) => ({
+      filename: a.filename,
+      path: a.url,
+      mimetype: a.mimetype,
+      size: a.size,
+      type: "other",
+    }));
 
 async function watermarkImage(buffer) {
   const meta = await sharp(buffer).metadata();
@@ -939,26 +1037,15 @@ router.post(
         type: fileType,
       };
 
-      /* ================= UPLOAD CODE (OPTIONAL) ================= */
-      let uploadCode = [];
-
-      if (req.files.uploadCode?.length) {
-        for (const f of req.files.uploadCode) {
-          const codeUrl = await uploadToAzure(
-            f.buffer,
-            f.originalname,
-            "prompt-code"
-          );
-
-          uploadCode.push({
-            filename: f.originalname,
-            path: codeUrl,
-            mimetype: f.mimetype,
-            size: f.size,
-            type: "other",
-          });
-        }
+      /* ================= CODE (OPTIONAL) ================= */
+      const collected = await collectCodeAssets(req);
+      if (collected.error) {
+        return res.status(400).json({ success: false, ...collected });
       }
+
+      const codeAssets = collected.assets;
+      const codeMeta = buildCodeMeta(codeAssets);
+      const uploadCode = toLegacyUploadCode(codeAssets);
 
       /* ================= CATEGORIES ================= */
       /* Scoped to the top level of the PROMPT tree.
@@ -1041,6 +1128,8 @@ router.post(
         subCategories: subCategoryIds,
         attachment,
         uploadCode,
+        codeAssets,
+        codeMeta,
         promptHash,
         attachmentHash,
         attachmentPhash,
@@ -1823,6 +1912,239 @@ router.get("/by-seller/:sellerId", async (req, res) => {
     console.error("GET /api/prompt/by-seller/:sellerId error:", err);
     return res.status(500).json({ success: false, error: "Server error" });
   }
+});
+
+/* =====================================================================
+   GET /:id/code — the code a buyer paid for
+
+   The one door to `codeAssets`. Every public read strips that field
+   (PUBLIC_PROMPT_EXCLUDED_FIELDS), so this route is where the entitlement is
+   actually decided rather than in four different panels' render logic.
+
+   FOUR WAYS TO BE ENTITLED, and no others:
+     1. you uploaded it
+     2. you bought it (SUCCESS, and not refunded — a refund gives the product
+        back, so it takes the code back with it)
+     3. it is a free listing, which gives its promptText away already; withholding
+        the code half of a free product would be withholding nothing anybody paid
+        for
+     4. your organization bought it and shared it with you — the same rule
+        promptCollab.js applies to promptText, because a team member who can read
+        the prompt and not the code has half a product
+
+   NOTE ON THE FILE URLS: the entries this returns carry Azure blob URLs, and
+   that container is created with `access: "container"` (utils/uploadToAzure.js)
+   — the URL *is* the credential. Gating this route stops the URLs being handed
+   to strangers, which is what public reads were doing; it does not stop a buyer
+   from passing one on. Closing that properly means a private container and
+   short-lived SAS URLs minted here, which would also have to migrate the blobs
+   already uploaded. Pasted snippets (`kind: "inline"`) have no URL and are not
+   affected.
+   ===================================================================== */
+/**
+ * Resolves whether `user` may have this listing's code, and finds their purchase.
+ *
+ * Shared by the two code routes below rather than inlined in the read, so the
+ * "I copied it" report cannot be filed by someone who was never entitled to
+ * read it in the first place — an unauthenticated ping would otherwise let
+ * anybody write noise into another buyer's access record.
+ *
+ * Returns `{ status, prompt, purchase }`, where `status` is one of
+ * "ok" | "invalid" | "not_found" | "forbidden".
+ */
+async function resolveCodeEntitlement(id, user) {
+  if (!mongoose.Types.ObjectId.isValid(id)) return { status: "invalid" };
+
+  /* No visibility filter at all, on purpose — not even `deleted`.
+
+     A listing that has been flagged, pulled into review or taken down is still
+     one a buyer paid for, and the moment their code stops opening is the moment
+     a moderation decision turns into a refund request. applyPublicPromptFilter
+     answers "who may BUY this", which is a different question. A deleted listing
+     is handled below by falling back to the buyer's own purchase snapshot. */
+  const prompt = await Prompt.findById(id).select("userId free codeAssets deleted").lean();
+  if (!prompt) return { status: "not_found" };
+
+  const isUploader = String(prompt.userId) === String(user._id);
+
+  /* The whole row, not just `exists`: its snapshot is the fallback source when
+     the live listing has been deleted, and its _id is what the access record is
+     written against. */
+  const purchase = await Purchase.findOne({
+    buyer: user._id,
+    prompt: id,
+    paymentStatus: "SUCCESS",
+    refundStatus: { $ne: "REFUNDED" },
+  })
+    .select("promptSnapshot.codeAssets promptSnapshot.uploadCode")
+    .lean();
+
+  // A deleted listing is only reachable by someone who already owns a copy of
+  // it — offering the seller's own soft-deleted product back to a stranger, or
+  // even to the seller as if it were still live, is not what this is for.
+  if (prompt.deleted && !purchase && !isUploader) return { status: "not_found" };
+
+  let entitled = isUploader || prompt.free === true || !!purchase;
+
+  // Org route, checked last because it is two extra queries and the common case
+  // is answered above.
+  if (!entitled && user.orgId) {
+    const shared = await SharedPrompt.exists({ promptId: id, orgId: user.orgId });
+
+    if (shared) {
+      const org = await Organization.findById(user.orgId)
+        .select("ownerId members.userId")
+        .lean();
+
+      const orgBuyerIds = [org?.ownerId, ...(org?.members || []).map((m) => m.userId)]
+        .filter(Boolean);
+
+      entitled = !!(await Purchase.exists({
+        buyer: { $in: orgBuyerIds },
+        prompt: id,
+        paymentStatus: "SUCCESS",
+        refundStatus: { $ne: "REFUNDED" },
+      }));
+    }
+  }
+
+  if (!entitled) return { status: "forbidden" };
+  return { status: "ok", prompt, purchase, isUploader };
+}
+
+/**
+ * Stamps a read or a take onto the buyer's purchase — see Purchase.codeAccess.
+ *
+ * FIRE AND FORGET, and silent on failure. This is evidence for a refund
+ * decision, not part of the delivery: a buyer who has paid must get their code
+ * even if the bookkeeping write fails, so nothing here is ever awaited by the
+ * response path.
+ *
+ * Skipped entirely when there is no purchase — an uploader looking at their own
+ * listing, or anyone opening a free one, has nothing to refund and so nothing
+ * worth recording about them.
+ */
+function recordCodeAccess(purchaseId, action) {
+  if (!purchaseId) return;
+
+  const now = new Date();
+  const taken = action === "copied" || action === "downloaded";
+  const prefix = taken ? "Taken" : "Viewed";
+
+  Purchase.updateOne(
+    { _id: purchaseId },
+    {
+      // $max, not $set: "first" must survive the second visit. $set would move
+      // the first-access timestamp forward on every read and destroy the one
+      // number the whole record exists to provide.
+      $max: { [`codeAccess.first${prefix}At`]: now },
+      $set: { [`codeAccess.last${prefix}At`]: now },
+      $inc: { [`codeAccess.${taken ? "take" : "view"}Count`]: 1 },
+    }
+  ).catch((err) => console.error("recordCodeAccess failed:", String(purchaseId), err.message));
+}
+
+router.get("/:id/code", requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const gate = await resolveCodeEntitlement(id, req.user);
+
+    if (gate.status === "invalid") {
+      return res.status(400).json({ success: false, error: "invalid_prompt_id" });
+    }
+    if (gate.status === "not_found") {
+      return res.status(404).json({ success: false, error: "prompt_not_found" });
+    }
+    if (gate.status === "forbidden") {
+      return res.status(403).json({
+        success: false,
+        error: "not_purchased",
+        message: "Buy this product to get its code files.",
+      });
+    }
+
+    const { prompt, purchase } = gate;
+
+    /* Live listing first, the buyer's frozen copy only when there is no live
+       listing left. That order is deliberate and matches promptCollab.js: a
+       seller who fixes a bug and re-saves should reach the people who already
+       bought it, and the snapshot is insurance against deletion rather than a
+       second, staler catalogue. */
+    const codeAssets = prompt.deleted
+      ? purchase?.promptSnapshot?.codeAssets || []
+      : prompt.codeAssets || [];
+
+    // Reading is inspection, and it is recorded as exactly that — see the
+    // Purchase.codeAccess comment for why a read is not treated as consumption.
+    recordCodeAccess(purchase?._id, "viewed");
+
+    return res.json({ success: true, codeAssets });
+  } catch (err) {
+    console.error("GET /api/prompt/:id/code error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+/* =====================================================================
+   POST /:id/code/access — "I copied it" / "I downloaded it"
+
+   The buyer's client reports this because the server cannot observe it. A
+   pasted snippet is copied out of the DOM with no request at all, and a file is
+   downloaded straight from its Azure blob URL — neither passes through here, so
+   the take can only be reported, never intercepted.
+
+   WHICH MEANS IT IS DEFEATABLE, and knowingly so: a buyer who blocks this one
+   request keeps the code with a clean record. It is not a lock and nothing is
+   withheld on the strength of it. What it buys is the ordinary case — the vast
+   majority of takes are honest button presses — and an admin timeline that
+   distinguishes "downloaded, then asked for the money back four minutes later"
+   from "downloaded, tried it, came back six hours later because a dependency is
+   missing". The refund is still decided on the reason. This makes the reason
+   checkable.
+   ===================================================================== */
+router.post("/:id/code/access", requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const action = String(req.body?.action || "");
+
+    if (action !== "copied" && action !== "downloaded") {
+      return res.status(400).json({ success: false, error: "invalid_action" });
+    }
+
+    /* The same gate as the read. Without it, anyone with a session could stamp
+       "downloaded" onto a purchase that isn't theirs — and since these numbers
+       are read by an admin deciding a refund, that is a way to poison someone
+       else's case. */
+    const gate = await resolveCodeEntitlement(id, req.user);
+    if (gate.status !== "ok") {
+      return res.status(gate.status === "forbidden" ? 403 : 404).json({
+        success: false,
+        error: gate.status === "forbidden" ? "not_purchased" : "prompt_not_found",
+      });
+    }
+
+    recordCodeAccess(gate.purchase?._id, action);
+
+    // 202: accepted, and deliberately says nothing about whether it was written.
+    // The client has no decision to make either way and must never block a copy
+    // or a download on this call succeeding.
+    return res.status(202).json({ success: true });
+  } catch (err) {
+    console.error("POST /api/prompt/:id/code/access error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+/* =====================================================================
+   GET /code-languages — the picker's options
+
+   Served rather than duplicated in the client so the seller can never choose a
+   value normalizeLanguage() will quietly rewrite to "other". Static, public, and
+   safe to cache hard.
+   ===================================================================== */
+router.get("/code-languages", (_req, res) => {
+  res.set("Cache-Control", "public, max-age=86400");
+  return res.json({ success: true, languages: CODE_LANGUAGES });
 });
 
 /* =====================================================================
