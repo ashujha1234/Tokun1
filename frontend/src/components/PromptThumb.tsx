@@ -38,7 +38,7 @@ export default function PromptThumb({
   }
 
   return (
-    <img
+    <img loading="lazy" decoding="async"
       src={src as string}
       alt={alt}
       onError={() => setFailed(true)}

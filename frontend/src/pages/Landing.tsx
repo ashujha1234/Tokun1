@@ -13527,7 +13527,7 @@ function WhatWeOffer() {
                       tool with one picture — see TOOL_TABS. */}
                   <span className="offer-card__icon">
                     {offer.iconSrc ? (
-                      <img
+                      <img loading="lazy" decoding="async"
                         src={offer.iconSrc}
                         alt=""
                         aria-hidden="true"
@@ -13844,7 +13844,7 @@ function TestimonialCard({ item }) {
       <p className="t-marquee-card__quote">{item.quote}</p>
       <footer className="t-marquee-card__author">
         {item.profilePicture ? (
-          <img
+          <img loading="lazy" decoding="async"
             src={`${API_BASE}${item.profilePicture}`}
             alt={item.name}
             className="t-marquee-card__avatar"
@@ -14793,7 +14793,7 @@ function ToolRail() {
                 boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.2)',
               }}
             >
-              <img
+              <img loading="lazy" decoding="async"
                 src={tab.iconSrc}
                 alt=""
                 aria-hidden="true"

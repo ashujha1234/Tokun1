@@ -5895,8 +5895,15 @@ const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").repla
 const PROMPTS_BASE = `${API_BASE}/api/prompt`;
 const PURCHASE_BASE = `${API_BASE}/api/purchase`;
 
-// ⚠️ Keep your real Razorpay key id in env:
-const RAZORPAY_KEY_ID = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || "rzp_test_TLG37MSt5U18rP";
+/* Only a fallback — the order-create response carries `keyId` (see
+   server/routes/purchaseRoutes.js), and that is what the checkout below
+   actually uses. A hardcoded test key used to sit here as the last resort,
+   which was the worst possible default: it only came into play when the
+   backend had NOT supplied a key, and then opened checkout under a different
+   Razorpay account than the one that created the order — which Razorpay
+   answers with a 401 on the preferences call. Empty is better; it fails
+   loudly at the same point instead of looking like a Razorpay outage. */
+const RAZORPAY_KEY_ID = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || "";
 
 // authorInitials, buyerPrice and VideoReelCard now live in
 // components/VideoReelCard.tsx — the profile page renders the same video
@@ -6110,7 +6117,7 @@ const CategoriesScroller: React.FC<{
           {previewMedia.type === "video" ? (
             <video ref={videoRef} src={resolveUrl(previewMedia.src)} muted loop playsInline autoPlay className="mp-cat__preview-video" />
           ) : previewMedia.type === "image" ? (
-            <img src={resolveUrl(previewMedia.src)} alt={hoveredId} className="mp-cat__preview-video" />
+            <img loading="lazy" decoding="async" src={resolveUrl(previewMedia.src)} alt={hoveredId} className="mp-cat__preview-video" />
           ) : (
             <CategoryPreviewAnim categoryId={hoveredId} />
           )}
@@ -6184,6 +6191,8 @@ const LIB_BANNERS = {
   // was a different picture — so on a slow connection the banner showed one
   // image and then visibly swapped to the video. See LibHeroBanner.
   heroVideo: "/icons/china.mp4",
+  // The video's own first frame — see the <video> in LibHeroBanner for why.
+  heroPoster: "/icons/china-poster.jpg",
   crystal: "/icons/banner-crystal-tower.png",
   brandIdentity: "/icons/banner-logo-identity.png",
 };
@@ -6253,7 +6262,7 @@ const LibPromptMedia = ({
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
     >
-      <img
+      <img loading="lazy" decoding="async"
         src={imageUrl}
         alt=""
         className="w-full h-full object-cover transition-transform duration-500 ease-out"
@@ -6305,7 +6314,7 @@ const LibPromptMedia = ({
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <img src={imageUrl} alt="" className="w-full h-full object-cover" />
+                <img loading="lazy" decoding="async" src={imageUrl} alt="" className="w-full h-full object-cover" />
               )}
             </div>
           </div>,
@@ -6335,28 +6344,40 @@ const LibHeroBanner = ({
   return (
   <div
     className="relative w-full overflow-hidden rounded-[28px]"
-    /* The background is what fills the banner until the video's first frame
-       paints, now that there is no poster image. Dark, so it reads as part of
-       the page rather than as a hole in it. */
+    /* Still dark, as a floor under the poster while IT loads. */
     style={{ border: "1px solid rgba(255,255,255,0.08)", background: "#0B0B10" }}
   >
-    {/* Video banner — no poster.
-        It used to carry `poster={LIB_BANNERS.hero}`, a different picture
-        altogether, so on a slow connection (i.e. the deployed site) the banner
-        showed that image and then visibly swapped to the video once it had
-        buffered. Without it there is nothing to swap: the container's own dark
-        background holds the space until the first frame paints.
+    {/* Video banner, WITH a poster again — but a different kind of poster.
+        The old one was `LIB_BANNERS.hero`, a different picture altogether, so
+        on a slow connection the banner showed that image and then visibly
+        swapped to the video once it had buffered. Removing it fixed the swap
+        and cost something bigger: this video is the Largest Contentful Paint
+        element on this page, and with nothing to paint until the video itself
+        decoded, LCP came in at 3.4 s — 96% of it "render delay", i.e. time
+        spent showing the dark background above.
+        china-poster.jpg is the video's OWN first frame, extracted with ffmpeg
+        (80 kB against the video's 2.4 MB). It paints almost immediately, and
+        there is no swap to see, because what replaces it is the identical
+        frame. Regenerate it if the video ever changes:
+          ffmpeg -i public/icons/china.mp4 -frames:v 1 -vf scale=1280:-2 \
+                 -q:v 8 public/icons/china-poster.jpg
         Anyone with "reduce motion" on gets the same video paused on its first
         frame — an autoplaying full-bleed video is exactly what that setting
         exists to stop, and CSS can't pause a <video>, so the choice has to
         happen here. */}
     <video
       src={LIB_BANNERS.heroVideo}
+      poster={LIB_BANNERS.heroPoster}
       autoPlay={!reduceMotion}
       muted
       loop={!reduceMotion}
       playsInline
-      preload={reduceMotion ? "metadata" : "auto"}
+      /* "metadata", not "auto", in both cases now. With a poster carrying the
+         first frame there is nothing left for an eager preload to buy: it only
+         pulled 2.4 MB into the critical path, competing with the CSS and JS
+         that decide when anything renders at all. The video still autoplays —
+         it just stops racing the page for bandwidth. */
+      preload="metadata"
       // Decorative: the headline next to it already says what this is, so it
       // stays out of the accessibility tree rather than being announced.
       aria-hidden
@@ -6475,7 +6496,7 @@ const LibHeroBanner = ({
         <div className="flex items-center gap-2">
           <div className="flex -space-x-2">
             {[12, 32, 47].map((imgId) => (
-              <img
+              <img loading="lazy" decoding="async"
                 key={imgId}
                 src={`https://i.pravatar.cc/64?img=${imgId}`}
                 alt=""
@@ -6618,7 +6639,7 @@ const LibOldStyleCard = ({
       {/* MEDIA */}
       <div className="mp-card__media">
         <div className="mp-card__preview group">
-          <img src={prompt.imageUrl} alt={prompt.title} className="mp-card__img" />
+          <img loading="lazy" decoding="async" src={prompt.imageUrl} alt={prompt.title} className="mp-card__img" />
         </div>
 
         <div className="mp-card__badges">
@@ -6660,7 +6681,7 @@ const LibOldStyleCard = ({
 
         {!prompt.isFree && prompt.price && prompt.price > 0 ? (
           <div className="mp-card__crown">
-            <img src="/icons/premium.png" alt="Premium" className={prompt.exclusive ? "filter-green" : ""} />
+            <img loading="lazy" decoding="async" src="/icons/premium.png" alt="Premium" className={prompt.exclusive ? "filter-green" : ""} />
           </div>
         ) : null}
       </div>
@@ -6938,7 +6959,7 @@ const LibFeaturedSection = ({
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <img src={p.imageUrl} alt={p.title} className="w-full h-full object-cover" />
+                    <img loading="lazy" decoding="async" src={p.imageUrl} alt={p.title} className="w-full h-full object-cover" />
                   )}
                   {badge && (
                     <div
@@ -7089,11 +7110,11 @@ const LibBrandIdentitySpotlight = ({ onExplore }: { onExplore: () => void }) => 
 
         <div className="grid grid-cols-2 gap-4">
           <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.1)" }}>
-            <img src={LIB_BANNERS.brandIdentity} alt="Logo & Brand Identity AI products" className="w-full h-[220px] object-cover" />
+            <img loading="lazy" decoding="async" src={LIB_BANNERS.brandIdentity} alt="Logo & Brand Identity AI products" className="w-full h-[220px] object-cover" />
             <p className="text-center text-[12px] text-white/60 py-2">Crystalline Logic</p>
           </div>
           <div className="rounded-2xl overflow-hidden self-end" style={{ border: "1px solid rgba(255,255,255,0.1)" }}>
-            <img src={LIB_BANNERS.crystal} alt="Retro brand kit" className="w-full h-[170px] object-cover" />
+            <img loading="lazy" decoding="async" src={LIB_BANNERS.crystal} alt="Retro brand kit" className="w-full h-[170px] object-cover" />
             <p className="text-center text-[12px] text-white/60 py-2">Retro Brand Kit</p>
           </div>
         </div>
@@ -7382,7 +7403,7 @@ const LibCategoriesRow = ({
                 }
               >
                 {logoUrl ? (
-                  <img
+                  <img loading="lazy" decoding="async"
                     src={mediaUrl(logoUrl)}
                     alt=""
                     className="h-4 w-4 rounded-sm object-cover shrink-0"
@@ -9156,7 +9177,7 @@ const savePromptToCollections = async ({
                     <div className="mp-card__media">
                       <div className="mp-card__preview group">
                         {mediaKind === "image" ? (
-                          <img src={prompt.imageUrl} alt={prompt.title} className="mp-card__img" />
+                          <img loading="lazy" decoding="async" src={prompt.imageUrl} alt={prompt.title} className="mp-card__img" />
                         ) : (
                           <>
                             <video
@@ -9221,7 +9242,7 @@ const savePromptToCollections = async ({
                       {/* Premium icon */}
                       {!prompt.isFree && prompt.price && prompt.price > 0 ? (
                         <div className="mp-card__crown">
-                          <img
+                          <img loading="lazy" decoding="async"
                             src="/icons/premium.png"
                             alt="Premium"
                             className={prompt.exclusive ? "filter-green" : ""}

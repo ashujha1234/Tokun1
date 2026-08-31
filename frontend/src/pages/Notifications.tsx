@@ -1600,9 +1600,9 @@ export default function NotificationsPage() {
   const renderPromptImage = (path?: string) => {
     if (path) {
       const src = path.startsWith("http") ? path : `${API_BASE}${path}`;
-      return <img src={src} alt="Product" className="w-full h-full object-cover" />;
+      return <img loading="lazy" decoding="async" src={src} alt="Product" className="w-full h-full object-cover" />;
     }
-    return <img src="/icons/pm2.png" alt="Product" className="w-full h-full object-cover" />;
+    return <img loading="lazy" decoding="async" src="/icons/pm2.png" alt="Product" className="w-full h-full object-cover" />;
   };
 
   const unreadCount = notifications.filter((n) => !n.read).length;

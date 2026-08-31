@@ -24,7 +24,15 @@ import { useCart } from "@/contexts/CartContext";
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 const PROMPTS_BASE = `${API_BASE}/api/prompt`;
 const PURCHASE_BASE = `${API_BASE}/api/purchase`;
-const RAZORPAY_KEY_ID = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || "rzp_test_TLG37MSt5U18rP";
+/* Only a fallback — the order-create response carries `keyId` (see
+   server/routes/purchaseRoutes.js), and that is what the checkout below
+   actually uses. A hardcoded test key used to sit here as the last resort,
+   which was the worst possible default: it only came into play when the
+   backend had NOT supplied a key, and then opened checkout under a different
+   Razorpay account than the one that created the order — which Razorpay
+   answers with a 401 on the preferences call. Empty is better; it fails
+   loudly at the same point instead of looking like a Razorpay outage. */
+const RAZORPAY_KEY_ID = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || "";
 
 /* ---------------------------------------------------------------------- */
 /*  Shared constants                                                      */
@@ -181,7 +189,7 @@ const PromptMedia = ({
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
     >
-      <img
+      <img loading="lazy" decoding="async"
         src={imageUrl}
         alt=""
         className="w-full h-full object-cover transition-transform duration-500 ease-out"
@@ -238,7 +246,7 @@ const PromptMedia = ({
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <img src={imageUrl} alt="" className="w-full h-full object-cover" />
+                <img loading="lazy" decoding="async" src={imageUrl} alt="" className="w-full h-full object-cover" />
               )}
             </div>
           </div>,
@@ -261,7 +269,7 @@ const HeroBanner = () => {
 
   return (
     <div className="relative w-full overflow-hidden rounded-[28px]" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
-      <img
+      <img loading="lazy" decoding="async"
         src={BANNERS.hero}
         alt="Product Marketplace"
         className="absolute inset-0 w-full h-full object-cover"
@@ -345,7 +353,7 @@ const HeroBanner = () => {
           <div className="flex items-center gap-2">
             <div className="flex -space-x-2">
               {[12, 32, 47].map((imgId) => (
-                <img
+                <img loading="lazy" decoding="async"
                   key={imgId}
                   src={`https://i.pravatar.cc/64?img=${imgId}`}
                   alt=""
@@ -625,11 +633,11 @@ const BrandIdentitySpotlight = () => {
 
         <div className="grid grid-cols-2 gap-4">
           <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.1)" }}>
-            <img src={BANNERS.brandIdentity} alt="Logo & Brand Identity AI products" className="w-full h-[220px] object-cover" />
+            <img loading="lazy" decoding="async" src={BANNERS.brandIdentity} alt="Logo & Brand Identity AI products" className="w-full h-[220px] object-cover" />
             <p className="text-center text-[12px] text-white/60 py-2">Crystalline Logic</p>
           </div>
           <div className="rounded-2xl overflow-hidden self-end" style={{ border: "1px solid rgba(255,255,255,0.1)" }}>
-            <img src={BANNERS.crystal} alt="Retro brand kit" className="w-full h-[170px] object-cover" />
+            <img loading="lazy" decoding="async" src={BANNERS.crystal} alt="Retro brand kit" className="w-full h-[170px] object-cover" />
             <p className="text-center text-[12px] text-white/60 py-2">Retro Brand Kit</p>
           </div>
         </div>
@@ -666,7 +674,7 @@ const GlassCTACard = ({
       style={{ border: "1px solid rgba(255,255,255,0.08)", background: bgGradient }}
     >
       {!imgFailed && (
-        <img
+        <img loading="lazy" decoding="async"
           src={stockImage(bgSeed, 900, 700)}
           alt=""
           onError={() => setImgFailed(true)}

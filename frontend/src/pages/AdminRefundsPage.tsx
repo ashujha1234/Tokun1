@@ -305,7 +305,7 @@ function ProductModal({
                 className="w-full max-h-[46vh] object-contain"
               />
             ) : product.preview ? (
-              <img
+              <img loading="lazy" decoding="async"
                 src={product.preview}
                 alt={product.title}
                 className="w-full max-h-[46vh] object-contain"
@@ -408,7 +408,7 @@ function ProductModal({
               <div className="flex flex-wrap gap-2">
                 {request.attachments.map((url, i) => (
                   <a key={`${url}-${i}`} href={mediaUrl(url)} target="_blank" rel="noreferrer">
-                    <img
+                    <img loading="lazy" decoding="async"
                       src={mediaUrl(url)}
                       alt={`Refund evidence ${i + 1}`}
                       className="h-24 w-24 object-cover rounded-lg border border-white/15 hover:border-white/40 transition-colors"
@@ -459,7 +459,7 @@ function RefundProduct({
           // Safari, which otherwise shows an empty box until you tap.
           <video src={preview} className="h-full w-full object-cover" muted playsInline preload="metadata" />
         ) : preview ? (
-          <img src={preview} alt="" className="h-full w-full object-cover" />
+          <img loading="lazy" decoding="async" src={preview} alt="" className="h-full w-full object-cover" />
         ) : (
           <ImageOff className="text-white/30" size={16} />
         )}
@@ -720,7 +720,7 @@ export default function AdminRefundsPage() {
                         title="Open full size"
                         className="block"
                       >
-                        <img
+                        <img loading="lazy" decoding="async"
                           src={mediaUrl(url)}
                           alt={`Refund evidence ${i + 1}`}
                           className="h-20 w-20 object-cover rounded-lg border border-white/15 hover:border-white/40 transition-colors"

@@ -185,7 +185,7 @@ function PromptDetailModal({ prompt, onClose, onAction, actionLoading }: any) {
           {att?.type === "video" ? (
             <video src={att?.path} controls style={{ maxWidth: "100%", maxHeight: 260, borderRadius: 8 }} />
           ) : (
-            <img src={att?.path} alt="attachment" style={{ maxWidth: "100%", maxHeight: 260, borderRadius: 8, objectFit: "contain" }} />
+            <img loading="lazy" decoding="async" src={att?.path} alt="attachment" style={{ maxWidth: "100%", maxHeight: 260, borderRadius: 8, objectFit: "contain" }} />
           )}
         </div>
 

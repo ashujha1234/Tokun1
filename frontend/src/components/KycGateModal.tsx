@@ -3264,7 +3264,7 @@ function UploadBlock({
           </div>
         ) : (
           <div className="relative h-full">
-            <img
+            <img loading="lazy" decoding="async"
               src={preview || ""}
               className="w-full h-full object-cover"
               alt="preview"

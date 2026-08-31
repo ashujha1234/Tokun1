@@ -11348,7 +11348,7 @@ const TXN_PER_PAGE = 5;
         aria-hidden
         className="pointer-events-none fixed inset-0 z-0 overflow-hidden"
       >
-        <img
+        <img loading="lazy" decoding="async"
           src="/icons/mpbg.png"
           alt="background"
           className="absolute inset-0 w-full h-screen object-contain object-top select-none"
@@ -11574,7 +11574,7 @@ const TXN_PER_PAGE = 5;
                                 : "none",
                             }}
                           >
-                            <img
+                            <img loading="lazy" decoding="async"
                               src={method.icon}
                               alt=""
                               style={iconStyle}
@@ -12061,7 +12061,7 @@ const TXN_PER_PAGE = 5;
                     className="mt-8 flex gap-3 rounded-[14px] p-4"
                     style={{ background: "rgba(3,4,5,0.35)" }}
                   >
-                    <img
+                    <img loading="lazy" decoding="async"
                       src="/icons/locky.svg"
                       alt=""
                       className="mt-1 h-5 w-5 shrink-0"

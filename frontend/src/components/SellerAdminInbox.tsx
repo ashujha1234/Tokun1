@@ -282,7 +282,7 @@ export default function SellerAdminInbox() {
                   {m.attachment?.url && (
                     <div className="mb-2 rounded-xl border border-white/10 bg-white/[0.04] p-3 max-w-[520px]">
                       {m.attachment.type === "image" ? (
-                        <img src={m.attachment.url} alt={m.attachment.name || "attachment"} className="max-h-[220px] rounded-lg" />
+                        <img loading="lazy" decoding="async" src={m.attachment.url} alt={m.attachment.name || "attachment"} className="max-h-[220px] rounded-lg" />
                       ) : (
                         <a href={m.attachment.url} target="_blank" rel="noreferrer" className="text-sky-300 hover:underline text-sm">{m.attachment.name || "Attachment"}</a>
                       )}

@@ -373,7 +373,7 @@ export default function Footer() {
               {/* Was the wordmark set in Inter. The real logo carries the mark
                   the header uses, so the two ends of the page match. The alt
                   text keeps the name for anyone not seeing the image. */}
-              <img
+              <img loading="lazy" decoding="async"
                 src="/icons/Tokun.png"
                 alt="Tokun.world"
                 className="h-16 sm:h-20 w-auto max-w-none object-contain"

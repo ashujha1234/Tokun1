@@ -2864,7 +2864,7 @@ const startCollaboration = async (): Promise<string | null> => {
                   title="Save / Quick save"
                   aria-label="Save menu"
                 >
-                  <img src="/icons/cop.png" alt="Save" className="w-5 h-5 object-contain" />
+                  <img loading="lazy" decoding="async" src="/icons/cop.png" alt="Save" className="w-5 h-5 object-contain" />
                 </button>
                 <button
                   className="w-10 h-10 rounded-full bg-[#252525] flex items-center justify-center hover:opacity-90 border border-[#333335]"

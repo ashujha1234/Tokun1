@@ -2578,7 +2578,6 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import ScreenRecordPermissionModal from "@/components/ScreenRecordPermissionModal";
 
 import { Settings, Plus, ChevronDown, Wallet, LayoutDashboard, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -2700,7 +2699,6 @@ const userPlanColor =
    const [detailsOpen, setDetailsOpen] = useState(false);
    /** Which row is being fetched — so a slow network shows on that row alone. */
    const [detailsLoadingId, setDetailsLoadingId] = useState<string | null>(null);
-   const [screenPermOpen, setScreenPermOpen] = useState(false);
    const [sellOpen, setSellOpen] = useState(false);
    const [headerToast, setHeaderToast] = useState<{
   title: string;
@@ -2796,7 +2794,7 @@ useEffect(() => {
       aria-label={alt}
       title={alt}
     >
-      <img src={src} alt="" className="w-4 h-4" />
+      <img loading="lazy" decoding="async" src={src} alt="" className="w-4 h-4" />
     </button>
   );
 
@@ -4045,7 +4043,7 @@ useEffect(() => {
        group-hover:scale-105 overwrote that same `transform`, so hovering the
        mark after any scroll made it grow and drift to the right over
        three-quarters of a second. One animation per property. */}
-   <img
+   <img loading="lazy" decoding="async"
   src="/icons/Tokun.png"
   alt="Tokun.world Logo"
   className="
@@ -4118,7 +4116,7 @@ useEffect(() => {
     >
       {/* Sized down to sit level with the lucide icons either side of it — as a
           raster mark it read a size larger than them at the same box. */}
-      <img src="/icons/cop.png" alt="" className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+      <img loading="lazy" decoding="async" src="/icons/cop.png" alt="" className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
     </button>
   )}
 </div>
@@ -4139,8 +4137,11 @@ useEffect(() => {
      className="relative flex items-center gap-1.5 rounded-full px-2 py-2 sm:px-3 hover:bg-white/10 transition"
    >
      <Users className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-     {/* Label hidden on the narrowest screens so the action row still fits. */}
-     <span className="hidden md:inline text-sm text-white">Team</span>
+     {/* `lg`, with everything else in this row. At `md` this label plus Orders'
+        was ~83px landing in a column that doesn't widen until 1024 — and only
+        org owners and admins carry this button, so they were the ones whose
+        header broke worst on a tablet. */}
+     <span className="hidden lg:inline text-sm text-white">Team</span>
    </button>
  )}
 
@@ -4178,7 +4179,10 @@ useEffect(() => {
    className="relative hidden md:flex items-center gap-1.5 rounded-full px-2 py-2 sm:px-3 hover:bg-white/10 transition"
  >
    <Package className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-   <span className="text-sm text-white">Orders</span>
+   {/* The button appears at md (below that it lives in the account menu); the
+       WORD waits for lg like every other label in this row. In between it is an
+       icon, which is what the row has room for. */}
+   <span className="hidden lg:inline text-sm text-white">Orders</span>
 
    {ordersNeedingAction > 0 && (
      <span className="absolute -top-1 -right-1 bg-[#C084FC] text-white text-[10px] sm:text-xs w-4 h-4 sm:w-5 sm:h-5 grid place-items-center rounded-full">
@@ -4351,7 +4355,19 @@ useEffect(() => {
       onClick={handlePostPrompt}
       onMouseEnter={warmSellerData}
       onFocus={warmSellerData}
-      className="hidden sm:inline-flex items-center gap-2 px-3 h-9 rounded-full text-black font-medium whitespace-nowrap"
+      /* `lg`, not `sm`.
+       *
+       * This pill is ~160px against the icon button's 36, and it was swapping in
+       * at 640px — while the header column only widens at 1024. That 124px
+       * arrived in a row that had no room for it, which is most of why the bar
+       * broke on a tablet: at 768px it needed 665px of a 648px row, and 762 for
+       * an org admin.
+       *
+       * `lg` is the breakpoint the rest of this row already expands at — see
+       * ModeToggle, whose labels have always waited for it. Below that,
+       * everything here is an icon; at lg everything gets its words. One rule
+       * instead of three different opinions about when there is room. */
+      className="hidden lg:inline-flex items-center gap-2 px-3 h-9 rounded-full text-black font-medium whitespace-nowrap"
       style={{ background: "#D9D9D9" }}
     >
       <span className="grid place-items-center w-5 h-5 rounded-full bg-black">
@@ -4360,11 +4376,15 @@ useEffect(() => {
 
       <span className="text-sm">Upload Product</span>
     </button>
-    {/* MOBILE UPLOAD BUTTON */}
+    {/* COMPACT UPLOAD BUTTON — phone AND tablet, i.e. everything below lg.
+        Was `sm:hidden`, which left the 640–1023 band with no upload control at
+        all except the oversized pill above. */}
     <button
       onClick={handlePostPrompt}
       onTouchStart={warmSellerData}
-      className="sm:hidden grid place-items-center w-9 h-9 rounded-full"
+      aria-label="Upload Product"
+      title="Upload Product"
+      className="lg:hidden grid place-items-center w-9 h-9 rounded-full"
       style={{
         background: "linear-gradient(270deg,#FF14EF 0%,#1A73E8 100%)"
       }}
@@ -4435,7 +4455,7 @@ useEffect(() => {
       }
     >
       {avatarUrl ? (
-        <img
+        <img loading="lazy" decoding="async"
           src={avatarUrl}
           alt=""
           className="w-full h-full object-cover"
@@ -4448,8 +4468,12 @@ useEffect(() => {
       )}
     </span>
 
-    {/* PLAN → hidden on mobile */}
-    <div className="hidden sm:flex items-center gap-2">
+    {/* PLAN → lg and up only.
+        Was `sm`, which added ~45px to the avatar pill at 640px — in the same
+        band the Upload pill was expanding in. Your own plan is not something you
+        need told on every screen; it is on /subscription and in the menu this
+        button opens. */}
+    <div className="hidden lg:flex items-center gap-2">
 
       {/* PRO PLAN */}
       {user?.plan === "pro" && (
@@ -4506,8 +4530,12 @@ useEffect(() => {
 
     </div>
 
-    {/* DROPDOWN ICON → always visible */}
-    <span className="shrink-0 grid place-items-center rounded-full bg-white/95 w-6 h-6">
+    {/* DROPDOWN ICON → lg and up, with every other label and decoration in this
+        row. It is 24px of circle plus an 8px gap for something that says
+        "this opens a menu" — which an avatar already says on a touch screen,
+        where there is no hover to discover it with and tapping a face is the
+        obvious move. That 32px is what a phone in Creator mode was short by. */}
+    <span className="hidden lg:grid shrink-0 place-items-center rounded-full bg-white/95 w-6 h-6">
       <ChevronDown className="w-3.5 h-3.5 text-black" />
     </span>
 
@@ -4812,15 +4840,10 @@ useEffect(() => {
       <ApiKeyModal open={apiKeyModalOpen} onOpenChange={setApiKeyModalOpen} onSave={() => {}} />
       <SubscriptionModal open={subscriptionModalOpen} onOpenChange={setSubscriptionModalOpen} />
   <SellPromptModal
-  open={sellOpen}
- onOpenChange={(v) => {
-  setSellOpen(v);
-  if (!v) {
-    setScreenPermOpen(false); // ✅ Sell modal band hone par screen perm bhi band
-  }
-}}
-  onPromptSubmitted={() => {}}
-/>
+    open={sellOpen}
+    onOpenChange={setSellOpen}
+    onPromptSubmitted={() => {}}
+  />
 
 
 
@@ -5015,7 +5038,7 @@ useEffect(() => {
       </div>
     </>
  ) : item.imageUrl ? (
-    <img
+    <img loading="lazy" decoding="async"
       src={
         item.imageUrl.startsWith("http")
           ? item.imageUrl
@@ -5861,29 +5884,6 @@ style={{
     component root, because the account dropdown unmounts its own contents on
     close — a wizard inside the menu would disappear the moment it opened. */}
 {freelancerMenu.modals}
-
-{screenPermOpen && (
-  <ScreenRecordPermissionModal
-    open={screenPermOpen}
-    onGranted={() => {
-
-      setSellOpen(true);
-    }}
-    onSkip={() => {
-      console.log("[Debug] onSkip called");
-      setScreenPermOpen(false);
-      // Skip pe sell modal bhi nahi kholna
-    }}
-    onUploadDone={() => {
-      console.log("[Debug] onUploadDone called");
-      setScreenPermOpen(false);
-    }}
-    userId={user?._id || user?.id}
-    userName={user?.name || ""}
-    userEmail={user?.email || ""}
-    token={token}
-  />
-)}
 
 {/* Details for a product opened from the cart.
 

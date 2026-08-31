@@ -241,7 +241,7 @@ export default function PurchaseConfirmModal({
                 <div key={it.id} className="flex items-center gap-3 p-3">
                   <div className="h-12 w-12 shrink-0 rounded-lg overflow-hidden bg-black/40 grid place-items-center">
                     {it.imageUrl ? (
-                      <img src={it.imageUrl} alt="" className="h-full w-full object-cover" />
+                      <img loading="lazy" decoding="async" src={it.imageUrl} alt="" className="h-full w-full object-cover" />
                     ) : (
                       <ImageOff className="text-white/25" size={16} />
                     )}
@@ -257,7 +257,7 @@ export default function PurchaseConfirmModal({
           <div className="flex gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
             <div className="h-16 w-16 shrink-0 rounded-lg overflow-hidden bg-black/40 grid place-items-center">
               {prompt?.imageUrl ? (
-                <img src={prompt.imageUrl} alt="" className="h-full w-full object-cover" />
+                <img loading="lazy" decoding="async" src={prompt.imageUrl} alt="" className="h-full w-full object-cover" />
               ) : prompt.videoUrl ? (
                 <video
                   src={prompt?.videoUrl}

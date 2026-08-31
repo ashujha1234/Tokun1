@@ -63,7 +63,7 @@ const MediaEnlargeModal = ({ isOpen, onClose, mediaUrl, mediaType, title }: Medi
         
         <div id="media-container" className="flex-1 flex items-center justify-center bg-black/5 relative">
           {mediaType === 'image' ? (
-            <img
+            <img loading="lazy" decoding="async"
               src={mediaUrl}
               alt={title}
               className="max-w-full max-h-full object-contain"

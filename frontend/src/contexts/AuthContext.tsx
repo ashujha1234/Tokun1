@@ -332,18 +332,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [user, token, isReady]
   );
 
+  /* The handshake carries the TOKEN now, not the user id.
+   *
+   * It used to send `{ userId }` — a claim the server took at face value,
+   * because there was no verification on the socket side at all. The server now
+   * verifies this token in io.use() and derives the user from it, so what is
+   * sent here has to be something only the real user has.
+   *
+   * Depends on `token`, not `user._id`: on logout-then-login as someone else the
+   * id changes and this would reconnect anyway, but on a token REFRESH the id
+   * stays the same while the old token stops verifying — and the socket would
+   * have gone on using a handshake the server no longer accepts until the next
+   * full reload.
+   */
   useEffect(() => {
-  if (user?._id) {
-    socket.auth = {
-      userId: user._id, // ✅ NOW guaranteed
-    };
-    socket.connect();
-  }
+    if (!token || !user?._id) return;
 
-  return () => {
-    socket.disconnect();
-  };
-}, [user?._id]);
+    socket.auth = { token };
+    socket.connect();
+
+    /* An expired or malformed token makes io.use() reject, and socket.io
+     * reports that here rather than throwing. Worth logging: without it a
+     * refused handshake looks exactly like the server being down. */
+    const onConnectError = (err: Error) => {
+      console.error("socket connect failed:", err.message);
+    };
+    socket.on("connect_error", onConnectError);
+
+    return () => {
+      socket.off("connect_error", onConnectError);
+      socket.disconnect();
+    };
+  }, [token, user?._id]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,6 +10,7 @@ import { CartProvider } from "@/contexts/CartContext";
 import { ModeProvider } from "@/contexts/ModeContext";
 import ScrollToTop from "@/components/ScrollToTop";
 import PageControls from "@/components/PageControls";
+import AppErrorBoundary from "@/components/AppErrorBoundary";
 import RouteFallback from "@/components/RouteFallback";
 
 // Landing stays eagerly imported on purpose: it owns the loading curtain, and a
@@ -108,6 +109,29 @@ function RequireAdminAuth({ children }: { children: React.ReactNode }) {
 // ...imports unchanged...
 // (keep your existing imports)
 
+/* A boundary around the routed page, separate from the root one in main.tsx.
+   It keeps the header, PageControls and navigation alive when a single page
+   throws, so someone can click their way out instead of reloading.
+
+   Keyed by pathname, which is load-bearing: a tripped boundary stays tripped,
+   so without a key that changes on navigation the fallback would follow the
+   person to every page they visited next. The attempt counter does the same job
+   for "Try again" on the page they are already on. */
+function RouteBoundary({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation();
+  const [attempt, setAttempt] = useState(0);
+
+  return (
+    <AppErrorBoundary
+      key={`${pathname}:${attempt}`}
+      scope={pathname}
+      onReset={() => setAttempt((a) => a + 1)}
+    >
+      {children}
+    </AppErrorBoundary>
+  );
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -128,6 +152,10 @@ export default function App() {
           {/* Sits outside <Routes>, so back and back-to-top are on every page
               rather than on whichever ones someone remembered. */}
           <PageControls />
+            {/* Outside Suspense, so it also catches a lazy chunk that fails to
+                load — a stale hash after a deploy is the common way that
+                happens, and Suspense has no answer for it. */}
+            <RouteBoundary>
             <Suspense fallback={<RouteFallback />}>
             <Routes>
               {/* public */}
@@ -298,6 +326,7 @@ export default function App() {
 
             </Routes>
             </Suspense>
+            </RouteBoundary>
           </ModeProvider>
           </BrowserRouter>
         </TooltipProvider>

@@ -4241,7 +4241,7 @@ function UserAvatar({
   return (
     <div className={`relative ${sizeClass} shrink-0 overflow-visible rounded-full`}>
       <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-[#222]">
-        <img src={src} alt={user?.name || "User"} className="h-full w-full object-cover" onError={() => setSrc(fallbackAvatar)} />
+        <img loading="lazy" decoding="async" src={src} alt={user?.name || "User"} className="h-full w-full object-cover" onError={() => setSrc(fallbackAvatar)} />
       </div>
       {online && (
         <span className="absolute bottom-[1px] right-[-1px] h-[11px] w-[11px] rounded-full border-[2px] border-[#151517] bg-[#19E66C] shadow-[0_0_0_1px_rgba(25,230,108,0.25)]" />
@@ -4263,7 +4263,7 @@ function SendButton({ disabled, onClick }: { disabled: boolean; onClick: () => v
       style={{ background: GRADIENT }}
     >
       {!iconFailed && (
-        <img src="/icons/Container.svg" alt="" className="h-[22px] w-[22px] object-contain" onError={() => setIconFailed(true)} />
+        <img loading="lazy" decoding="async" src="/icons/Container.svg" alt="" className="h-[22px] w-[22px] object-contain" onError={() => setIconFailed(true)} />
       )}
       {iconFailed && <FiSend className="text-[20px] text-white" />}
     </button>
@@ -5584,7 +5584,7 @@ function CounterOfferPopup({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <img src="/icons/counter.svg" alt="" style={{ width: 24, height: 24, objectFit: "contain", flexShrink: 0 }} />
+          <img loading="lazy" decoding="async" src="/icons/counter.svg" alt="" style={{ width: 24, height: 24, objectFit: "contain", flexShrink: 0 }} />
           <h2 style={{ margin: 0, fontFamily: "Inter, sans-serif", fontWeight: 700, fontSize: 28, lineHeight: "36px", color: "#FFFFFF" }}>
             Counter Offer
           </h2>
@@ -5626,7 +5626,7 @@ function CounterOfferPopup({
                 style={{ width: "100%", height: 56, borderRadius: 16, border: inputBorder, background: inputBg, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 18px", boxSizing: "border-box", cursor: "pointer" }}
               >
                 <span style={{ fontWeight: 700, fontSize: 18, color: newTargetDate ? "#FFFFFF" : "#27272A" }}>{formatCounterDateDisplay(newTargetDate)}</span>
-                <img src="/icons/cale.svg" alt="calendar" style={{ width: 18, height: 18, objectFit: "contain", filter: "brightness(0) invert(1)" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                <img loading="lazy" decoding="async" src="/icons/cale.svg" alt="calendar" style={{ width: 18, height: 18, objectFit: "contain", filter: "brightness(0) invert(1)" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
               </button>
               {showCounterCalendar && (() => {
                 const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -5792,7 +5792,7 @@ function HireCard({
       >
         <div style={{ height: 50, background: TOP_GRADIENT, padding: "0 24px", display: "flex", alignItems: "center", justifyContent: "space-between", boxSizing: "border-box" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <img src="/icons/proposal.svg" alt="" style={{ width: 16, height: 16, objectFit: "contain", flexShrink: 0 }} />
+            <img loading="lazy" decoding="async" src="/icons/proposal.svg" alt="" style={{ width: 16, height: 16, objectFit: "contain", flexShrink: 0 }} />
             <span style={{ fontWeight: 600, fontSize: 11, letterSpacing: "2.4px", color: "#FFFFFF" }}>PROJECT PROPOSAL</span>
           </div>
           <span style={{
@@ -5850,7 +5850,7 @@ function HireCard({
                 onClick={(e) => { e.stopPropagation(); setShowCounterPopup(true); }}
                 style={{ flex: "1 1 130px", height: 48, borderRadius: 8, background: "#202020", border: "1px solid #FFFFFF0D", color: "#FFFFFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontWeight: 400, fontSize: 15 }}
               >
-                <img src="/icons/counter.svg" alt="" style={{ width: 18, height: 18, objectFit: "contain", flexShrink: 0 }} />
+                <img loading="lazy" decoding="async" src="/icons/counter.svg" alt="" style={{ width: 18, height: 18, objectFit: "contain", flexShrink: 0 }} />
                 Counter Offer
               </button>
               {/* The ✗. Its handler was `e.stopPropagation()` and nothing else
@@ -5863,7 +5863,7 @@ function HireCard({
                 onClick={(e) => { e.stopPropagation(); handleDecline(); }}
                 style={{ width: 48, height: 48, flexShrink: 0, borderRadius: 8, border: "none", background: TOP_GRADIENT, color: "#FFFFFF", cursor: declining ? "not-allowed" : "pointer", opacity: declining ? 0.6 : 1, display: "flex", alignItems: "center", justifyContent: "center" }}
               >
-                <img src="/icons/crass.svg" alt="" style={{ width: 14, height: 14, objectFit: "contain" }} />
+                <img loading="lazy" decoding="async" src="/icons/crass.svg" alt="" style={{ width: 14, height: 14, objectFit: "contain" }} />
               </button>
             </div>
           )}
@@ -5949,7 +5949,7 @@ function ProjectProposalDetailsPopup({
       <div onClick={(e) => e.stopPropagation()}
         style={{ width: 620, maxWidth: "calc(100vw - 32px)", maxHeight: "calc(100vh - 70px)", overflowY: "auto", borderRadius: 30, background: "#212121", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", padding: "34px 28px 24px", boxSizing: "border-box", color: "#FFFFFF", fontFamily: "Inter, sans-serif", boxShadow: "0 40px 120px rgba(0,0,0,0.65)", position: "relative" }}>
         <button onClick={onClose} style={{ position: "absolute", right: 22, top: 18, width: 28, height: 28, border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <img src="/icons/crass.svg" alt="" style={{ width: 18, height: 18, objectFit: "contain", opacity: 0.55 }} />
+          <img loading="lazy" decoding="async" src="/icons/crass.svg" alt="" style={{ width: 18, height: 18, objectFit: "contain", opacity: 0.55 }} />
         </button>
         <h2 style={{ margin: "0 0 24px", paddingRight: 30, fontWeight: 700, fontSize: "clamp(22px, 5vw, 34px)", lineHeight: "42px", color: "#F5EDFF" }}>{proposalTitle}</h2>
         <div style={{ width: "100%", borderRadius: 24, border: "1px solid #FFFFFF1A", background: "#FFFFFF08", padding: "26px 20px", boxSizing: "border-box", marginBottom: 30 }}>
@@ -5967,7 +5967,7 @@ function ProjectProposalDetailsPopup({
         </div>
         <div style={{ marginBottom: 22 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-            <img src="/icons/proposal.svg" alt="" style={{ width: 18, height: 18, objectFit: "contain", flexShrink: 0 }} />
+            <img loading="lazy" decoding="async" src="/icons/proposal.svg" alt="" style={{ width: 18, height: 18, objectFit: "contain", flexShrink: 0 }} />
             <p style={{ margin: 0, fontWeight: 400, fontSize: 16, color: "#C084FC", textTransform: "uppercase" }}>PROJECT OVERVIEW</p>
           </div>
           <p style={{ margin: 0, fontWeight: 400, fontSize: 15, lineHeight: "20px", color: "#C9C2CE", whiteSpace: "pre-line" }}>{proposalDescription}</p>
@@ -6024,7 +6024,7 @@ function ProjectProposalDetailsPopup({
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <button onClick={onCounter} style={{ flex: "1 1 140px", height: 49, borderRadius: 8, border: "1px solid #FFFFFF0D", background: "#202020", color: "#FFFFFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, fontWeight: 400, fontSize: 15 }}>
-            <img src="/icons/counter.svg" alt="" style={{ width: 18, height: 18, objectFit: "contain", flexShrink: 0 }} />Counter Offer
+            <img loading="lazy" decoding="async" src="/icons/counter.svg" alt="" style={{ width: 18, height: 18, objectFit: "contain", flexShrink: 0 }} />Counter Offer
           </button>
           <button onClick={onAccept} disabled={acceptLoading || status === "ACCEPTED"}
             style={{ flex: "1 1 150px", height: 49, border: "none", borderRadius: 8, background: GRADIENT, color: "#FFFFFF", cursor: acceptLoading || status === "ACCEPTED" ? "not-allowed" : "pointer", opacity: acceptLoading || status === "ACCEPTED" ? 0.6 : 1, fontWeight: 400, fontSize: 15 }}>
@@ -6070,7 +6070,7 @@ function CounterProposalCard({
     <div style={{ width: "100%", maxWidth: 505, borderRadius: 24, background: "#292929", overflow: "hidden", fontFamily: "Inter, sans-serif", boxShadow: "0 20px 60px rgba(0,0,0,0.35)" }}>
       <div style={{ height: 50, background: TOP_GRADIENT, padding: "0 24px", display: "flex", alignItems: "center", justifyContent: "space-between", boxSizing: "border-box" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <img src="/icons/proposal.svg" alt="" style={{ width: 16, height: 16, objectFit: "contain", flexShrink: 0 }} />
+          <img loading="lazy" decoding="async" src="/icons/proposal.svg" alt="" style={{ width: 16, height: 16, objectFit: "contain", flexShrink: 0 }} />
           <span style={{ fontWeight: 600, fontSize: 11, letterSpacing: "2.4px", color: "#FFFFFF" }}>COUNTER PROPOSAL</span>
         </div>
         <span style={{ height: 24, padding: "0 14px", borderRadius: 999, display: "inline-flex", alignItems: "center", background: "#FABC4E1A", border: "1px solid #FABC4E33", color: "#FABC4E", fontWeight: 700, fontSize: 10 }}>
@@ -6623,7 +6623,7 @@ const startMeetCall = () => {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#07080A] text-white">
-      <img src="/icons/mpbg.png" alt="background" className="pointer-events-none fixed inset-0 z-0 h-screen w-full select-none object-contain object-top" />
+      <img loading="lazy" decoding="async" src="/icons/mpbg.png" alt="background" className="pointer-events-none fixed inset-0 z-0 h-screen w-full select-none object-contain object-top" />
       <div className="relative z-20"><Header /></div>
 
       <main className="relative z-10 hidden md:flex min-h-[calc(100vh-80px)] items-center justify-center px-6 py-20">
@@ -6670,7 +6670,7 @@ const startMeetCall = () => {
                         aria-label="Start a new conversation"
                         className="grid h-8 w-8 place-items-center rounded-full transition hover:bg-white/10"
                       >
-                        <img src="/icons/pen.svg" alt="" className="h-[22px] w-[22px] object-contain" />
+                        <img loading="lazy" decoding="async" src="/icons/pen.svg" alt="" className="h-[22px] w-[22px] object-contain" />
                       </button>
                       <button onClick={() => setOpenChatPopup(false)} className="sm:hidden grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white"><X size={16} /></button>
                     </div>
@@ -6894,7 +6894,7 @@ const serviceWorkSubmittedData = parseServiceWorkSubmittedData(m.text);
                                   /* Media plays/opens in place, and the download
                                      sits ON it.
 
-                                     Before: an image was a bare <img> with no
+                                     Before: an image was a bare <img loading="lazy" decoding="async"> with no
                                      click target and no download, and a video
                                      wasn't media at all — it came through as a
                                      "file" and rendered as a 📎 link, so the only
@@ -6924,7 +6924,7 @@ const serviceWorkSubmittedData = parseServiceWorkSubmittedData(m.text);
                                         title="View full size"
                                         className="block w-full"
                                       >
-                                        <img
+                                        <img loading="lazy" decoding="async"
                                           src={m.attachment.url}
                                           alt={m.attachment.name || "Attachment"}
                                           className="w-full rounded-lg cursor-zoom-in"

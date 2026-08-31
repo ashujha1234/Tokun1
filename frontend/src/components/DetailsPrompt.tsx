@@ -1424,7 +1424,7 @@ const soldOut = !!prompt?.exclusive && !!prompt?.sold;
                   </div>
                 </div>
               ) : media?.type === "image" ? (
-                <img
+                <img loading="lazy" decoding="async"
                   src={media.url}
                   alt={prompt.title}
                   className="w-full h-full object-cover"

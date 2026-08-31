@@ -152,7 +152,7 @@ function ServiceCard({ service }: { service: BrowseService }) {
         </h3>
 
         <div className="flex items-center gap-2">
-          <img
+          <img loading="lazy" decoding="async"
             src={avatarFor(service.seller)}
             onError={onAvatarError(service.seller)}
             alt={service.seller.name}

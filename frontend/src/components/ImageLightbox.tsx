@@ -130,7 +130,7 @@ export default function ImageLightbox({
       </div>
 
       <div className="flex-1 min-h-0 grid place-items-center p-4">
-        <img
+        <img loading="lazy" decoding="async"
           src={url}
           alt={name || "Image"}
           className="max-h-full max-w-full object-contain"

@@ -72,8 +72,13 @@ const clientIp = (req) =>
 /* Keyed on IP *and* email so one office NAT can't lock out a colleague, and one
    email can't be pounded from a botnet. Same shape as the user OTP limiter in
    routes/authRoutes.js. */
+/* `req.ip`, not `req`. ipKeyGenerator takes an IP STRING — handed the request
+   object it returns the object, which a template string turns into the literal
+   "[object Object]". Every IP on earth collapsed to that one value, so this key
+   was effectively email-only: the IP half of the comment above did not hold,
+   and a botnet could lock a known admin address out from anywhere. */
 const keyByIpAndEmail = (req) =>
-  `${ipKeyGenerator(req)}:${String(req.body?.email || "").toLowerCase().trim()}`;
+  `${ipKeyGenerator(req.ip)}:${String(req.body?.email || "").toLowerCase().trim()}`;
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -89,11 +94,18 @@ const loginLimiter = rateLimit({
 });
 
 /* Tighter than the login limiter: the code is only six digits, so this is the
-   endpoint worth grinding. The per-account attempt counter below backs it up. */
+   endpoint worth grinding. The per-account attempt counter below backs it up.
+
+   `req.ip` — see keyByIpAndEmail above for what the old `ipKeyGenerator(req)`
+   did. It was worse here than there: with no template string to stringify it,
+   the returned OBJECT went into the store's Map as the key, and a fresh object
+   is a fresh key, so every attempt landed in its own bucket. This limiter
+   counted to one, forever. On a six-digit code with an eight-attempt cap, that
+   is the difference between a locked door and an open one. */
 const otpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   max: 8,
-  keyGenerator: (req) => ipKeyGenerator(req),
+  keyGenerator: (req) => ipKeyGenerator(req.ip),
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -106,7 +118,8 @@ const otpLimiter = rateLimit({
 const resendLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   max: 4,
-  keyGenerator: (req) => ipKeyGenerator(req),
+  // Same fix as otpLimiter above — this one was counting to one too.
+  keyGenerator: (req) => ipKeyGenerator(req.ip),
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, error: "too_many_requests", message: "Slow down a moment." },

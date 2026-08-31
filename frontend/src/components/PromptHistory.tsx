@@ -1699,7 +1699,7 @@ useEffect(() => {
             <div key={`${file.name}-${i}`} className="relative">
               {/* Object URLs are revoked on img load — holding them for the
                   dialog's lifetime leaks a blob per pick/remove cycle. */}
-              <img
+              <img loading="lazy" decoding="async"
                 src={URL.createObjectURL(file)}
                 alt={file.name}
                 onLoad={(e) => URL.revokeObjectURL((e.target as HTMLImageElement).src)}

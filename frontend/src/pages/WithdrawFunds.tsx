@@ -2862,7 +2862,7 @@ const WithdrawFunds = () => {
   return (
     <div className="dark relative min-h-screen bg-[#07080A] text-white overflow-x-hidden">
       <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-        <img src="/icons/mpbg.png" alt="background" className="absolute inset-0 w-full h-screen object-contain object-top select-none" />
+        <img loading="lazy" decoding="async" src="/icons/mpbg.png" alt="background" className="absolute inset-0 w-full h-screen object-contain object-top select-none" />
       </div>
       <div className="relative z-20 w-full bg-transparent px-4"><Header /></div>
 
@@ -3051,7 +3051,7 @@ const WithdrawFunds = () => {
                   </div>
 
                   <div className="mt-8 flex gap-3 rounded-[14px] p-4" style={{ background: "rgba(3,4,5,0.35)" }}>
-                    <img src="/icons/locky.svg" alt="" className="mt-1 h-5 w-5 shrink-0"
+                    <img loading="lazy" decoding="async" src="/icons/locky.svg" alt="" className="mt-1 h-5 w-5 shrink-0"
                       onError={(e) => { e.currentTarget.style.display = "none"; }} />
                     <p style={{ fontFamily: fontBase, fontWeight: 400, fontSize: 12, color: "#71717A" }}>
                       Your withdrawal is secured with end-to-end encryption. Funds are usually available within 1-3 business days.

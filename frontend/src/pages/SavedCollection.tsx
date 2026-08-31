@@ -4537,9 +4537,9 @@ export default function SavedCollection() {
             {mapped?.videoUrl ? (
               <video className="mp-card__video" src={mapped.videoUrl} muted loop playsInline autoPlay />
             ) : mapped?.imageUrl ? (
-              <img src={mapped.imageUrl} alt={title} className="mp-card__img" />
+              <img loading="lazy" decoding="async" src={mapped.imageUrl} alt={title} className="mp-card__img" />
             ) : (
-              <img src={mockImages[idx % mockImages.length]} alt={title} className="mp-card__img" />
+              <img loading="lazy" decoding="async" src={mockImages[idx % mockImages.length]} alt={title} className="mp-card__img" />
             )}
           </div>
 
@@ -4579,7 +4579,7 @@ export default function SavedCollection() {
           {/* Premium mark, same rule as the marketplace: paid listings only. */}
           {!(mapped as any)?.isFree && cardPrice(mapped) > 0 ? (
             <div className="mp-card__crown">
-              <img
+              <img loading="lazy" decoding="async"
                 src="/icons/premium.png"
                 alt="Premium"
                 className={(mapped as any)?.exclusive ? "filter-green" : ""}
@@ -4808,7 +4808,7 @@ export default function SavedCollection() {
     if (!directItems.length) {
       return (
         <div className="text-center py-16">
-          <img src="/icons/void.png" alt="" className="mx-auto mb-6 h-32 sm:h-40 w-auto opacity-90" />
+          <img loading="lazy" decoding="async" src="/icons/void.png" alt="" className="mx-auto mb-6 h-32 sm:h-40 w-auto opacity-90" />
           <p className="text-white text-lg sm:text-xl">Nothing saved yet</p>
           {/* No longer mentions saving "with a Name/Title to group them into a
               folder" — there are no folders to group into. */}
@@ -4869,7 +4869,7 @@ export default function SavedCollection() {
                     className="relative w-full overflow-hidden"
                     style={{ height: 220, borderRadius: 16, backgroundColor: "#0B0B0B", margin: "0 auto" }}
                   >
-                    <img src={imageUrl} alt={title} className="w-full h-full object-cover rounded-[16px]" />
+                    <img loading="lazy" decoding="async" src={imageUrl} alt={title} className="w-full h-full object-cover rounded-[16px]" />
                   </div>
 
                   <div className="mt-3 flex items-start justify-between gap-3">
@@ -4964,9 +4964,9 @@ export default function SavedCollection() {
                     }`}
                   >
                     {/* Creators has no PNG of its own — a lucide glyph rather
-                        than an <img src=""> that renders as a broken image. */}
+                        than an <img loading="lazy" decoding="async" src=""> that renders as a broken image. */}
                     {t.icon ? (
-                      <img src={t.icon} alt="" className="h-4 w-4" />
+                      <img loading="lazy" decoding="async" src={t.icon} alt="" className="h-4 w-4" />
                     ) : (
                       <Users className="h-4 w-4" />
                     )}

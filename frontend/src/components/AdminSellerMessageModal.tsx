@@ -281,7 +281,7 @@ export default function AdminSellerMessageModal({
       <div className="w-full max-w-[1180px] h-[86vh] rounded-[24px] overflow-hidden border border-white/10 bg-[#050607] shadow-2xl flex flex-col">
         <div className="h-[76px] px-5 md:px-7 border-b border-white/10 bg-[#121212] flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
-            <img
+            <img loading="lazy" decoding="async"
               src={avatarFor(seller)}
               alt={titleSeller}
               className="h-11 w-11 rounded-full object-cover border border-white/10"
@@ -340,7 +340,7 @@ const mine =
                     return (
                       <div key={m._id || m.id} className={["flex gap-3", mine ? "justify-end" : "justify-start"].join(" ")}>
                         {!mine && (
-                          <img
+                          <img loading="lazy" decoding="async"
                             src={avatarFor(seller)}
                             className="h-8 w-8 rounded-full object-cover border border-white/10 mt-1"
                             alt="seller"
@@ -351,7 +351,7 @@ const mine =
                           {m.attachment?.url && (
                             <div className={["mb-2 rounded-2xl p-3 border max-w-[560px]", mine ? "bg-white/10 border-white/10" : "bg-[#171717] border-white/10"].join(" ")}>
                               {m.attachment.type === "image" ? (
-                                <img src={m.attachment.url} alt={m.attachment.name || "attachment"} className="max-h-[240px] rounded-xl object-cover" />
+                                <img loading="lazy" decoding="async" src={m.attachment.url} alt={m.attachment.name || "attachment"} className="max-h-[240px] rounded-xl object-cover" />
                               ) : (
                                 <a href={m.attachment.url} target="_blank" rel="noreferrer" className="text-sm text-sky-300 hover:underline">
                                   {m.attachment.name || "Attachment"}

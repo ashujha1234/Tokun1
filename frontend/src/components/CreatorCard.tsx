@@ -111,7 +111,7 @@ export default function CreatorCard({
             hiring, messaging and their services all live. */}
         <div className="flex items-start gap-3 cursor-pointer pr-[78px]" onClick={openProfile}>
           <div className="relative shrink-0">
-            <img
+            <img loading="lazy" decoding="async"
               src={avatarFor(person)}
               onError={onAvatarError(person)}
               alt={person.name}

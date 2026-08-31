@@ -14,8 +14,10 @@
  *
  * Self-contained deliberately — it owns the two modals it can open, so a bar
  * only has to render the button. The app header still renders its own copy of
- * these modals, because its screen-recording permission step drives the same
- * `sellOpen` state and pulling that apart is a different job than this one.
+ * these modals; that duplication used to be load-bearing (the header's
+ * screen-recording permission step drove the same `sellOpen` state), and now
+ * that the step is gone it is merely duplication — worth collapsing, but a
+ * different job than this one.
  */
 
 import { useState } from "react";

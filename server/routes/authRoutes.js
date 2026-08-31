@@ -35,10 +35,20 @@ const router = express.Router();
 const otpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   max: 5,
+  /* `req.ip` — ipKeyGenerator takes an IP string, and handed the request object
+     it returns that object, which this template turned into "[object Object]".
+     The IP half of the key was a constant, so this was keyed on email alone and
+     anyone could burn a stranger's OTP allowance from anywhere. */
   keyGenerator: (req) => {
-    return `${ipKeyGenerator(req)}:${(req.body.email || "").toLowerCase().trim()}`;
+    return `${ipKeyGenerator(req.ip)}:${(req.body.email || "").toLowerCase().trim()}`;
   },
-  message: { success: false, error: "too_many_requests" },
+  /* A code, not a sentence, is what the rest of this file returns — but this one
+     reaches a person mid-signup, so it needs to say what to do. */
+  message: {
+    success: false,
+    error: "too_many_requests",
+    message: "Too many codes requested. Please wait 10 minutes and try again.",
+  },
 });
 function gen4DigitOtp() {
   return String(Math.floor(1000 + Math.random() * 9000)); // 1000..9999

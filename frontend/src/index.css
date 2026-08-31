@@ -371,11 +371,20 @@
   }
 }
 
+/* font-display: swap on all four.
+   These were the only faces in this file without it, and Inter is the BODY
+   font — so the default (`auto`, which every browser treats as `block`) meant
+   up to three seconds of completely invisible text on a cold load while the
+   woff2 came down. The six other families here already had swap; these four
+   were simply missed, and being the body font they were the four that mattered
+   most. With swap the text paints immediately in the fallback and re-renders in
+   Inter when it arrives. */
 @font-face {
   font-family: 'Inter';
   src: url('/Fonts/inter/Inter-Regular.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 
 @font-face {
@@ -383,6 +392,7 @@
   src: url('/Fonts/inter/Inter-Medium.woff2') format('woff2');
   font-weight: 500;
   font-style: normal;
+  font-display: swap;
 }
 
 @font-face {
@@ -390,6 +400,7 @@
   src: url('/Fonts/inter/Inter-SemiBold.woff2') format('woff2');
   font-weight: 600;
   font-style: normal;
+  font-display: swap;
 }
 
 @font-face {
@@ -397,6 +408,7 @@
   src: url('/Fonts/inter/Inter-Bold.woff2') format('woff2');
   font-weight: 700;
   font-style: normal;
+  font-display: swap;
 }
 
 body {
@@ -731,9 +743,40 @@ html {
 @media (min-width: 1280px) { .site-header { --header-w: 1280px; } }
 @media (min-width: 1400px) { .site-header { --header-w: 1400px; } }
 
+/* HOW FAR THE TWO ENDS TRAVEL TOWARDS EACH OTHER ON SCROLL.
+ *
+ * Half of this each way — the brand right, the actions left — and it must never
+ * exceed the empty space between them, or they walk into each other. This was a
+ * flat 300px at every width, and 300px of spare room only exists from 1280 up:
+ *
+ *     390px   -84px spare      768px   158px spare
+ *     640px   110px spare     1024px    68px spare
+ *
+ * So everywhere below 1280 the logo was dragged underneath the icon row. It
+ * showed worst on a tablet (820px: 142px of overlap) because that is wide enough
+ * for the bar to look deliberate, so it read as a broken layout rather than a
+ * small screen.
+ *
+ * 1024 is the TIGHTEST of them, not the roomiest, which is why a simple
+ * "smaller on small screens" ladder would still have been wrong: every label in
+ * the action row appears at lg, while the column stays at 1024 until 1280. The
+ * row is at its fullest exactly where it has least room.
+ *
+ * The value is sized against the worst case — an org owner, who carries the
+ * extra Team button — because CSS cannot know whether that button is there.
+ *
+ * Zero is not a broken state. The panel still fades in, insets top and bottom,
+ * rounds its ends and scales the logo; only the horizontal pull stops. */
 .site-header--scrolled {
-  /* 300px off the column = 150px of travel each way. */
-  --header-shrink: 300px;
+  --header-shrink: 0px;
+}
+@media (min-width: 1280px) {
+  /* 324px spare here — 200 leaves 124px between the logo and the first icon. */
+  .site-header--scrolled { --header-shrink: 200px; }
+}
+@media (min-width: 1400px) {
+  /* 444px spare, so the original 300px fits with room to spare. */
+  .site-header--scrolled { --header-shrink: 300px; }
 }
 
 /* The nav row. Its max-width is here rather than a Tailwind class so it can

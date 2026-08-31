@@ -193,7 +193,7 @@ export function buildNdaHtml(nda: NdaData, sigs?: { client?: string; freelancer?
 
   const sigBox = (dataUrl?: string) =>
     dataUrl
-      ? `<img src="${dataUrl}" style="height:52px;display:block;margin-bottom:6px;max-width:220px;" alt="signature"/>`
+      ? `<img loading="lazy" decoding="async" src="${dataUrl}" style="height:52px;display:block;margin-bottom:6px;max-width:220px;" alt="signature"/>`
       : `<div style="height:52px;margin-bottom:6px;border-bottom:1px dashed #bbb;"></div>`;
 
   // Short enough to sit on one line beside the role chip — the timestamp is the

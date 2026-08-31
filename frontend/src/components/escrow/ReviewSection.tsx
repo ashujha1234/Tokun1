@@ -206,7 +206,7 @@ export default function ReviewSection({
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-full bg-white/10 grid place-items-center text-sm font-semibold shrink-0 overflow-hidden">
                 {r.reviewer?.avatarUrl ? (
-                  <img src={r.reviewer.avatarUrl} alt="" className="w-full h-full object-cover" />
+                  <img loading="lazy" decoding="async" src={r.reviewer.avatarUrl} alt="" className="w-full h-full object-cover" />
                 ) : (
                   (r.reviewer?.name || "U").charAt(0).toUpperCase()
                 )}

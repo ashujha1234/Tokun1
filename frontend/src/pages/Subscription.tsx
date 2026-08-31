@@ -1122,7 +1122,18 @@ export default function Subscription() {
     <div className="min-h-screen bg-[#07080A] text-white">
       <Header />
 
-      <main className="container mx-auto max-w-[1100px] px-4 pt-16 sm:pt-18 pb-10">
+      {/* No `container`.
+       *
+       * That class snaps the page down to the current breakpoint — so from 768px
+       * to 1023px it was a flat 768px wide, and a 900px tablet got exactly the
+       * same 736px of usable width as a 768px one. `max-w-[1100px]` was already
+       * the binding limit above 1100, so all `container` ever did here was throw
+       * away real width in the middle of the range.
+       *
+       * That thrown-away width is what stopped three cards fitting on a tablet:
+       * they need 774px and the cap allowed 736px, at every width from 768 to
+       * 1023. Without it a 820px iPad has 788px and they fit. */}
+      <main className="mx-auto max-w-[1100px] px-4 pt-16 sm:pt-18 pb-10">
         {/* Title */}
         <div className="text-center max-w-[780px] mx-auto space-y-2">
           <h1 className='font-["Inter"] font-semibold text-[22px] sm:text-[26px] leading-tight'>
@@ -1165,7 +1176,24 @@ export default function Subscription() {
             card/panel/card/panel across the rows and the three plans would stop
             lining up. Inside a cell it always sits under its own card, at every
             width. */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-x-2 lg:gap-y-4 justify-items-center">
+        {/* 1 column, then 3. Never 2.
+         *
+         * `sm:grid-cols-2` used to put two plans on a row and the third alone
+         * underneath, from 640px all the way to 1024 — a comparison of three
+         * things laid out as two things and an afterthought. With exactly three
+         * cards there is no width at which two columns is the right answer.
+         *
+         * `min-[806px]`, not `md` or `lg`. The card is a fixed 250px and cannot
+         * shrink — its own token line and CTA are 200px inside 48px of padding,
+         * so 248px is the floor (see PlanCard). Three of them plus two 12px gaps
+         * need 774px of content, which with `px-4` is a 806px viewport.
+         *
+         * A named breakpoint would be wrong in both directions: `md` (768px) is
+         * 38px short and would overflow, and `lg` (1024px) leaves every tablet
+         * between 806 and 1023 stacked for no reason. The number is not a
+         * preference, it is the width at which three cards physically fit, so it
+         * is written as that width. */}
+        <div className="grid grid-cols-1 min-[806px]:grid-cols-3 gap-3 lg:gap-x-2 lg:gap-y-4 justify-items-center">
           <div className="flex w-full flex-col items-center">
             <PlanCard
               selected={selected === "Free"}
@@ -1276,16 +1304,20 @@ function PlanCard({
   return (
     <Card
       onClick={onSelect}
-      /* Full width of its grid cell below md, the original 250px from md up.
+      /* ONE SIZE, EVERY SCREEN: 250 × 400.
        *
-       * 250px on a 361px phone left ~55px of dead margin down each side while
-       * every other block on the page — the heading, the search, the comparison
-       * — ran to the container's own `px-4`. The card looked like a desktop card
-       * that had been dropped onto a phone, which is what it was.
+       * This was briefly `w-full lg:w-[250px]` so the card would run to the page
+       * margins on a phone and fit a 237px tablet cell. Both worked, and both
+       * changed what the card IS — 250×400 became 358×400 on a phone, which is
+       * the same content in a squat frame with different padding, a wrapped
+       * token line and a button that no longer filled its row. A card people
+       * recognise is worth more than a card that fills the width.
        *
-       * The height stays 400px: the card holds the same price, token count and
-       * three lines it always did, and they need no more room for being wider. */
-      className="relative cursor-pointer flex flex-col w-full md:w-[250px] h-[400px]"
+       * So the width is fixed and the GRID does the responding: one column until
+       * there is room for three, never two (see the note on the grid). Everything
+       * inside — the content column, the token line, the CTA — is back to a
+       * single fixed value for the same reason. */
+      className="relative cursor-pointer flex flex-col w-[250px] h-[400px]"
       style={{
         borderRadius: 16,
         border: "1px solid #35343C",
@@ -1494,10 +1526,10 @@ function PlanGroupDivider() {
  */
 function PlanFeatureList({ plan, title }: { plan: PlanColumn; title: string }) {
   return (
-    /* The card's own width, tracking it at both breakpoints, so the panel reads
-       as belonging to the thing above it rather than as a new section that
-       happens to follow it. */
-    <div className="mt-3 w-full md:w-[250px]">
+    /* The card's width, flat 250px like the card itself — so the panel reads as
+       belonging to the thing above it rather than as a new section that happens
+       to follow it. */
+    <div className="mt-3 w-[250px]">
       <div
         className="rounded-[16px] px-4 py-4"
         style={{ border: "1px solid #35343C", background: "#0D0D0E" }}

@@ -201,10 +201,10 @@ export default function PurchaseDialog({ open, onOpenChange, prompt, onPurchaseC
                         />
                         <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-[160px] overflow-hidden">
                           <div className="flex items-center gap-2 whitespace-nowrap opacity-100">
-                            <img src="/icons/Visa.png" alt="Visa" className="w-[28.75px] h-[20px] object-contain shrink-0" />
-                            <img src="/icons/Mastercard.png" alt="Mastercard" className="w-[28.75px] h-[20px] object-contain shrink-0" />
-                            <img src="/icons/Amex.png" alt="Amex" className="w-[28.75px] h-[20px] object-contain shrink-0" />
-                            <img src="/icons/Discover.png" alt="Discover" className="w-[28.75px] h-[20px] object-contain shrink-0" />
+                            <img loading="lazy" decoding="async" src="/icons/Visa.png" alt="Visa" className="w-[28.75px] h-[20px] object-contain shrink-0" />
+                            <img loading="lazy" decoding="async" src="/icons/Mastercard.png" alt="Mastercard" className="w-[28.75px] h-[20px] object-contain shrink-0" />
+                            <img loading="lazy" decoding="async" src="/icons/Amex.png" alt="Amex" className="w-[28.75px] h-[20px] object-contain shrink-0" />
+                            <img loading="lazy" decoding="async" src="/icons/Discover.png" alt="Discover" className="w-[28.75px] h-[20px] object-contain shrink-0" />
                           </div>
                         </div>
                         <div className="text-[11px] text-emerald-400">

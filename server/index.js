@@ -4319,6 +4319,23 @@
 
 // server/index.js
 require("dotenv").config();
+
+/* Must come before ANY route module is required below, because those modules
+   register their handlers at require time and this patches the Router so a
+   handler that returns a rejected promise reaches the error middleware.
+
+   Express 4 does not await route handlers. An `async` handler that throws with
+   no try/catch does not produce a 500 — it produces an unhandled rejection,
+   which Node 18+ turns into a process exit. One missing try/catch anywhere in
+   58 route files took the whole server down, killing every socket.io connection
+   and every in-flight payment with it. With this, that same throw becomes a 500
+   on the one request that caused it and the server stays up.
+
+   The process-level handlers at the bottom of this file are the layer below
+   this one: they catch what escapes Express entirely (a cron job, a socket
+   handler, a stray callback). */
+require("express-async-errors");
+
 require("./utils/passport");
 
 const express = require("express");
@@ -4346,11 +4363,14 @@ const Conversation = require("./models/Conversation");
 const AdminConversation = require("./models/AdminConversation");
 const AdminMessage = require("./models/AdminMessage");
 const User = require("./models/User");
+// Both needed by the socket handshake check below, which resolves a token the
+// same way utils/auth.js requireAuth does for HTTP.
+const AdminUser = require("./models/AdminUser");
+const jwt = require("jsonwebtoken");
 
 // Jobs
 const { resetDuePeriods } = require("./utils/jobs/resetPeriods");
 const { updateSubscriptionStatuses } = require("./utils/jobs/subscriptionStatusCron");
-const { seedDefaultAdmin } = require("./utils/seedAdmin");
 
 // Routes
 const authRoutes = require("./routes/authRoutes");
@@ -4408,7 +4428,6 @@ const userAdminRoutes = require("./routes/userAdminRoutes");
 const adminOrgsRouter = require("./routes/adminOrgs");
 const walletRoutes = require("./routes/walletRoutes");
 const reportRoutes = require("./routes/report");
-const screenRecordingRoutes = require("./routes/screenRecording");
 
 // ✅ Become-a-Freelancer onboarding + its admin review queue
 const freelancerRoutes = require("./routes/freelancerRoutes");
@@ -4569,9 +4588,97 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /* ===============================
+   RATE LIMITING
+================================ */
+/* Two limiters, both set generously on purpose: they exist to stop a script,
+   not to ration normal use. A limit a real person can reach is a bug — they
+   will read it as the site being broken, and they will be right to.
+
+   trust proxy FIRST, and it is not optional. App Service terminates TLS and
+   forwards, so req.ip is the load balancer on every request. Without this line
+   every user in the world shares one rate-limit bucket, and the first busy
+   minute locks everyone out at once — a limiter that causes the outage it was
+   added to prevent. `1` = trust exactly one proxy hop, which is what sits in
+   front of us; `true` would trust a client-supplied X-Forwarded-For and let
+   anyone mint a fresh bucket per request. */
+app.set("trust proxy", 1);
+
+/* Imported under their real names, not aliased. express-rate-limit validates a
+   custom keyGenerator by reading its SOURCE TEXT for the literal string
+   "ipKeyGenerator" — alias it and you get a loud ERR_ERL_KEY_GEN_IPV6 warning on
+   every boot for code that is actually correct. */
+const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
+
+/* Per user when we know who they are, per IP otherwise. Without the user key,
+   an office or a college behind one NAT would share a bucket and throttle each
+   other.
+
+   `ipKeyGenerator(req.ip)`, never `ipKeyGenerator(req)`. It takes an IP STRING; given the
+   request object it hands the object straight back, and an object used as a
+   store key is a NEW key every single request — the limiter then counts to one
+   forever and enforces nothing. Four limiters in this codebase had that bug and
+   two of them (routes/adminRoutes.js otpLimiter, resendLimiter) were doing
+   nothing at all. It fails silently and looks correct, so check the argument. */
+const userOrIpKey = (req) =>
+  req.user?._id ? `u:${req.user._id}` : ipKeyGenerator(req.ip);
+
+/* Catch-all. 600 per 5 minutes is ~2 requests/second sustained — far above any
+   real session (a heavy page load is a few dozen calls) and far below what a
+   scripted loop does. */
+const globalLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 600,
+  keyGenerator: userOrIpKey,
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Azure's health probe polls constantly and must never be throttled — a
+  // rate-limited probe reads as an unhealthy instance and gets recycled.
+  skip: (req) => req.path === "/health" || req.path.startsWith("/health/"),
+  message: {
+    success: false,
+    error: "rate_limited",
+    message: "Too many requests. Wait a minute and try again.",
+  },
+});
+app.use(globalLimiter);
+
+/* The endpoints that call OpenAI. These cost money per request, which is why
+   they get their own, tighter bucket on top of the global one.
+
+   30 per 10 minutes: someone genuinely working writes a prompt, reads the
+   result, edits, runs it again — call it one every 30–60 seconds at their
+   fastest. 30 gives that person roughly three times the headroom they need,
+   and still caps a runaway script at 180/hour instead of thousands.
+
+   The message says how long to wait, because "try again later" tells a person
+   nothing and they retry immediately — which is the one thing that keeps them
+   limited. Start here and tighten only if the logs show it is worth it; the
+   cost of being too tight lands on real users, the cost of being slightly loose
+   is a few dollars. */
+const llmLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 30,
+  keyGenerator: userOrIpKey,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: "rate_limited",
+    message:
+      "You've run a lot of prompts in a short time. Please wait a few minutes and try again — nothing has been lost.",
+  },
+});
+
+/* ===============================
    SMARTGEN OPTIMIZE API
 ================================ */
-app.post("/api/optimize", async (req, res) => {
+/* Note for whoever reads this next: this endpoint has no requireAuth, so the
+   limiter keys it by IP. That is not an oversight in the limiter — the frontend
+   genuinely calls it without a token (llmService.optimizeWithOpenAI), so adding
+   auth here would break prompt optimisation for everyone. Whether it SHOULD be
+   public is a separate question worth asking; until it is answered, the IP
+   bucket is what stands between this and an unbounded OpenAI bill. */
+app.post("/api/optimize", llmLimiter, async (req, res) => {
   const {
     text,
     model = "gpt-4o-mini",
@@ -5007,7 +5114,9 @@ app.use("/api/quota", quotaRoutes);
    Must be registered BEFORE app.use("/api/smartgen", ...) so the
    /stream path isn't matched by the GET /:id catch-all inside smartgenRoutes.
 ================================ */
-app.post("/api/smartgen/stream", requireAuth, async (req, res) => {
+/* llmLimiter AFTER requireAuth, so the bucket is keyed by user rather than by
+   IP — two people on one office network must not throttle each other. */
+app.post("/api/smartgen/stream", requireAuth, llmLimiter, async (req, res) => {
   const { prompt, context = {}, skillMode = false, deepMode } = req.body || {};
 
   if (!prompt || typeof prompt !== "string" || prompt.trim().length < 3) {
@@ -5546,7 +5655,17 @@ app.use("/api/admin/platform-revenue", adminPlatformRevenueRouter);
 app.use("/api/admin/payments", adminPaymentsRouter);
 app.use("/api/admin/orgs", adminOrgsRouter);
 app.use("/api/report", reportRoutes);
-app.use("/api/screen-recording", screenRecordingRoutes);
+
+/* /api/screen-recording used to mount here. The feature was retired from the
+   UI — nothing ever called setScreenPermOpen(true), so the permission modal
+   could not open — but the router stayed mounted, which is the part that
+   mattered: a dead UI does not close an HTTP endpoint. GET /all took no working
+   auth (it used a stub middleware that assigned every caller the same
+   hardcoded user id) and answered with every recording, populated with each
+   user's name and email plus guest name/email, unpaginated. Router, route file,
+   and the stub middleware are all deleted. The ScreenRecording collection and
+   server/uploads/screen-recordings/ are untouched — that is data, and dropping
+   it is a separate decision. */
 
 /* Become-a-Freelancer. The admin queue is mounted on its own path rather than
    under adminRoutes because it authenticates as an admin token (req.isAdmin),
@@ -5562,6 +5681,100 @@ app.use("/api/memory", memoryRoutes);
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "sample.html"));
+});
+
+/* ===============================
+   404 + ERROR HANDLER
+   Must stay LAST — after every app.use above. Express picks middleware in
+   registration order, so a 404 registered earlier would swallow real routes.
+================================ */
+
+/* Unknown /api/* paths answered as JSON. Without this they fall through to
+   Express's default, which returns an HTML error page — and the frontend does
+   res.json() on it and reports a parse error instead of "not found". */
+app.use("/api", (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: "not_found",
+    message: `Cannot ${req.method} ${req.baseUrl}${req.path}`,
+  });
+});
+
+/* The four-argument signature is what marks this as an error handler; drop the
+   unused `next` and Express treats it as ordinary middleware and never calls it.
+
+   Every branch below is a client mistake that arrives here looking like a server
+   fault. They are separated out so real 500s stay rare enough to be worth
+   reading — a log full of "someone posted malformed JSON" trains you to ignore
+   it, which is how the actual crash goes unnoticed. */
+app.use((err, req, res, _next) => {
+  /* corsOptions.origin rejects with `new Error("CORS not allowed: …")`. That is
+     a blocked browser, not a broken server, and it must not be logged at error
+     level or a scanner hitting the host fills the log. */
+  if (err && String(err.message || "").startsWith("CORS not allowed")) {
+    return res.status(403).json({ success: false, error: "cors_denied" });
+  }
+
+  /* express.json() rejects malformed bodies with a SyntaxError carrying
+     status 400, and oversized ones with entity.too.large / 413. Both already
+     know their own status. */
+  if (err && (err.type === "entity.parse.failed" || err.type === "entity.too.large")) {
+    return res.status(err.status || 400).json({
+      success: false,
+      error: err.type === "entity.too.large" ? "payload_too_large" : "invalid_json",
+    });
+  }
+
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({
+      success: false,
+      error: "upload_failed",
+      code: err.code,
+      message:
+        err.code === "LIMIT_FILE_SIZE" ? "File is too large" : "Upload rejected",
+    });
+  }
+
+  if (err && err.name === "ValidationError") {
+    return res.status(400).json({
+      success: false,
+      error: "validation_failed",
+      fields: Object.keys(err.errors || {}),
+    });
+  }
+
+  /* A malformed ObjectId in the URL. Mongoose throws on the cast, which without
+     this reads as a 500 for what is really a bad link. */
+  if (err && err.name === "CastError") {
+    return res.status(400).json({ success: false, error: "invalid_id" });
+  }
+
+  /* Anything past here is genuinely unexpected.
+
+     The id is the point: the client is told an opaque reference and the full
+     stack goes to the log under that same reference, so a user's screenshot can
+     be matched to a stack trace without ever putting the stack in the response.
+     Leaking one is not academic here — these stacks carry file paths, query
+     shapes, and sometimes the values that were being written. */
+  const errorId = require("crypto").randomUUID();
+  const status = err && Number.isInteger(err.status) ? err.status : 500;
+
+  console.error(
+    `[error ${errorId}] ${req.method} ${req.originalUrl}` +
+      (req.user?._id ? ` user=${req.user._id}` : ""),
+    err
+  );
+
+  res.status(status).json({
+    success: false,
+    error: "server_error",
+    errorId,
+    /* Outside production the message is worth having in the browser; the stack
+       still is not, in either environment. */
+    ...(process.env.NODE_ENV === "production"
+      ? {}
+      : { message: err?.message }),
+  });
 });
 
 /* ===============================
@@ -5720,9 +5933,103 @@ app.set("notifyChatRecipients", notifyRecipients);
 const collabRooms = new Map();
 
 // --- REAL-TIME SOCKET LOGIC ---
+/* ===============================
+   SOCKET HANDSHAKE AUTH
+================================ */
+/* Identity is established HERE, once, and every handler below reads it from
+   socket.data. Nothing downstream may take a user id from an event payload.
+
+   What this replaces: the connection handler used to begin with
+
+       const userId = socket.handshake.auth?.userId;
+
+   — the id the CLIENT said it was, with nothing verifying it. There was no
+   io.use() and no jwt.verify anywhere in the socket path, so a socket could
+   claim to be anyone and then join that person's rooms. `send-message` was the
+   sharp end: it wrote `sender: senderId` straight from the payload, so any
+   connection could post a message as any user into any conversation. Chat logs
+   are evidence in escrow disputes, which makes a forged message a money problem
+   and not only a privacy one.
+
+   Anonymous sockets are still allowed to CONNECT, deliberately: collab sessions
+   are share-a-link and support people who are not signed in (see peersOf, which
+   keys them by socket id). They get userId = null and every handler that needs
+   an identity turns them away. What is NOT allowed is a token that fails to
+   verify — that is a broken or forged client, and it gets told so rather than
+   being quietly downgraded to anonymous.
+
+   The display name is resolved here too. join-session used to look it up per
+   join; now it is read once at handshake, and it is server-sourced, so the name
+   shown next to what someone types cannot be chosen by them. */
+io.use(async (socket, next) => {
+  const token = socket.handshake.auth?.token;
+
+  // No token at all → anonymous. Allowed to connect, allowed to do very little.
+  if (!token) {
+    socket.data.userId = null;
+    socket.data.isAdmin = false;
+    socket.data.name = "Someone";
+    return next();
+  }
+
+  try {
+    const payload = jwt.verify(String(token), process.env.JWT_SECRET);
+
+    if (payload.type === "admin") {
+      const admin = await AdminUser.findById(payload.sub).select("email isActive").lean();
+      if (!admin || admin.isActive === false) return next(new Error("unauthorized"));
+      socket.data.userId = String(admin._id);
+      socket.data.isAdmin = true;
+      socket.data.name = admin.email || "Admin";
+      return next();
+    }
+
+    const user = await User.findById(payload.sub).select("name email").lean();
+    if (!user) return next(new Error("unauthorized"));
+    socket.data.userId = String(user._id);
+    socket.data.isAdmin = false;
+    socket.data.name = user.name || user.email || "Someone";
+    return next();
+  } catch {
+    return next(new Error("unauthorized"));
+  }
+});
+
+/** Is this socket's user a participant of this chat conversation? */
+async function canJoinConversation(socket, conversationId) {
+  const uid = socket.data.userId;
+  if (!uid) return false;
+  if (socket.data.isAdmin) return true;
+  try {
+    const convo = await Conversation.findById(conversationId)
+      .select("participants")
+      .lean();
+    return !!convo && (convo.participants || []).some((p) => String(p) === uid);
+  } catch {
+    // A malformed id casts and throws — not a member, and not a 500 either.
+    return false;
+  }
+}
+
+/** Is this socket's user a party to this admin conversation? */
+async function canJoinAdminConversation(socket, conversationId) {
+  const uid = socket.data.userId;
+  if (!uid) return false;
+  try {
+    const convo = await AdminConversation.findById(conversationId)
+      .select("adminId sellerId")
+      .lean();
+    if (!convo) return false;
+    return String(convo.adminId) === uid || String(convo.sellerId) === uid;
+  } catch {
+    return false;
+  }
+}
+
 io.on("connection", (socket) => {
 
-  const userId = socket.handshake.auth?.userId;
+  /* Server-resolved, from the verified handshake above. Never from a payload. */
+  const userId = socket.data.userId;
 
   if (userId) {
     // Existing chat personal room
@@ -5757,19 +6064,25 @@ io.on("connection", (socket) => {
   // Relayed to the conversation room but NOT back to the sender — you should
   // never see your own "typing…". The client also stops it on send and on a
   // short idle timer, so a dropped stop event can't leave it stuck on.
-  socket.on("typing:start", ({ conversationId, userId: from } = {}) => {
-    if (!conversationId || !from) return;
+  /* The payload used to carry `userId` and it was relayed as-is, so a socket
+     could make anyone appear to be typing. It is ignored now — the id comes
+     from the handshake. Relay is also limited to rooms this socket actually
+     joined, and joining is membership-checked below. */
+  socket.on("typing:start", ({ conversationId } = {}) => {
+    if (!conversationId || !userId) return;
+    if (!socket.rooms.has(String(conversationId))) return;
     socket.to(String(conversationId)).emit("typing:start", {
       conversationId: String(conversationId),
-      userId: String(from),
+      userId: String(userId),
     });
   });
 
-  socket.on("typing:stop", ({ conversationId, userId: from } = {}) => {
-    if (!conversationId || !from) return;
+  socket.on("typing:stop", ({ conversationId } = {}) => {
+    if (!conversationId || !userId) return;
+    if (!socket.rooms.has(String(conversationId))) return;
     socket.to(String(conversationId)).emit("typing:stop", {
       conversationId: String(conversationId),
-      userId: String(from),
+      userId: String(userId),
     });
   });
 
@@ -5777,11 +6090,14 @@ io.on("connection", (socket) => {
      ADMIN MESSAGE SOCKETS
   ================================ */
 
-  socket.on("admin-message:join", (payload = {}) => {
+  /* Membership-checked. This used to join whatever id it was handed, so any
+     socket could name an admin conversation and listen to it. */
+  socket.on("admin-message:join", async (payload = {}) => {
     const conversationId =
       typeof payload === "string" ? payload : payload.conversationId;
 
     if (!conversationId) return;
+    if (!(await canJoinAdminConversation(socket, conversationId))) return;
 
     socket.join(`admin-message:${conversationId}`);
   });
@@ -5799,18 +6115,34 @@ io.on("connection", (socket) => {
      EXISTING CHAT SOCKETS
   ================================ */
 
-  socket.on("join-chat", (payload = {}) => {
+  /* Membership-checked, for the same reason as admin-message:join. A socket
+     naming someone else's conversationId here was enough to receive every
+     new-message emitted into that thread, live. */
+  socket.on("join-chat", async (payload = {}) => {
     const conversationId =
       typeof payload === "string" ? payload : payload.conversationId;
 
     if (!conversationId) return;
+    if (!(await canJoinConversation(socket, conversationId))) return;
 
     socket.join(String(conversationId));
   });
 
-  socket.on("send-message", async ({ conversationId, senderId, text, clientId }) => {
+  /* `senderId` is no longer read from the payload.
+
+     It used to be, and it went straight into `sender:` on the stored document —
+     the single worst line in this file. Any socket could write a message
+     attributed to any user, into any conversation, and it would render as
+     genuine to everyone including an admin reviewing an escrow dispute.
+
+     The sender is now the authenticated socket, and the socket must be a
+     participant of the conversation it is writing to. */
+  socket.on("send-message", async ({ conversationId, text, clientId }) => {
     try {
-      if (!conversationId || !senderId || !String(text || "").trim()) return;
+      if (!conversationId || !userId || !String(text || "").trim()) return;
+      if (!(await canJoinConversation(socket, conversationId))) return;
+
+      const senderId = userId;
 
       const message = await Message.create({
         conversationId,
@@ -5895,9 +6227,13 @@ io.on("connection", (socket) => {
   // that isn't theirs as read, and tells the room so the sender's ticks turn
   // blue. Emitted to the whole room (not just the sender) so a third
   // participant's view stays consistent too.
-  socket.on("message:read", async ({ conversationId, userId: readerId } = {}) => {
+  socket.on("message:read", async ({ conversationId } = {}) => {
     try {
+      // The reader is the authenticated socket. Taking it from the payload let
+      // one account mark another account's messages as read.
+      const readerId = userId;
       if (!conversationId || !readerId) return;
+      if (!(await canJoinConversation(socket, conversationId))) return;
 
       const result = await Message.updateMany(
         {
@@ -5933,20 +6269,33 @@ io.on("connection", (socket) => {
      CALL SOCKETS
   ================================ */
 
-  socket.on("call-user", ({ toUserId, fromUser, conversationId, type }) => {
+  /* All three relay into another user's personal room, so all three need to
+     know who is calling. They previously took the caller's identity from the
+     payload (`fromUser`) and required no auth at all, which made this an open
+     ring-anyone-as-anyone relay. `fromUser` is now built from the handshake;
+     whatever the client sends under that key is discarded.
+
+     Note that no frontend code emits `call-user` today — only the listeners
+     exist (CallContext). The handler is kept rather than deleted because the
+     receiving half is still wired, but it is no longer a relay a stranger can
+     drive. */
+  socket.on("call-user", ({ toUserId, conversationId, type }) => {
+    if (!userId || !toUserId) return;
 
     io.to(String(toUserId)).emit("incoming-call", {
-      fromUser,
+      fromUser: { _id: userId, name: socket.data.name },
       conversationId,
       type,
     });
   });
 
   socket.on("call-accepted", ({ toUserId, conversationId }) => {
+    if (!userId || !toUserId) return;
     io.to(String(toUserId)).emit("call-accepted", { conversationId });
   });
 
   socket.on("end-call", ({ toUserId }) => {
+    if (!userId || !toUserId) return;
     io.to(String(toUserId)).emit("call-ended");
   });
 
@@ -5999,7 +6348,12 @@ io.on("connection", (socket) => {
     });
   };
 
-  socket.on("join-session", async ({ sessionId, userId }) => {
+  /* `userId` is no longer a parameter — it shadowed the authenticated id from
+     the handshake, so a socket could join a session as somebody else and their
+     name would appear against every edit. Anonymous joins still work (userId
+     stays null): collab is share-a-link and not everyone in a session is signed
+     in, which peersOf already accounts for. */
+  socket.on("join-session", async ({ sessionId }) => {
     try {
       if (!sessionId) return;
 
@@ -6015,18 +6369,10 @@ io.on("connection", (socket) => {
         });
       }
 
-      /* The name to show. Looked up once per socket, here, rather than sent by
-         the client — a client-supplied display name is a client-supplied claim,
-         and this one appears next to what the person types. */
-      let name = "Someone";
-      if (userId) {
-        try {
-          const u = await User.findById(userId).select("name email").lean();
-          if (u) name = u.name || u.email || "Someone";
-        } catch {
-          /* Falls back to "Someone" — a missing name must not stop a join. */
-        }
-      }
+      /* Resolved at handshake from the verified token, not looked up here and
+         never sent by the client — this name appears next to what the person
+         types. Anonymous sockets carry the "Someone" default. */
+      const name = socket.data.name;
 
       if (!collabRooms.has(String(sessionId))) collabRooms.set(String(sessionId), new Map());
       collabRooms.get(String(sessionId)).set(socket.id, {
@@ -6068,19 +6414,26 @@ io.on("connection", (socket) => {
      prompt. Relayed rather than recomputed, so the two sides can't come back
      with different text — and only relayed, since the tokens were already
      charged to whoever ran it. */
-  socket.on("prompt-optimized", ({ sessionId, userId, name, result }) => {
+  /* userId/name dropped from the payload — attribution comes from the
+     handshake, and only sockets actually in the room may relay into it. */
+  socket.on("prompt-optimized", ({ sessionId, result }) => {
     if (!sessionId || !result) return;
+    if (!socket.rooms.has(String(sessionId))) return;
     socket.to(String(sessionId)).emit("prompt-optimized", {
       sessionId,
       userId,
-      name,
+      name: socket.data.name,
       result,
     });
   });
 
-  socket.on("prompt-change", async ({ sessionId, text, userId }) => {
+  socket.on("prompt-change", async ({ sessionId, text }) => {
     try {
       if (!sessionId) return;
+      /* Must already be in the room. Without this any socket could rewrite any
+         session's text by naming its id — and $inc means it would also win the
+         revision race against the people actually in it. */
+      if (!socket.rooms.has(String(sessionId))) return;
 
       /* Every accepted edit gets a number, and the number only goes up.
 
@@ -6119,7 +6472,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("leave-session", ({ sessionId, userId }) => {
+  socket.on("leave-session", ({ sessionId }) => {
     if (!sessionId) return;
 
     socket.leave(String(sessionId));
@@ -6131,9 +6484,12 @@ io.on("connection", (socket) => {
     broadcastPeers(sessionId);
   });
 
-  socket.on("end-session", async ({ sessionId, userId }) => {
+  socket.on("end-session", async ({ sessionId }) => {
     try {
       if (!sessionId) return;
+      /* End Session deletes the row for everyone, so it has to come from
+         someone who is in the session — not from anyone who knows its id. */
+      if (!socket.rooms.has(String(sessionId))) return;
 
       await CollabSession.deleteOne({ sessionId });
 
@@ -6210,52 +6566,139 @@ if (!MONGO_URI) {
   process.exit(1);
 }
 
+/* The AdminConversation index cleanup that used to sit between connect() and
+   listen() has moved to scripts/fix-admin-conversation-index.js. It dropped an
+   index and ran a deleteMany on EVERY boot, which on App Service means on every
+   deploy, scale event and wake from idle — and two instances starting together
+   raced each other on the same dropIndex. Run the script once, by hand:
+
+       node scripts/fix-admin-conversation-index.js           # dry run
+       node scripts/fix-admin-conversation-index.js --apply
+
+   seedDefaultAdmin() has also gone; see utils/seedAdmin.js for why, and for
+   what to run instead. Boot now connects and listens, and nothing else. */
 mongoose
   .connect(MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
     ssl: true,
+    /* Fail fast instead of hanging. The default selection timeout is 30s, so a
+       Mongo hiccup used to hold every request open long enough to exhaust the
+       pool — one slow dependency turning into a whole-app outage. 10s is longer
+       than any healthy Atlas response and short enough that a request gives up
+       while the caller is still there.
+
+       useNewUrlParser / useUnifiedTopology were here too. They have been no-ops
+       since Mongoose 6 and are removed rather than left to imply they do
+       something. */
+    serverSelectionTimeoutMS: 10000,
+    socketTimeoutMS: 45000,
+    maxPoolSize: 20,
   })
-  .then(async () => {
-
-    /* ===============================
-       ✅ AdminConversation index cleanup
-       Purana galat index (sellerUserId wala) + galat data
-       automatically drop/clean karo, phir sahi index sync.
-    ================================ */
-    try {
-      const AdminConversationModel = require("./models/AdminConversation");
-
-      const indexes = await AdminConversationModel.collection.indexes();
-
-      // koi bhi index jismein sellerUserId field ho use drop karo
-      const badIndexes = indexes.filter(
-        (i) =>
-          i.key &&
-          Object.prototype.hasOwnProperty.call(i.key, "sellerUserId")
-      );
-
-      for (const idx of badIndexes) {
-        await AdminConversationModel.collection.dropIndex(idx.name);
-      }
-
-      // galat data (sellerUserId field wale, sellerId ke bina) saaf karo
-      await AdminConversationModel.collection.deleteMany({
-        sellerUserId: { $exists: true },
-        sellerId: { $exists: false },
-      });
-      // sahi index (adminId_1_sellerId_1) sync karo
-      await AdminConversationModel.syncIndexes();
-    } catch (e) {
-      console.error("Index cleanup warning:", e?.message);
-    }
-
-    await seedDefaultAdmin();
-
+  .then(() => {
     server.listen(PORT, () => {
+      console.log(`Server listening on ${PORT}`);
     });
   })
   .catch((err) => {
     console.error("❌ MongoDB connection failed:", err);
     process.exit(1);
   });
+
+/* Mongo dropping and recovering mid-flight was previously invisible: the
+   connect() promise resolves once and never reports again, so a flapping
+   database looked like unexplained slow requests. */
+mongoose.connection.on("disconnected", () => console.error("MongoDB disconnected"));
+mongoose.connection.on("reconnected", () => console.log("MongoDB reconnected"));
+mongoose.connection.on("error", (err) => console.error("MongoDB error:", err));
+
+/* ===============================
+   LAST-RESORT PROCESS HANDLERS
+================================ */
+/* These do not keep the process alive — they make it say why it died.
+
+   Node 18 already exits on an unhandled rejection; it just prints a warning
+   that Azure's log stream does not always surface, so restarts appeared in the
+   portal with no cause attached. express-async-errors (required at the top of
+   this file) now routes route-handler rejections to the error middleware, so
+   anything still arriving here came from outside a request: a cron job, a
+   socket.io handler, a callback with no owner.
+
+   Both handlers exit deliberately. A process that has thrown past every catch
+   is in a state nobody reasoned about, and for a server that moves money,
+   continuing in that state is worse than restarting — App Service brings it
+   back in seconds. `exitCode` rather than exit() gives the log write a tick to
+   flush; without it the reason is what gets lost. */
+process.on("unhandledRejection", (reason) => {
+  console.error("FATAL unhandledRejection:", reason);
+  process.exitCode = 1;
+  setTimeout(() => process.exit(1), 1000).unref();
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("FATAL uncaughtException:", err);
+  process.exitCode = 1;
+  setTimeout(() => process.exit(1), 1000).unref();
+});
+
+/* ===============================
+   GRACEFUL SHUTDOWN
+================================ */
+/* App Service sends SIGTERM on every deploy, scale event and restart, then
+   force-kills a few seconds later. With no handler the process died on the spot
+   and whatever was mid-flight died with it — and on this server "mid-flight"
+   includes a Razorpay verification, an escrow release and a wallet debit. Half
+   a money operation is the expensive kind of bug: the payment happened, the
+   record did not, and nothing in the logs says so.
+
+   The order below is the whole point:
+
+     1. stop accepting NEW connections, but let open ones finish. server.close()
+        does exactly this — it does not cut anything off.
+     2. tell socket clients to go away, so browsers reconnect to a healthy
+        instance instead of sitting on a dead one waiting for a timeout.
+     3. close Mongo LAST. Closing it first would fail every request that was
+        being drained in step 1, which is the outcome this exists to avoid.
+
+   The 15s cap is a backstop, not the plan. If a request is still running then,
+   it is stuck, and holding the deploy open for it helps nobody. Azure's own
+   grace period is short, so this stays comfortably inside it.
+
+   `once`, not `on`: two SIGTERMs (Azure sending a second one, or someone
+   pressing Ctrl-C twice) would otherwise start two shutdowns and the second
+   would call close() on an already-closing server. */
+let shuttingDown = false;
+
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`${signal} received — shutting down`);
+
+  // Anything still running when this fires is stuck; stop waiting for it.
+  const hardExit = setTimeout(() => {
+    console.error("Shutdown timed out after 15s — forcing exit");
+    process.exit(1);
+  }, 15000);
+  hardExit.unref();
+
+  try {
+    // 1. No new connections; in-flight requests keep going.
+    await new Promise((resolve) => server.close(resolve));
+    console.log("HTTP server closed");
+
+    // 2. Socket clients told to reconnect elsewhere.
+    await new Promise((resolve) => io.close(resolve));
+    console.log("Socket.io closed");
+
+    // 3. Database last, once nothing needs it.
+    await mongoose.connection.close(false);
+    console.log("MongoDB closed");
+
+    clearTimeout(hardExit);
+    process.exit(0);
+  } catch (err) {
+    console.error("Error during shutdown:", err);
+    process.exit(1);
+  }
+}
+
+process.once("SIGTERM", () => shutdown("SIGTERM"));
+process.once("SIGINT", () => shutdown("SIGINT"));

@@ -445,7 +445,7 @@ export default function ModalComponent({
             title="Save to All Saved"
             aria-label="Save to All Saved"
           >
-            <img src="/icons/mod1.png" alt="" className="h-5 w-5" />
+            <img loading="lazy" decoding="async" src="/icons/mod1.png" alt="" className="h-5 w-5" />
             <span id="smartgen-save-title" className="text-[15px] leading-[1.2] text-white">All Saved</span>
           </button>
           <button
@@ -454,7 +454,7 @@ export default function ModalComponent({
             aria-label="Quick save"
             className="h-8 w-8 rounded-full grid place-items-center hover:bg-white/10"
           >
-            <img src="/icons/cop.png" alt="Save" className="h-5 w-5 opacity-90" />
+            <img loading="lazy" decoding="async" src="/icons/cop.png" alt="Save" className="h-5 w-5 opacity-90" />
           </button>
         </div>
 

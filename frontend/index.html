@@ -70,17 +70,55 @@
          connections in parallel with it. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Loaded WITHOUT blocking render.
+         As a plain stylesheet this was the single most expensive thing on the
+         page: Lighthouse measured 568 ms of render-blocking, because the
+         browser will not paint until every stylesheet in <head> has been
+         fetched and parsed — and this one lives on someone else's origin, so it
+         costs a DNS lookup, a TLS handshake and two round-trips before the
+         first pixel.
+         `media="print"` makes it non-render-blocking (it does not apply to the
+         screen, so nothing waits for it); the onload flips it to `all` the
+         moment it arrives. The cost of the trick is a brief moment in the
+         fallback font, and that is already how this family is declared —
+         `--font-mono: 'JetBrains Mono', ui-monospace, …` in landing-page.css
+         and PromptMarketplace.css, its only two uses. The noscript copy keeps
+         it working with JavaScript off. -->
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&display=swap"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&display=swap"
+      />
+    </noscript>
   </head>
 
   <body>
     <div id="root"></div>
 
-    <!-- Razorpay Checkout Script -->
-    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <!-- Razorpay Checkout.
+         `defer` is the whole point of this line. Without it this is a classic
+         parser-blocking script: the browser stops parsing, fetches ~100 kB from
+         a third-party CDN, runs it, and only THEN reaches the module below that
+         actually renders the app. Nothing on first paint needs Razorpay — it is
+         needed the moment someone opens checkout, which is never within the
+         first second. Deferred, it downloads alongside the page and executes
+         after parsing, so it no longer sits in front of first render.
+
+         It still loads on every page, which is more than necessary. The real
+         fix is on-demand loading, and half of it already exists: Subscription
+         and self-dash both have an `ensureRazorpay()` that injects this script
+         when they need it and no-ops if it is already there. Five other call
+         sites (Header, PromptLibraryPage, PromptMarketplacePage, ChatPage,
+         HirePaymentPopup) still use `window.Razorpay` directly and depend on
+         this tag, so it cannot be removed until they move to a shared loader
+         too. Payments are not the place to be clever in a hurry. -->
+    <script defer src="https://checkout.razorpay.com/v1/checkout.js"></script>
 
     <script type="module" src="/src/main.tsx"></script>
   </body>

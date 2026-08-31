@@ -296,7 +296,7 @@ export default function DeliverablePreviewModal({
               {preview.heldInEscrow && !preview.burnedIn && <WatermarkOverlay />}
             </div>
           ) : (
-            <img
+            <img loading="lazy" decoding="async"
               src={preview.url}
               alt={name}
               className="max-w-full max-h-[70vh] object-contain"

@@ -354,8 +354,27 @@ function isSectionHeader(line: string): boolean {
 }
 function isTableRow(line: string): boolean { return /^\|.+\|/.test(line.trim()); }
 function isTableSep(line: string): boolean { return /^\|[\s\-:|]+\|/.test(line.trim()); }
+/* The output of this file's formatters goes through dangerouslySetInnerHTML, so
+   anything not escaped here is markup the browser will run.
+
+   It has to happen FIRST and exactly once — before any tag is inserted, or the
+   escaping would eat the tags this function is adding. Everything downstream
+   builds on the escaped string.
+
+   Why it matters here specifically: this renders prompt text, and prompts come
+   from other sellers on the marketplace. Without this, a prompt containing
+   `<img loading="lazy" decoding="async" src=x onerror=…>` executed in the reader's page, with the auth token
+   sitting in localStorage where that script can read it. */
+const escapeHtml = (s: string): string =>
+  s
+    .replace(/&/g, "&amp;") // first — otherwise it re-escapes the & of later entities
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
 function renderInline(text: string): string {
-  return text
+  return escapeHtml(text)
     .replace(/`([^`]+)`/g,'<code style="background:rgba(255,255,255,0.08);border-radius:4px;padding:1px 5px;font-family:monospace;font-size:0.88em;color:#a78bfa">$1</code>')
     .replace(/\*\*([^*]+)\*\*/g,'<strong style="color:#fff;font-weight:600">$1</strong>')
     .replace(/\*([^*]+)\*/g,'<em style="color:rgba(255,255,255,0.75)">$1</em>')
@@ -912,6 +931,26 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
         body:JSON.stringify({prompt:prompt.trim(),context,skillMode:useSkillPath,deepMode:false}),
         signal:ctrl.signal, credentials:"include",
       });
+
+      /* 429 is handled before the generic failure below, and deliberately does
+         NOT fall through to the retry path.
+
+         Two reasons. It would be pointless — the fallback calls /api/optimize,
+         which shares the same limiter, so it fails too and the person waits
+         twice for the same answer. And it would be misleading: they'd end up at
+         "Generation failed", which reads as the site being broken when in fact
+         they just need to wait a couple of minutes. The server sends a sentence
+         written for them; show that sentence. */
+      if (res.status === 429) {
+        const body = await res.json().catch(() => null);
+        toast({
+          title: "Slow down for a moment",
+          description:
+            body?.message ||
+            "You've run a lot of prompts in a short time. Please wait a few minutes and try again.",
+        });
+        return; // the `finally` below clears isGenerating
+      }
 
       if (!res.ok || !res.body) throw new Error("stream_unavailable");
       const reader = res.body.getReader(); const decoder = new TextDecoder();

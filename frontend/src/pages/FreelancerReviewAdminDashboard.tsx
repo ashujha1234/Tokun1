@@ -223,7 +223,7 @@ function Avatar({ name = "", url, size = 34 }: { name?: string; url?: string | n
 
   if (url) {
     return (
-      <img
+      <img loading="lazy" decoding="async"
         src={url}
         alt=""
         style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}

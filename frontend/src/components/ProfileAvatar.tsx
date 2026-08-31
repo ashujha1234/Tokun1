@@ -101,7 +101,7 @@ function PhotoDialog({
             looking, the footer — so a tall photo shrinks to fit instead of
             pushing either off the screen. */}
         <div className="grid place-items-center bg-black/40 p-4">
-          <img
+          <img loading="lazy" decoding="async"
             src={url}
             alt={name ? `${name}'s profile photo` : "Profile photo"}
             className={`w-auto max-w-full rounded-2xl object-contain ${
@@ -225,7 +225,7 @@ export default function ProfileAvatar({
         style={highlight ? { boxShadow: "0 0 0 3px rgba(255,20,239,0.65)" } : undefined}
       >
         {photoUrl ? (
-          <img src={photoUrl} alt={name || "Profile photo"} className="h-full w-full object-cover" />
+          <img loading="lazy" decoding="async" src={photoUrl} alt={name || "Profile photo"} className="h-full w-full object-cover" />
         ) : (
           <div className="grid h-full w-full place-items-center bg-white/[0.06]">
             <User className="h-9 w-9 text-white/30" />

@@ -343,7 +343,7 @@ const AppNavigation = ({ activeSection, onSectionChange }: AppNavigationProps) =
                 </span>
               )}
 
-              <img
+              <img loading="lazy" decoding="async"
                 src={`/icons/${section.id}.${section.ext}`}
                 alt={section.label}
                 className="w-3.5 h-3.5 min-[420px]:w-4 min-[420px]:h-4 sm:w-5 sm:h-5 shrink-0"

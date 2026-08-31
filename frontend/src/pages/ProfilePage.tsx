@@ -4518,7 +4518,7 @@ const sendMessage = () => {
                                     preload="metadata"
                                   />
                                 ) : (
-                                  <img
+                                  <img loading="lazy" decoding="async"
                                     src={service.media[0]}
                                     alt={service.title}
                                     className="w-full h-full object-cover"
@@ -4691,7 +4691,7 @@ const sendMessage = () => {
       {/* HEADER */}
       <div className="px-4 py-3 border-b border-white/10">
         <div className="flex items-start gap-3">
-          <img
+          <img loading="lazy" decoding="async"
             src={avatar || avatarFallback(user)}
             className="w-9 h-9 rounded-full object-cover"
             alt={userName || "User"}
@@ -4836,7 +4836,7 @@ const sendMessage = () => {
       onClick={() => setShowHireCalendar((prev) => !prev)}
       className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center"
     >
-      <img
+      <img loading="lazy" decoding="async"
         src="/icons/cale.svg"
         alt="calendar"
         className="w-5 h-5 object-contain block"
@@ -5022,7 +5022,7 @@ const sendMessage = () => {
 
       {/* HEADER */}
       <div className="flex items-start gap-3 p-4 border-b border-white/10">
-        <img
+        <img loading="lazy" decoding="async"
           src={avatarFallback(user)}
           className="w-10 h-10 rounded-full"
         />
@@ -5170,7 +5170,7 @@ const sendMessage = () => {
 
       {/* HERO IMAGE */}
       <div className="relative h-[360px] rounded-t-2xl overflow-hidden bg-[#1A1A1A]">
-        <img
+        <img loading="lazy" decoding="async"
   src={
     selectedService.media?.length
       ? selectedService.media[0]   // ✅ FIXED
@@ -5695,7 +5695,7 @@ onBookNow: (s: Service) => void;
             {/* IMAGE */}
             <div className="w-14 h-14 rounded-xl overflow-hidden bg-black">
               {service.media?.length > 0 && (
-                <img
+                <img loading="lazy" decoding="async"
                   src={service.media[0]}
                   className="w-full h-full object-cover"
                 />
@@ -6569,7 +6569,7 @@ onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
   {servicePreview.length > 0 && (
     <div className="flex gap-3 mt-4 flex-wrap justify-center">
       {servicePreview.map((src, i) => (
-        <img
+        <img loading="lazy" decoding="async"
           key={i}
           src={src}
           className="w-20 h-20 object-cover rounded-lg border border-white/10"

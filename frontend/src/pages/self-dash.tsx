@@ -1407,7 +1407,7 @@ const WhiteIcon = ({
   size?: number;
   opacity?: number;
 }) => (
-  <img
+  <img loading="lazy" decoding="async"
     src={src}
     alt=""
     style={{
@@ -3672,7 +3672,7 @@ const RequestCard = ({ item }: { item: any }) => {
                     >
                       <div className="flex items-start gap-3 mb-2">
                         {p.serviceMedia && (
-                          <img
+                          <img loading="lazy" decoding="async"
                             src={p.serviceMedia}
                             alt=""
                             className="w-11 h-11 rounded-lg object-cover shrink-0"
@@ -4149,7 +4149,7 @@ const RequestCard = ({ item }: { item: any }) => {
   /* ══ RENDER ════════════════════════════════════════════ */
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#07080A] text-white">
-      <img
+      <img loading="lazy" decoding="async"
         src="/icons/mpbg.png"
         alt="background"
         className="pointer-events-none fixed inset-0 z-0 h-screen w-full select-none object-cover opacity-80"
@@ -4183,7 +4183,7 @@ const RequestCard = ({ item }: { item: any }) => {
           <aside className="shrink-0 border-white/10 bg-[#151517]/70 px-4 py-4 max-lg:border-b lg:h-full lg:w-[255px] lg:border-r lg:px-7 lg:py-8">
             <div className="flex items-center gap-4 lg:block">
               <div className="h-[68px] w-[68px] shrink-0 overflow-hidden rounded-[18px] border border-white/20 bg-black/30 lg:h-[90px] lg:w-[90px] lg:rounded-[24px]">
-                <img src={avatar} alt={displayName} className="h-full w-full object-cover" />
+                <img loading="lazy" decoding="async" src={avatar} alt={displayName} className="h-full w-full object-cover" />
               </div>
               <div className="min-w-0 flex-1">
                 <h2 className="truncate text-white lg:mt-5" style={{ fontFamily: "Inter, sans-serif", fontWeight: 400, fontSize: 21, lineHeight: "100%" }}>
@@ -4254,7 +4254,7 @@ const RequestCard = ({ item }: { item: any }) => {
                   </div>
                   <div className="h-8 w-px bg-white/20" />
                   <button type="button" onClick={() => setShowCalendar((v) => !v)} className="grid h-10 w-10 place-items-center rounded-xl border-0 bg-transparent p-0">
-                    <img src="/icons/cale.svg" alt="calendar" className="h-7 w-7 object-contain" style={{ filter: "brightness(0) invert(1)", opacity: 1 }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                    <img loading="lazy" decoding="async" src="/icons/cale.svg" alt="calendar" className="h-7 w-7 object-contain" style={{ filter: "brightness(0) invert(1)", opacity: 1 }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
                   </button>
 
                   {showCalendar && (
@@ -4663,7 +4663,7 @@ const RequestCard = ({ item }: { item: any }) => {
               <div className="mt-3 flex flex-wrap gap-2">
                 {refundFiles.map((file, i) => (
                   <div key={`${file.name}-${i}`} className="relative">
-                    <img
+                    <img loading="lazy" decoding="async"
                       src={URL.createObjectURL(file)}
                       alt={file.name}
                       onLoad={(e) => URL.revokeObjectURL((e.target as HTMLImageElement).src)}
@@ -4840,7 +4840,7 @@ function BookingDetailModal({
         <div className="flex items-start justify-between gap-3 p-5 border-b border-white/10 shrink-0">
           <div className="flex items-start gap-3 min-w-0">
             {order?.serviceMedia && (
-              <img src={order.serviceMedia} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
+              <img loading="lazy" decoding="async" src={order.serviceMedia} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
             )}
             <div className="min-w-0">
               <p className="font-semibold truncate">{order?.serviceTitle || "Booking"}</p>

@@ -6165,7 +6165,7 @@ const Wallet = () => {
         aria-hidden
         className="pointer-events-none fixed inset-0 z-0 overflow-hidden"
       >
-        <img
+        <img loading="lazy" decoding="async"
           src="/icons/mpbg.png"
           alt="background"
           className="absolute inset-0 w-full h-screen object-contain object-top select-none"
@@ -6280,7 +6280,7 @@ const Wallet = () => {
                       className="inline-flex h-[50px] items-center justify-center gap-2 rounded-[10px] border border-white/15 bg-white/10 px-7 text-white"
                       style={buttonTextStyle}
                     >
-                      <img
+                      <img loading="lazy" decoding="async"
                         src="/icons/with.svg"
                         alt=""
                         style={{ width: 13.5, height: 13.5 }}

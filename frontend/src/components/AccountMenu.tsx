@@ -216,7 +216,7 @@ const onlyDigits = (value: string) => value.replace(/\D/g, "").slice(0, 18);
       aria-label={alt}
       title={alt}
     >
-      <img src={src} alt="" className="w-4 h-4" />
+      <img loading="lazy" decoding="async" src={src} alt="" className="w-4 h-4" />
     </button>
   );
 

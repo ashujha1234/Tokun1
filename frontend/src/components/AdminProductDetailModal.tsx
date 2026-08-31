@@ -121,7 +121,7 @@ export default function AdminProductDetailModal({
         <div className="px-5">
           <div className="rounded-xl overflow-hidden bg-black/40 border border-white/10 grid place-items-center min-h-[220px]">
             {product.imageUrl ? (
-              <img
+              <img loading="lazy" decoding="async"
                 src={product.imageUrl}
                 alt={product.title}
                 className="w-full max-h-[42vh] object-contain"

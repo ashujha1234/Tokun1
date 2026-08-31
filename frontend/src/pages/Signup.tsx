@@ -1444,7 +1444,7 @@ const Signup = () => {
     <div className="min-h-screen w-full bg-black text-white flex font-inter">
       {/* Desktop left image */}
       <aside className="hidden lg:block basis-[60%] relative" aria-hidden>
-        <img
+        <img loading="lazy" decoding="async"
           src="/icons/signup.jpg"
           alt=""
           className="absolute inset-0 w-full h-full object-cover"
@@ -1480,7 +1480,7 @@ const Signup = () => {
         className="absolute inset-[4px] rounded-full overflow-hidden"
         style={{ animation: "spin-slow 8s linear infinite" }}
       >
-        <img
+        <img loading="lazy" decoding="async"
           src="/icons/signup.jpg"
           alt="Tokun AI"
           className="w-full h-full object-cover"

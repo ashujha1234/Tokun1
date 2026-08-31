@@ -80,7 +80,7 @@ function Gallery({ media, title }: { media: string[]; title: string }) {
           // playing the previous video and just swaps the source underneath.
           <video key={current} src={current} controls className="w-full aspect-video object-contain bg-black" />
         ) : (
-          <img src={current} alt={title} className="w-full aspect-video object-contain bg-black" />
+          <img loading="lazy" decoding="async" src={current} alt={title} className="w-full aspect-video object-contain bg-black" />
         )}
 
         {items.length > 1 && (
@@ -123,7 +123,7 @@ function Gallery({ media, title }: { media: string[]; title: string }) {
                   </span>
                 </>
               ) : (
-                <img src={item} alt="" className="w-full h-full object-cover" />
+                <img loading="lazy" decoding="async" src={item} alt="" className="w-full h-full object-cover" />
               )}
             </button>
           ))}
@@ -268,7 +268,7 @@ function ContactPanel({
       style={{ background: "#0E0F12", maxHeight: "min(70vh, 560px)" }}
     >
       <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10 shrink-0">
-        <img
+        <img loading="lazy" decoding="async"
           src={avatarFor(seller)}
             onError={onAvatarError(seller)}
           alt={seller.name}
@@ -618,7 +618,7 @@ export default function ServiceDetailPage() {
             onClick={() => navigate(`/profile/${seller.userId}`)}
             className="flex items-center gap-3 mb-6 group text-left"
           >
-            <img
+            <img loading="lazy" decoding="async"
               src={avatarFor(seller)}
             onError={onAvatarError(seller)}
               alt={seller.name}
@@ -720,7 +720,7 @@ export default function ServiceDetailPage() {
                           (isVideo(cover) ? (
                             <video src={cover} className="w-full h-full object-cover" muted preload="metadata" />
                           ) : (
-                            <img src={cover} alt="" className="w-full h-full object-cover" />
+                            <img loading="lazy" decoding="async" src={cover} alt="" className="w-full h-full object-cover" />
                           ))}
                       </div>
                       <div className="p-2.5">
@@ -926,7 +926,7 @@ export default function ServiceDetailPage() {
           className="fixed bottom-4 left-4 z-[9997] flex items-center gap-3 rounded-2xl border border-white/12 pl-3 pr-4 py-2.5 shadow-2xl hover:border-white/25 transition-colors"
           style={{ background: "#0E0F12" }}
         >
-          <img
+          <img loading="lazy" decoding="async"
             src={avatarFor(seller)}
             onError={onAvatarError(seller)}
             alt={seller.name}

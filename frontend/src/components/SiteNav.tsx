@@ -152,9 +152,20 @@ export function TokunLogo({ src = TOKUN_LOGO_SRC }: { src?: string }) {
         {failed ? (
           <span className="tokun-logo__fallback">TOKUN</span>
         ) : (
+          /* eager + high priority, and NOT lazy — this one is the exception.
+             Every other <img> in the app is lazily loaded, which is right for
+             cards, avatars and chat images. This one sits in the header, is on
+             screen before anything else, and Lighthouse measures it as the
+             Largest Contentful Paint element on most pages. Lazy-loading it
+             added 1.16 s of "load delay" to LCP — the browser will not even
+             start fetching a lazy image until layout has run, so the single
+             most visible thing on the page was the last to be asked for. */
           <img
             src={src}
             alt="TOKUN"
+            loading="eager"
+            fetchPriority="high"
+            decoding="async"
             className="tokun-logo__img"
             onError={() => setFailed(true)}
           />
