@@ -641,7 +641,11 @@ function ReportsPanel({ showToast }: { showToast: (msg: string, type?: string) =
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${REPORT_API}/admin/all`);
+      /* /admin/all is now admin-gated. It never sent a header because the route
+         was open; handleStatusUpdate below already used getAuthHeaders(). */
+      const res = await fetch(`${REPORT_API}/admin/all`, {
+        headers: getAuthHeaders(),
+      });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.success) throw new Error(data?.error || "Failed to fetch reports");
       setReports(data.reports || []);

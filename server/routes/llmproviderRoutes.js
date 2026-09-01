@@ -3,9 +3,20 @@ const router = express.Router();
 const LLMProvider = require("../models/LLMProvider");
 const { requireAuth } = require("../utils/auth");
 
+function requireAdmin(req, res, next) {
+  if (!req.isAdmin) {
+    return res.status(403).json({ success: false, error: "forbidden" });
+  }
+  next();
+}
+
+/* requireAuth was already imported here and applied to nothing — all three
+   routes ran open. GET stays open (LLMSelector.tsx reads the provider list with
+   no headers, before login); the two writes are admin-only. */
+
 // Add one or multiple LLM Providers
 // POST /api/llm-provider
-router.post("/",async (req, res) => {
+router.post("/", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { providers } = req.body; // expects array of names: ["OpenAI", "Anthropic"]
 
@@ -43,7 +54,7 @@ router.get("/", async (req, res) => {
 
 // Delete LLM Provider by ID
 // DELETE /api/llm-provider/:id
-router.delete("/:id",  async (req, res) => {
+router.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const deleted = await LLMProvider.findByIdAndDelete(id);

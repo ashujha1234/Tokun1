@@ -2,6 +2,26 @@
 const express = require("express");
 const router = express.Router();
 const PlatformWallet = require("../models/PlatformWallet");
+const { requireAuth } = require("../utils/auth");
+
+function requireAdmin(req, res, next) {
+  if (!req.isAdmin) {
+    return res.status(403).json({ success: false, error: "forbidden" });
+  }
+  next();
+}
+
+/* Both routes below expose Tokun's own P&L — total commission, GST collected on
+   it, and the wallet's transaction ledger. This file had no auth of any kind and
+   is mounted at /api/admin/platform-revenue with no middleware at the mount
+   site either, so the whole revenue picture was readable by anyone who could
+   reach the host. The "(admin)" in the route comments was documentation, not
+   enforcement.
+
+   router.use rather than per-route: there is no route in this file that a
+   non-admin has any reason to call, so a blanket gate cannot drift out of sync
+   with a route added later. Same shape as routes/adminEscrow.js. */
+router.use(requireAuth, requireAdmin);
 
 // GET /api/admin/platform-revenue — Tokun's own commission earnings summary
 router.get("/", async (req, res) => {

@@ -24256,10 +24256,25 @@ function FeedbackView() {
      other outcome on this view was silent either way. */
   const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(null);
 
+  /* All four calls in this view hit admin-only endpoints and none of them used
+     to send a token — the routes accepted anonymous callers, so it worked. Now
+     that /api/feedback, DELETE /:id, PATCH /:id/status and PATCH
+     /:id/testimonial require an admin JWT, the header is what keeps this panel
+     working. readAdminToken() is the same helper the revenue panel above uses. */
+  const authHeaders = (json = false) => {
+    const token = readAdminToken();
+    return {
+      ...(json ? { "Content-Type": "application/json" } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  };
+
   const fetchFeedbacks = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/feedback`);
+      const res = await fetch(`${API_BASE}/api/feedback`, {
+        headers: authHeaders(),
+      });
       const data = await res.json();
       if (data.success) setFeedbacks(data.feedbacks);
     } catch {}
@@ -24272,7 +24287,7 @@ function FeedbackView() {
     try {
       const res = await fetch(`${API_BASE}/api/feedback/${id}/status`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(true),
         body: JSON.stringify({ status }),
       });
       if (!res.ok) throw new Error("Status update failed");
@@ -24285,7 +24300,10 @@ function FeedbackView() {
 
   const deleteFeedback = async (id: string) => {
     try {
-      const res = await fetch(`${API_BASE}/api/feedback/${id}`, { method: "DELETE" });
+      const res = await fetch(`${API_BASE}/api/feedback/${id}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
       if (!res.ok) throw new Error("Delete failed");
       setFeedbacks(prev => prev.filter(f => f._id !== id));
       setPendingDeleteId(null);
@@ -24299,7 +24317,7 @@ function FeedbackView() {
     try {
       const res = await fetch(`${API_BASE}/api/feedback/${id}/testimonial`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(true),
         body: JSON.stringify({ showOnLanding }),
       });
       if (!res.ok) throw new Error("Update failed");

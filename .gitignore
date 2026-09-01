@@ -1,1 +1,89 @@
-server/uploads/screen-recordings/
+# ─────────────────────────────────────────────────────────────────────────────
+# Tokun — .gitignore
+#
+# This file used to contain exactly one line (server/uploads/screen-recordings/).
+# Everything below was therefore committable, and much of it was committed: 59
+# KYC documents (Aadhaar/ID scans, filenames carrying the submitter's user id),
+# 191 files under server/uploads (44 signed NDAs, hire deliverables, abuse-report
+# and feedback screenshots, profile photos, chat attachments), and five MongoDB
+# collection dumps. The repository is public, so all of it was world-readable
+# from the first commit until the history purge.
+#
+# .env was never committed — but only by luck, not by rule. It is a rule now.
+#
+# The ordering principle here: secrets and user data first, build output second,
+# machine noise last.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Secrets ──────────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ── User-uploaded content ────────────────────────────────────────────────────
+# Durable uploads belong in Azure Blob (utils/uploadToAzure.js,
+# utils/serviceWorkStorage.js). Anything landing in these directories is either
+# a local dev artifact or a route that still writes to the App Service
+# filesystem — in both cases it must not enter git. The directories themselves
+# are kept (via .gitkeep) because several routes mkdir-on-require and expect the
+# path to exist.
+server/uploads/*
+!server/uploads/.gitkeep
+server/private_uploads/*
+!server/private_uploads/.gitkeep
+
+# ── Database dumps and migration backups ─────────────────────────────────────
+# scripts/ writes timestamped backup-<name>-<iso> directories before mutating.
+# Those are snapshots of live collections — payments, ledger entries, disputes,
+# NDA signatures, Razorpay ids.
+server/backup-*/
+*.bundle
+dump/
+*.bson
+
+# ── Dependencies ─────────────────────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+.yarn/
+
+# ── Build output ─────────────────────────────────────────────────────────────
+dist/
+dist-ssr/
+build/
+.vite/
+*.local
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Test and coverage output ─────────────────────────────────────────────────
+coverage/
+.nyc_output/
+
+# ── Editor and OS noise ──────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+*.swp
+*~
+.idea/
+
+# .vscode is deliberately NOT ignored in full — .vscode/settings.json is tracked
+# and shared. Ignore only the machine-specific parts.
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json

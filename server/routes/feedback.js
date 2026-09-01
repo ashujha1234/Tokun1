@@ -7,6 +7,37 @@ const Notification = require("../models/Notification");
 const Sentiment = require("sentiment");
 const { sendEmail } = require("../utils/SendEmail");
 const { buildOtpEmailHtml } = require("../utils/otpemailtemplate");
+const { requireAuth } = require("../utils/auth");
+
+function requireAdmin(req, res, next) {
+  if (!req.isAdmin) {
+    return res.status(403).json({ success: false, error: "forbidden" });
+  }
+  next();
+}
+
+/* Gated per route, not with a blanket router.use — this file genuinely mixes
+   three audiences:
+
+     public   send-otp, verify-otp, POST / (submit)   — feedback is collected
+              from anyone, including people without a Tokun account; the OTP
+              exchange is what proves the address is theirs
+     public   GET /top                                — the landing page's
+              testimonial strip, rendered before login
+     admin    GET /, DELETE /:id, PATCH /:id/status,
+              PATCH /:id/testimonial
+
+   All four admin routes were reachable by anyone. The costly one was
+   PATCH /:id/testimonial, which sets showOnLanding — the flag GET /top reads —
+   so an anonymous caller could publish arbitrary feedback text onto the
+   marketing page. DELETE was unauthenticated destruction, and GET / dumped
+   every submitter's email.
+
+   Deliberately NOT changed here: GET /my?email= still takes any address and
+   returns that person's feedback. Locking it to req.user.email would remove the
+   logged-out lookup that MyFeedbackPage.tsx offers by design (a form for people
+   who submitted without an account). That is a product call, not a drive-by
+   edit — flagged rather than silently changed. */
 
 // Best-effort: notify the submitter (if they have a Tokun account under the
 // same email) that their feedback was acted on. Never throws — a notification
@@ -168,7 +199,7 @@ router.get("/my", async (req, res) => {
 });
 
 // DELETE /api/feedback/:id (admin)
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     await Feedback.findByIdAndDelete(req.params.id);
     res.json({ success: true });
@@ -178,7 +209,7 @@ router.delete("/:id", async (req, res) => {
 });
 
 // PATCH /api/feedback/:id/status (admin)
-router.patch("/:id/status", async (req, res) => {
+router.patch("/:id/status", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { status } = req.body;
     const fb = await Feedback.findByIdAndUpdate(req.params.id, { status }, { new: true });
@@ -200,7 +231,7 @@ router.patch("/:id/status", async (req, res) => {
 });
 
 // PATCH /api/feedback/:id/testimonial (admin) — approve/unapprove for landing page display
-router.patch("/:id/testimonial", async (req, res) => {
+router.patch("/:id/testimonial", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { showOnLanding } = req.body;
     const fb = await Feedback.findByIdAndUpdate(req.params.id, { showOnLanding: !!showOnLanding }, { new: true });
@@ -218,8 +249,8 @@ router.patch("/:id/testimonial", async (req, res) => {
   }
 });
 
-// GET /api/feedback (admin)
-router.get("/", async (req, res) => {
+// GET /api/feedback (admin) — every submission, with submitter emails
+router.get("/", requireAuth, requireAdmin, async (req, res) => {
   try {
     const feedbacks = await Feedback.find().sort({ createdAt: -1 });
     res.json({ success: true, feedbacks });

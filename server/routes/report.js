@@ -6,6 +6,17 @@ const router = express.Router();
 const HireDeal = require("../models/HireDeal");
 const User = require("../models/User");
 const Notification = require("../models/Notification");
+const { requireAuth } = require("../utils/auth");
+
+function requireAdmin(req, res, next) {
+  if (!req.isAdmin) {
+    return res.status(403).json({ success: false, error: "forbidden" });
+  }
+  next();
+}
+
+/* Not a blanket router.use: POST / and GET /deal/:dealId are for the two people
+   in a deal, the /admin routes are not. Gated per route below. */
 
 const ReportSchema = new mongoose.Schema(
   {
@@ -62,9 +73,9 @@ const Report =
   mongoose.models.Report || mongoose.model("Report", ReportSchema);
 
 // ── POST /api/report ─────────────────────────────
-router.post("/", async (req, res) => {
+router.post("/", requireAuth, async (req, res) => {
   try {
-    const { hireDealId, reason, description, reportedBy: reportedByParam } = req.body;
+    const { hireDealId, reason, description } = req.body;
 
     if (!hireDealId || !reason) {
       return res.status(400).json({
@@ -81,8 +92,27 @@ router.post("/", async (req, res) => {
       return res.status(404).json({ success: false, error: "Deal not found" });
     }
 
-    const reporterId = String(reportedByParam || deal.clientId?._id);
+    /* reportedBy comes from the verified token, never from the body.
+       It used to read `req.body.reportedBy` and fall back to the deal's client,
+       which meant two things on an unauthenticated route: anyone could file a
+       report in another user's name, and omitting the field silently attributed
+       the report to the client of a deal the caller had nothing to do with.
+       An abuse report is evidence in escrow disputes — its author has to be the
+       one thing about it that cannot be set by the caller.
+
+       The reporter must also actually be in the deal. Without this an
+       authenticated stranger could still report either party of any deal whose
+       id they knew, and `reportedUserId` below would resolve them to the client
+       via the isClient===false branch. */
+    const reporterId = String(req.user._id);
     const isClient = deal.clientId && String(deal.clientId._id) === reporterId;
+    const isFreelancer =
+      deal.freelancerId && String(deal.freelancerId._id) === reporterId;
+
+    if (!isClient && !isFreelancer) {
+      return res.status(403).json({ success: false, error: "not_a_participant" });
+    }
+
     const reportedUserId = isClient ? deal.freelancerId._id : deal.clientId._id;
 
     let report;
@@ -119,7 +149,9 @@ router.post("/", async (req, res) => {
 });
 
 // ── GET /api/report/deal/:dealId ─────────────────
-router.get("/deal/:dealId", async (req, res) => {
+// Returns the full report row when one exists, so it is not public. No frontend
+// caller today; gated at the same level as filing one.
+router.get("/deal/:dealId", requireAuth, async (req, res) => {
   try {
     const existing = await Report.findOne({
       hireDealId: req.params.dealId,
@@ -136,8 +168,10 @@ router.get("/deal/:dealId", async (req, res) => {
   }
 });
 
-// ── GET /api/report/admin/all ─────────────────────
-router.get("/admin/all", async (req, res) => {
+/* ── GET /api/report/admin/all ─────────────────────
+   Populates name+email of both the reporter and the reported user across every
+   report on the platform. This was open. */
+router.get("/admin/all", requireAuth, requireAdmin, async (req, res) => {
   try {
     const reports = await Report.find({})
       .populate("reportedBy", "name email")
@@ -154,7 +188,8 @@ router.get("/admin/all", async (req, res) => {
 });
 
 // ── PATCH /api/report/:id/status ─────────────────
-router.patch("/:id/status", async (req, res) => {
+// Closing an abuse report is an admin adjudication, not a user action.
+router.patch("/:id/status", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { status, adminNote } = req.body;
     const report = await Report.findByIdAndUpdate(

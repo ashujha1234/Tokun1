@@ -14,6 +14,20 @@ const mongoose = require("mongoose");
 const router = express.Router();
 const Category = require("../models/Category");
 const { SERVICE_CATEGORIES } = require("../constants/serviceCategories");
+const { requireAuth } = require("../utils/auth");
+
+function requireAdmin(req, res, next) {
+  if (!req.isAdmin) {
+    return res.status(403).json({ success: false, error: "forbidden" });
+  }
+  next();
+}
+
+/* Gated per route: the two GETs stay open because the marketplace, the prompt
+   library and the Sell modal all read them before login (see sellerPrefetch.ts,
+   which fetches with no headers at all). The two writes below were open too —
+   anyone could add rows to the taxonomy every one of those dropdowns renders,
+   and /seed-defaults could re-run the bulk seed against live data. */
 
 /* The prompt tree, now two levels like the service tree.
  *
@@ -122,7 +136,7 @@ router.get("/:id/subcategories", async (req, res) => {
 });
 
 // POST add a category, optionally under a parent and in a chosen tree.
-router.post("/", async (req, res) => {
+router.post("/", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { name, description, parent } = req.body;
     const kind = req.body.kind === "service" ? "service" : "prompt";
@@ -208,7 +222,7 @@ async function dropLegacyNameIndex() {
  * re-running never duplicates a row, never overwrites a hand-edited name, and
  * (since the stray-child sweep was removed) never deletes anything.
  */
-router.post("/seed-defaults", async (req, res) => {
+router.post("/seed-defaults", requireAuth, requireAdmin, async (req, res) => {
   try {
     await dropLegacyNameIndex();
 
