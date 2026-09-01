@@ -12,6 +12,7 @@ const Wallet = require("../models/Wallet");
 const PlatformWallet = require("../models/PlatformWallet");
 const { releaseTransfer } = require("../utils/routeEscrow");
 const { reverseTransfer } = require("../utils/routePayouts");
+const { logActivity, SYSTEM_ACTOR } = require("../utils/activityLogger");
 
 class ServiceEscrowAlreadyReleasedError extends Error {
   constructor() {
@@ -25,7 +26,9 @@ class ServiceEscrowAlreadyReleasedError extends Error {
  * @param {"buyer_approved"|"admin_released"|"auto_released"} releasedBy
  * @returns {Promise<{ order: object, wallet: object }>}
  */
-async function releaseServiceEscrowToSeller(orderId, releasedBy) {
+/* `actor` mirrors escrowRelease.service.js — releasedBy is the path, actor is
+   the person. See that file for the full reasoning. */
+async function releaseServiceEscrowToSeller(orderId, releasedBy, actor = null) {
   const isAuto = releasedBy === "auto_released";
   const now = new Date();
 
@@ -112,6 +115,28 @@ async function releaseServiceEscrowToSeller(orderId, releasedBy) {
 
     await User.findByIdAndUpdate(order.sellerId, {
       $inc: { totalEarnings: order.sellerAmount, completedDeals: 1 },
+    });
+
+    // Written here for the same reason as the hire path: buyer-approved, admin
+    // force-release and the cron all pass through this one function.
+    await logActivity({
+      type: "ESCROW_RELEASED",
+      title: `Escrow released to seller — ₹${Number(order.sellerAmount || 0)}`,
+      description: `"${order.serviceTitle}" · path: ${releasedBy}`,
+      actor: actor || SYSTEM_ACTOR,
+      target: { id: order._id, type: "ServiceOrder", name: order.serviceTitle },
+      amount: Number(order.sellerAmount || 0),
+      before: { fundsStatus: "HELD_BY_TOKUN", status: "WORK_SUBMITTED" },
+      after: { fundsStatus: order.fundsStatus, status: order.status },
+      meta: {
+        releasedBy,
+        sellerId: String(order.sellerId),
+        buyerId: String(order.buyerId),
+        platformFee: Number(order.platformFee || 0),
+        clientFee: Number(order.clientFee || 0),
+        routeTransferId: order.routeTransferId || null,
+        settledVia: order.routeTransferId ? "razorpay_route" : "wallet_ledger",
+      },
     });
 
     return { order, wallet };

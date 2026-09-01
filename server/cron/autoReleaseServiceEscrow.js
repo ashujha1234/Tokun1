@@ -4,6 +4,7 @@
 
 const cron = require("node-cron");
 const { watchJob } = require("../utils/jobTelemetry");
+const { SYSTEM_ACTOR } = require("../utils/activityLogger");
 const telemetry = require("../utils/telemetry");
 const ServiceOrder = require("../models/ServiceOrder");
 const Notification = require("../models/Notification");
@@ -25,7 +26,7 @@ async function releaseOrderEscrowToWallet(order) {
   }
 
   try {
-    await releaseServiceEscrowToSeller(order._id, "auto_released");
+    await releaseServiceEscrowToSeller(order._id, "auto_released", SYSTEM_ACTOR);
   } catch (err) {
     if (err instanceof ServiceEscrowAlreadyReleasedError) {
       return;

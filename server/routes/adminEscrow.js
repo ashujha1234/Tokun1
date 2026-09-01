@@ -14,6 +14,7 @@ const {
   EscrowNotSettleableError,
 } = require("../services/escrowSettlement.service");
 const { requireAuth } = require("../utils/auth");
+const { logActivity, actorFromReq } = require("../utils/activityLogger");
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -280,7 +281,7 @@ router.post("/:dealId/release", async (req, res) => {
     // so the same deal can never be credited twice)
     let releaseResult;
     try {
-      releaseResult = await releaseEscrowToFreelancer(deal._id, "admin_released");
+      releaseResult = await releaseEscrowToFreelancer(deal._id, "admin_released", actorFromReq(req));
     } catch (releaseErr) {
       if (releaseErr instanceof EscrowAlreadyReleasedError) {
         return res.status(400).json({

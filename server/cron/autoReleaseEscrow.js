@@ -2,6 +2,7 @@
 
 const cron = require("node-cron");
 const { watchJob } = require("../utils/jobTelemetry");
+const { SYSTEM_ACTOR } = require("../utils/activityLogger");
 const telemetry = require("../utils/telemetry");
 const HireDeal = require("../models/HireDeal");       // adjust path
 const Notification = require("../models/Notification"); // adjust path
@@ -23,7 +24,7 @@ async function releaseEscrowToWallet(deal) {
   }
 
   try {
-    await releaseEscrowToFreelancer(deal._id, "auto_released");
+    await releaseEscrowToFreelancer(deal._id, "auto_released", SYSTEM_ACTOR);
   } catch (err) {
     if (err instanceof EscrowAlreadyReleasedError) {
       // Client approved or admin released it in the same window — nothing to do.

@@ -96,6 +96,7 @@ const Wallet = require("../models/Wallet");
 const PlatformWallet = require("../models/PlatformWallet");
 const { releaseTransfer } = require("../utils/routeEscrow");
 const { reverseTransfer } = require("../utils/routePayouts");
+const { logActivity, SYSTEM_ACTOR } = require("../utils/activityLogger");
 const {
   sendFullRefundEmail,
   sendPartialRefundEmail,
@@ -277,7 +278,17 @@ function computeSplit(order, kind, sellerPercent, waiveCommission = false) {
  */
 async function settleEscrow(orderKind, orderId, opts = {}) {
   const kind = getKind(orderKind);
-  const { sellerPercent, reason = "", actor = "admin", waiveCommission = false } = opts;
+  const {
+    sellerPercent,
+    reason = "",
+    actor = "admin",
+    waiveCommission = false,
+    /* Who, as opposed to which role. `actor` above is the role and drives the
+       split; this carries the identity for the audit row and drives nothing.
+       Optional — an unattributed settlement records as system rather than
+       failing, because a missing audit field must never block a payout. */
+    actorRef = null,
+  } = opts;
 
   /* All-or-nothing, enforced here rather than at each caller so no future route
      can reintroduce a split by passing 37. Anything that isn't exactly 0 or 100
@@ -605,6 +616,51 @@ async function settleEscrow(orderKind, orderId, opts = {}) {
   } catch (mailErr) {
     console.error("Settlement email failed (settlement itself succeeded):", mailErr.message);
   }
+
+  /* This is the row a disputed settlement is defended with.
+     Every caller — adminEscrow (three places), adminDisputes, and the
+     buyer/seller cancellation flow — comes through here, so recording it once
+     covers all five and any sixth added later.
+
+     `actorRef` rather than the existing `actor` option: that one is a role
+     string ("buyer" | "seller" | "admin") and was already used for the split
+     logic, so it cannot carry an identity without changing what it means at
+     every call site. The role is kept in meta; the identity is separate. */
+  await logActivity({
+    type: Number(sellerPercent) === 0 ? "ESCROW_REFUNDED" : "ESCROW_SETTLED",
+    title:
+      Number(sellerPercent) === 0
+        ? `Escrow refunded to buyer — ₹${Number(split.refundAmount || 0)}`
+        : `Escrow settled to seller — ₹${Number(split.sellerPayout || 0)}`,
+    description: `${kind.label} "${order?.[kind.titleField] || ""}" · decided by: ${actor}`,
+    actor: actorRef || SYSTEM_ACTOR,
+    target: { id: order?._id, type: kind.model.modelName, name: order?.[kind.titleField] },
+    /* The amount that moved as a result of the decision, from the perspective
+       of whoever received it. */
+    amount: Number(sellerPercent) === 0 ? Number(split.refundAmount || 0) : Number(split.sellerPayout || 0),
+    reason: reason || null,
+    before: {
+      fundsStatus: "HELD_BY_TOKUN",
+      status: claimed?.status ?? null,
+      heldAmount: Number(claimed?.routeHeldAmount || 0) || Number(split.sellerFull || 0),
+    },
+    after: { fundsStatus: order?.fundsStatus ?? null, status: order?.status ?? null },
+    meta: {
+      orderKind,
+      /* The single number the whole decision turns on: 0 = buyer takes all,
+         100 = seller takes all. */
+      sellerPercent: Number(sellerPercent),
+      decidedByRole: actor,
+      waiveCommission: Boolean(waiveCommission),
+      sellerPayout: Number(split.sellerPayout || 0),
+      refundAmount: Number(split.refundAmount || 0),
+      commissionKept: Number(split.commissionKept || 0),
+      totalPayable: Number(split.totalPayable || 0),
+      sellerId: String(order?.[kind.sellerField] ?? ""),
+      buyerId: String(order?.[kind.buyerField] ?? ""),
+      razorpayRefundId: refund?.id || null,
+    },
+  });
 
   return {
     order,

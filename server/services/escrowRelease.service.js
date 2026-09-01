@@ -12,6 +12,7 @@ const Wallet = require("../models/Wallet");
 const PlatformWallet = require("../models/PlatformWallet");
 const { releaseTransfer } = require("../utils/routeEscrow");
 const { reverseTransfer } = require("../utils/routePayouts");
+const { logActivity, SYSTEM_ACTOR } = require("../utils/activityLogger");
 
 class EscrowAlreadyReleasedError extends Error {
   constructor() {
@@ -23,9 +24,15 @@ class EscrowAlreadyReleasedError extends Error {
 /**
  * @param {string} dealId
  * @param {"client_approved"|"admin_released"|"auto_released"} releasedBy
+ * @param {object} [actor]  { id, name, type: "AdminUser"|"User"|"system" } — who
+ *   triggered this. `releasedBy` already says which PATH was taken; this says
+ *   which PERSON took it, which is the part a dispute needs and the part that
+ *   was missing. Optional so the three existing call sites keep working while
+ *   they are updated; defaults to the cron/system actor because an unattributed
+ *   release is far more likely to be the timer than a person.
  * @returns {Promise<{ deal: object, wallet: object }>}
  */
-async function releaseEscrowToFreelancer(dealId, releasedBy) {
+async function releaseEscrowToFreelancer(dealId, releasedBy, actor = null) {
   const isAuto = releasedBy === "auto_released";
   const now = new Date();
 
@@ -123,6 +130,37 @@ async function releaseEscrowToFreelancer(dealId, releasedBy) {
 
     await User.findByIdAndUpdate(deal.freelancerId, {
       $inc: { totalEarnings: deal.freelancerAmount, completedDeals: 1 },
+    });
+
+    /* Audit row, written here rather than at the three call sites.
+       All of client approve-work, admin force-release and the hourly cron come
+       through this function, so a trail written here cannot be bypassed — and a
+       fourth path added later is covered without anyone remembering to. That is
+       the same reason the credit logic itself lives here.
+
+       After the money has moved, deliberately: a row saying "released" for a
+       release that then failed and got reverted below would be worse than no
+       row. Best-effort, so it can never undo a payout that already happened. */
+    await logActivity({
+      type: "ESCROW_RELEASED",
+      title: `Escrow released to freelancer — ₹${Number(deal.freelancerAmount || 0)}`,
+      description: `"${deal.title}" · path: ${releasedBy}`,
+      actor: actor || SYSTEM_ACTOR,
+      target: { id: deal._id, type: "HireDeal", name: deal.title },
+      amount: Number(deal.freelancerAmount || 0),
+      before: { fundsStatus: "HELD_BY_TOKUN", status: "WORK_SUBMITTED" },
+      after: { fundsStatus: deal.fundsStatus, status: deal.status },
+      meta: {
+        releasedBy,
+        freelancerId: String(deal.freelancerId),
+        clientId: String(deal.clientId),
+        /* The commission taken out of the hold. A seller querying their payout
+           asks why it is less than the deal value, and this is the answer. */
+        platformFee: Number(deal.platformFee || 0),
+        clientFee: Number(deal.clientFee || 0),
+        routeTransferId: deal.routeTransferId || null,
+        settledVia: deal.routeTransferId ? "razorpay_route" : "wallet_ledger",
+      },
     });
 
     return { deal, wallet };

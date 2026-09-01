@@ -173,6 +173,7 @@ const {
   releaseServiceEscrowToSeller,
   ServiceEscrowAlreadyReleasedError,
 } = require("../services/serviceEscrowRelease.service");
+const { actorFromReq } = require("../utils/activityLogger");
 const router = express.Router();
 
 // ─── Work file upload setup (mirrors hire.routes.js's hire-work dir) ───
@@ -1732,7 +1733,7 @@ router.post("/orders/:orderId/approve-work", requireAuth, async (req, res) => {
 
     let releaseResult;
     try {
-      releaseResult = await releaseServiceEscrowToSeller(order._id, "buyer_approved");
+      releaseResult = await releaseServiceEscrowToSeller(order._id, "buyer_approved", actorFromReq(req));
     } catch (releaseErr) {
       if (releaseErr instanceof ServiceEscrowAlreadyReleasedError) {
         return res.status(400).json({ success: false, error: "Escrow was already released for this order" });

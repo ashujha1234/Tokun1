@@ -357,6 +357,7 @@ const HireDeal = require("../models/HireDeal");
 const Notification = require("../models/Notification");
 const Message = require("../models/Message");
 const { releaseEscrowToFreelancer, EscrowAlreadyReleasedError } = require("../services/escrowRelease.service");
+const { actorFromReq } = require("../utils/activityLogger");
 const { checkPayoutReady, buildHeldTransfer } = require("../utils/routeEscrow");
 const { assertSuperCreatorActive } = require("../utils/superCreatorGate");
 const { validateTargetDate, escrowExpiryFrom } = require("../utils/escrowWindow");
@@ -1676,7 +1677,7 @@ router.post("/:dealId/approve-work", requireAuth, async (req, res) => {
     // logic only exists once, and the same deal can never be credited twice)
     let releaseResult;
     try {
-      releaseResult = await releaseEscrowToFreelancer(deal._id, "client_approved");
+      releaseResult = await releaseEscrowToFreelancer(deal._id, "client_approved", actorFromReq(req));
     } catch (releaseErr) {
       if (releaseErr instanceof EscrowAlreadyReleasedError) {
         return res.status(400).json({

@@ -28,6 +28,7 @@ const User = require("../models/User");
 const { requireAuth } = require("../utils/auth");
 const { reverseTransfer } = require("../utils/routePayouts");
 const ledger = require("../utils/ledger");
+const { logActivity, actorFromReq } = require("../utils/activityLogger");
 const { sendFullRefundEmail, sendRefundRejectedEmail } = require("../services/refundEmail.service");
 
 function requireAdmin(req, res, next) {
@@ -275,6 +276,38 @@ router.post("/:id/approve", async (req, res) => {
       },
     });
 
+    /* Audit row. Logged in the route rather than a service because, unlike
+       escrow, there is no shared service for refunds — the decision is made
+       here and nowhere else.
+
+       The ledger row above already records that money moved and which admin
+       queued it. This records the DECISION: what state it was in before, what
+       the admin wrote as their reason, and what the buyer was told. In a dispute
+       the ledger answers "did the money move" and this answers "who decided it
+       should". */
+    await logActivity({
+      type: "REFUND_APPROVED",
+      title: `Refund approved — ₹${Number(refundRequest.refundAmount || 0)}`,
+      description: purchase.promptSnapshot?.title || "Prompt purchase",
+      actor: actorFromReq(req),
+      target: { id: refundRequest._id, type: "RefundRequest", name: purchase.promptSnapshot?.title },
+      amount: Number(refundRequest.refundAmount || 0),
+      reason: refundRequest.adminNote || null,
+      before: { requestStatus: "PENDING", purchaseRefundStatus: null },
+      after: { requestStatus: "APPROVED", purchaseRefundStatus: "REFUNDED" },
+      meta: {
+        refundRequestId: String(refundRequest._id),
+        purchaseId: String(purchase._id),
+        buyerId: String(refundRequest.buyer),
+        sellerId: String(refundRequest.seller),
+        razorpayRefundId: refund.id,
+        /* Why the buyer got less than they paid — the first thing questioned
+           when a refund is disputed. */
+        nonRefundableFee,
+        platformCommission: Number(purchase.platformCommission || 0),
+      },
+    });
+
     await Notification.create({
       receiverUserId: refundRequest.buyer,
       type: "REFUND_APPROVED",
@@ -333,6 +366,31 @@ router.post("/:id/reject", async (req, res) => {
       refundRequest.purchase.refundStatus = "REJECTED";
       await refundRequest.purchase.save();
     }
+
+    /* A rejection moves no money, and is recorded for exactly that reason: it
+       is the decision most likely to be contested, and the only trace of it
+       otherwise is a status field with no author. */
+    await logActivity({
+      type: "REFUND_REJECTED",
+      title: "Refund request rejected",
+      description: refundRequest.purchase?.promptSnapshot?.title || "Prompt purchase",
+      actor: actorFromReq(req),
+      target: {
+        id: refundRequest._id,
+        type: "RefundRequest",
+        name: refundRequest.purchase?.promptSnapshot?.title,
+      },
+      amount: Number(refundRequest.refundAmount || 0),
+      reason: refundRequest.adminNote || null,
+      before: { requestStatus: "PENDING" },
+      after: { requestStatus: "REJECTED", purchaseRefundStatus: "REJECTED" },
+      meta: {
+        refundRequestId: String(refundRequest._id),
+        purchaseId: String(refundRequest.purchase?._id || ""),
+        buyerId: String(refundRequest.buyer),
+        sellerId: String(refundRequest.seller),
+      },
+    });
 
     await Notification.create({
       receiverUserId: refundRequest.buyer,

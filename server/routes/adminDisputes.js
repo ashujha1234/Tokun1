@@ -26,6 +26,7 @@ const {
   EscrowNotSettleableError,
 } = require("../services/escrowSettlement.service");
 const { getWorkFileDownloadUrl } = require("../utils/serviceWorkStorage");
+const { logActivity, actorFromReq } = require("../utils/activityLogger");
 
 const router = express.Router();
 
@@ -327,6 +328,10 @@ router.post("/:id/resolve", async (req, res) => {
           adminNote ||
           `Tokun ruled in favour of the ${percent === 0 ? "client" : "creator"} — full amount awarded`,
         actor: "admin",
+        // Which admin, not just "an admin" — settleEscrow writes the audit row
+        // for the money movement and this is the only place the identity is
+        // known. Without it the row that defends a ₹40,000 ruling says "admin".
+        actorRef: actorFromReq(req),
         // Tokun takes nothing out of a job it had to arbitrate. The whole
         // amount the client paid goes to whichever side the ruling favours.
         waiveCommission: true,
@@ -358,6 +363,40 @@ router.post("/:id/resolve", async (req, res) => {
     dispute.adminNote = adminNote;
     if (result.refund?.id) dispute.razorpayRefundId = result.refund.id;
     await dispute.save();
+
+    /* Two rows are written for one ruling, deliberately.
+       settleEscrow already recorded the money movement. This records the
+       ADJUDICATION — that a dispute existed, what each side claimed, and which
+       way it was decided. They answer different questions: the settlement row
+       proves where the money went, this one proves a decision was made and by
+       whom on what basis. In a dispute over the dispute, it is this one that
+       matters, and `reason` here is the admin's own words. */
+    await logActivity({
+      type: "DISPUTE_RESOLVED",
+      title: `Dispute resolved — ${percent}% to ${percent === 0 ? "buyer" : "seller"}`,
+      description: `"${dispute.title}" (${dispute.orderKind})`,
+      actor: actorFromReq(req),
+      target: { id: dispute._id, type: "EscrowDispute", name: dispute.title },
+      amount: percent === 0 ? Number(result.refundAmount || 0) : Number(result.sellerPayout || 0),
+      reason: adminNote || null,
+      before: { disputeStatus: "OPEN", finalSellerPercent: null },
+      after: { disputeStatus: "RESOLVED", finalSellerPercent: percent, resolvedVia: "admin" },
+      meta: {
+        disputeId: String(dispute._id),
+        orderKind: dispute.orderKind,
+        orderId: String(orderId),
+        sellerId: String(dispute.sellerId?._id || dispute.sellerId),
+        buyerId: String(dispute.buyerId?._id || dispute.buyerId),
+        raisedBy: dispute.raisedBy || null,
+        /* What each side had argued, captured at ruling time. These fields can
+           be edited afterwards; the copy in this row cannot. */
+        disputeReason: dispute.reason || null,
+        buyerResponse: dispute.buyerResponse || null,
+        sellerPayout: Number(result.sellerPayout || 0),
+        refundAmount: Number(result.refundAmount || 0),
+        commissionWaived: true,
+      },
+    });
 
     // A ruling at 0% means the seller delivered nothing for work a client had
     // already paid for — the same failure a walkaway is, so it counts the same.
