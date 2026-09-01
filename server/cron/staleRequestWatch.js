@@ -22,6 +22,7 @@
 // reasons, and the notifications say so rather than blaming the wrong party.
 
 const cron = require("node-cron");
+const { watchJob } = require("../utils/jobTelemetry");
 const HireDeal = require("../models/HireDeal");
 const ServiceOrder = require("../models/ServiceOrder");
 // Required for its side effect — the queries below populate buyer/seller and
@@ -275,10 +276,13 @@ async function run() {
 // Daily at 07:30. A deadline measured in days doesn't need to be checked more
 // often, and this lands before the working day rather than overnight.
 cron.schedule("30 7 * * *", async () => {
+  const job = watchJob("StaleRequestWatch");
   try {
     await run();
+    job.ok();
   } catch (err) {
     console.error("[StaleRequest] Cron job error:", err);
+    job.failed(err);
   }
 });
 

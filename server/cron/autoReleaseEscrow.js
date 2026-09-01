@@ -1,6 +1,8 @@
 
 
 const cron = require("node-cron");
+const { watchJob } = require("../utils/jobTelemetry");
+const telemetry = require("../utils/telemetry");
 const HireDeal = require("../models/HireDeal");       // adjust path
 const Notification = require("../models/Notification"); // adjust path
 const Message = require("../models/Message");
@@ -133,6 +135,9 @@ async function warnBeforeAutoRelease() {
 }
 
 cron.schedule("0 * * * *", async () => {
+  const job = watchJob("AutoReleaseEscrow");
+  let released = 0;
+  let failed = 0;
   try {
     await warnBeforeAutoRelease();
     const cutoff = new Date(Date.now() - AUTO_RELEASE_HOURS * 60 * 60 * 1000);
@@ -157,15 +162,35 @@ cron.schedule("0 * * * *", async () => {
     for (const deal of eligibleDeals) {
       try {
         await releaseEscrowToWallet(deal);
+        released++;
       } catch (dealErr) {
+        failed++;
         console.error(
           `[AutoRelease] ✗ Failed for deal ${deal._id}:`,
           dealErr.message
         );
+        /* The most expensive silent failure in the codebase, and the reason this
+           reports per deal rather than only per run. Continuing to the next deal
+           is right — one bad deal must not block the other releases — but it
+           also means this deal's money stays held indefinitely with nobody
+           informed. Both parties are waiting on a payout that will never happen
+           unless someone reads a log line that is not retained.
+
+           Reported with the deal id so it is actionable on its own, and the
+           run's `failed` count below makes a run that failed on everything
+           distinguishable from a run that failed on one. */
+        telemetry.trackError(dealErr, {
+          job: "AutoReleaseEscrow",
+          kind: "escrowReleaseFailed",
+          dealId: deal._id,
+          freelancerAmount: deal.freelancerAmount,
+        });
         // Don't throw — continue to next deal
       }
     }
+    job.ok({ eligible: eligibleDeals.length, released, failed });
   } catch (err) {
     console.error("[AutoRelease] Cron job error:", err);
+    job.failed(err);
   }
 });

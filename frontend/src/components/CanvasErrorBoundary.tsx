@@ -20,6 +20,7 @@
  */
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { reportError } from "@/lib/telemetry";
 
 export default class CanvasErrorBoundary extends Component<
   { children: ReactNode; fallback: ReactNode; label?: string },
@@ -39,6 +40,17 @@ export default class CanvasErrorBoundary extends Component<
       error?.message || error,
       info?.componentStack?.split("\n")[1]?.trim() || ""
     );
+
+    /* Reported, but this boundary succeeds by design — it renders a fallback and
+       the page stays usable, so this is not a user-visible failure. It is here
+       because WebGL breaks by device and driver, not by code path: a fallback
+       firing for 30% of visitors on one GPU is a real problem and is otherwise
+       completely unobservable, since nobody reports a page that worked. */
+    reportError(error, {
+      kind: "canvasFallback",
+      label: this.props.label || "CanvasErrorBoundary",
+      componentStack: info?.componentStack?.split("\n")[1]?.trim() || "",
+    });
   }
 
   render() {

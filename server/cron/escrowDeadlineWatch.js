@@ -22,6 +22,7 @@
 // stays with the people whose money it is.
 
 const cron = require("node-cron");
+const { watchJob } = require("../utils/jobTelemetry");
 const ServiceOrder = require("../models/ServiceOrder");
 const HireDeal = require("../models/HireDeal");
 const Notification = require("../models/Notification");
@@ -148,12 +149,15 @@ async function reportLapsedEscrow() {
 // Once a day is enough for a deadline measured in weeks. 07:00 so the warning
 // lands at the start of a working day rather than overnight.
 cron.schedule("0 7 * * *", async () => {
+  const job = watchJob("EscrowDeadlineWatch");
   try {
     const warned = await warnExpiringEscrow();
     if (warned) console.log(`[EscrowDeadline] Warned on ${warned} booking(s) nearing the hold limit.`);
     await reportLapsedEscrow();
+    job.ok({ warned: Number(warned) || 0 });
   } catch (err) {
     console.error("[EscrowDeadline] Cron job error:", err);
+    job.failed(err);
   }
 });
 

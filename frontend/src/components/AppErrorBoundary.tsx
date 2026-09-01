@@ -22,6 +22,7 @@
  */
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { reportError } from "@/lib/telemetry";
 
 type Props = {
   children: ReactNode;
@@ -47,13 +48,28 @@ export default class AppErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: ErrorInfo) {
     /* console.error survives here in development and is stripped in production
        — deliberately left as-is rather than worked around, because the right
-       fix is an error tracker, not a smuggled log. This is where that tracker
-       gets wired in: report(error, { ref: this.state.ref, scope }). */
+       fix is an error tracker, not a smuggled log. */
     console.error(
       `[AppErrorBoundary${this.props.scope ? `:${this.props.scope}` : ""}] ${this.state.ref}`,
       error?.message || error,
       info?.componentStack?.split("\n").slice(1, 4).join("\n") || ""
     );
+
+    /* The tracker the comment above was waiting for. Until this line existed, a
+       white screen in production left no trace anywhere: the boundary rendered a
+       reference for the user to quote and there was nothing to look it up in.
+       Now the same ref is attached to the report, so quoting it resolves to this
+       exact crash with its component stack.
+
+       componentStack is trimmed to the first three frames on purpose — the full
+       one is hundreds of lines of provider and router wrappers, and the frames
+       that identify the broken component are at the top. */
+    reportError(error, {
+      ref: this.state.ref,
+      scope: this.props.scope || "root",
+      componentStack:
+        info?.componentStack?.split("\n").slice(1, 4).join(" | ") || "",
+    });
   }
 
   private reset = () => {

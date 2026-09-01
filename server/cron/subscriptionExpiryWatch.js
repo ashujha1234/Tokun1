@@ -12,6 +12,7 @@
 // reminder rather than sending duplicates — the right way round for email.
 
 const cron = require("node-cron");
+const { watchJob } = require("../utils/jobTelemetry");
 const User = require("../models/User");
 /* Lowercase "organization" — that is the actual filename on disk, and every
    other file in the codebase requires it that way.
@@ -159,6 +160,7 @@ async function sweepOrganizations() {
 
 // 09:00 daily — a renewal prompt wants a working morning, not 3am.
 cron.schedule("0 9 * * *", async () => {
+  const job = watchJob("SubscriptionExpiryWatch");
   try {
     const reminded = await remindExpiringUsers();
     const expired = await notifyExpiredUsers();
@@ -168,8 +170,14 @@ cron.schedule("0 9 * * *", async () => {
         `[SubscriptionExpiry] ${reminded} reminder(s), ${expired} expiry notice(s), ${orgs} org email(s).`
       );
     }
+    job.ok({
+      reminded: Number(reminded) || 0,
+      expired: Number(expired) || 0,
+      orgs: Number(orgs) || 0,
+    });
   } catch (err) {
     console.error("[SubscriptionExpiry] Cron job error:", err);
+    job.failed(err);
   }
 });
 

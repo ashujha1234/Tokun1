@@ -15,6 +15,7 @@
 // from checking more often, and every tick is a full sweep.
 
 const cron = require("node-cron");
+const { watchJob } = require("../utils/jobTelemetry");
 const Purchase = require("../models/Purchase");
 const {
   settleReferralsForPurchase,
@@ -64,6 +65,7 @@ async function sweep() {
 }
 
 cron.schedule("15 * * * *", async () => {
+  const job = watchJob("ReferralSettlement");
   try {
     const processed = await sweep();
     const expired = await expireOldCredits();
@@ -85,8 +87,14 @@ cron.schedule("15 * * * *", async () => {
         `[Referral] ${processed} settled sale(s) swept, ${expired} expired, ${released} reservation(s) released.`
       );
     }
+    job.ok({
+      processed: Number(processed) || 0,
+      expired: Number(expired) || 0,
+      released: Number(released) || 0,
+    });
   } catch (err) {
     console.error("[Referral] Cron job error:", err);
+    job.failed(err);
   }
 });
 

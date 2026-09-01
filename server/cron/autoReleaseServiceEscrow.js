@@ -3,6 +3,8 @@
 // requested revision) within AUTO_RELEASE_HOURS of the work being submitted.
 
 const cron = require("node-cron");
+const { watchJob } = require("../utils/jobTelemetry");
+const telemetry = require("../utils/telemetry");
 const ServiceOrder = require("../models/ServiceOrder");
 const Notification = require("../models/Notification");
 const Message = require("../models/Message");
@@ -126,6 +128,9 @@ async function warnBeforeAutoRelease() {
 }
 
 cron.schedule("0 * * * *", async () => {
+  const job = watchJob("AutoReleaseServiceEscrow");
+  let released = 0;
+  let failed = 0;
   try {
     await warnBeforeAutoRelease();
     const cutoff = new Date(Date.now() - AUTO_RELEASE_HOURS * 60 * 60 * 1000);
@@ -150,14 +155,27 @@ cron.schedule("0 * * * *", async () => {
     for (const order of eligibleOrders) {
       try {
         await releaseOrderEscrowToWallet(order);
+        released++;
       } catch (orderErr) {
+        failed++;
         console.error(
           `[ServiceAutoRelease] ✗ Failed for order ${order._id}:`,
           orderErr.message
         );
+        /* Same reasoning as autoReleaseEscrow.js: the loop deliberately
+           continues, so this order's funds stay held with nobody told. Reported
+           per order so it can be chased individually. */
+        telemetry.trackError(orderErr, {
+          job: "AutoReleaseServiceEscrow",
+          kind: "escrowReleaseFailed",
+          orderId: order._id,
+          sellerAmount: order.sellerAmount,
+        });
       }
     }
+    job.ok({ eligible: eligibleOrders.length, released, failed });
   } catch (err) {
     console.error("[ServiceAutoRelease] Cron job error:", err);
+    job.failed(err);
   }
 });

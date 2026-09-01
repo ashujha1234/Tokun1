@@ -4320,6 +4320,16 @@
 // server/index.js
 require("dotenv").config();
 
+/* Error tracking. Immediately after dotenv and before express/mongoose/http are
+   required below, because auto-instrumentation works by patching those modules
+   as they load — initialise it after them and requests and Mongo queries are
+   never recorded.
+
+   No-op unless APPLICATIONINSIGHTS_CONNECTION_STRING is set, so local dev and CI
+   are unaffected. See utils/telemetry.js for why this exists at all. */
+const telemetry = require("./utils/telemetry");
+telemetry.init();
+
 /* Must come before ANY route module is required below, because those modules
    register their handlers at require time and this patches the Router so a
    handler that returns a rejected promise reaches the error middleware.
@@ -5051,7 +5061,79 @@ Return JSON ONLY:
 /* ===============================
    HEALTH + STATIC
 ================================ */
+
+/* Liveness: "the process is up and the event loop is turning."
+   Deliberately checks nothing else — a liveness probe that fails on a dependency
+   outage makes the platform restart a healthy process, which turns a database
+   blip into a restart loop. */
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
+/* Readiness: "this instance can actually serve a request."
+ *
+ * /health alone returned 200 with Mongo down, so every request 500'd while the
+ * platform believed the instance was fine — the failure mode with no signal
+ * attached. This one reports the truth.
+ *
+ * readyState is not enough on its own: it says what the driver believes about
+ * the socket, which stays "connected" through a failover or a paused Atlas
+ * cluster. The ping is what actually proves a round-trip, so it is the check —
+ * with a short timeout, since a probe that hangs is a probe that fails.
+ *
+ * 503, not 500: "not ready, come back" rather than "this request broke". Load
+ * balancers and container platforms act on 503; that distinction is the point.
+ */
+app.get("/health/ready", async (_req, res) => {
+  const states = ["disconnected", "connected", "connecting", "disconnecting"];
+  const state = states[mongoose.connection.readyState] || "unknown";
+
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ ok: false, mongo: state });
+  }
+
+  const TIMEOUT_MS = 5000;
+
+  try {
+    const started = Date.now();
+    await Promise.race([
+      mongoose.connection.db.admin().ping(),
+      /* Measured against this cluster: a warm ping is ~300ms, but latency right
+         after boot decays 2382 -> 2215 -> 1418 -> 778 -> ~300ms over the first
+         few calls, and the very first one can exceed 5s. Something at boot
+         occupies the pool or the event loop for the first seconds — index
+         building was the obvious suspect and was ruled out by measurement, so
+         the cause is unconfirmed. The behaviour is consistent and self-resolving.
+
+         That first 503 is CORRECT, not a bug to tune away: "not ready yet" is
+         exactly what this endpoint exists to say, and probes retry. Raising the
+         timeout until a cold instance reports ready would defeat the point. */
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(Object.assign(new Error(`ping timed out after ${TIMEOUT_MS}ms`), { isTimeout: true })),
+          TIMEOUT_MS
+        )
+      ),
+    ]);
+    return res.json({ ok: true, mongo: "connected", pingMs: Date.now() - started });
+  } catch (err) {
+    /* Only genuine errors are reported. A cold-start timeout happens on the
+       first probe after every deploy, and alerting on it would produce a steady
+       drip of expected failures — which is how the real one gets ignored. The
+       error handler further down this file makes the same distinction and says
+       so; this follows it.
+
+       The reason is returned either way, because "which kind of failure was it"
+       is the first thing anyone reading a 503 needs. */
+    if (!err?.isTimeout) {
+      telemetry.trackError(err, { check: "readiness", mongo: state });
+    }
+    return res.status(503).json({
+      ok: false,
+      mongo: state,
+      error: err?.isTimeout ? "ping_timeout" : "ping_failed",
+      detail: err?.message,
+    });
+  }
+});
 
 /* Everything under here was uploaded by a user, and it is served from the same
    origin as the API — so a file that the browser decides to treat as a document
@@ -5764,6 +5846,25 @@ app.use((err, req, res, _next) => {
       (req.user?._id ? ` user=${req.user._id}` : ""),
     err
   );
+
+  /* The other end of the errorId. console.error above goes to a stream that is
+     not retained; this puts the same stack under the same id somewhere it can be
+     found from the id alone, which is the whole point of handing one to the
+     client. Query in App Insights:
+
+       exceptions | where customDimensions.errorId == "<id from the user>"
+
+     route rather than originalUrl as its own dimension so errors group by
+     endpoint instead of splitting across every distinct id in the path. */
+  telemetry.trackError(err, {
+    errorId,
+    method: req.method,
+    url: req.originalUrl,
+    route: req.route?.path || req.baseUrl || "unmatched",
+    status,
+    userId: req.user?._id,
+    isAdmin: req.isAdmin === true,
+  });
 
   res.status(status).json({
     success: false,
@@ -6627,15 +6728,26 @@ mongoose.connection.on("error", (err) => console.error("MongoDB error:", err));
    continuing in that state is worse than restarting — App Service brings it
    back in seconds. `exitCode` rather than exit() gives the log write a tick to
    flush; without it the reason is what gets lost. */
+/* Both handlers flush before exiting. These are the two reports most worth
+   having and the two most likely to be lost — the buffer dies with the process,
+   so without an explicit flush a crash arrives in the portal as a restart with
+   no cause, which is exactly the situation these handlers were added to fix.
+
+   The existing 1000ms grace already covers the 2s-capped flush racing it: flush
+   resolves on its own timeout, and exit() is what ends the wait either way. */
 process.on("unhandledRejection", (reason) => {
   console.error("FATAL unhandledRejection:", reason);
+  telemetry.trackError(reason, { fatal: true, kind: "unhandledRejection" });
   process.exitCode = 1;
+  telemetry.flush().finally(() => process.exit(1));
   setTimeout(() => process.exit(1), 1000).unref();
 });
 
 process.on("uncaughtException", (err) => {
   console.error("FATAL uncaughtException:", err);
+  telemetry.trackError(err, { fatal: true, kind: "uncaughtException" });
   process.exitCode = 1;
+  telemetry.flush().finally(() => process.exit(1));
   setTimeout(() => process.exit(1), 1000).unref();
 });
 
@@ -6691,6 +6803,11 @@ async function shutdown(signal) {
     // 3. Database last, once nothing needs it.
     await mongoose.connection.close(false);
     console.log("MongoDB closed");
+
+    /* After Mongo, before exit: buffered telemetry from the requests just
+       drained would otherwise be discarded. Capped at 2s inside flush(), so it
+       cannot push the shutdown past the 15s backstop above. */
+    await telemetry.flush();
 
     clearTimeout(hardExit);
     process.exit(0);

@@ -23,6 +23,7 @@
 // so the existing dispute UI and admin queue pick it up with no special casing.
 
 const cron = require("node-cron");
+const { watchJob } = require("../utils/jobTelemetry");
 const ServiceOrder = require("../models/ServiceOrder");
 const HireDeal = require("../models/HireDeal");
 // Required for its side effect: both queries below populate buyer/seller, and
@@ -233,10 +234,13 @@ async function run() {
 // Daily, at 08:00 — a deadline measured in days doesn't need hourly attention,
 // and the notification lands at the start of a working day.
 cron.schedule("0 8 * * *", async () => {
+  const job = watchJob("StalledRevisionWatch");
   try {
     await run();
+    job.ok();
   } catch (err) {
     console.error("[RevisionStall] Cron job error:", err);
+    job.failed(err);
   }
 });
 

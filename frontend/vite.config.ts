@@ -133,6 +133,21 @@ export default defineConfig(({ mode }) => ({
 
           if (/node_modules\/framer-motion\//.test(realId)) return "vendor-motion";
 
+          /* Application Insights, kept out of vendor-common deliberately.
+             lib/telemetry.ts loads it through a dynamic import so the SDK is
+             fetched after first paint instead of blocking it — but the catch-all
+             at the bottom of this function would fold it into vendor-common,
+             which the entry imports statically, undoing that completely. It
+             measured 181 kB on vendor-common when that happened.
+             @nevware21 and dynamicproto-js are its own runtime deps and are used
+             by nothing else here, so they belong in the same chunk. */
+          if (
+            /node_modules\/(@microsoft\/(applicationinsights-[^/]+|dynamicproto-js)|@nevware21\/ts-(utils|async))\//.test(
+              realId,
+            )
+          )
+            return "vendor-telemetry";
+
           if (/node_modules\/(@radix-ui|cmdk|vaul|embla-carousel[^/]*)\//.test(realId))
             return "vendor-ui";
 
