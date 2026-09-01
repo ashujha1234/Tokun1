@@ -801,7 +801,23 @@ body.is-loading { overflow: hidden; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 0 40px;
+  /* 38, not 40 — the four stats wrapped at 760px with 40.
+     The row gets 680px there: .hero__content is min(900, vw) − 48 of its own
+     padding, and .hero__stats takes another 32. The four items measured about
+     683 at 40px each side, so "Support / 24/7" dropped to a second line by a
+     hair. 38 takes 16px off the row (2px × two sides × four items).
+     Desktop has ~820px for the same 683 and never noticed either value. */
+  padding: 0 38px;
+}
+
+/* The tablet band, where 38 alone is thin.
+   38 clears 760px by roughly 13px, which is under 2% — inside the error of the
+   text measurement it is derived from, so a font-metric difference on another
+   platform could put the fourth stat back on its own line. 30 clears it by
+   ~77px instead. Scoped to this band so the desktop row keeps its wider
+   spacing; raise this number if the group reads too tight, it has room. */
+@media (max-width: 900px) {
+  .hero__stat { padding: 0 30px; }
 }
 
 .hero__stat-divider {

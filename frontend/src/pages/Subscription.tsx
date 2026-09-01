@@ -1189,23 +1189,20 @@ export default function Subscription() {
          * `min-[544px]` for two, derived the same way: 2 × 250 + one 12px gap +
          * 32px of padding.
          *
+         * `min-[760px]` for three, with a NARROWER card — iPad Mini is 768px and
+         * has to show one row. The card drops to 234px there and CardContent's
+         * padding drops with it, which is what makes the fixed 200px CTA still
+         * fit; see PlanCard for the arithmetic. 3 × 234 + two 12px gaps = 726,
+         * inside the 728 that 760px leaves after px-4.
+         *
          * ── Two columns was previously refused, deliberately ──
          *
          * This note used to read "1 column, then 3. Never 2", on the grounds
          * that three cards shown as two-plus-one is a comparison laid out as two
-         * things and an afterthought. That reasoning is sound, and this overrides
-         * it because the alternative measured worse on an actual tablet: at 760px
-         * a single 250px card sat centred in the viewport with the phone-only
-         * feature panels (md:hidden, so still visible below 768) stacked under
-         * it — the phone layout served to a tablet, which is what prompted the
-         * change.
-         *
-         * Three across at 760px is not available: it needs 806px and the card
-         * cannot shrink. So the real choice between 544 and 805 is two-plus-one
-         * or one-per-row, and two-plus-one at least uses the width it has. If
-         * the card is ever allowed to flex below 250px, delete this middle step
-         * and start three columns lower instead. */}
-        <div className="grid grid-cols-1 min-[544px]:grid-cols-2 min-[806px]:grid-cols-3 gap-3 lg:gap-x-2 lg:gap-y-4 justify-items-center">
+         * things and an afterthought. That reasoning stands, which is why the
+         * two-column band is now only 544–759 — the widths where three genuinely
+         * do not fit — rather than everything below 806. */}
+        <div className="grid grid-cols-1 min-[544px]:grid-cols-2 min-[760px]:grid-cols-3 gap-3 lg:gap-x-2 lg:gap-y-4 justify-items-center">
           <div className="flex w-full flex-col items-center">
             <PlanCard
               selected={selected === "Free"}
@@ -1316,20 +1313,34 @@ function PlanCard({
   return (
     <Card
       onClick={onSelect}
-      /* ONE SIZE, EVERY SCREEN: 250 × 400.
+      /* 250 × 400 everywhere except one band: 234 × 400 from 760 to 805.
        *
        * This was briefly `w-full lg:w-[250px]` so the card would run to the page
-       * margins on a phone and fit a 237px tablet cell. Both worked, and both
-       * changed what the card IS — 250×400 became 358×400 on a phone, which is
-       * the same content in a squat frame with different padding, a wrapped
-       * token line and a button that no longer filled its row. A card people
-       * recognise is worth more than a card that fills the width.
+       * margins on a phone. That worked and changed what the card IS — 250×400
+       * became 358×400 on a phone, the same content in a squat frame with a
+       * wrapped token line and a button that no longer filled its row. A card
+       * people recognise is worth more than a card that fills the width, so the
+       * width does not track the viewport.
        *
-       * So the width is fixed and the GRID does the responding: one column until
-       * there is room for three, never two (see the note on the grid). Everything
-       * inside — the content column, the token line, the CTA — is back to a
-       * single fixed value for the same reason. */
-      className="relative cursor-pointer flex flex-col w-[250px] h-[400px]"
+       * ── Why 234, and why only there ──
+       *
+       * iPad Mini is 768px and has to show all three plans in one row. Three
+       * 250px cards need 806px (see the grid note), so at 768 something has to
+       * give, and 16px off each card is less of a change than a fourth layout.
+       *
+       * 234 is not a guess: 760px minus px-4 leaves 728, minus two 12px gaps
+       * leaves 704, divided by three is 234.67.
+       *
+       * It is also exactly compensated. The binding constraint is the 200px CTA
+       * inside CardContent's `p-6` — 200 + 48 = 248, which is the real floor at
+       * 250. Dropping the padding to px-4 in the same band gives 234 − 32 = 202
+       * of content box, the identical 202 that 250 − 48 gives. The CTA fits the
+       * same, and the w-[220px] column spills the same 18px it already spills at
+       * 250. Nothing inside the card is any tighter than it is today.
+       *
+       * Both numbers move together or neither does. Changing one without the
+       * other pushes the CTA out of the card. */
+      className="relative cursor-pointer flex flex-col w-[250px] min-[760px]:w-[234px] min-[806px]:w-[250px] h-[400px]"
       style={{
         borderRadius: 16,
         border: "1px solid #35343C",
@@ -1368,7 +1379,12 @@ function PlanCard({
         </div>
       </CardHeader>
 
-      <CardContent className="flex-1 flex items-center justify-center">
+      {/* px-4 in the 760–805 band, paired with the card's 234px there — see the
+          width note on the card. CardContent's own `p-6` is 48px horizontally,
+          so the w-[220px] column already spills 18px at a 250px card; 234 − 32
+          leaves the same 202px content box, so it spills exactly the same and
+          nothing inside gets tighter. */}
+      <CardContent className="flex-1 flex items-center justify-center min-[760px]:px-4 min-[806px]:px-6">
         <div className="w-[220px] mx-auto">
           <div className='text-center font-["Inter"] text-[16px] leading-[1] whitespace-nowrap'>
             Monthly Tokens: {tokens}
@@ -1407,7 +1423,12 @@ function PlanCard({
         </div>
       </CardContent>
 
-      <CardFooter className="pt-3 pb-5 flex justify-center">
+      {/* This is the override that actually matters. CardFooter's default `p-6`
+          puts 48px of horizontal padding around a fixed w-[200px] CTA — 200 + 48
+          = 248, which is where the 250px floor came from. px-4 makes it 232, so
+          the button fits a 234px card with 2px to spare. Moving the card width
+          without this pushes the CTA out through the side of the card. */}
+      <CardFooter className="pt-3 pb-5 flex justify-center min-[760px]:px-4 min-[806px]:px-6">
         <Button
           onClick={(e) => {
             e.stopPropagation();
