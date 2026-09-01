@@ -1550,13 +1550,30 @@ const soldOut = !!prompt?.exclusive && !!prompt?.sold;
               min-h-0 md:h-full flex-1 overflow-y-auto no-scrollbar
             "
           >
-            {/* Title. The column for the save control collapses with it when
-                the caller has none to offer — see hideSave — so the heading
-                takes the full width instead of leaving a 42px hole. */}
+            {/* Title, with the save control beside it on a wide panel and under
+                it on a phone.
+
+                Side-by-side at every width meant the heading competed with the
+                button for a ~330px row: a long title wrapped to four or five
+                lines down a 1fr column while the button sat in the corner of the
+                first one, and the rating and description were pushed most of a
+                screen down. Stacking below sm gives the title the full width and
+                the button its own row.
+
+                The column for the save control still collapses when the caller
+                has none to offer — see hideSave — so the heading is not left
+                with a 42px hole beside it. */}
             <div
-              className={`grid ${hideSave ? "grid-cols-1" : "grid-cols-[1fr_auto]"} items-start gap-4 mt-2`}
+              className={`grid ${hideSave ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-[1fr_auto]"} items-start gap-3 sm:gap-4 mt-2`}
             >
-              <h2 className="font-semibold text-[24px] leading-snug tracking-tight">
+              {/* Two lines, then an ellipsis. 19px on a phone rather than 24 —
+                  at 24 a typical marketplace title ran three lines before the
+                  clamp could help. `title` keeps the full text reachable, and
+                  the description below repeats it in practice. */}
+              <h2
+                className="font-semibold text-[19px] sm:text-[24px] leading-snug tracking-tight line-clamp-2"
+                title={prompt.title}
+              >
                 {prompt.title}
               </h2>
               {/* Was a 42px circle with cop1.png in it — an icon you had to
@@ -1568,7 +1585,11 @@ const soldOut = !!prompt?.exclusive && !!prompt?.sold;
                   busy={savingPrompt}
                   disabled={!promptRefId}
                   onClick={toggleSavePrompt}
-                  className="justify-self-end"
+                  /* Left-aligned under the title on a phone, right-aligned in
+                     its own column from sm up. justify-self-end alone would have
+                     parked it against the far edge of the stacked layout, away
+                     from the text it belongs to. */
+                  className="justify-self-start sm:justify-self-end"
                 />
               )}
             </div>

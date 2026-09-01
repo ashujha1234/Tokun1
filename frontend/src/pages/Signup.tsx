@@ -1459,7 +1459,10 @@ const Signup = () => {
         {/* Mobile layout */}
        
            {/* Mobile layout */}
-<div className="lg:hidden relative z-10 min-h-screen px-6 pt-6 pb-8 flex flex-col">
+{/* Same cap as Login.tsx — see the note there. Signup needs it more: it also
+    has the IND/ORG toggle pair at a fixed w-[169px] each, which sat marooned in
+    the middle of a 720px row on a tablet. */}
+<div className="lg:hidden relative z-10 min-h-screen px-6 pt-6 pb-8 flex flex-col sm:max-w-[400px] sm:mx-auto">
   
   {/* Revolving image - compact */}
   <div className="flex justify-center mb-5 mt-10">

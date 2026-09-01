@@ -1178,22 +1178,34 @@ export default function Subscription() {
             width. */}
         {/* 1 column, then 3. Never 2.
          *
-         * `sm:grid-cols-2` used to put two plans on a row and the third alone
-         * underneath, from 640px all the way to 1024 — a comparison of three
-         * things laid out as two things and an afterthought. With exactly three
-         * cards there is no width at which two columns is the right answer.
+         * `min-[806px]` for three: the card is a fixed 250px and cannot shrink —
+         * its own token line and CTA are 200px inside 48px of padding, so 248px
+         * is the floor (see PlanCard). Three of them plus two 12px gaps need
+         * 774px of content, which with `px-4` is a 806px viewport. A named
+         * breakpoint would be wrong in both directions: `md` (768px) is 38px
+         * short and would overflow, and `lg` (1024px) leaves every tablet
+         * between 806 and 1023 stacked for no reason.
          *
-         * `min-[806px]`, not `md` or `lg`. The card is a fixed 250px and cannot
-         * shrink — its own token line and CTA are 200px inside 48px of padding,
-         * so 248px is the floor (see PlanCard). Three of them plus two 12px gaps
-         * need 774px of content, which with `px-4` is a 806px viewport.
+         * `min-[544px]` for two, derived the same way: 2 × 250 + one 12px gap +
+         * 32px of padding.
          *
-         * A named breakpoint would be wrong in both directions: `md` (768px) is
-         * 38px short and would overflow, and `lg` (1024px) leaves every tablet
-         * between 806 and 1023 stacked for no reason. The number is not a
-         * preference, it is the width at which three cards physically fit, so it
-         * is written as that width. */}
-        <div className="grid grid-cols-1 min-[806px]:grid-cols-3 gap-3 lg:gap-x-2 lg:gap-y-4 justify-items-center">
+         * ── Two columns was previously refused, deliberately ──
+         *
+         * This note used to read "1 column, then 3. Never 2", on the grounds
+         * that three cards shown as two-plus-one is a comparison laid out as two
+         * things and an afterthought. That reasoning is sound, and this overrides
+         * it because the alternative measured worse on an actual tablet: at 760px
+         * a single 250px card sat centred in the viewport with the phone-only
+         * feature panels (md:hidden, so still visible below 768) stacked under
+         * it — the phone layout served to a tablet, which is what prompted the
+         * change.
+         *
+         * Three across at 760px is not available: it needs 806px and the card
+         * cannot shrink. So the real choice between 544 and 805 is two-plus-one
+         * or one-per-row, and two-plus-one at least uses the width it has. If
+         * the card is ever allowed to flex below 250px, delete this middle step
+         * and start three columns lower instead. */}
+        <div className="grid grid-cols-1 min-[544px]:grid-cols-2 min-[806px]:grid-cols-3 gap-3 lg:gap-x-2 lg:gap-y-4 justify-items-center">
           <div className="flex w-full flex-col items-center">
             <PlanCard
               selected={selected === "Free"}

@@ -6843,15 +6843,36 @@ const LibPromptRow = ({
     const leftInContent = (el: HTMLElement) =>
       el.getBoundingClientRect().left - railRect.left + rail.scrollLeft;
 
-    const viewCentre = rail.scrollLeft + rail.clientWidth / 2;
+    /* "Can a second card fit beside it?" — asked in card widths rather than as a
+       fraction of the rail, because that is the thing the answer depends on. A
+       viewport too narrow for two cards has one card to look at, and its resting
+       place is the middle; anything wider is a row, and a row pages.
+       Decided from the first card, before a target exists: every card in a rail
+       is the same width, and the answer is needed to pick the target at all. */
+    const singleCardView = rail.clientWidth < cards[0].offsetWidth * 2;
 
-    // Where we are now: the card sitting closest to the middle of the viewport.
-    // Derived rather than remembered in state, so a drag or a flick — which this
-    // component never hears about — leaves the arrows still correct.
+    /* Where we are now — measured against the SAME edge the scroll below aligns
+       to. That agreement is the whole fix.
+       "current" used to always be the card nearest the viewport centre, while a
+       multi-card rail scrolls the target to the LEFT edge. Those are different
+       reference points, and on a wide rail the centre card sits about two cards
+       ahead of the left-edge one — so `current - 1` still resolved to a card at
+       or right of where the rail already was, and scrollTo asked for the offset
+       it was already at. The right arrow worked because moving forward crossed
+       the gap; the left arrow silently did nothing after any right-paging.
+       Derived rather than remembered in state, so a drag or a flick — which this
+       component never hears about — leaves the arrows still correct. */
+    const anchor = singleCardView
+      ? rail.scrollLeft + rail.clientWidth / 2
+      : rail.scrollLeft;
+
     let current = 0;
     let closest = Infinity;
     cards.forEach((card, i) => {
-      const distance = Math.abs(leftInContent(card) + card.offsetWidth / 2 - viewCentre);
+      const cardPoint = singleCardView
+        ? leftInContent(card) + card.offsetWidth / 2
+        : leftInContent(card);
+      const distance = Math.abs(cardPoint - anchor);
       if (distance < closest) {
         closest = distance;
         current = i;
@@ -6861,11 +6882,6 @@ const LibPromptRow = ({
     const next = Math.min(cards.length - 1, Math.max(0, current + (dir === "left" ? -1 : 1)));
     const target = cards[next];
 
-    /* "Can a second card fit beside it?" — asked in card widths rather than as a
-       fraction of the rail, because that is the thing the answer depends on. A
-       viewport too narrow for two cards has one card to look at, and its resting
-       place is the middle; anything wider is a row, and a row pages. */
-    const singleCardView = rail.clientWidth < target.offsetWidth * 2;
     const desired = singleCardView
       ? leftInContent(target) + target.offsetWidth / 2 - rail.clientWidth / 2
       : leftInContent(target);
@@ -7303,7 +7319,16 @@ const LibCategoriesRow = ({
   /* Where to draw the hover panel. It is rendered in a portal at these
      coordinates rather than inside the rail — see the note on the rail's
      overflow below for why it cannot live in there. */
-  const [panelAt, setPanelAt] = useState<{ left: number; top: number } | null>(null);
+  const [panelAt, setPanelAt] = useState<{
+    left: number;
+    top: number;
+    viewportWidth: number;
+    /* The pill's bottom in VIEWPORT space, kept alongside the document `top`.
+       Only the max-height calculation wants it — "how much room is left below
+       the pill on screen" is a viewport question, while placement is a document
+       one, and conflating the two is what put the panel in the wrong place. */
+    viewportTop: number;
+  } | null>(null);
   /* Fetched per category the first time it's hovered and kept for the life of
      the page. 23 categories × ~5 children is small, and the alternative — one
      request every time the pointer crosses a pill — would fire dozens of times
@@ -7388,7 +7413,23 @@ const LibCategoriesRow = ({
               className="relative shrink-0"
               onMouseEnter={(e) => {
                 const r = e.currentTarget.getBoundingClientRect();
-                setPanelAt({ left: r.left, top: r.bottom });
+                /* Document coordinates, not viewport ones. getBoundingClientRect
+                   is relative to the viewport, and the panel used to be
+                   position:fixed at those numbers — so scrolling the page left it
+                   pinned in place while the pill it belongs to slid away behind
+                   it. Adding the scroll offset here and positioning absolutely
+                   below anchors it to the document, so it travels with the page
+                   the way an attached menu should. */
+                setPanelAt({
+                  left: r.left + window.scrollX,
+                  top: r.bottom + window.scrollY,
+                  /* Kept from the same measurement as the rect: the panel needs
+                     the viewport width to decide whether to go full-bleed, and
+                     reading it again at style time risked the two disagreeing
+                     mid-gesture on a phone that shows and hides its URL bar. */
+                  viewportWidth: window.innerWidth,
+                  viewportTop: r.bottom,
+                });
                 handleCategoryHover(c);
               }}
               onMouseLeave={() => { setHoveredCategory(null); setPanelAt(null); }}
@@ -7429,7 +7470,7 @@ const LibCategoriesRow = ({
 
               {showPanel && panelAt && createPortal(
                 <div
-                  className="fixed pt-2 z-[60]"
+                  className="absolute pt-2 z-[60]"
                   /* Sized and clamped here rather than left to grow.
 
                      Design has seventeen children now, and one column of those
@@ -7444,14 +7485,31 @@ const LibCategoriesRow = ({
                        a left edge pulled back from the window's right side, since
                        a fixed panel opened from the last pill in the rail would
                        otherwise hang off the screen. */
-                  style={{
-                    left: Math.max(
-                      12,
-                      Math.min(panelAt.left, window.innerWidth - (subs.length > 8 ? 440 : 250) - 12)
-                    ),
-                    top: panelAt.top,
-                    width: subs.length > 8 ? 440 : 250,
-                  }}
+                  style={(() => {
+                    /* On a phone the panel goes full-bleed. The old fixed 250px
+                       (440 for long lists) left a narrow column floating against
+                       one edge of a 375px screen with the page showing either
+                       side of it, and at 440 it was wider than the screen and
+                       clipped. Below the two-column threshold there is no reason
+                       to be narrower than the viewport. */
+                    const GUTTER = 12;
+                    const available = panelAt.viewportWidth - GUTTER * 2;
+                    const fullBleed = panelAt.viewportWidth < 640;
+
+                    const wanted = subs.length > 8 ? 440 : 250;
+                    const width = fullBleed ? available : Math.min(wanted, available);
+
+                    return {
+                      /* Full-bleed pins to the gutter; otherwise it opens under
+                         its pill, pulled back so a panel from the last pill in
+                         the rail cannot hang off the right edge. */
+                      left: fullBleed
+                        ? GUTTER
+                        : Math.max(GUTTER, Math.min(panelAt.left, panelAt.viewportWidth - width - GUTTER)),
+                      top: panelAt.top,
+                      width,
+                    };
+                  })()}
                   /* Fixed and in a portal, so no ancestor can clip it and the
                      rail keeps its own scrolling. The pt-2 is inside the
                      hoverable area on purpose — as a margin it would be a dead
@@ -7462,7 +7520,11 @@ const LibCategoriesRow = ({
                 >
                   <div
                     className="rounded-xl border border-white/10 bg-[#131419] shadow-[0_16px_48px_rgba(0,0,0,0.6)] p-1.5 overflow-y-auto no-scrollbar"
-                    style={{ maxHeight: Math.max(220, window.innerHeight - panelAt.top - 24) }}
+                    /* viewportTop, not top: `top` is now a document coordinate,
+                       and "how much room is below the pill" is measured against
+                       the window. Using the document value here would grow the
+                       cap without limit as the page scrolled down. */
+                    style={{ maxHeight: Math.max(220, window.innerHeight - panelAt.viewportTop - 24) }}
                   >
                     {/* First row is the parent itself. Every child used to call
                         onSelect(c) — the PARENT — so clicking "Logo & Branding"

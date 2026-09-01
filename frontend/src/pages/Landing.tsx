@@ -11995,6 +11995,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useFreelancerMenu } from '@/hooks/useFreelancerMenu'
 // The shared footer. This file used to define a private `Footer()` of its own
 // further down, which shadowed this import — so any link added to the real
@@ -12146,6 +12147,26 @@ function HeroAccountMenu() {
   const fullName = user?.name?.trim()
     ? toTitleCase(user.name.trim())
     : (user?.email ? user.email.split('@')[0] : 'User')
+
+  /* Two letters on a phone, the greeting everywhere else.
+     This button is inline-flex with whiteSpace: nowrap and no width limit, so
+     "Hello, Ashutosh Kumar Jha" simply grew until it pushed out of the header
+     and over the page. components/Header.tsx already solves this by collapsing
+     to initials; this is the landing page's own copy of that menu, and it never
+     got the same treatment.
+     Initials from the name's first two words, falling back to the first two
+     characters of a single word or an email local-part — so there are always
+     two, which is what keeps the pill a predictable size. */
+  const initials = useMemo(() => {
+    const source = user?.name?.trim() || user?.email?.split('@')[0] || 'User'
+    const words = source.split(/[\s._-]+/).filter(Boolean)
+    if (words.length >= 2) {
+      return (words[0][0] + words[1][0]).toUpperCase()
+    }
+    return source.slice(0, 2).toUpperCase()
+  }, [user?.name, user?.email])
+
+  const isPhone = useIsMobile()
   const plan = user?.plan || 'free'
 
   useEffect(() => {
@@ -12293,11 +12314,11 @@ function HeroAccountMenu() {
               backgroundClip: 'text',
             }}
           >
-            Hello, {fullName}
+            {isPhone ? initials : `Hello, ${fullName}`}
           </span>
         ) : (
           <>
-            <span>Hello, {fullName}</span>
+            <span>{isPhone ? initials : `Hello, ${fullName}`}</span>
             <span
               style={{
                 fontSize: 10,

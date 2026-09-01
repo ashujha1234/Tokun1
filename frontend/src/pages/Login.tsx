@@ -580,7 +580,13 @@ const Login = () => {
         <div className="lg:hidden absolute inset-0 bg-black" />
 
 {/* MOBILE LAYOUT */}
-<div className="lg:hidden relative z-10 min-h-screen px-6 pt-4 pb-8 flex flex-col">
+{/* Phone keeps the full width; tablets get a centred column.
+    This layout runs from 0 to lg (the desktop one below takes over at 1024), so
+    on a tablet it was stretching headings and footer text across ~720px while
+    the inputs stopped at their md:w-[350px] — a 350px form sitting in a 720px
+    box, everything else running past both its edges. Capping from sm up gives
+    the whole thing one width instead of two. */}
+<div className="lg:hidden relative z-10 min-h-screen px-6 pt-4 pb-8 flex flex-col sm:max-w-[400px] sm:mx-auto">
 
   <style>{`
     @keyframes spin-ring {
