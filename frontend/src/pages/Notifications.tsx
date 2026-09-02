@@ -1134,6 +1134,7 @@ import Footer from "@/components/Footer";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/use-toast";
 import DetailsPrompt from "@/components/DetailsPrompt";
+import { mediaUrl } from "@/lib/mediaUrl";
 import HirePaymentPopup from "@/components/HirePaymentPopup";
 import { useNavigate } from "react-router-dom";
 import {
@@ -1499,13 +1500,40 @@ export default function NotificationsPage() {
         (Array.isArray(prompt.categories) && prompt.categories[0]?.name) ||
         prompt.category ||
         "General",
+      /* mediaUrl(), not `${API_BASE}${path}`.
+       *
+       * Uploads go to Azure Blob, so attachment.path is already an absolute
+       * URL. Prefixing the API origin onto one produced
+       *
+       *   https://backendtokun1….azurewebsites.net/https://tokunstore.blob.…
+       *
+       * which fetches nothing — so the panel opened from a notification showed
+       * a product with no image or video at all, for every prompt uploaded
+       * since storage moved to Blob. Prompts still on local disk have
+       * root-relative paths and did work, which is why this looked
+       * intermittent.
+       *
+       * mediaUrl() returns absolute URLs untouched and resolves relative ones
+       * against the API origin, so both kinds render. It is the same helper the
+       * rest of the app uses; the marketplace has its own private copy of this
+       * logic (mapPromptDoc's `abs`), and this is the third place the rule
+       * needed to exist. */
       imageUrl:
         prompt.attachment?.type === "image"
-          ? `${API_BASE}${prompt.attachment?.path}`
+          ? mediaUrl(prompt.attachment?.path)
           : undefined,
+      /* The preview cut, falling back to the original — matching the
+         marketplace. attachment.previewUrl is an ~0.45 MB 720p loop; path is the
+         seller's original, which can be 56 MB at 7.9 Mbps and is not something
+         a panel should be streaming. Absent on videos uploaded before previews
+         existed, hence the fallback. */
       videoUrl:
         prompt.attachment?.type === "video"
-          ? `${API_BASE}${prompt.attachment?.path}`
+          ? mediaUrl(prompt.attachment?.previewUrl) || mediaUrl(prompt.attachment?.path)
+          : undefined,
+      posterUrl:
+        prompt.attachment?.type === "video"
+          ? mediaUrl(prompt.attachment?.posterUrl) || undefined
           : undefined,
       fullPrompt: prompt.promptText || "",
       /* The listing's public code summary, so a shared coding product shows its
