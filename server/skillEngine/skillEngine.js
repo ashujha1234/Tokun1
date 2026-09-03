@@ -97,7 +97,12 @@ const {
   buildDetailedSystemPrompt,
   validateDetailedOutput,
   buildRetryPrompt,
-} = require("./promptBuilder");
+/* Lowercase b, matching the file on disk — skillEngine/promptbuilder.js.
+   It read "./promptBuilder" and worked anyway on every machine this was
+   developed on, because macOS and Windows resolve requires case-insensitively.
+   Linux does not, so the first CI run on ubuntu could not find the module and
+   took routes/smartgenDetectRoutes.js down with it. */
+} = require("./promptbuilder");
 
 // ââ Dynamic Domain (AI-powered) âââââââââââââââââââââââââââââââââââââââââââââââ
 const {
