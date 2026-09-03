@@ -944,13 +944,27 @@ export default function FreelancerSectionEditor({
 
   return (
     <div className="fixed inset-0 z-[9998] bg-black/75 backdrop-blur-sm overflow-hidden">
-      <div className="h-full w-full flex items-center justify-center p-2 sm:p-4">
+      <div className="h-full w-full flex items-center justify-center p-0 sm:p-4">
+        {/* Full-screen sheet on a phone, centred card from `sm` up — the same
+            change, for the same reason, as the dialog in
+            components/BecomeFreelancerWizard.tsx, which carries the long
+            version of this note.
+
+            Short version: the overlay is capped to the dynamic viewport, and on
+            Android the keyboard is part of that. A card sized to hug its content
+            and floating in the middle visibly collapsed to a third of its height
+            the moment someone tapped into a field — and "About you" is one of
+            the sections this editor opens. A sheet that already fills the screen
+            has nothing to collapse from; the keyboard just takes the bottom of
+            it, which is what a keyboard is supposed to do.
+
+            The dvh cap itself is correct and stays: with vh the save bar would
+            end up behind the keyboard, unreachable. */}
         <div
-          className="relative w-full max-w-[640px] rounded-[20px] overflow-hidden border border-white/10 shadow-2xl flex flex-col"
+          className="relative w-full h-full max-w-none rounded-none sm:h-auto sm:max-w-[640px] sm:rounded-[20px] sm:max-h-[calc(100dvh-24px)] overflow-hidden border border-white/10 shadow-2xl flex flex-col"
           style={{
             background:
               "radial-gradient(900px circle at 50% 0%, rgba(255,20,239,0.10), transparent 55%), linear-gradient(180deg,#0B0C10 0%, #08090B 100%)",
-            maxHeight: "calc(100dvh - 24px)",
           }}
           role="dialog"
           aria-modal="true"

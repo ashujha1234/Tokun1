@@ -251,8 +251,20 @@ const ServiceOrderSchema = new mongoose.Schema(
     refundedAt: { type: Date, default: null },
     razorpayRefundId: { type: String, default: "" },
 
+    /* See the same block in models/HireDeal.js for the full story: these held a
+       "/uploads/service-nda/…" path that the file was never written to — the
+       upload went to the OS temp directory and stayed there until the host
+       wiped it. The UI reads them only as "has this side signed?", which is why
+       a missing document never surfaced as a bug. Kept, so that boolean keeps
+       working for every existing record. */
     ndaBuyerUrl: { type: String, default: "" },
     ndaSellerUrl: { type: String, default: "" },
+
+    /* The blob in the private `service-nda` container. Read through a SAS
+       minted per request, after checking the caller is party to this order. */
+    ndaBuyerBlob: { type: String, default: "" },
+    ndaSellerBlob: { type: String, default: "" },
+
     ndaBuyerSignedAt: Date,
     ndaSellerSignedAt: Date,
 

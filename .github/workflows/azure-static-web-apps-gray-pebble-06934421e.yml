@@ -20,6 +20,42 @@ jobs:
           submodules: true
           lfs: false
 
+      # ── Quality gates ──────────────────────────────────────────────────────
+      # Nothing was checked before deploying. Lint had been broken outright for
+      # some time (eslint 9.39 crashed against typescript-eslint 8.11 on the
+      # first file it touched) and typecheck had never run in CI at all, which
+      # is how 55 type errors accumulated unnoticed.
+      #
+      # These run BEFORE the deploy step, so a failure means nothing ships.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # `npm ci`, not `npm install`. install is free to resolve a newer
+      # matching version than the lockfile records, so two runs of the same
+      # commit could build against different dependency trees — which makes a
+      # green CI run no evidence about what actually deployed. ci installs the
+      # lockfile exactly and fails if package.json and the lock disagree.
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      # Fails on ERRORS only; ~840 warnings are existing debt and are not a
+      # reason to block a deploy. See frontend/eslint.config.js for how that
+      # line is drawn and why.
+      - name: Lint
+        working-directory: ./frontend
+        run: npm run lint
+
+      # A ratchet: passes at the current baseline, fails if the count moves in
+      # either direction. See frontend/scripts/typecheck-baseline.mjs.
+      - name: Typecheck
+        working-directory: ./frontend
+        run: npm run typecheck:ci
+
       - name: Build And Deploy
         id: builddeploy
         uses: Azure/static-web-apps-deploy@v1

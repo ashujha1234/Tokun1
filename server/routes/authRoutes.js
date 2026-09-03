@@ -10,7 +10,14 @@ const { sendEmail } = require("../utils/SendEmail"); // ← make sure filename &
 const { attachReferral } = require("../services/referral.service");
 const Organization = require("../models/organization");
 const { requireAuth } = require("../utils/auth");
-const { signUserToken, shouldRenew, USER_TOKEN_TTL } = require("../utils/authTokens");
+const {
+  signUserToken,
+  shouldRenew,
+  USER_TOKEN_TTL,
+  issueRefreshToken,
+  rotateRefreshToken,
+  revokeRefreshToken,
+} = require("../utils/authTokens");
 const { ensureMonthlyQuota } = require("../utils/quota");
 const { buildOtpEmailHtml } = require("../utils/otpemailtemplate"); // adjust path
 const {applyUserPlan} = require("../service/billing");
@@ -594,6 +601,14 @@ await logActivity({
 
     // TTL lives in utils/authTokens so signup, login and renew can't drift apart.
     const token = signUserToken(user);
+    /* A refresh token alongside the access token, at every login from here on.
+       The access token now lasts an hour; this is what the client exchanges for
+       the next one, and what lets the session outlive it.
+       See utils/authTokens.js and models/RefreshToken.js. */
+    const refreshToken = await issueRefreshToken(user, {
+      userAgent: req.get("user-agent"),
+      ip: req.ip,
+    });
 
     // Optional org info for UI
    // const orgInfo = user.orgId ? { orgId: user.orgId, userType: user.userType, role: user.role } : null;
@@ -619,6 +634,7 @@ if (user.orgId) {
       success: true,
       message: "verified",
       token,
+      refreshToken,
       user: {
         id: user._id,
         email: user.email,
@@ -789,6 +805,10 @@ router.post("/login/verify", async (req, res) => {
     // carry the same claims and the same lifetime. This site also used to omit
     // userType/role/orgId from the payload that signup included.
     const token = signUserToken(user);
+    const refreshToken = await issueRefreshToken(user, {
+      userAgent: req.get("user-agent"),
+      ip: req.ip,
+    });
 
    // inside success response after issuing 'token'
 const orgInfo = user.orgId ? { orgId: user.orgId, userType: user.userType, role: user.role } : null;
@@ -808,6 +828,7 @@ return res.json({
   success: true,
   message: "verified", // (or omit for login)
   token,
+  refreshToken,
   user: {
     id: user._id,
     email: user.email,
@@ -1032,6 +1053,96 @@ router.get("/session", requireAuth, (req, res) => {
     ...(token ? { token } : {}),
     expiresIn: USER_TOKEN_TTL,
   });
+});
+
+/**
+ * POST /api/auth/refresh — trade a refresh token for a fresh pair.
+ *
+ * Deliberately NOT behind requireAuth. The entire point of this endpoint is to
+ * work when the access token has expired, which is exactly when requireAuth
+ * would answer 401. The refresh token is the credential here, and it is checked
+ * against the database by rotateRefreshToken.
+ *
+ * Rate limited: this takes an opaque bearer credential and is unauthenticated,
+ * which is the shape of thing worth guessing at. Guessing is hopeless against
+ * 256 random bits, but the limiter is what makes it hopeless AND cheap for us.
+ *
+ * Every failure answers 401 with the same shape and a `reason` for the client
+ * to log. Distinguishing them in the STATUS code would tell an attacker whether
+ * a token they hold is unknown, expired or already-used, and the last of those
+ * is the one worth hiding — it confirms they hold something real.
+ */
+const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  keyGenerator: (req) => ipKeyGenerator(req.ip),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: "too_many_requests" },
+});
+
+router.post("/refresh", refreshLimiter, async (req, res) => {
+  try {
+    const presented = String(req.body?.refreshToken || "");
+
+    const result = await rotateRefreshToken(presented, {
+      userAgent: req.get("user-agent"),
+      ip: req.ip,
+    });
+
+    if (!result.ok) {
+      /* reuse_detected is the one worth a log line: it means a refresh token was
+         presented twice, and the whole family has just been revoked as a
+         result. Either someone's token was copied, or a client retried — but
+         only the first of those is worth investigating, and it cannot be found
+         later if nothing records it now. */
+      if (result.reason === "reuse_detected") {
+        console.error("SECURITY refresh token reuse detected — family revoked", {
+          ip: req.ip,
+          userAgent: req.get("user-agent"),
+        });
+      }
+
+      return res.status(401).json({
+        success: false,
+        error: "invalid_refresh_token",
+        reason: result.reason,
+      });
+    }
+
+    return res.json({
+      success: true,
+      token: signUserToken(result.user),
+      refreshToken: result.refreshToken,
+      expiresIn: USER_TOKEN_TTL,
+    });
+  } catch (err) {
+    console.error("refresh error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+/**
+ * POST /api/auth/logout — end THIS session.
+ *
+ * Revokes the one refresh token presented, so the device logging out cannot
+ * silently refresh itself back in. The access token is left to expire on its
+ * own, which it does within the hour; killing it early would mean bumping
+ * tokenVersion, and that signs the user out everywhere — the wrong behaviour
+ * for a logout on one device. "Log out everywhere" is revokeUserSessions().
+ *
+ * Unauthenticated on purpose, and it always answers 200. A client logging out
+ * has often already discarded its access token, and a logout that can fail is a
+ * logout the UI has to handle failing — for an operation whose entire job is to
+ * discard credentials. Nothing here is disclosed either way.
+ */
+router.post("/logout", async (req, res) => {
+  try {
+    await revokeRefreshToken(String(req.body?.refreshToken || ""), "logout");
+  } catch (err) {
+    console.error("logout error:", err);
+  }
+  return res.json({ success: true });
 });
 
 module.exports = router;

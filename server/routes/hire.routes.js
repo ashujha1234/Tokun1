@@ -373,6 +373,7 @@ const {
   WORK_FILE_MAX_BYTES,
   WORK_FILE_MAX_LABEL,
 } = require("../utils/serviceWorkStorage");
+const { uploadFileToBlob, blobNameFor, getBlobSasUrl } = require("../utils/blobStorage");
 const { isPreviewableVideo, isSettled } = require("../utils/deliverableWatermark");
 // The one place that decides what a client may see before the money moves —
 // shared with the service and checkpoint routes.
@@ -764,9 +765,25 @@ router.post("/:dealId/upload-work-file", requireAuth, handleWorkFileUpload, asyn
 });
 
 // ─── NDA UPLOAD ────────────────────────────────────────────────────────────────
-/* Signed NDAs, outside /uploads: an agreement between two parties is not
-   public, and the UI reads the stored URL only as a "has this side signed?"
-   flag (see components/NdaCard.tsx), never as a link. */
+/* Signed NDAs now go to a PRIVATE Azure container and are read back through the
+   gated route at the bottom of this block.
+ *
+ * What this replaces: the file was written here, to a scratch directory under
+ * the OS temp path, and the deal recorded "/uploads/nda/<name>" — a location it
+ * had never been written to. Nothing uploaded it anywhere. The scratch copy was
+ * the only copy, and App Service clears that directory, so every executed NDA
+ * was on a timer from the moment it was signed.
+ *
+ * It survived review because NdaCard.tsx reads the field as `!!clientUrl` — a
+ * "has this side signed?" boolean. That kept answering correctly against a
+ * string pointing at nothing, so the loss was invisible from the UI.
+ *
+ * Local disk is still where multer writes first, and deliberately: the file is
+ * streamed from there into Azure and unlinked, so nothing is buffered in
+ * memory. The directory is outside /uploads, so the window in which the scratch
+ * copy exists is not a window in which it is downloadable. */
+const NDA_CONTAINER = "nda";
+
 const ndaUploadDir = tempUploadDir("nda");
 if (!fs.existsSync(ndaUploadDir)) fs.mkdirSync(ndaUploadDir, { recursive: true });
 
@@ -795,7 +812,31 @@ router.post("/:dealId/upload-nda", requireAuth, uploadNdaFile.single("nda"), asy
 
     if (!req.file) return res.status(400).json({ success: false, error: "No file uploaded" });
 
-    const fileUrl = `/uploads/nda/${req.file.filename}`;
+    /* Streamed into the private container and the temp copy unlinked, before
+       anything is written to the deal. Order matters: if the upload throws, the
+       deal is left untouched and the signer is told it failed — where saving
+       first would mark the NDA signed against a document that does not exist,
+       which is the failure this whole change is about.
+
+       Namespaced by deal id so one agreement's files sit together and can be
+       removed as a set with the deal. */
+    const { blobName } = await uploadFileToBlob(req.file.path, {
+      container: NDA_CONTAINER,
+      blobName: blobNameFor(req.file.originalname || "nda.pdf", {
+        prefix: String(deal._id),
+        fallback: "nda",
+      }),
+      originalName: req.file.originalname || "nda.pdf",
+      // A signed agreement is meant to be saved, not previewed in a tab.
+      disposition: "attachment",
+      // Private. Reads go through GET /:dealId/nda/:side below.
+    });
+
+    /* Still a URL, because NdaCard.tsx tests this field for truthiness to decide
+       whether a side has signed, and every existing record holds a string here.
+       It now points at the gated route instead of a static path, so the value is
+       both a working flag AND a way to actually fetch the document. */
+    const fileUrl = `/api/hire/${deal._id}/nda/${isClient ? "client" : "freelancer"}`;
     const now = new Date();
 
     /* The drawn signature, kept so the agreement renders signed forever.
@@ -810,10 +851,12 @@ router.post("/:dealId/upload-nda", requireAuth, uploadNdaFile.single("nda"), asy
 
     if (isClient) {
       deal.ndaClientUrl = fileUrl;
+      deal.ndaClientBlob = blobName;
       deal.ndaClientSignedAt = now;
       if (validSignature) deal.ndaClientSignature = validSignature;
     } else {
       deal.ndaFreelancerUrl = fileUrl;
+      deal.ndaFreelancerBlob = blobName;
       deal.ndaFreelancerSignedAt = now;
       if (validSignature) deal.ndaFreelancerSignature = validSignature;
     }
@@ -866,6 +909,73 @@ router.post("/:dealId/upload-nda", requireAuth, uploadNdaFile.single("nda"), asy
   } catch (err) {
     console.error("upload-nda error:", err);
     return res.status(500).json({ success: false, error: "Failed to upload NDA" });
+  }
+});
+
+/* ─── NDA DOWNLOAD ──────────────────────────────────────────────────────────
+ *
+ * GET /api/hire/:dealId/nda/:side  ->  302 to a short-lived SAS URL
+ *
+ * There was no read path at all before this. The upload route stored a string
+ * that looked like a link, `/uploads/nda/…`, and two things were true of it: no
+ * file was ever at that path, and the static mount refuses the `nda` prefix
+ * outright (utils/privateUploadDirs.js). So a signed agreement could be
+ * uploaded and then never retrieved by anyone, including the two people who
+ * signed it.
+ *
+ * Authorisation before the SAS, always. A SAS is a bearer credential — whoever
+ * holds the URL can read the blob for its lifetime, and it carries no notion of
+ * who asked. So the check that the caller is a party to this deal has to happen
+ * here, and the URL that comes out of it is deliberately short-lived.
+ *
+ * A redirect rather than proxying the bytes: this keeps the file transfer
+ * between the browser and Azure instead of through this process, which for a
+ * 20 MB PDF on a small App Service plan is the difference between a download
+ * and a blocked event loop.
+ *
+ * Legacy records answer 410, not 404. "This deal's NDA is gone" and "no such
+ * deal" are different facts and the person asking deserves the true one — those
+ * files were lost to the bug described above, and saying so is more useful than
+ * implying the record never existed.
+ */
+router.get("/:dealId/nda/:side", requireAuth, async (req, res) => {
+  try {
+    const { side } = req.params;
+    if (side !== "client" && side !== "freelancer") {
+      return res.status(400).json({ success: false, error: "invalid_side" });
+    }
+
+    const deal = await HireDeal.findById(req.params.dealId).select(
+      "clientId freelancerId ndaClientBlob ndaFreelancerBlob ndaClientUrl ndaFreelancerUrl"
+    );
+    if (!deal) return res.status(404).json({ success: false, error: "Deal not found" });
+
+    const userId = String(req.user._id);
+    const isParty =
+      String(deal.clientId) === userId || String(deal.freelancerId) === userId;
+    // Admins can read it too: an NDA is evidence in exactly the disputes they
+    // are asked to decide.
+    if (!isParty && !req.isAdmin) {
+      return res.status(403).json({ success: false, error: "Not part of this deal" });
+    }
+
+    const blobName = side === "client" ? deal.ndaClientBlob : deal.ndaFreelancerBlob;
+    const legacyUrl = side === "client" ? deal.ndaClientUrl : deal.ndaFreelancerUrl;
+
+    if (!blobName) {
+      return res.status(legacyUrl ? 410 : 404).json({
+        success: false,
+        error: legacyUrl ? "nda_file_unavailable" : "nda_not_signed",
+        message: legacyUrl
+          ? "This NDA was signed before documents were stored durably, and the file is no longer available. The signature record on the agreement is unaffected."
+          : "This side has not signed yet.",
+      });
+    }
+
+    return res.redirect(getBlobSasUrl(NDA_CONTAINER, blobName, 15));
+  } catch (err) {
+    console.error("nda download error:", err);
+    return res.status(500).json({ success: false, error: "Failed to open NDA" });
   }
 });
 

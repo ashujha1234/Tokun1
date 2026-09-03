@@ -662,7 +662,13 @@ const SharedPrompt = require("../models/SharedPrompt");
 // what this runs on in production even though macOS forgives it.
 const Organization = require("../models/organization");
 const { requireAuth, blockIfSuspended } = require("../utils/auth");
+const { config: configCache } = require("../utils/cache");
 const { logActivity } = require("../utils/activityLogger");
+
+/* See the marketplace feed for why this is as short as it is: these lists decide
+   who is VISIBLE, so staleness here is a correctness bug with a timer on it,
+   not just an out-of-date number. */
+const SELLER_ID_CACHE_TTL_MS = 30 * 1000;
 const { runPromptMediaValidation } = require("../utils/promptMediaValidation");
 const {
   applyPublicPromptFilter,
@@ -1637,16 +1643,39 @@ router.get("/others", async (req, res) => {
     // (requiresSellerVerification: true) only show once their seller's
     // Linked Account is actually verified by Razorpay. Older prompts
     // (flag defaults false) are unaffected.
-    const verifiedSellerIds = await BankAccount.find({
-      activationStatus: "ACTIVATED",
-    }).distinct("userId");
+    /* Both of these are whole-collection scans that ran on every marketplace
+       load, and neither depends on who is asking or what they filtered by — the
+       same two id lists were recomputed for every visitor, continuously.
+
+       distinct() cannot use a covering index the way a projected find can; it
+       walks the matching documents and de-duplicates. On the seller side that
+       means scanning User for suspended-or-deleted on each browse, which grows
+       with total signups rather than with anything the page shows.
+
+       30 seconds, and short deliberately. The comment below is a promise about
+       suspension taking effect "immediately", and half a minute is the most
+       that can be traded away while still honouring it — a suspended seller's
+       listings leave the marketplace within one refresh, not on the next
+       browse. Payout activation is if anything less urgent: it only relabels a
+       card as buyable. Anything longer starts to be a visible correctness bug
+       rather than a cache. */
+    const verifiedSellerIds = await configCache.wrap(
+      "sellers:payoutVerified",
+      SELLER_ID_CACHE_TTL_MS,
+      () => BankAccount.find({ activationStatus: "ACTIVATED" }).distinct("userId")
+    );
 
     // Sellers an admin has suspended or soft-deleted must disappear from the
     // marketplace immediately — their listings stay in the DB (buyers who
     // already purchased keep access) but should no longer be discoverable.
-    const suspendedSellerIds = await User.find({
-      $or: [{ sellerStatus: "SUSPENDED" }, { isDeleted: true }],
-    }).distinct("_id");
+    const suspendedSellerIds = await configCache.wrap(
+      "sellers:hidden",
+      SELLER_ID_CACHE_TTL_MS,
+      () =>
+        User.find({
+          $or: [{ sellerStatus: "SUSPENDED" }, { isDeleted: true }],
+        }).distinct("_id")
+    );
     if (suspendedSellerIds.length) {
       filter.userId = filter.userId
         ? { ...filter.userId, $nin: suspendedSellerIds }

@@ -155,6 +155,7 @@ const {
   ALLOWED_WORK_EXTENSIONS,
   normalizeDeliverableLink,
 } = require("../utils/serviceWorkStorage");
+const { uploadFileToBlob, blobNameFor, getBlobSasUrl } = require("../utils/blobStorage");
 const { tempUploadDir } = require("../utils/privateUploadDirs");
 const { generateInvoicePDF } = require("../services/invoice.service");
 const { sendInvoiceEmail } = require("../services/email.service");
@@ -247,11 +248,20 @@ function handleWorkFileUpload(req, res, next) {
   });
 }
 
-// ─── NDA upload setup (mirrors hire.routes.js's nda dir) ───
-/* Signed NDAs. Written outside /uploads because a signed agreement between two
-   parties is not public — and the UI only ever reads the STORED URL as a
-   "has this side signed?" boolean, never as a link, so nothing is fetching it
-   over HTTP. */
+// ─── NDA upload setup (mirrors hire.routes.js's nda handling) ───
+/* Signed NDAs go to a PRIVATE Azure container, read back through the gated
+   route further down this file.
+ *
+ * The full account of what this replaces is in routes/hire.routes.js, above its
+ * own NDA block — both files had the same bug: the stored path pointed at
+ * /uploads, the file was written to a scratch directory, and nothing ever moved
+ * it to durable storage.
+ *
+ * multer still writes to disk first so the file is streamed rather than
+ * buffered, and that scratch directory is outside the tree express.static
+ * serves. */
+const SERVICE_NDA_CONTAINER = "service-nda";
+
 const ndaUploadDir = tempUploadDir("service-nda");
 if (!fs.existsSync(ndaUploadDir)) fs.mkdirSync(ndaUploadDir, { recursive: true });
 
@@ -960,7 +970,23 @@ router.post("/orders/:orderId/upload-nda", requireAuth, uploadNdaFile.single("nd
 
     if (!req.file) return res.status(400).json({ success: false, error: "no_file_uploaded" });
 
-    const fileUrl = `/uploads/service-nda/${req.file.filename}`;
+    /* Into the private container before the order is touched — see the same
+       block in routes/hire.routes.js for why this order matters and what it
+       replaces. In short: the previous code recorded a "/uploads/service-nda/…"
+       path that the file was never written to, and the only real copy sat in a
+       scratch directory the host wipes. */
+    const { blobName } = await uploadFileToBlob(req.file.path, {
+      container: SERVICE_NDA_CONTAINER,
+      blobName: blobNameFor(req.file.originalname || "nda.pdf", {
+        prefix: String(order._id),
+        fallback: "nda",
+      }),
+      originalName: req.file.originalname || "nda.pdf",
+      disposition: "attachment",
+    });
+
+    // Truthy for the UI's "has this side signed?" check, and now also fetchable.
+    const fileUrl = `/api/service/orders/${order._id}/nda/${isBuyer ? "buyer" : "seller"}`;
     const now = new Date();
 
     /* The drawn signature, kept so the agreement renders signed forever.
@@ -977,10 +1003,12 @@ router.post("/orders/:orderId/upload-nda", requireAuth, uploadNdaFile.single("nd
 
     if (isBuyer) {
       order.ndaBuyerUrl = fileUrl;
+      order.ndaBuyerBlob = blobName;
       order.ndaBuyerSignedAt = now;
       if (validSignature) order.ndaBuyerSignature = validSignature;
     } else {
       order.ndaSellerUrl = fileUrl;
+      order.ndaSellerBlob = blobName;
       order.ndaSellerSignedAt = now;
       if (validSignature) order.ndaSellerSignature = validSignature;
     }
@@ -1023,6 +1051,52 @@ router.post("/orders/:orderId/upload-nda", requireAuth, uploadNdaFile.single("nd
     return res.json({ success: true, role: isBuyer ? "buyer" : "seller", url: fileUrl, bothSigned });
   } catch (err) {
     console.error("upload-nda (service) error:", err);
+    return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+/* ─── NDA DOWNLOAD ──────────────────────────────────────────────────────────
+ *
+ * GET /api/service/orders/:orderId/nda/:side  ->  302 to a short-lived SAS URL
+ *
+ * Mirrors GET /api/hire/:dealId/nda/:side — see that route for the reasoning
+ * behind each choice here (authorise before minting, redirect rather than
+ * proxy, and 410 for records whose file predates durable storage).
+ */
+router.get("/orders/:orderId/nda/:side", requireAuth, async (req, res) => {
+  try {
+    const { side } = req.params;
+    if (side !== "buyer" && side !== "seller") {
+      return res.status(400).json({ success: false, error: "invalid_side" });
+    }
+
+    const order = await ServiceOrder.findById(req.params.orderId).select(
+      "buyerId sellerId ndaBuyerBlob ndaSellerBlob ndaBuyerUrl ndaSellerUrl"
+    );
+    if (!order) return res.status(404).json({ success: false, error: "order_not_found" });
+
+    const userId = String(req.user._id);
+    const isParty = String(order.buyerId) === userId || String(order.sellerId) === userId;
+    if (!isParty && !req.isAdmin) {
+      return res.status(403).json({ success: false, error: "not_authorized" });
+    }
+
+    const blobName = side === "buyer" ? order.ndaBuyerBlob : order.ndaSellerBlob;
+    const legacyUrl = side === "buyer" ? order.ndaBuyerUrl : order.ndaSellerUrl;
+
+    if (!blobName) {
+      return res.status(legacyUrl ? 410 : 404).json({
+        success: false,
+        error: legacyUrl ? "nda_file_unavailable" : "nda_not_signed",
+        message: legacyUrl
+          ? "This NDA was signed before documents were stored durably, and the file is no longer available. The signature record on the agreement is unaffected."
+          : "This side has not signed yet.",
+      });
+    }
+
+    return res.redirect(getBlobSasUrl(SERVICE_NDA_CONTAINER, blobName, 15));
+  } catch (err) {
+    console.error("nda download (service) error:", err);
     return res.status(500).json({ success: false, error: "server_error" });
   }
 });

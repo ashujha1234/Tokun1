@@ -4815,7 +4815,7 @@ export default function SavedCollection() {
           <p className="text-white/70 mt-2 text-sm sm:text-base">
             {isCreatorSection
               ? "Save a creator from Find Creators and they'll show up here."
-              : "Anything you save from Smartgen, the Optimiser or ProductVerse shows up here."}
+              : "Anything you save from Smartgen, the Optimiser or Productverse shows up here."}
           </p>
         </div>
       );

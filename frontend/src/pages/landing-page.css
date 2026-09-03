@@ -149,8 +149,18 @@ body.is-loading { overflow: hidden; }
   background-image: linear-gradient(180deg, #e0f2fe 0%, #38bdf8 25%, #6366f1 60%, #8b5cf6 85%, #7c3aed 100%);
 }
 
+/* The N used to be rose — #fff1f2 -> #db2777, a hot pink with no blue in it at
+   all. Every other letter here is on a cool blue-to-violet ramp, so the word
+   read as four letters of one brand and then a fifth borrowed from another; the
+   jump landed on the last letter, which is where the eye finishes.
+
+   Fuchsia instead, picked up from where the U's gradient ends (#7c3aed) and
+   carried through #d946ef to #a21caf. The word still warms as it goes — which
+   is what the pink was reaching for — but as a continuation rather than a
+   break, and the end colour sits in the same family as the --sg/--ec sections'
+   #c266ff. */
 .tokun-title__letter--n {
-  background-image: linear-gradient(180deg, #fff1f2 0%, #fbcfe8 20%, #f472b6 55%, #ec4899 85%, #db2777 100%);
+  background-image: linear-gradient(180deg, #fdf4ff 0%, #f0abfc 20%, #d946ef 55%, #c026d3 85%, #a21caf 100%);
 }
 
 @media (max-width: 480px) {
@@ -1480,6 +1490,900 @@ body.is-loading { overflow: hidden; }
   font-size: 13px;
   line-height: 1.55;
   color: rgba(255, 255, 255, 0.48);
+}
+
+/* ============================================================
+   SMARTGEN SHOWCASE  (sits above Product Demo)
+   ============================================================ */
+
+/* A port of the supplied reference, which was authored in Tailwind against a
+   Material 3 token set. Those tokens are re-declared here as custom properties
+   scoped to .sg-show rather than approximated in each rule — every hex below is
+   copied from the reference config, so a colour cannot drift out of step, and
+   the block stays isolated from the rest of this page's palette. */
+.sg-show {
+  --sg-primary: #e4b5ff;
+  --sg-secondary: #ffade3;
+  --sg-primary-container: #c266ff;
+  --sg-secondary-container: #8a0074;
+  --sg-on-primary-container: #44006a;
+  --sg-on-surface: #e4e1e9;
+  --sg-on-surface-variant: #d1c1d6;
+  --sg-tertiary: #4edea3;
+  --sg-outline-variant: #4e4353;
+  --sg-surface-container-low: #1b1b20;
+  --sg-surface-container-high: #2a292f;
+
+  /* Reference spacing scale. */
+  --sg-stack-sm: 12px;
+  --sg-stack-md: 24px;
+  --sg-gutter: 24px;
+
+  position: relative;
+  margin: 96px 0 88px;
+  padding: 48px 0 8px;
+  isolation: isolate;
+}
+
+/* .circuit-pattern from the reference, verbatim. */
+.sg-show__circuit {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    radial-gradient(circle at 50% 50%, rgba(228, 181, 255, 0.03) 0%, transparent 60%),
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 100% 100%, 40px 40px, 40px 40px;
+  background-position: center center;
+  pointer-events: none;
+}
+
+/* The reference is a 12-column grid split 6/6 inside a 1200px container. */
+.sg-show__inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sg-gutter);
+  align-items: center;
+  text-align: left;
+}
+
+.sg-show__copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sg-stack-md);
+}
+
+/* ── status pill ── */
+
+.sg-show__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  margin-bottom: -16px; /* offsets the flex gap; matches the reference's mb-2 */
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(228, 181, 255, 0.1);
+  border: 1px solid rgba(228, 181, 255, 0.2);
+}
+
+.sg-show__status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sg-tertiary);
+}
+
+/* label-sm: 12px/16px, 0.05em, 500 */
+.sg-show__status-text {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--sg-primary);
+}
+
+/* ── headline ── */
+
+/* display-lg: 48px/56px, -0.02em, 700, Hanken Grotesk.
+   Fluid below the reference's fixed 48px so it survives a narrow column; the
+   ceiling is the reference value exactly. */
+.sg-show__title {
+  margin: 0;
+  font-family: 'Hanken Grotesk', var(--font-display);
+  font-size: clamp(30px, 4vw, 48px);
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--sg-on-surface);
+  text-shadow: 0 0 30px rgba(194, 102, 255, 0.4); /* .hero-text-glow */
+}
+
+/* Gradient text, primary -> secondary, as in the reference.
+   The plain `color` is a fallback: background-clip:text has nothing to clip in
+   forced-colours mode, and without it the line would render invisible. */
+.sg-show__title-accent {
+  color: var(--sg-primary);
+  background: linear-gradient(to right, var(--sg-primary), var(--sg-secondary));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* The reference breaks the line manually at md and up only. */
+.sg-show__title-br { display: none; }
+
+/* body-lg: 18px/28px, 400, Inter */
+.sg-show__lead {
+  margin: 0;
+  max-width: 32rem; /* max-w-lg */
+  font-size: 18px;
+  line-height: 28px;
+  font-weight: 400;
+  color: var(--sg-on-surface-variant);
+}
+
+/* ── buttons ── */
+
+.sg-show__ctas {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sg-stack-sm);
+  margin-top: 16px;
+}
+
+/* Sized to match .hero-btn — the Productverse / Find Creators pair further up
+   the page — rather than to the reference's label-md spec.
+   Two buttons that do the same job on the same page should not be two different
+   sizes, and the hero pair is the one a reader meets first, so it is the one
+   that sets the shape. Every value below is copied from .hero-btn: the body
+   font at 15px/600 instead of mono at 14px/700, 14px 28px of padding, a 12px
+   gap and the same 100px radius. */
+.sg-show__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 14px 28px;
+  border-radius: 100px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* .glow-button */
+.sg-show__cta--primary {
+  border: none;
+  color: var(--sg-on-primary-container);
+  background: linear-gradient(
+    to right,
+    var(--sg-primary-container),
+    var(--sg-secondary-container)
+  );
+  box-shadow: 0 0 40px rgba(194, 102, 255, 0.3);
+  transition: box-shadow 0.3s ease, transform 0.2s ease;
+}
+
+.sg-show__cta--primary:hover {
+  box-shadow: 0 0 60px rgba(228, 181, 255, 0.5);
+  transform: translateY(-2px);
+}
+
+.sg-show__cta--ghost {
+  color: var(--sg-on-surface);
+  background: transparent;
+  border: 1px solid var(--sg-outline-variant);
+  transition: border-color 0.3s ease, background 0.3s ease;
+}
+
+.sg-show__cta--ghost:hover {
+  border-color: var(--sg-primary);
+  background: rgba(53, 52, 58, 0.3); /* surface-variant/30 */
+}
+
+/* ── feature tiles ── */
+
+.sg-show__features {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 32px;
+}
+
+.sg-show__feature {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sg-stack-sm);
+  width: max-content;
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(27, 27, 32, 0.4);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 0 40px rgba(228, 181, 255, 0.05);
+  text-decoration: none;
+  transition: border-color 0.3s ease;
+}
+
+.sg-show__feature:hover { border-color: rgba(228, 181, 255, 0.3); }
+
+.sg-show__feature-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 8px;
+  background: rgba(228, 181, 255, 0.1);
+  color: var(--sg-primary);
+  transition: background 0.3s ease;
+}
+
+.sg-show__feature:hover .sg-show__feature-icon {
+  background: rgba(228, 181, 255, 0.2);
+}
+
+/* body-md: 16px/24px */
+.sg-show__feature-label {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--sg-on-surface);
+}
+
+.sg-show__feature-out {
+  margin-left: 8px;
+  flex: none;
+  color: var(--sg-on-surface-variant);
+}
+
+/* ── stat ── */
+
+.sg-show__stats {
+  margin-top: 32px;
+  padding-top: 32px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* headline-md: 24px/32px, 600 */
+.sg-show__stat {
+  margin: 0;
+  font-family: 'Hanken Grotesk', var(--font-display);
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 700;
+  color: var(--sg-on-surface);
+}
+
+/* ── right-hand visual ── */
+
+.sg-show__visual {
+  position: relative;
+  height: 600px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sg-show__ambient {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(228, 181, 255, 0.2);
+  filter: blur(100px);
+  transform: translate(-40px, 40px);
+  mix-blend-mode: screen;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Glass backing plate. */
+.sg-show__frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  border-radius: 40px;
+  background: rgba(27, 27, 32, 0.4);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+}
+
+.sg-show__art {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 48px;
+  overflow: hidden;
+  border: 1px solid rgba(228, 181, 255, 0.3);
+  box-shadow: 0 0 50px rgba(189, 89, 255, 0.3);
+}
+
+/* The pulsing gradient bloom behind the image. */
+.sg-show__art-ring {
+  position: absolute;
+  inset: -4px;
+  border-radius: 34px;
+  background: linear-gradient(to right, var(--sg-primary), var(--sg-secondary));
+  filter: blur(8px);
+  opacity: 0.75;
+  animation: sg-pulse-ring 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.sg-show__art:hover .sg-show__art-ring { opacity: 1; }
+
+/* Two keyframes, not one, because Tailwind's `animate-pulse` dips to opacity
+   .5 from whatever the element already has — and the reference gives these two
+   different starting points: the ring carries `opacity-75`, the readout does
+   not. Sharing a single keyframe made the readout fade to 0.4 and read as
+   half-broken rather than alive. */
+@keyframes sg-pulse-ring {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes sg-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.sg-show__art-img {
+  position: relative;
+  z-index: 20;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 48px;
+  border: 1px solid rgba(228, 181, 255, 0.3);
+  box-shadow: 0 0 30px rgba(189, 89, 255, 0.4);
+}
+
+/* ── floating readout ── */
+
+.sg-show__badge {
+  position: absolute;
+  right: -16px;
+  top: 25%;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--sg-stack-sm);
+  padding: 16px;
+  border-radius: 8px;
+  background: rgba(42, 41, 47, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+  animation: sg-pulse 4s ease-in-out infinite;
+}
+
+.sg-show__badge-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 50%;
+  background: rgba(228, 181, 255, 0.2);
+  color: var(--sg-primary);
+}
+
+.sg-show__badge-body { display: grid; gap: 2px; }
+
+.sg-show__badge-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--sg-on-surface-variant);
+}
+
+.sg-show__badge-value {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--sg-tertiary);
+}
+
+/* ── responsive ── */
+
+/* The reference's `sm:` breakpoint — buttons go side by side, tiles too. */
+@media (min-width: 640px) {
+  .sg-show__ctas { flex-direction: row; }
+  .sg-show__features { flex-direction: row; }
+}
+
+/* Below the reference's `md:`, the grid collapses and the manual line break in
+   the headline is dropped (it is `hidden md:block` there). */
+@media (min-width: 768px) {
+  .sg-show__title-br { display: block; }
+}
+
+@media (max-width: 767px) {
+  .sg-show { margin: 64px 0 56px; padding-top: 32px; }
+  .sg-show__inner { grid-template-columns: minmax(0, 1fr); }
+
+  /* Copy first, art after it. The art used to be pulled above with `order: -1`
+     on the theory that the picture is the hook — but it pushed the heading
+     below the fold, so a reader arriving at this section met a screen of
+     artwork with no idea what it was for. The words are what explain the
+     picture; they go first. */
+  /* Square, not a fixed 400px height. The artwork is a 512x512 source, and a
+     400px-tall box in a ~340px-wide column is a portrait frame — object-fit
+     cover then threw away most of the left and right of the image, including
+     the end of the command bar the picture is of. Matching the source's own
+     ratio crops nothing. */
+  .sg-show__visual {
+    order: 0;
+    height: auto;
+    margin-top: 32px;
+  }
+  .sg-show__frame { aspect-ratio: 1 / 1; height: auto; }
+
+  /* Centred as a block. On one narrow column a left rail of ragged text with a
+     centred image below it reads as two different layouts stacked; centring the
+     lot gives the section one axis. `align-items` is what does it for the flex
+     children — text-align alone leaves the pill, the buttons and the tiles
+     hugging the left edge. */
+  .sg-show__copy { align-items: center; text-align: center; }
+  .sg-show__lead { margin-left: auto; margin-right: auto; }
+  .sg-show__ctas { justify-content: center; }
+  .sg-show__features { align-items: center; width: 100%; }
+  .sg-show__stats { width: 100%; }
+
+  /* The tiles centre their own contents too. Left as `width: max-content` they
+     were centred boxes full of left-aligned rows, which is the same mismatch
+     centring the section was meant to remove — and at this width the label
+     wraps to two lines, so the icon and the arrow ended up at opposite edges
+     of a tall box with a gap between them. */
+  .sg-show__feature {
+    width: 100%;
+    max-width: 20rem;
+    justify-content: center;
+    gap: 10px;
+  }
+  .sg-show__feature-out { margin-left: 2px; }
+
+  .sg-show__frame { max-width: 28rem; margin: 0 auto; border-radius: 32px; }
+  .sg-show__art,
+  .sg-show__art-img { border-radius: 32px; }
+  /* Moved to the bottom, and out from -16px which would hang it off the edge
+     of a phone. At the top it landed squarely over the glowing command bar —
+     the one thing the picture is of — because the frame is a third of its
+     desktop size while the readout is not. The lower half of the image is
+     empty board. */
+  .sg-show__badge {
+    right: 10px;
+    top: auto;
+    bottom: 12px;
+    padding: 10px 12px;
+  }
+}
+
+/* Same treatment the hero pair gets at this width (see .hero-btn there): one
+   capped width for both, so they stack as a matched pair rather than two pills
+   of different lengths. */
+@media (max-width: 480px) {
+  .sg-show__feature { width: 100%; }
+  .sg-show__ctas { flex-direction: column; align-items: center; gap: 10px; }
+  .sg-show__cta {
+    width: 100%;
+    max-width: 175px;
+    padding: 9px 12px;
+    font-size: 12.5px;
+    gap: 6px;
+  }
+}
+
+/* The bloom, the pulse and the button lift are decoration. */
+@media (prefers-reduced-motion: reduce) {
+  .sg-show__art-ring,
+  .sg-show__badge {
+    animation: none;
+  }
+  .sg-show__cta,
+  .sg-show__feature,
+  .sg-show__feature-icon {
+    transition: none;
+  }
+  .sg-show__cta--primary:hover { transform: none; }
+}
+
+/* ============================================================
+   ECOSYSTEM HIERARCHY  (Creator vs Supercreator)
+   ============================================================ */
+
+/* Port of the supplied reference. Same approach as .sg-show above: the Material
+   3 tokens are re-declared as scoped custom properties with the exact hex from
+   the reference config, so nothing is eyeballed and nothing leaks out.
+
+   Note the glows use rgba(189, 89, 255, …) rather than a token — that is the
+   literal value the reference's .glow-effect and .glass-panel rules use, and it
+   is NOT the same purple as --ec-primary. Copied as-is. */
+.ec-hier {
+  --ec-primary: #e4b5ff;
+  --ec-secondary: #ffade3;
+  --ec-on-surface: #e4e1e9;
+  --ec-on-surface-variant: #d1c1d6;
+  --ec-tertiary: #4edea3;
+  --ec-surface-variant: #35343a;
+
+  position: relative;
+  margin: 8px 0 96px;
+  padding: 24px 0 0;
+  isolation: isolate;
+}
+
+.ec-hier__aura {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.2;
+  background-image: radial-gradient(
+    circle at 50% 50%,
+    rgba(189, 89, 255, 0.15) 0%,
+    transparent 60%
+  );
+  pointer-events: none;
+}
+
+.ec-hier__inner {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.ec-hier__header {
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+/* display-lg: 48px/56px, -0.02em, 700 */
+.ec-hier__title {
+  margin: 0 0 8px;
+  font-family: 'Hanken Grotesk', var(--font-display);
+  font-size: clamp(30px, 4vw, 48px);
+  line-height: 1.16;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ec-on-surface);
+}
+
+.ec-hier__title-accent {
+  color: var(--ec-primary);
+  background: linear-gradient(to right, var(--ec-primary), var(--ec-secondary));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* body-lg: 18px/28px, 400 */
+.ec-hier__lead {
+  margin: 0 auto;
+  max-width: 42rem;
+  font-family: 'Anybody', var(--font-body);
+  font-size: 18px;
+  line-height: 28px;
+  color: var(--ec-on-surface-variant);
+}
+
+.ec-hier__grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+/* The hairline between the two cards. */
+.ec-hier__divider {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  height: 100%;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(228, 181, 255, 0.3),
+    transparent
+  );
+  pointer-events: none;
+}
+
+/* ── card ── */
+
+/* .glass-panel from the reference, plus the full-bleed image the brief asked
+   for. `overflow: hidden` is what keeps the photo inside the rounded corner —
+   without it the image squares off the card. */
+.ec-card {
+  position: relative;
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 24px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(19, 19, 24, 0.6);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(189, 89, 255, 0.2);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+  transition: border-color 0.5s ease, box-shadow 0.5s ease, background 0.5s ease;
+}
+
+.ec-card:hover { border-color: rgba(189, 89, 255, 0.5); }
+
+/* .active-panel .glass-panel */
+.ec-card--active {
+  border-color: rgba(189, 89, 255, 0.6);
+  box-shadow: 0 0 30px rgba(189, 89, 255, 0.25);
+}
+
+/* The portrait, filling the card. Was a 256px circle in the reference. */
+.ec-card__bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Both source photos are dim rooms shot in low light, and 0.55 on top of a
+     near-black card left them closer to texture than to a picture — the desk,
+     the screens and the lamp were all guesswork. Brightness and contrast do the
+     lifting that opacity cannot: raising opacity alone would have washed the
+     scrim's black into grey without making the subject any clearer. */
+  opacity: 0.82;
+  filter: brightness(1.28) contrast(1.06) saturate(1.05);
+  transform: scale(1);
+  transition: opacity 0.5s ease, transform 0.5s ease, filter 0.5s ease;
+}
+
+.ec-card:hover .ec-card__bg {
+  opacity: 0.95;
+  filter: brightness(1.38) contrast(1.08) saturate(1.08);
+  /* Slight push-in on hover, which is what the circle's group-hover:scale-110
+     did in the reference. 1.04 rather than 1.1: at full-bleed a 10% zoom crops
+     visibly rather than reading as a lift. */
+  transform: scale(1.04);
+}
+
+.ec-card--active .ec-card__bg { opacity: 1; filter: brightness(1.4) contrast(1.08) saturate(1.08); }
+
+/* Text over a photograph needs this. Both images are bright in their upper
+   half, so the scrim is heaviest at the bottom where the name and badge sit,
+   with a tint over the whole card to hold the section's colour. */
+.ec-card__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(to top, rgba(14, 14, 19, 0.95) 0%, rgba(14, 14, 19, 0.55) 45%, rgba(14, 14, 19, 0.25) 100%),
+    linear-gradient(to bottom right, rgba(189, 89, 255, 0.12), transparent 60%);
+  pointer-events: none;
+  transition: background 0.5s ease;
+}
+
+/* Explaining: the photo goes entirely, and the card becomes a flat panel.
+
+   A near-opaque scrim over the image was not enough. At 0.92–0.96 the desk, the
+   monitor and the lamp were all still legible underneath, so body copy sat on a
+   busy, uneven ground — the exact thing a scrim is meant to prevent, just
+   dimmer. Fading the image itself out is the only way to get a clean surface;
+   the tint below keeps the card from turning into a plain black rectangle. */
+.ec-card--explaining .ec-card__bg {
+  opacity: 0;
+}
+
+.ec-card--explaining .ec-card__scrim {
+  background:
+    linear-gradient(to bottom, #101017 0%, #0b0b11 100%),
+    linear-gradient(to bottom right, rgba(189, 89, 255, 0.16), transparent 62%);
+}
+
+/* Covers the whole card and takes the click. Sits under the content, which is
+   pointer-events:none, so anywhere on the card works. */
+.ec-card__hit {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ec-card__hit:focus-visible {
+  outline: 2px solid var(--ec-primary);
+  outline-offset: -4px;
+  border-radius: 12px;
+}
+
+.ec-card__close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(19, 19, 24, 0.5);
+  color: var(--ec-on-surface-variant);
+  cursor: pointer;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+.ec-card__close:hover {
+  background: rgba(19, 19, 24, 0.9);
+  color: var(--ec-primary);
+}
+
+/* Touch only. Where hover works, moving the pointer off the card already
+   clears it, so a Close button appearing on every hover would be a control that
+   does nothing the reader was not about to do anyway — noise on the one element
+   the section is asking them to look at. A tap has no "moving away", so on a
+   phone it is the only way back. */
+@media (hover: hover) and (pointer: fine) {
+  .ec-card__close { display: none; }
+}
+
+/* ── the two content states ── */
+
+/* Both live in the card at once and cross-fade, so the card's height never
+   jumps between them — a card that resized on click would shove the other one
+   down the page. */
+.ec-card__identity,
+.ec-card__explain {
+  position: relative;
+  z-index: 3;
+  pointer-events: none;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.ec-card__identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.ec-card--explaining .ec-card__identity {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+/* headline-md: 24px/32px, 600 */
+.ec-card__name {
+  margin: 0;
+  font-family: 'Hanken Grotesk', var(--font-display);
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ec-on-surface);
+}
+
+.ec-card--active .ec-card__name {
+  color: var(--ec-primary);
+  text-shadow: 0 0 8px rgba(189, 89, 255, 0.6);
+}
+
+/* label-sm: 12px/16px, 0.05em, 500 */
+.ec-card__badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--ec-surface-variant);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--ec-on-surface-variant);
+}
+
+.ec-card--active .ec-card__badge {
+  background: rgba(228, 181, 255, 0.1);
+  border-color: rgba(228, 181, 255, 0.3);
+  color: var(--ec-primary);
+}
+
+/* Absolutely placed so it does not stack under the identity block — the two
+   occupy the same space and only one is ever visible. */
+.ec-card__explain {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  top: 50%;
+  transform: translateY(-30%);
+  opacity: 0;
+  text-align: center;
+}
+
+.ec-card--explaining .ec-card__explain {
+  opacity: 1;
+  transform: translateY(-50%);
+  pointer-events: auto;
+}
+
+.ec-card__explain-title {
+  margin: 0 0 16px;
+  font-family: 'Hanken Grotesk', var(--font-display);
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+  color: var(--ec-primary);
+  text-shadow: 0 0 8px rgba(189, 89, 255, 0.6);
+}
+
+/* body-md: 16px/24px, 400 */
+.ec-card__explain-body {
+  margin: 0;
+  font-family: 'Anybody', var(--font-body);
+  font-size: 16px;
+  line-height: 26px;
+  color: var(--ec-on-surface-variant);
+}
+
+.ec-card__perks {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 24px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ec-card__perk {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--ec-tertiary);
+}
+
+/* ── responsive ── */
+
+@media (max-width: 767px) {
+  .ec-hier { margin-bottom: 64px; }
+  .ec-hier__grid { grid-template-columns: minmax(0, 1fr); }
+  /* One column: there is no gap between the two to draw a line down. */
+  .ec-hier__divider { display: none; }
+  .ec-card { min-height: 320px; padding: 20px; }
+  .ec-card__explain { left: 20px; right: 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ec-card,
+  .ec-card__bg,
+  .ec-card__scrim,
+  .ec-card__identity,
+  .ec-card__explain,
+  .ec-card__close {
+    transition: none;
+  }
+  .ec-card:hover .ec-card__bg { transform: none; }
 }
 
 .how-it-works__demo { text-align: center; }

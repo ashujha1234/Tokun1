@@ -817,13 +817,41 @@ export default function BecomeFreelancerWizard({
      or anything else a future caller happens to sit inside. */
   return createPortal(
     <div className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-sm overflow-hidden">
-      <div className="h-full w-full flex items-center justify-center p-2 sm:p-4">
+      <div className="h-full w-full flex items-center justify-center p-0 sm:p-4">
+        {/* On a phone this is a full-screen sheet; from `sm` up it goes back to
+            the centred 640px card.
+            ────────────────────────────────────────────────────────────────
+            The bug it fixes: tapping into "About you" made the dialog shrink to
+            about a third of its size. The overlay is capped to the DYNAMIC
+            viewport (dvh), and on Android the on-screen keyboard is part of
+            that — so the viewport halved and this card, which was sized to hug
+            its content and centred in the space, halved with it. Measured: an
+            835px form rendering as a 309px box.
+
+            dvh is deliberate and stays. The comment on the report-reason modal
+            in pages/Dashboard.tsx explains why, and it is right: with `vh` the
+            cap would be the address-bar-less full height, so the bottom of the
+            form — the Next button — would sit behind the keyboard with no way
+            to reach it. Switching to `svh` has the same problem for the same
+            reason. The viewport SHOULD shrink; a card that hugs its content and
+            floats in the middle of it is what turns that into a visible
+            collapse.
+
+            Full-height on mobile removes the collapse without touching the cap:
+            the sheet already fills the screen before the keyboard opens, so
+            when it does, the sheet is simply the space that is left and the
+            focused field is scrolled into view inside it. Nothing appears to
+            shrink because nothing was floating to begin with — which is how a
+            native form behaves.
+
+            `sm:max-h-…` rather than an inline maxHeight, so the cap applies
+            only where the card floats. On mobile `h-full` already is the
+            available height, and an inline max-height would fight it. */}
         <div
-          className="relative w-full max-w-[640px] rounded-[20px] overflow-hidden border border-white/10 shadow-2xl flex flex-col"
+          className="relative w-full h-full max-w-none rounded-none sm:h-auto sm:max-w-[640px] sm:rounded-[20px] sm:max-h-[calc(100dvh-24px)] overflow-hidden border border-white/10 shadow-2xl flex flex-col"
           style={{
             background:
               "radial-gradient(900px circle at 50% 0%, rgba(255,20,239,0.14), transparent 55%), linear-gradient(180deg,#070A12 0%, #07080A 100%)",
-            maxHeight: "calc(100dvh - 24px)",
           }}
           role="dialog"
           aria-modal="true"

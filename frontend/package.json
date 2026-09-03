@@ -8,6 +8,8 @@
     "build": "vite build",
     "//typecheck": "Points at tsconfig.app.json, NOT tsconfig.json — the root config is `files: []` plus project references, so `tsc -p tsconfig.json` compiles nothing and reports success on anything.",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "//typecheck:ci": "Ratchet, not a pass/fail gate — fails only if the error count moves off its baseline. See scripts/typecheck-baseline.mjs.",
+    "typecheck:ci": "node scripts/typecheck-baseline.mjs",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -91,7 +93,7 @@
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.11",
     "typescript": "^5.5.3",
-    "typescript-eslint": "^8.0.1",
+    "typescript-eslint": "^8.69.0",
     "vite": "^5.4.1"
   }
 }

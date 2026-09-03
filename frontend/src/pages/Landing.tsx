@@ -11965,14 +11965,18 @@ import {
   useMotionValue,
   useSpring,
   useTransform,
+  type Variants,
 } from 'framer-motion'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowRight,
   BarChart3,
   Briefcase,
+  Brain,
   ChevronDown,
+  ExternalLink,
   Facebook,
+  FileText,
   Instagram,
   LayoutDashboard,
   Linkedin,
@@ -11982,6 +11986,8 @@ import {
   Bookmark,
   ShoppingBag,
   Store,
+  X,
+  CheckCircle2,
   Mouse,
   Package,
   Play,
@@ -12734,7 +12740,7 @@ function TokunTitle() {
    ============================================================ */
 
 const QUIET = 'Enter the'
-const ACCENT = 'ProductVerse'
+const ACCENT = 'Productverse'
 const FULL_TEXT = `${QUIET} ${ACCENT}`
 
 const TYPE_MS = 85
@@ -13392,13 +13398,13 @@ function Hero() {
           custom={3}
         >
           {/* The two halves of the marketplace, together: what's for sale, and
-              who makes it. They used to be Try Smartgen + ProductVerse, which
+              who makes it. They used to be Try Smartgen + Productverse, which
               put a tool and a storefront side by side and left Find Creators —
               the other half of the same destination — unmentioned above the
               fold. The tools moved to the rail on the left (ToolRail below),
               where they stay reachable from anywhere on the page instead of
               only from the top of it. */}
-          <GradientButton variant="primary" to={ROUTES.marketplace}>ProductVerse</GradientButton>
+          <GradientButton variant="primary" to={ROUTES.marketplace}>Productverse</GradientButton>
           <Link to={ROUTES.findCreators} className="hero-btn hero-btn--ghost">
             <span className="hero-btn__text">Find Creators</span>
           </Link>
@@ -13481,7 +13487,7 @@ const OFFERS = [
   {
     num: '03',
     icon: TrendingUp,
-    title: 'ProductVerse',
+    title: 'Productverse',
     description:
       'Built a great product? Trade it. Monetize your creativity and earn from your best product innovations.',
     accent: '#ec4899',
@@ -13615,8 +13621,8 @@ function WhatWeOffer() {
    removed was ALSO the highlighted one: dropping it from this array left the
    strip with nothing active at all, and the next person to edit the list would
    have hit the same thing. */
-const TABS = ['Smartgen', 'Prompt Optimiser', 'ProductVerse']
-const ACTIVE_TAB = 'ProductVerse'
+const TABS = ['Smartgen', 'Prompt Optimiser', 'Productverse']
+const ACTIVE_TAB = 'Productverse'
 
 const SAVED_ITEMS = [
   { title: 'SEO Blog Writer', tag: 'Marketing', tokens: '-42%' },
@@ -13714,6 +13720,355 @@ const STEPS = [
   { num: '05', icon: Wallet, title: 'Earn', description: 'Monetize your best products', accent: '#f472b6' },
 ]
 
+/* ============================================================
+   SmartgenShowcase
+   ============================================================ */
+
+/* A direct port of the supplied reference design, which was written in Tailwind
+ * against a Material 3 token set. This page is plain CSS, so the tokens are
+ * re-declared as custom properties scoped to `.sg-show` in landing-page.css —
+ * the values are copied exactly, not approximated, so the two cannot drift.
+ *
+ * Two things in the reference are deliberately NOT carried over:
+ *
+ *   its <header> — the landing page already has <LandingNav>, and a second
+ *   fixed bar would sit on top of it.
+ *
+ *   Material Symbols — a whole icon webfont for four glyphs, when this app
+ *   already ships lucide-react. The nearest lucide equivalents are used:
+ *   arrow_forward -> ArrowRight, picture_as_pdf/description -> FileText,
+ *   open_in_new -> ExternalLink, psychology -> Brain.
+ *
+ * The artwork is the reference's own image, saved to public/icons rather than
+ * hotlinked from lh3.googleusercontent.com. Two reasons, both hard: those URLs
+ * are temporary and stop resolving, and the host is not on the img-src
+ * allowlist (see frontend/SECURITY-HEADERS.md) so the browser would refuse it
+ * outright. A file under public/ is same-origin, which 'self' already covers.
+ */
+const SG_FEATURES = [
+  { label: 'PDF to Smart Prompt', to: ROUTES.smartgen },
+  { label: 'PDF to MD File', to: ROUTES.smartgen },
+]
+
+/* Its own reveal rather than the shared `fadeUp`, and the reason is a type
+   error rather than a design difference.
+
+   `fadeUp` is an untyped object literal, so its `ease: [0.22, 1, 0.36, 1]`
+   widens to number[] — and framer-motion's Variants wants a four-number TUPLE.
+   Every motion element in this file that uses fadeUp carries that error; there
+   are eleven of them, and the typecheck ratchet in CI counts them.
+
+   Annotating this one `: Variants` gives the array a contextual type, so it
+   narrows to the tuple and no twelfth error is added. Applying the same
+   annotation to fadeUp itself would fix all eleven at once and is worth doing —
+   separately, since it touches every section on this page. */
+const SG_REVEAL: Variants = {
+  hidden: { opacity: 0, y: 18 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.42, delay: 0.05, ease: [0.22, 1, 0.36, 1] },
+  },
+}
+
+function SmartgenShowcase() {
+  return (
+    <motion.section
+      className="sg-show"
+      aria-labelledby="sg-show-title"
+      initial="hidden"
+      whileInView="visible"
+      viewport={REVEAL_VIEWPORT}
+      variants={SG_REVEAL}
+    >
+      <div className="sg-show__circuit" aria-hidden="true" />
+
+      <div className="sg-show__inner">
+        {/* ── left: copy ── */}
+        <div className="sg-show__copy">
+          <div className="sg-show__status">
+            <span className="sg-show__status-dot" aria-hidden="true" />
+            <span className="sg-show__status-text">Engine v2.0 Online</span>
+          </div>
+
+          <h2 className="sg-show__title" id="sg-show-title">
+            Our ultimate <br className="sg-show__title-br" />
+            <span className="sg-show__title-accent">Smart Prompt Generator</span>
+          </h2>
+
+          <p className="sg-show__lead">
+            Leverage advanced context parsing to generate complex, nuanced prompts tailored to
+            your specific architectural or narrative needs. Experience the next evolution of AI
+            interaction.
+          </p>
+
+          <div className="sg-show__ctas">
+            <Link to={ROUTES.smartgen} className="sg-show__cta sg-show__cta--primary">
+              Try Now
+              <ArrowRight size={16} strokeWidth={2.4} aria-hidden="true" />
+            </Link>
+            <Link to={ROUTES.smartgen} className="sg-show__cta sg-show__cta--ghost">
+              See details
+            </Link>
+          </div>
+
+          <div className="sg-show__features">
+            {SG_FEATURES.map((f) => (
+              <Link key={f.label} to={f.to} className="sg-show__feature">
+                <span className="sg-show__feature-icon" aria-hidden="true">
+                  <FileText size={20} strokeWidth={1.7} />
+                </span>
+                <span className="sg-show__feature-label">{f.label}</span>
+                <ExternalLink
+                  size={14}
+                  strokeWidth={2}
+                  className="sg-show__feature-out"
+                  aria-hidden="true"
+                />
+              </Link>
+            ))}
+          </div>
+
+          <div className="sg-show__stats">
+            <p className="sg-show__stat">Upto 60% token reduction</p>
+          </div>
+        </div>
+
+        {/* ── right: visual ── */}
+        <div className="sg-show__visual">
+          <div className="sg-show__ambient" aria-hidden="true" />
+
+          <div className="sg-show__frame">
+            <div className="sg-show__art">
+              <div className="sg-show__art-ring" aria-hidden="true" />
+              <img
+                src="/icons/smartgen-hero.jpg"
+                alt=""
+                className="sg-show__art-img"
+                loading="lazy"
+                decoding="async"
+                width={512}
+                height={512}
+              />
+            </div>
+
+            <div className="sg-show__badge">
+              <span className="sg-show__badge-icon" aria-hidden="true">
+                <Brain size={18} strokeWidth={1.8} />
+              </span>
+              <span className="sg-show__badge-body">
+                <span className="sg-show__badge-label">Context Parsed</span>
+                <span className="sg-show__badge-value">99.8% Accuracy</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </motion.section>
+  )
+}
+
+/* ============================================================
+   EcosystemHierarchy
+   ============================================================ */
+
+/* Port of the supplied "Creator vs Supercreator" reference, with one change the
+ * brief asked for: the portrait that sat in a 256px circle now fills the whole
+ * card. That is why the spinning orbit rings around it are gone — they framed a
+ * circle and have nothing to orbit once the image is full-bleed — and why each
+ * card carries a bottom-up gradient scrim: white text over an arbitrary photo is
+ * unreadable without one, and these two photos are bright in the upper half.
+ *
+ * ── The interaction ────────────────────────────────────────────────────────
+ *
+ * HOVER a card and it is explained ON THE OTHER CARD. Point at Creator and the
+ * Supercreator card turns into "Creator Capabilities"; point at Supercreator
+ * and the Creator card turns into "Supercreator Capabilities". It reads as a
+ * comparison rather than two independent tooltips, which is the point of
+ * putting them side by side, and hovering costs the reader nothing — they can
+ * sweep across both and see the whole picture without committing to a click.
+ *
+ * Hover cannot be the only way in, so three things drive the same state:
+ *
+ *   pointer   onPointerEnter / onPointerLeave, mouse pointerType only
+ *   keyboard  onFocus / onBlur on the button that covers it
+ *   touch     onClick, which toggles — there is no hover on a phone, and
+ *             without this the section would be inert there
+ *
+ * The Close button stays for that last case: a tap has no "moving away", so a
+ * touch reader needs something to dismiss with. On a pointer device it is
+ * almost never needed, because leaving the card already clears it.
+ *
+ * The reference drove this with `onclick` attributes and classList toggling on
+ * ids. Here it is one piece of state, because ids do not survive a component
+ * being rendered twice and inline handlers are exactly what the page's CSP
+ * forbids.
+ */
+const EC_CARDS = [
+  {
+    id: 'creator' as const,
+    name: 'CREATOR',
+    badge: 'Digital Product Seller',
+    image: '/icons/creator.jpg',
+    /* Deliberately alt="" — decorative. The card's meaning is carried by the
+       heading and badge beside it, and a screen reader announcing a stock desk
+       photo adds nothing. */
+    heading: 'Creator Capabilities',
+    body:
+      'Creators are the foundational architects of TOKUN.WORLD. They build, share and evolve digital assets across the marketplace, establishing the core rhythms of the ecosystem.',
+    perks: ['Asset Gen', 'Node Access'],
+  },
+  {
+    id: 'supercreator' as const,
+    name: 'SUPERCREATOR',
+    badge: 'Product Seller and Available for Hire',
+    image: '/icons/supercreator.jpg',
+    heading: 'Supercreator Capabilities',
+    body:
+      'Supercreators have achieved peak influence. They sell products AND take paid work, set their own rates, and are surfaced first to clients browsing for creators to hire.',
+    /* The reference left these two labels EMPTY — a literal `<br>` where the
+       text should be, next to an admin badge and a hub icon. Filled in from
+       what the tier actually is on this platform rather than shipping two
+       unlabelled icons. */
+    perks: ['Full Access', 'Hire Ready'],
+  },
+]
+
+function EcosystemHierarchy() {
+  /* null = neither picked. Holds the id of the card the reader chose, and every
+     other visual state on this section is derived from it. */
+  const [picked, setPicked] = useState<'creator' | 'supercreator' | null>(null)
+
+  return (
+    <motion.section
+      className="ec-hier"
+      aria-labelledby="ec-hier-title"
+      initial="hidden"
+      whileInView="visible"
+      viewport={REVEAL_VIEWPORT}
+      variants={SG_REVEAL}
+    >
+      <div className="ec-hier__aura" aria-hidden="true" />
+
+      <div className="ec-hier__inner">
+        <div className="ec-hier__header">
+          <h2 className="ec-hier__title" id="ec-hier-title">
+            Ecosystem <span className="ec-hier__title-accent">Hierarchy</span>
+          </h2>
+          <p className="ec-hier__lead">
+            Two ways to earn on TOKUN. Select a tier to see what it unlocks.
+          </p>
+        </div>
+
+        <div className="ec-hier__grid">
+          <div className="ec-hier__divider" aria-hidden="true" />
+
+          {EC_CARDS.map((card, i) => {
+            /* Each card shows its OWN identity until the OTHER card is picked —
+               see the note above. `other` is that other card. */
+            const other = EC_CARDS[1 - i]
+            const explaining = picked === other.id
+            const isActive = picked === card.id
+
+            return (
+              <div
+                key={card.id}
+                className={[
+                  'ec-card',
+                  isActive ? 'ec-card--active' : '',
+                  explaining ? 'ec-card--explaining' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                /* Pointer events with an explicit `mouse` check, not
+                   onMouseEnter — and that check is the whole reason nothing
+                   happened when you tapped one of these on a phone.
+
+                   A tap on a touchscreen fires a COMPATIBILITY mouse sequence:
+                   mouseenter, then click. So the tap set `picked` to this card
+                   on the way in, and the click that followed found isActive
+                   already true and toggled it straight back off. The card lit
+                   up and went dark inside one tap, which looks exactly like a
+                   dead control.
+
+                   pointerenter carries pointerType, so mouse hover can be told
+                   apart from a finger. Touch is ignored here and handled by the
+                   click below, which is the only sensible trigger on a device
+                   with no hover state at all. */
+                onPointerEnter={(e) => {
+                  if (e.pointerType === 'mouse') setPicked(card.id)
+                }}
+                onPointerLeave={(e) => {
+                  if (e.pointerType === 'mouse') setPicked(null)
+                }}
+              >
+                <img src={card.image} alt="" className="ec-card__bg" loading="lazy" decoding="async" />
+                <div className="ec-card__scrim" aria-hidden="true" />
+
+                {/* A real <button> covering the card, rather than handlers on
+                    the wrapper alone: that gets keyboard focus and Enter/Space
+                    for free. It sits UNDER the content, which is
+                    pointer-events:none, so a pointer anywhere on the card
+                    reaches it.
+
+                    Always rendered, unlike the click-only version this replaced.
+                    Removing it once something was picked meant a keyboard reader
+                    lost the element they were focused on mid-interaction, and a
+                    touch reader had nothing left to tap to dismiss. */}
+                <button
+                  type="button"
+                  className="ec-card__hit"
+                  onFocus={() => setPicked(card.id)}
+                  onBlur={() => setPicked(null)}
+                  onClick={() => setPicked(isActive ? null : card.id)}
+                  aria-expanded={isActive}
+                >
+                  <span className="sr-only">{`Show what a ${card.name.toLowerCase()} can do`}</span>
+                </button>
+
+                {isActive && (
+                  <button
+                    type="button"
+                    className="ec-card__close"
+                    onClick={() => setPicked(null)}
+                    aria-label="Clear selection"
+                  >
+                    <X size={18} strokeWidth={2.2} aria-hidden="true" />
+                  </button>
+                )}
+
+                {/* Identity */}
+                <div className="ec-card__identity" aria-hidden={explaining}>
+                  <h3 className="ec-card__name">{card.name}</h3>
+                  <span className="ec-card__badge">{card.badge}</span>
+                </div>
+
+                {/* Explanation — of the OTHER card */}
+                <div className="ec-card__explain" aria-hidden={!explaining}>
+                  <h3 className="ec-card__explain-title">{other.heading}</h3>
+                  <p className="ec-card__explain-body">{other.body}</p>
+                  <ul className="ec-card__perks">
+                    {other.perks.map((p) => (
+                      <li key={p} className="ec-card__perk">
+                        <CheckCircle2 size={16} strokeWidth={2} aria-hidden="true" />
+                        {p}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </motion.section>
+  )
+}
+
+/* ============================================================
+   HowItWorks
+   ============================================================ */
+
 function HowItWorks() {
   return (
     <section id="how-it-works" className="how-it-works">
@@ -13756,6 +14111,9 @@ function HowItWorks() {
             </motion.article>
           ))}
         </div>
+
+        <SmartgenShowcase />
+        <EcosystemHierarchy />
 
         <motion.div
           className="how-it-works__demo"
@@ -14410,7 +14768,7 @@ const PROMPT_STEPS = [
   'Analyzing token patterns…',
   'Optimizing neural pathways…',
   'Compressing context window…',
-  'Entering the ProductVerse…',
+  'Entering the Productverse…',
 ]
 
 // How long the curtain is guaranteed to stay up. It's a floor, not a timer —

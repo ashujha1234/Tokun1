@@ -255,8 +255,105 @@ completedDeals: { type: Number, default: 0 },
 // models/seller
 isDeleted: { type: Boolean, default: false },
 deletedAt: { type: Date, default: null },
+
+/* ── Session revocation ──────────────────────────────────────────────────
+   Bumped to invalidate every token this account has ever been issued.
+
+   A JWT is self-contained: the server does not remember issuing it, so it
+   cannot un-issue it. Until this field existed there was NO way to end a
+   session early — a stolen token stayed valid for its full lifetime, a
+   password change left the old token working, and "log out from all
+   devices" could not be built at all.
+
+   The token carries `tv` and requireAuth compares it against this number.
+   Increment it and every token minted before that moment stops verifying on
+   its next request; tokens minted after carry the new value and keep working.
+   That is the whole mechanism — one number, no session table, no store to
+   keep in sync.
+
+   Bump it on: password change, "log out everywhere", account suspension, and
+   any suspicion a token has leaked.
+
+   Starts at 0, and tokens issued before this shipped have no `tv` claim at
+   all. requireAuth reads a missing claim as 0, which matches this default —
+   so deploying it does not sign out everybody who is currently logged in. */
+tokenVersion: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
+
+/* ── Cache invalidation ──────────────────────────────────────────────────────
+ *
+ * requireAuth caches the account behind a Bearer token (utils/cache.js), which
+ * takes a Mongo round trip off every authenticated request. That cache is only
+ * safe if a write to a User can never leave a stale copy behind it — so
+ * invalidation lives HERE, on the model, rather than at the call sites.
+ *
+ * The reason is coverage. This account is written from dozens of places: admin
+ * suspension, KYC decisions, plan changes, token accounting, referral
+ * settlement, seller rating updates. Invalidating at each of those means every
+ * future write is a chance to forget one, and forgetting one does not fail
+ * loudly — it serves a suspended seller as active until the TTL runs out. A
+ * model hook cannot be forgotten, because it is not the caller's job to
+ * remember.
+ *
+ * What this specifically preserves is the property documented in utils/auth.js:
+ * blockIfSuspended checks freshly on every request so that suspending an
+ * account kills in-flight actions immediately. An admin's write fires the hook,
+ * the entry is dropped, and the suspended user's next request re-reads from
+ * Mongo. "Immediately" stays true.
+ *
+ * Note these are POST hooks, deliberately. Invalidating before the write means
+ * a concurrent read can repopulate the cache from the pre-write state and the
+ * stale value survives the write that was supposed to clear it.
+ */
+const { users: userCache } = require("../utils/cache");
+
+userSchema.post("save", function (doc) {
+  if (doc?._id) userCache.del(String(doc._id));
+});
+
+/* Query middleware. `this` is the Query, so the document is not in hand — the
+   filter is what identifies the target.
+ *
+ * A filter of `{_id: x}` names exactly one entry and only that one is dropped.
+ * Anything else — a bulk update by orgId, by plan, by subscription status —
+ * could match any number of accounts, and the ids are not knowable without
+ * running a second query. Clearing the whole user cache is the correct answer
+ * there: it costs a re-read per active user once, which is measured in
+ * milliseconds, and it cannot be wrong. Serving stale account state can be. */
+function invalidateFromQuery() {
+  /* `this` is usually the Query — but Mongoose registers deleteOne and
+     updateOne as DOCUMENT middleware in some versions and as QUERY middleware
+     in others, and the two give completely different `this`. Rather than pin
+     the behaviour to one Mongoose version, both shapes are handled: a document
+     knows its own _id, a query has to be asked for its filter. */
+  if (typeof this.getFilter !== "function") {
+    if (this?._id) userCache.del(String(this._id));
+    else userCache.clear();
+    return;
+  }
+
+  const id = this.getFilter()?._id;
+
+  if (id && (typeof id === "string" || id instanceof mongoose.Types.ObjectId)) {
+    userCache.del(String(id));
+    return;
+  }
+
+  userCache.clear();
+}
+
+for (const op of [
+  "findOneAndUpdate",
+  "findOneAndDelete",
+  "findOneAndReplace",
+  "updateOne",
+  "updateMany",
+  "deleteOne",
+  "deleteMany",
+]) {
+  userSchema.post(op, invalidateFromQuery);
+}
 
 module.exports = mongoose.model("User", userSchema);

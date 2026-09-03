@@ -57,7 +57,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isReady: boolean;
   logout: () => void;
-  persistAuth: (payload: { user?: Partial<User>; token?: string }) => void;
+  persistAuth: (payload: { user?: Partial<User>; token?: string; refreshToken?: string }) => void;
   refreshQuota: () => Promise<void>;
   /** Validate the session now, renewing the token if it's past half its life. */
   checkSession: () => Promise<void>;
@@ -112,12 +112,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const storedUser = localStorage.getItem("tokun_user");
       const storedToken = localStorage.getItem("token");
+      const storedRefresh = localStorage.getItem("refreshToken");
 
-      // An expired token is cleared on boot instead of being restored. Restoring
-      // it produced the worst possible state: a UI that looked signed in while
-      // every request behind it 401'd, leaving the user to work out on their own
-      // that they had to log out and back in.
-      if (storedToken && isExpired(storedToken)) {
+      /* An expired token is cleared on boot instead of being restored. Restoring
+         it produced the worst possible state: a UI that looked signed in while
+         every request behind it 401'd, leaving the user to work out on their own
+         that they had to log out and back in.
+
+         `&& !storedRefresh` is what changed when the access token dropped from
+         thirty days to one hour. Expired now means "an hour has passed", which
+         is the normal state of any tab reopened the next morning — not the end
+         of a session. With a refresh token in hand that is recoverable, and the
+         effect below picks it up on the very first pass. Without this clause,
+         shortening the access token would have signed everyone out hourly. */
+      if (storedToken && isExpired(storedToken) && !storedRefresh) {
         localStorage.removeItem("token");
         localStorage.removeItem("tokun_user");
         // An expired session is a logout in everything but name, so its
@@ -156,14 +164,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(payload.token);
       localStorage.setItem("token", payload.token);
     }
+    /* The access token is now an hour long, so this is what actually keeps
+       somebody signed in between visits. Written under its own key rather than
+       inside the user blob because the refresh flow reads it before any of that
+       is parsed. See REFRESH below. */
+    if (payload?.refreshToken) {
+      localStorage.setItem("refreshToken", payload.refreshToken);
+    }
   };
 
   /** Logout + broadcast logout event to all contexts/tabs */
   const logout = () => {
+    /* Read before the local clear, and told to the server without waiting.
+     *
+     * Dropping a refresh token from localStorage does not revoke it — it stays
+     * valid on the server for its full thirty days, so anything that captured a
+     * copy could keep minting access tokens long after the user believed they
+     * had signed out. This is what actually ends it.
+     *
+     * Not awaited, and failure is ignored: the local logout must happen at once
+     * whatever the network is doing. keepalive lets the request outlive the page
+     * if this logout is the last thing before a navigation. */
+    const storedRefresh = localStorage.getItem("refreshToken");
+    if (storedRefresh) {
+      fetch(`${API_BASE}/api/auth/logout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken: storedRefresh }),
+        keepalive: true,
+      }).catch(() => {});
+    }
+
     setUser(null);
     setToken(null);
     localStorage.removeItem("tokun_user");
     localStorage.removeItem("token");
+    localStorage.removeItem("refreshToken");
     // Everything this user cached locally goes with them. Removing only the
     // token left their content sitting in the browser for the next sign-in.
     clearUserScopedStorage();
@@ -184,52 +220,127 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  /**
-   * Keeps a long session alive while it's being used, and ends it cleanly when
-   * it isn't.
+  /* ── REFRESH ───────────────────────────────────────────────────────────────
    *
-   * GET /api/auth/session returns a fresh token once the current one is past
-   * half its life — so an active user's 30-day window keeps sliding forward and
-   * they never hit the emailed-OTP login again. A 401 means the session is
-   * genuinely over, which is the one case that logs out.
+   * The access token lasts an hour. The refresh token lasts thirty days and is
+   * what keeps somebody signed in across that hour, and across the next
+   * twenty-nine days of them closing the tab.
+   *
+   * This has to happen PROACTIVELY — before the access token expires, not in
+   * response to a 401. About forty files in this app build their own fetch
+   * call, so there is no single place a 401 could be caught and the request
+   * retried. Instead the token in localStorage is kept fresh, and those forty
+   * call sites never see an expired one. Building a central API client is what
+   * would let this become reactive, and it is the reason the access token is an
+   * hour rather than the fifteen minutes this pattern normally uses.
+   *
+   * Only one refresh may be in flight at a time. Refresh tokens are single-use
+   * and rotate: two concurrent calls would send the same token twice, the
+   * server would read the second as a replay of a stolen token, and it would
+   * revoke the entire family — logging the user out as a direct result of
+   * having two tabs. `refreshInFlight` is what stops that, and it matters more
+   * than it looks.
+   */
+  const refreshInFlight = React.useRef<Promise<boolean> | null>(null);
+
+  const refreshSession = async (): Promise<boolean> => {
+    if (refreshInFlight.current) return refreshInFlight.current;
+
+    const storedRefresh =
+      typeof window !== "undefined" ? localStorage.getItem("refreshToken") : null;
+    if (!storedRefresh) return false;
+
+    const run = (async (): Promise<boolean> => {
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken: storedRefresh }),
+        });
+
+        /* 401 is the server saying this refresh token is no good — unknown,
+           expired, revoked, or already spent. None of those is recoverable, and
+           continuing to look signed in would produce exactly the broken state
+           the boot path above was written to avoid. */
+        if (res.status === 401) {
+          logout();
+          return false;
+        }
+
+        // 5xx, rate limiting, anything else: transient. Keep the session and
+        // let the next tick try again — the access token is still valid.
+        if (!res.ok) return false;
+
+        const data = await res.json().catch(() => ({}));
+        if (!data?.token || !data?.refreshToken) return false;
+
+        setToken(data.token);
+        localStorage.setItem("token", data.token);
+        // The new refresh token MUST be stored: the one just used is now dead,
+        // and losing its replacement means the session cannot be renewed again.
+        localStorage.setItem("refreshToken", data.refreshToken);
+        return true;
+      } catch {
+        // Offline or unreachable. Deliberately NOT a logout — someone on a
+        // flaky connection must not lose their session over it.
+        return false;
+      } finally {
+        refreshInFlight.current = null;
+      }
+    })();
+
+    refreshInFlight.current = run;
+    return run;
+  };
+
+  /**
+   * Refresh the access token if it is gone, dead, or close enough to it.
+   *
+   * The 50% threshold means a live tab refreshes about every thirty minutes
+   * rather than on every focus event, and leaves half an hour of margin for a
+   * laptop that was asleep, a slow network, or a clock that is out.
    */
   const checkSession = async (): Promise<void> => {
     const currentToken =
       token || (typeof window !== "undefined" ? localStorage.getItem("token") : null);
-    if (!currentToken) return;
+    const storedRefresh =
+      typeof window !== "undefined" ? localStorage.getItem("refreshToken") : null;
 
-    // Already dead — no point asking the server, just end it here.
-    if (isExpired(currentToken)) {
-      logout();
+    // Not signed in at all.
+    if (!currentToken && !storedRefresh) return;
+
+    /* Expired, or missing while a refresh token survives — the ordinary state
+       of a tab reopened tomorrow. Recoverable, and the only correct response is
+       to try. */
+    if (!currentToken || isExpired(currentToken)) {
+      if (storedRefresh) await refreshSession();
+      else logout();
       return;
     }
 
-    try {
-      const res = await fetch(`${API_BASE}/api/auth/session`, {
-        headers: { Authorization: `Bearer ${currentToken}` },
-        credentials: "include",
-      });
-
-      if (res.status === 401) {
-        logout();
-        return;
-      }
-      if (!res.ok) return; // transient server/network issue — keep the session
-
-      const data = await res.json().catch(() => ({}));
-      if (data?.renewed && data?.token) {
-        setToken(data.token);
-        localStorage.setItem("token", data.token);
-      }
-    } catch {
-      // Offline or the API is unreachable. Deliberately NOT a logout — someone
-      // on a flaky connection must not lose their session over it.
-    }
+    const left = secondsUntilExpiry(currentToken);
+    const past = left !== null && left <= (60 * 60) / 2;
+    if (past && storedRefresh) await refreshSession();
   };
 
-  // Checked on mount, whenever the tab regains focus, and hourly for a tab left
-  // open. Focus is the important one: it's what catches a session that expired
-  // while the laptop was closed.
+  /* Checked on mount, whenever the tab regains focus, and every five minutes
+   * for a tab left open.
+   *
+   * The interval was one HOUR, which was fine against a thirty-day token and is
+   * not fine against a one-hour one: a tab left open would reach expiry and the
+   * next check would arrive up to an hour later, so every request in between
+   * would 401 against a token the client had not noticed was dead. Five minutes
+   * is comfortably inside the thirty-minute refresh threshold, so the token is
+   * always replaced well before it expires.
+   *
+   * The check itself is nearly free — it reads an expiry out of localStorage and
+   * usually returns — so the cost of the shorter interval is not a request every
+   * five minutes, it is a comparison every five minutes. A real refresh still
+   * happens about twice an hour.
+   *
+   * Focus remains the important one: it is what catches the tab that was open
+   * while the laptop was shut for a week.
+   */
   useEffect(() => {
     if (!isReady) return;
 
@@ -237,7 +348,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const onFocus = () => checkSession();
     window.addEventListener("focus", onFocus);
-    const interval = setInterval(checkSession, 60 * 60 * 1000);
+    const interval = setInterval(checkSession, 5 * 60 * 1000);
 
     return () => {
       window.removeEventListener("focus", onFocus);

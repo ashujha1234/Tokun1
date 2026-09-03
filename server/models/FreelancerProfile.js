@@ -112,7 +112,22 @@ const CertificationSchema = new mongoose.Schema(
 // reviewer, so they have to be trustworthy.
 const IntroVideoSchema = new mongoose.Schema(
   {
+    /* The <video src> the profile renders. Two shapes live here:
+         "https://<account>.blob.core.windows.net/freelancer-intro/…"  — current
+         "/uploads/freelancer-intro/intro-<id>-<ts>.mp4"               — legacy
+       Both are just strings the browser loads, so the frontend needs no branch;
+       the legacy ones simply stop resolving once the local file is gone, which
+       for anything uploaded before this change has usually already happened. */
     url: { type: String, default: null },
+
+    /* The blob behind that URL, kept so the file can be DELETED later.
+       A URL is enough to read a blob and not enough to address one for removal
+       — replacing a video needs the old blob's name, and parsing it back out of
+       the URL would break the first time the account or container is renamed.
+       Empty on legacy records, which is how the replace path tells the two
+       apart: blobName set => delete from Azure, otherwise => unlink from disk. */
+    blobName: { type: String, default: "" },
+
     status: { type: String, enum: VIDEO_STATUSES, default: "NONE" },
 
     durationSeconds: { type: Number, default: null },

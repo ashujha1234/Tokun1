@@ -518,8 +518,40 @@ const HireDealSchema = new mongoose.Schema(
        one set of fields describes it whether it ended before or after payment.
        (These three were re-declared here, which is what broke the path type.) */
 
+    /* Where the signed PDF actually is.
+     *
+     * These two used to be the only NDA storage fields, holding a path like
+     * "/uploads/nda/nda-1234.pdf" — a path the file was never written to. The
+     * upload landed in the OS temp directory (utils/privateUploadDirs.js) and
+     * nothing ever moved it anywhere else, so the stored string pointed at a
+     * location that had never held it, on a route that refuses to serve that
+     * prefix in any case.
+     *
+     * It went unnoticed because the UI only reads these as a boolean — see
+     * NdaCard.tsx, which asks `!!clientUrl` to decide whether a side has signed
+     * and never renders them as a link. The flag was right. The document was
+     * being written to a scratch directory that App Service wipes.
+     *
+     * They are kept, and still hold a URL, so every existing record keeps
+     * answering that boolean exactly as before. New uploads point them at the
+     * gated download route below rather than at a static path.
+     */
     ndaClientUrl: { type: String, default: "" },
     ndaFreelancerUrl: { type: String, default: "" },
+
+    /* The blob the PDF is really stored as, in the PRIVATE `nda` container.
+     *
+     * Separate from the URL fields above rather than replacing them, because a
+     * blob name is not a URL: reading one means minting a short-lived SAS at
+     * request time, after checking the caller is a party to this deal. Storing
+     * a readable URL instead would be a permanent unauthenticated link to a
+     * signed legal agreement.
+     *
+     * Empty on every pre-existing record, which is the honest state — those
+     * files are gone, and a blank field says so rather than implying a document
+     * that cannot be fetched. */
+    ndaClientBlob: { type: String, default: "" },
+    ndaFreelancerBlob: { type: String, default: "" },
 
     /* The drawn signature itself, as a small PNG data URL.
        Without this the signature was component state in the NDA modal: it

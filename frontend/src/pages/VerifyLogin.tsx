@@ -1009,7 +1009,12 @@ const [devOtp, setDevOtp] = useState<string | null>(null);
         "%c[LOGIN/VERIFY] persistAuth()",
         "color:#ef4444;font-weight:700;"
       );
-      persistAuth({ user: mergedUser, token: json.token });
+      /* refreshToken as well as token. This call names its fields explicitly
+         rather than passing the whole response through (as signup/verify does),
+         so a new field on the response is invisible here unless it is added —
+         and without it this login path would hand out a session that dies in an
+         hour with no way to renew it. */
+      persistAuth({ user: mergedUser, token: json.token, refreshToken: json.refreshToken });
       console.log("[LOGIN/VERIFY] persistAuth called with merged user & token.");
       console.groupEnd();
 

@@ -6421,18 +6421,22 @@ const LibHeroBanner = ({
     <div className="relative z-10 px-6 sm:px-10 py-16 sm:py-24 flex flex-col items-center text-center">
       {/* Now that the image shows through, the copy can't rely on the scrim
           alone — a shadow keeps it legible if it lands on a bright patch. */}
-      {/* "ProductVerse" — one word, the name this page goes by everywhere else
-          (the footer link and the app nav both say it). It was set as two words
-          here, which made the heading the odd one out. The gradient still falls
-          on the second half, which is the treatment this heading already had —
-          the space between them is what went. */}
+      {/* "Productverse" — one word, lowercase v, the name this page goes by
+          everywhere else (the footer link and the app nav both say it).
+
+          It is split across two elements ONLY so the gradient can fall on the
+          second half, which is the treatment this heading already had. That
+          split is also why a project-wide search for "ProductVerse" came back
+          clean while this heading still read "ProductVerse" on screen — the
+          string never exists in the source. Worth remembering before trusting a
+          grep for the brand name again. */}
       <h1
         className="mt-4 text-white text-[32px] sm:text-[44px] md:text-[52px] font-semibold leading-[1.05]"
         style={{ fontFamily: "Inter", textShadow: "0 2px 24px rgba(0,0,0,0.55)" }}
       >
         Product
         <span style={{ background: GRADIENT_90, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-          Verse
+          verse
         </span>
       </h1>
 

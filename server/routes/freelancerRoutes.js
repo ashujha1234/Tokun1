@@ -20,9 +20,14 @@
 //     sections they aren't showing — and `status`, `activatedAt` and the intro
 //     video's review fields are state a client may never write.
 //
-//  4. Intro videos are stored on local disk (uploads/freelancer-intro), the same
-//     as service work files and NDAs. Deliberately not Azure: uploadToAzure
-//     buffers the whole file in memory, which a video measured in GB cannot be.
+//  4. Intro videos are stored in Azure Blob (container "freelancer-intro"),
+//     streamed up from multer's temp copy after ffprobe validation passes.
+//     They used to be on local disk, because the only uploader here took a
+//     Buffer and a 5 GB video cannot be held in memory. utils/blobStorage.js
+//     streams from a path instead, which removes that constraint — and with it
+//     the two problems disk had: uploads/freelancer-intro was inside the tree
+//     express.static serves, and App Service wipes the filesystem on deploy, so
+//     videos were both publicly reachable and periodically deleted.
 
 const express = require("express");
 const mongoose = require("mongoose");
@@ -43,13 +48,41 @@ const { alertIntroVideoReviewNeeded } = require("../services/adminAlertEmail.ser
 const { withCatalog } = require("../services/freelancerCatalog.service");
 const { validateIntroVideo } = require("../utils/introVideoValidation");
 const { allowlistedUserIds, isAllowlistedEmail } = require("../utils/superCreatorGate");
+const { tempUploadDir } = require("../utils/privateUploadDirs");
+const { uploadFileToBlob, blobNameFor, deleteBlob } = require("../utils/blobStorage");
 
 const { SKILL_LEVELS, LANGUAGE_LEVELS, INTRO_VIDEO_RULES } = FreelancerProfile;
 
 /* ─────────────────────── intro video upload ─────────────────────── */
 
-const introVideoDir = path.join(__dirname, "../uploads/freelancer-intro");
-if (!fs.existsSync(introVideoDir)) fs.mkdirSync(introVideoDir, { recursive: true });
+/* Intro videos live in Azure now. See note 4 in this file's header for the
+ * reasoning that USED to keep them on disk, and why it no longer holds.
+ *
+ * The old reason was real: utils/uploadToAzure.js takes a Buffer, so uploading
+ * through it means holding the entire file in the heap — impossible for
+ * something capped at 5 GB. What changed is the uploader, not the constraint.
+ * utils/blobStorage.js streams from a path in blocks, so file size costs temp
+ * disk during the upload and never memory.
+ *
+ * What was wrong with disk: uploads/freelancer-intro is inside the tree
+ * express.static serves, and App Service's filesystem does not survive a
+ * deploy. So every intro video was public to anyone who could guess a URL, and
+ * gone at the next release — a freelancer's profile silently losing the one
+ * thing that gets them hired, with no error anywhere to explain it.
+ *
+ * The container is public-read ("blob", not "container" — see the header of
+ * utils/blobStorage.js). An approved video is shown on a public profile page,
+ * so the URL is meant to be fetchable; what it must not be is LISTABLE, which
+ * is exactly the distinction those two access levels draw.
+ *
+ * multer still writes to disk first, and must: validateIntroVideo runs ffprobe
+ * over a real path to check duration, resolution and aspect ratio. The file is
+ * uploaded only once it has passed, so a rejected video never reaches Azure. */
+const INTRO_VIDEO_CONTAINER = "freelancer-intro";
+
+/* Outside /uploads — nothing may be publicly readable in the window between
+   multer writing it and validation finishing. */
+const introVideoDir = tempUploadDir("freelancer-intro");
 
 const introVideoStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, introVideoDir),
@@ -840,9 +873,29 @@ router.post(
       // The previous file is only removed once the new one has passed, so a
       // failed re-upload never costs the freelancer the video they already had.
       const previousUrl = profile.introVideo?.url;
+      const previousBlob = profile.introVideo?.blobName;
+
+      /* Streamed up only now — after ffprobe has accepted it. A video that
+         fails the requirements above never leaves this host, so a freelancer
+         retrying an export five times does not leave five rejected files in the
+         container. uploadFileToBlob unlinks the temp copy either way. */
+      const { blobName, url: blobUrl } = await uploadFileToBlob(req.file.path, {
+        container: INTRO_VIDEO_CONTAINER,
+        blobName: blobNameFor(req.file.originalname || "intro.mp4", {
+          // Namespaced per user, so an orphaned blob is traceable to whoever
+          // uploaded it — the property the old on-disk filename had too.
+          prefix: String(req.user._id),
+          fallback: "intro",
+        }),
+        originalName: req.file.originalname || "intro.mp4",
+        public: true,
+        // inline: this is played in a <video> on the profile, not downloaded.
+        disposition: "inline",
+      });
 
       profile.introVideo = {
-        url: `/uploads/freelancer-intro/${req.file.filename}`,
+        url: blobUrl,
+        blobName,
         status: "PENDING",
         durationSeconds: verdict.meta.durationSeconds,
         width: verdict.meta.width,
@@ -858,7 +911,24 @@ router.post(
 
       await profile.save();
 
-      if (previousUrl && previousUrl !== profile.introVideo.url) {
+      /* Clean up whatever the previous submission was, wherever it lived.
+       *
+       * Two cases, and the blob name is what tells them apart. A record written
+       * since this change has one and its file is in Azure; a legacy record has
+       * none and its file was a path under /uploads. Deleting the wrong way is
+       * harmless (both are best-effort) but leaves the file behind, which for
+       * the Azure case means paying to store a video nobody can reach.
+       *
+       * The guard is still "only if it actually changed", so a re-save that
+       * happens to produce the same target never deletes the live video. */
+      if (previousBlob && previousBlob !== blobName) {
+        deleteBlob(INTRO_VIDEO_CONTAINER, previousBlob).catch(() => {});
+      } else if (
+        !previousBlob &&
+        previousUrl &&
+        previousUrl.startsWith("/uploads/") &&
+        previousUrl !== profile.introVideo.url
+      ) {
         discard(path.join(__dirname, "..", previousUrl.replace(/^\//, "")));
       }
 
@@ -923,10 +993,21 @@ router.delete("/me/intro-video", requireAuth, async (req, res) => {
     }
 
     const oldUrl = profile.introVideo?.url;
+    const oldBlob = profile.introVideo?.blobName;
     profile.introVideo = { status: "NONE", submissionCount: profile.introVideo?.submissionCount || 0 };
     await profile.save();
 
-    if (oldUrl) discard(path.join(__dirname, "..", oldUrl.replace(/^\//, "")));
+    /* Same two cases as the replace path above: blob name present means the
+       file is in Azure, absent means it is a legacy path under /uploads. The
+       `startsWith("/uploads/")` guard matters here — without it a blob URL on a
+       record whose blobName somehow went missing would be turned into a
+       filesystem path and joined onto __dirname, which is a delete aimed at a
+       path built out of an https:// string. */
+    if (oldBlob) {
+      deleteBlob(INTRO_VIDEO_CONTAINER, oldBlob).catch(() => {});
+    } else if (oldUrl && oldUrl.startsWith("/uploads/")) {
+      discard(path.join(__dirname, "..", oldUrl.replace(/^\//, "")));
+    }
 
     return res.json({
       success: true,

@@ -49,8 +49,27 @@ export default function BackLink({
   const navigate = useNavigate();
   const location = useLocation();
 
+  /* The `after:` block is the tap target, and it is the whole reason this
+   * string is not just the three visual classes.
+   *
+   * Measured on the login screen at 390px wide, this control was 342 x 23. The
+   * width came free from being a flex child; the HEIGHT is the icon's 20px plus
+   * a couple of pixels of line box, and 23px is roughly half the 44px minimum
+   * both Apple and Google publish. On a phone that reads as a dead button — you
+   * tap, your finger lands two or three pixels above the text, and nothing
+   * happens. Nothing is broken, so nothing looks broken; it just misses.
+   *
+   * A transparent ::after stretched 12px beyond the top and bottom edges takes
+   * the hit area to ~47px while changing the layout by exactly nothing — the
+   * pseudo-element is out of flow, so no margin shifts and no line moves. The
+   * alternative, padding plus a compensating negative margin, moves the visual
+   * position the moment either number is edited.
+   *
+   * `relative` is what the ::after is positioned against, so the two belong
+   * together. */
   const shared =
-    "inline-flex items-center gap-2 text-[15px] text-white/90 hover:text-white transition-colors";
+    "relative inline-flex items-center gap-2 text-[15px] text-white/90 hover:text-white transition-colors " +
+    "after:content-[''] after:absolute after:-inset-y-3 after:-inset-x-2";
 
   const content = (
     <>

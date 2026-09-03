@@ -1,6 +1,4 @@
 const express = require("express");
-const path = require("path");
-const fs = require("fs");
 const multer = require("multer");
 
 const User = require("../models/User");
@@ -10,32 +8,22 @@ const { processKyc } = require("../utils/kyc/processKyc");
 const uploadToAzure = require("../utils/uploadToAzure");
 const router = express.Router();
 
-// ✅ IMPORTANT: do NOT store KYC docs in publicly served `/uploads`
-// put in a private folder not mounted by express.static
-const KYC_DIR = path.join(__dirname, "..", "private_uploads", "kyc");
-fs.mkdirSync(KYC_DIR, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: function (_req, _file, cb) {
-    cb(null, KYC_DIR);
-  },
-  filename: function (req, file, cb) {
-    const safe = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-    cb(null, `${req.user._id}_${Date.now()}_${safe}`);
-  },
-});
-
-// const upload = multer({
-//   storage,
-//   limits: { fileSize: 6 * 1024 * 1024 }, // 6MB
-//   fileFilter: (_req, file, cb) => {
-//     const ok = /^image\/(png|jpeg|jpg|webp)$/i.test(file.mimetype);
-//     cb(ok ? null : new Error("Only images allowed"), ok);
-//   },
-// });
-
-
-
+/* KYC documents never touch this filesystem. multer holds the image in memory —
+ * capped at 6 MB below, which an ID photo is comfortably under — and it goes
+ * straight to Azure from there.
+ *
+ * A diskStorage config used to sit here, writing to ../private_uploads/kyc, and
+ * a `fs.mkdirSync` created that directory on every boot. Neither was reachable:
+ * the multer instance actually in use is the memoryStorage one below, and has
+ * been since KYC moved to Azure. What the dead code left behind was a directory
+ * that looked like the place KYC documents live — which is exactly where 59 of
+ * them were found committed to a public repository (see
+ * SECURITY-INCIDENT-2026-09-01.md). Removed so nothing writes there and nothing
+ * suggests anything should.
+ *
+ * Removing it also takes `fs` and `path` out of this file, which had no other
+ * live use.
+ */
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 6 * 1024 * 1024 }, // 6MB

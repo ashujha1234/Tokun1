@@ -4584,6 +4584,53 @@ app.use(
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 
+/* ===============================
+   RESPONSE COMPRESSION
+================================ */
+/* The JSON this API returns compresses by roughly 70–80% — marketplace listings,
+   order history and admin tables are long arrays of repeated field names, which
+   is close to the best case for gzip. On a mobile connection that is the
+   difference between a list arriving and a list appearing to hang.
+
+   Registered after CORS so that preflight replies (which have no body worth
+   compressing) are already answered, and before the routes so it wraps every
+   response below.
+
+   The filter is the part that matters, and it exists because of one endpoint:
+
+   text/event-stream — /api/smartgen/stream sends the LLM's tokens as they
+   arrive. Compression buffers output until it has enough bytes to make a block
+   worth flushing, which for a stream of short SSE frames means the browser
+   receives nothing for seconds and then everything at once. That turns a
+   visibly-typing response into a frozen screen followed by a wall of text —
+   the streaming feature, silently undone. Skipping the encoding entirely is the
+   fix; SSE frames are small and go out immediately.
+
+   Already-compressed bytes are skipped too: images, video, PDFs and zips under
+   /uploads are compressed formats already, and running gzip over them burns CPU
+   to make the payload marginally LARGER. compression's default filter does not
+   know about these, so it is checked here.
+
+   `x-no-compression` is compression's own documented escape hatch, kept so a
+   future route can opt out without editing this filter. */
+const compression = require("compression");
+
+const INCOMPRESSIBLE = /^(image\/|video\/|audio\/|application\/(zip|gzip|pdf|x-7z|octet-stream))/;
+
+app.use(
+  compression({
+    filter: (req, res) => {
+      if (req.headers["x-no-compression"]) return false;
+
+      const type = String(res.getHeader("Content-Type") || "");
+      if (type.startsWith("text/event-stream")) return false;
+      if (INCOMPRESSIBLE.test(type)) return false;
+
+      return compression.filter(req, res);
+    },
+  })
+);
+
 // Razorpay webhook needs the RAW request body for HMAC signature verification —
 // must be registered before the global express.json() below, since that
 // middleware would otherwise consume/parse the stream first.
@@ -5067,6 +5114,30 @@ Return JSON ONLY:
    outage makes the platform restart a healthy process, which turns a database
    blip into a restart loop. */
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
+/* Cache visibility.
+ *
+ * An in-process cache is invisible from outside: if it silently stopped
+ * working — a TTL set to zero, an invalidation firing on every request, a cap
+ * so low that nothing survives to be read twice — nothing would break.
+ * Responses would stay correct and the database would just carry the load
+ * again, which looks exactly like the cache never having been added. That is
+ * the failure mode this endpoint exists to make visible.
+ *
+ * hitRate is the number to read. The users cache should sit high, because
+ * requireAuth asks for the same account repeatedly within a session; a low one
+ * means entries are being dropped faster than they are reused, and the first
+ * thing to check is whether something is writing to User on every request —
+ * every write invalidates, by design (models/User.js).
+ *
+ * Public and unauthenticated, like /health beside it, and it stays that way
+ * only because it exposes counters and no data — sizes and hit rates, never
+ * keys or values. Keep it that way: the users cache is keyed by user id, so a
+ * key listing here would be an account enumeration endpoint. */
+app.get("/health/cache", (_req, res) => {
+  const { caches } = require("./utils/cache");
+  res.json({ ok: true, caches: caches.map((c) => c.stats()) });
+});
 
 /* Readiness: "this instance can actually serve a request."
  *

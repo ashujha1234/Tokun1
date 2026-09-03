@@ -15,6 +15,28 @@ const router = express.Router();
 const Category = require("../models/Category");
 const { SERVICE_CATEGORIES } = require("../constants/serviceCategories");
 const { requireAuth } = require("../utils/auth");
+const { config: configCache } = require("../utils/cache");
+
+/* One hour, which is far longer than the TTLs elsewhere in this codebase and is
+   safe here for one reason: every write path in this file calls
+   invalidateCategories() below, so the TTL is not what keeps this fresh — it is
+   only the ceiling on how long a change made OUTSIDE this process (a script, a
+   hand edit in Atlas) can go unnoticed. Categories are edited a few times a
+   year, so an hour of that is not a real risk. */
+const CATEGORY_CACHE_TTL_MS = 60 * 60 * 1000;
+
+/* Shared prefix so every category entry can be dropped in one call without
+   naming each key. The read paths build keys per kind, per flat-or-top and per
+   parent id, and a write to any category can invalidate any of them — a
+   renamed child changes a children: entry, a new top-level row changes a list:
+   entry, and seed-defaults changes all of them at once. Enumerating which keys
+   a given write actually affects would be precise and would eventually be
+   wrong; dropping the whole prefix costs one re-query per shape. */
+const CATEGORY_CACHE_PREFIX = "category:";
+
+function invalidateCategories() {
+  configCache.delPrefix(CATEGORY_CACHE_PREFIX);
+}
 
 function requireAdmin(req, res, next) {
   if (!req.isAdmin) {
@@ -106,7 +128,32 @@ router.get("/", async (req, res) => {
     const filter = { kind };
     if (req.query.includeSub !== "1") filter.parent = null;
 
-    const categories = await Category.find(filter).sort({ name: 1 });
+    const includeSub = req.query.includeSub === "1";
+
+    /* Cached. This is the most-repeated query in the app and the least-changing
+       data in it: the category tree is read on every marketplace page, every
+       upload form and every filter panel, and it is written only when an admin
+       adds a category or runs seed-defaults. Six possible responses in total
+       (two trees, flat or top-level, and the id-keyed children below), all of
+       them identical for every visitor.
+
+       The key includes both variables the response depends on. Keying on `kind`
+       alone would let a request for the service tree be answered from the
+       prompt tree's entry — the kind of bug that shows up as the wrong
+       categories on one screen and is very hard to trace back to a cache.
+
+       .lean() because this is serialised straight to JSON: nothing here calls a
+       document method, so building Mongoose documents is work whose only
+       consumer is res.json turning them back into plain objects.
+
+       Writes below call invalidateCategories(), so an admin adding a category
+       sees it immediately rather than up to an hour later. */
+    const categories = await configCache.wrap(
+      `${CATEGORY_CACHE_PREFIX}list:${kind}:${includeSub ? "all" : "top"}`,
+      CATEGORY_CACHE_TTL_MS,
+      () => Category.find(filter).sort({ name: 1 }).lean()
+    );
+
     res.json({ success: true, categories, kind });
   } catch (err) {
     console.error(err);
@@ -125,9 +172,18 @@ router.get("/:id/subcategories", async (req, res) => {
       return res.status(400).json({ success: false, error: "invalid_category_id" });
     }
 
-    const subCategories = await Category.find({ parent: id }).sort({ name: 1 });
+    const subCategories = await configCache.wrap(
+      `${CATEGORY_CACHE_PREFIX}children:${id}`,
+      CATEGORY_CACHE_TTL_MS,
+      () => Category.find({ parent: id }).sort({ name: 1 }).lean()
+    );
+
     // 200 with an empty array rather than 404: "this one has no children" is a
     // normal answer the form should render, not an error.
+    //
+    // Note this is also why wrap() does not cache empty results away: an empty
+    // ARRAY is a real answer and is cached normally. It is null/undefined that
+    // wrap() refuses to store, and this query cannot return either.
     res.json({ success: true, subCategories, categories: subCategories });
   } catch (err) {
     console.error(err);
@@ -186,6 +242,7 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
     }
 
     const category = await Category.create({ name, description, kind, parent: parent || null });
+    invalidateCategories();
     res.json({ success: true, category });
   } catch (err) {
     console.error(err);
@@ -293,6 +350,12 @@ router.post("/seed-defaults", requireAuth, requireAdmin, async (req, res) => {
        would appear to do nothing, which is exactly why the prompt tree had zero
        children in the database. Removed rather than narrowed: there is no longer
        any such thing as a stray child of a prompt category. */
+
+    /* Before the read-back, not after: this endpoint has just rewritten both
+       trees wholesale, so every cached shape is stale from here on. Invalidating
+       first also means the two queries below repopulate nothing — they run
+       uncached and the next real request refills from the new state. */
+    invalidateCategories();
 
     const [promptCategories, serviceCategories] = await Promise.all([
       Category.find({ kind: "prompt", parent: null }).sort({ name: 1 }),

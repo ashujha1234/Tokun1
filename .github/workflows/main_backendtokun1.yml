@@ -21,12 +21,74 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
 
-      - name: npm install and build
+      # `npm ci`, not `npm install` — see the frontend workflow for why. On this
+      # side it matters more: `install` can quietly pull a newer patch of a
+      # transitive dependency into a production deploy that no CI run ever
+      # exercised.
+      - name: Install dependencies
         run: |
           cd server
-          npm install
+          npm ci
           npm run build --if-present
+
+      # There is no test suite and no typecheck here (plain CommonJS, no TS), so
+      # this is the only automated check standing between a commit and
+      # production: does every module actually load?
+      #
+      # It is a low bar and it catches the specific thing that has broken this
+      # server before — a missing require, a typo'd path, a circular import that
+      # resolves to undefined at load time. All of those boot fine on a laptop
+      # where node_modules has extra packages lying around, and fail on a clean
+      # install in Azure, at which point the site is down.
+      #
+      # Two things are deliberately NOT loaded here:
+      #
+      #   index.js  — connects to Mongo and pulls in the cron modules below.
+      #   cron/*    — every one of these calls cron.schedule() at require time.
+      #               Requiring them would register seven live schedules inside
+      #               the CI runner, two of which release escrow and settle
+      #               referrals. It also hangs the step: node-cron's timers keep
+      #               the event loop alive, so the process never exits.
+      #
+      # The other four directories give the same import coverage with no side
+      # effects. process.exit(0) at the end guards against any other module
+      # leaving a handle open.
+      #
+      # The env vars are placeholders, not secrets. Several route files
+      # construct their Razorpay and Google OAuth clients at require time and
+      # throw without them — the check is "does this module load", not "can it
+      # authenticate".
+      - name: Verify all modules load
+        working-directory: ./server
+        env:
+          RAZORPAY_KEY_ID: rzp_test_ci_placeholder
+          RAZORPAY_KEY_SECRET: ci_placeholder
+          GOOGLE_CLIENT_ID: ci_placeholder
+          GOOGLE_CLIENT_SECRET: ci_placeholder
+          JWT_SECRET: ci_placeholder
+        run: |
+          node -e '
+            const fs = require("fs");
+            const failures = [];
+            let loaded = 0;
+            for (const dir of ["models", "utils", "services", "routes"]) {
+              if (!fs.existsSync(dir)) continue;
+              for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".js"))) {
+                try { require(`./${dir}/${f}`); loaded++; }
+                catch (e) { failures.push(`${dir}/${f}: ${e.message}`); }
+              }
+            }
+            console.log(`loaded ${loaded} modules`);
+            if (failures.length) {
+              console.error("FAILED TO LOAD:");
+              for (const f of failures) console.error("  " + f);
+              process.exit(1);
+            }
+            process.exit(0);
+          '
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4

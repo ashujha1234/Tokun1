@@ -42,8 +42,6 @@ const INTER_STACK =
   'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif';
 
 export default function PurchaseDialog({ open, onOpenChange, prompt, onPurchaseComplete }: PurchaseDialogProps) {
-  if (!prompt) return null;
-
   const [customerType, setCustomerType] = useState<CustomerType>("individual");
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("yearly");
   const [payMethod, setPayMethod] = useState<PayMethod>("card");
@@ -109,6 +107,23 @@ export default function PurchaseDialog({ open, onOpenChange, prompt, onPurchaseC
       toast({ title: "Error", description: "Something went wrong while processing your purchase." });
     }
   };
+
+  /* The `!prompt` bail-out is HERE, below every hook, and it has to stay here.
+   *
+   * It used to be the first line of the component, above all nine of them. That
+   * is the one thing React does not allow: hook state is matched positionally
+   * between renders, so a render that returns early runs zero hooks and the
+   * next render — the one where a prompt finally arrives — runs nine. React
+   * sees the count change and throws "Rendered more hooks than during the
+   * previous render", taking the dialog and whatever rendered it down with it.
+   *
+   * Which is exactly the transition this component is built around: it is
+   * mounted by the marketplace with `prompt` null and re-rendered with a real
+   * one the moment someone clicks Buy.
+   *
+   * Below the hooks, every render runs all nine and only the OUTPUT is
+   * conditional, which is what the rule is asking for. */
+  if (!prompt) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -371,6 +371,9 @@ const { ensureMonthlyQuota, spendMonthlyTokens } = require("../utils/quota");
 const multer = require("multer");
 const router = express.Router();
 const path = require("path");
+const fs = require("fs");
+const { tempUploadDir } = require("../utils/privateUploadDirs");
+const { uploadFileToBlob, blobNameFor } = require("../utils/blobStorage");
 const { PLANS } = require("../config/plans");
 const {
   spendTokensForIndividual,
@@ -420,10 +423,25 @@ async function enforceSmartgenHistoryLimit(user) {
   }
 }
 
-// Multer setup
+/* Multer setup.
+ *
+ * These attachments used to be written straight into the ROOT of ../uploads —
+ * the directory express.static serves with no auth — and recorded as
+ * "/uploads/<name>". Two consequences: whatever a user attached to a prompt run
+ * was readable by anyone who had or guessed the URL, and it was deleted at the
+ * next deploy, because App Service does not keep the filesystem.
+ *
+ * They go to a PRIVATE Azure container now. Nothing in the app renders them, so
+ * private costs nothing today and is the right default for a file whose
+ * contents we know nothing about.
+ *
+ * Disk first, then streamed up: same reason as everywhere else here, so nothing
+ * is held in memory. The scratch directory is outside /uploads. */
+const SMARTGEN_ATTACHMENT_CONTAINER = "smartgen-attachments";
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, "../uploads"));
+    cb(null, tempUploadDir("smartgen"));
   },
   filename: (req, file, cb) => {
     const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
@@ -431,6 +449,43 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage });
+
+/**
+ * Streams each of this request's attachments into the private container.
+ *
+ * Failures are per-file and non-fatal: the point of the request is the prompt
+ * run, which has already cost the user tokens by the time this runs. Losing an
+ * attachment is worth a log line; turning it into a 500 would mean charging
+ * someone for a run and then telling them it failed.
+ */
+async function storeAttachments(files) {
+  const stored = [];
+
+  for (const f of files || []) {
+    try {
+      const { blobName, url } = await uploadFileToBlob(f.path, {
+        container: SMARTGEN_ATTACHMENT_CONTAINER,
+        blobName: blobNameFor(f.originalname || "attachment", { fallback: "attachment" }),
+        originalName: f.originalname,
+      });
+      stored.push({
+        filename: f.originalname,
+        path: url,
+        blobName,
+        mimetype: f.mimetype,
+        size: f.size,
+      });
+    } catch (err) {
+      console.error("smartgen attachment upload failed:", f.originalname, err.message);
+      // The temp copy is only unlinked by uploadFileToBlob on the paths it
+      // reaches; if it threw before that, clear it here so the scratch
+      // directory does not accumulate.
+      fs.promises.unlink(f.path).catch(() => {});
+    }
+  }
+
+  return stored;
+}
 
 /**
  * Can this user spend tokens right now?
@@ -515,12 +570,7 @@ router.post("/", requireAuth, upload.array("attachments", 5), async (req, res) =
       });
     }
 
-    const files = (req.files || []).map(f => ({
-      filename: f.originalname,
-      path: "/uploads/" + f.filename,
-      mimetype: f.mimetype,
-      size: f.size,
-    }));
+    const files = await storeAttachments(req.files);
 
     const doc = await Smartgen.create({
       userId: req.user._id,
@@ -599,12 +649,7 @@ router.put("/:id", requireAuth, upload.array("attachments", 5), async (req, res)
       smartgen.tokensUsed = amount;
     }
 
-    const files = (req.files || []).map(f => ({
-      filename: f.originalname,
-      path: "/uploads/" + f.filename,
-      mimetype: f.mimetype,
-      size: f.size,
-    }));
+    const files = await storeAttachments(req.files);
 
     if (files.length > 0) {
       smartgen.attachments = [...smartgen.attachments, ...files];
