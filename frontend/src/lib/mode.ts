@@ -88,9 +88,12 @@ export type ModeSurface =
  *
  *   a mode hides what is MEANINGLESS in it — not what merely leans the other way.
  *
- * Only the creator half has things that qualify. Listings, payouts, the seller
- * dashboard and the upload button do not exist for someone who has never sold;
- * showing them is showing an empty room.
+ * Only the creator half has things that qualify. Listings, payouts and the
+ * upload button do not exist for someone who has never sold; showing them is
+ * showing an empty room.
+ *
+ * The dashboard was on that list and should not have been — see sellerDashboard
+ * below.
  *
  * Nothing on the buyer side is like that. Purchases, refunds and feedback are
  * YOUR OWN records, and they do not stop existing because you switched to the
@@ -107,9 +110,17 @@ export type ModeSurface =
 const SURFACE_MODE: Record<ModeSurface, AppMode | "both"> = {
   upload: "creator",
   listings: "creator",
-  sellerDashboard: "creator",
   payouts: "creator",
   freelancer: "creator",
+
+  /* "both", and it contradicts its own name — which is the point.
+     /self-dash is not a seller dashboard. It is the dashboard BOTH halves use:
+     My Purchases opens it, refunds link into it, the subscription tab lives on
+     it, and the note on CREATOR_PATH_PATTERNS below already says so in as many
+     words. Marking it creator-only meant a buyer had no Dashboard row at all,
+     while every other entry in their own menu pointed at that very page. They
+     could reach it, just never by name. */
+  sellerDashboard: "both",
 
   cart: "buyer",
 

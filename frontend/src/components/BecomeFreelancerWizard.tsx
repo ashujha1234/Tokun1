@@ -237,6 +237,15 @@ export default function BecomeFreelancerWizard({
   const currentErrors = stepErrors(step, form);
   const blocking = currentErrors.length > 0;
 
+  /* How many bullets this step can possibly show — measured by running its own
+     rules against an empty form rather than written down as a number. If a rule
+     is added or removed, this follows it; a hardcoded 5 would not, and would go
+     wrong silently.
+
+     Used to reserve the space below, so the panel does not resize as the list
+     shrinks. */
+  const maxErrors = stepErrors(step, EMPTY_FORM).length;
+
   /* Sets the form up from a profile (or the absence of one). Shared by the
      seeded path and the fetched path so both land on the same step for the same
      data — a second copy of this is exactly how a resume point starts drifting. */
@@ -963,9 +972,30 @@ export default function BecomeFreelancerWizard({
                     click left to trigger it with — and a greyed button with no
                     reason beside it is the thing that reads as broken. Amber
                     while they're still filling it in, red once they've tried. */}
+                {/* The wrapper is what stops the dialog resizing while you type.
+
+                    Measured on the first step: five bullets made the panel
+                    796px tall, two made it 736, none made it 662. The card is
+                    content-sized and vertically centred, so every field you
+                    completed removed a bullet, shortened the card by ~30px and
+                    moved its TOP EDGE DOWN by half that — the whole dialog crept
+                    down and inward under the cursor while it was being filled
+                    in. Reading that as progress takes some faith.
+
+                    So the region keeps the height of this step's worst case
+                    whatever is currently in it, and the amber box inside is
+                    free to be as short as it likes. The leftover is transparent,
+                    not an empty amber panel.
+
+                    20px a row (12px text on a 16px line, 4px apart) plus 22 for
+                    the box's padding and border. Rendered only where the step
+                    has rules at all — credentials and review reserve nothing,
+                    because they can never block. */}
+                {maxErrors > 0 && (
+                  <div className="mt-4" style={{ minHeight: 20 * maxErrors + 18 }}>
                 {currentErrors.length > 0 && (
                   <div
-                    className="mt-4 rounded-lg border px-3 py-2.5"
+                    className="rounded-lg border px-3 py-2.5"
                     style={{
                       borderColor: showErrors ? "rgba(239,68,68,0.35)" : "rgba(250,188,78,0.3)",
                       background: showErrors ? "rgba(239,68,68,0.08)" : "rgba(250,188,78,0.07)",
@@ -984,6 +1014,8 @@ export default function BecomeFreelancerWizard({
                         </li>
                       ))}
                     </ul>
+                  </div>
+                )}
                   </div>
                 )}
 

@@ -89,15 +89,43 @@ export default function SearchableSelect({
     top: number;
     bottom: number;
     width: number;
+    maxPanel: number;
   } | null>(null);
 
   const measure = useCallback(() => {
     const el = wrapRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    // Gap left for the window's own edge, so the panel never touches it.
-    const below = window.innerHeight - r.bottom - 16;
-    const above = r.top - 16;
+
+    /* The panel is measured against the DIALOG it sits in, not the window.
+
+       Being portalled and `fixed` means nothing can clip it — that is the point,
+       and it stays. But "nothing can clip it" also meant nothing bounded it, so
+       it was sized against the viewport: open the Country field two thirds of
+       the way down a dialog and the list hung out of the bottom of the card,
+       floating over the page behind. Correct, in that every row was reachable;
+       wrong, in that the dialog visibly stopped and the menu carried on.
+
+       Bounding it to the dialog does not bring the old clipping bug back. That
+       bug was an `absolute` child being CUT by an `overflow-hidden` ancestor.
+       This is still fixed and still portalled — the dialog's rect is used as
+       arithmetic, not as a clipping box — so a field near the bottom now flips
+       up and opens INSIDE the card instead of being sliced off at its edge.
+
+       Intersected with the viewport because a tall dialog can itself extend past
+       the screen, and the smaller of the two is the one that matters. Falls back
+       to the viewport when there is no dialog, which is the case on ordinary
+       pages. */
+    const host = el.closest('[role="dialog"]');
+    const hostRect = host?.getBoundingClientRect();
+    const limitTop = hostRect ? Math.max(0, hostRect.top) : 0;
+    const limitBottom = hostRect
+      ? Math.min(window.innerHeight, hostRect.bottom)
+      : window.innerHeight;
+
+    // Gap left for the edge, so the panel never touches it.
+    const below = limitBottom - r.bottom - 16;
+    const above = r.top - limitTop - 16;
 
     // Flips only when the other side is genuinely roomier — not on a few pixels,
     // which would make the panel jump sides as the page scrolls.
@@ -114,6 +142,15 @@ export default function SearchableSelect({
       top: r.bottom + 6,
       bottom: window.innerHeight - r.top + 6,
       width: r.width,
+      /* Outer ceiling for the whole panel, search row included.
+         Dropping down, the panel starts just under the field, so it may run to
+         the dialog's lower edge. Dropping up it ends just above the field, so
+         it may run back to the dialog's upper edge. Either way this is the
+         distance to that edge, and it is what stops a MIN_LIST floor pushing
+         the panel out of a short dialog. */
+      maxPanel: dropUp
+        ? Math.max(SEARCH_ROW + 64, r.top - 6 - limitTop)
+        : Math.max(SEARCH_ROW + 64, limitBottom - (r.bottom + 6)),
     });
   }, []);
 
@@ -250,6 +287,11 @@ export default function SearchableSelect({
             ...(placement.dropUp
               ? { bottom: placement.bottom }
               : { top: placement.top }),
+            /* The hard stop, computed in measure(). listMax has a MIN_LIST
+               floor so a cramped field still gets a usable list, and on a short
+               dialog that floor can exceed the room actually available — this
+               is what keeps the panel inside the card even then. */
+            maxHeight: placement.maxPanel,
           }}
         >
           <div className="relative border-b border-white/8">
@@ -269,7 +311,18 @@ export default function SearchableSelect({
 
           {/* Capped to the room measured beside the field, so a 200-item list can
               neither push the page around nor run off the end of a dialog. */}
-          <div style={{ maxHeight: placement.listMax, overflowY: "auto" }} role="listbox">
+          {/* Whichever is smaller: the list's own preference, or what is left of
+              the panel once the search row is subtracted. Without the second
+              term a MIN_LIST floor makes the list taller than the panel that
+              contains it, and `overflow-hidden` on the panel cuts the last rows
+              off instead of letting them scroll. */}
+          <div
+            style={{
+              maxHeight: Math.min(placement.listMax, placement.maxPanel - SEARCH_ROW),
+              overflowY: "auto",
+            }}
+            role="listbox"
+          >
             {hint && !query && (
               <p className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wide text-white/30">
                 {hint}

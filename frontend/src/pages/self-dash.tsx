@@ -3252,7 +3252,27 @@ const allRequests = (hireEarnings.requests || []).map((request: any, index: numb
     return (
       <button
         type="button"
-        onClick={() => setActiveTab(id)}
+        onClick={() => {
+          setActiveTab(id);
+          /* MY PRODUCTS opens the half this reader actually has.
+
+             The panel behind this button has two halves — bought and listed —
+             and the pill that switched between them is hidden while the
+             Buyer/Creator toggle is running, so whichever half is showing is
+             the only one reachable from here. promptsTab survives from the last
+             visit, so a buyer who had once looked at the listed half came back
+             to it: MY PRODUCTS opened an empty pane, while My Purchases in the
+             account menu showed the same reader's purchases. Two doors, one
+             page, opposite answers.
+
+             Resetting to the mode's own default fixes that at the source: in
+             Buyer mode this button always lands on purchases. A URL carrying an
+             explicit `p` still wins, because that is someone naming the half
+             they want — this only decides where a bare click goes. */
+          if (id === "prompts") {
+            setPromptsTab(MODE_UI_ENABLED && mode === "creator" ? "uploaded" : "purchased");
+          }
+        }}
         className={`flex h-[38px] shrink-0 items-center gap-2 rounded-[7px] px-4 lg:h-[41px] lg:w-full lg:gap-3 ${
           active ? "text-white" : "text-white/35 hover:bg-white/5"
         }`}
@@ -4147,6 +4167,26 @@ const RequestCard = ({ item }: { item: any }) => {
   </div>
 );
   /* ══ RENDER ════════════════════════════════════════════ */
+  /* The page behind must not scroll while this is over it.
+
+     <main> below is `fixed inset-0` — this dashboard is drawn as a full-screen
+     overlay rather than as a normal document. The page it opened on top of is
+     still mounted underneath with its own scroll position, so a wheel or a
+     trackpad swipe anywhere over the dashboard scrolled THAT instead, and the
+     blurred backdrop slid around behind the panel while the panel itself stayed
+     put.
+
+     Same pattern the dialogs use (see FreelancerSectionEditor). The previous
+     value is captured and restored rather than blanked on unmount, so leaving
+     this page cannot clear a lock some other overlay set first. */
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, []);
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#07080A] text-white">
       <img loading="lazy" decoding="async"
