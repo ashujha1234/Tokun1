@@ -14,7 +14,6 @@ import {
   CreditCard,
   X,
   Download,
-  Trash,
   Check,
   Star,
   AlertTriangle,
@@ -25,6 +24,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/use-toast";
 // Same entry as Header.tsx and Landing.tsx's HeroAccountMenu use.
 import { useFreelancerMenu } from "@/hooks/useFreelancerMenu";
+import BinButton from "@/components/BinButton";
 
 type ThemeMode = "light" | "dark" | "system";
 
@@ -1049,15 +1049,17 @@ const onlyDigits = (value: string) => value.replace(/\D/g, "").slice(0, 18);
                                     </button>
                                   )}
 
-                                  <button
-                                    type="button"
-                                    onClick={() => setConfirmDelete({ open: true, id: acc.id, last4: acc.last4 })}
-                                    className="grid place-items-center rounded-md h-9 w-9 border border-white/15 hover:border-white/25 transition"
-                                    style={{ background: "#1F1F22" }}
-                                    aria-label="Delete account"
-                                  >
-                                    <Trash className="w-4.5 h-4.5 text-white/80" />
-                                  </button>
+                                  {/* Keeps its confirm step — see the matching
+                                      bin in components/Header.tsx. Re-adding a
+                                      payout account means redoing Razorpay
+                                      onboarding, not one click. */}
+                                  <BinButton
+                                    size="sm"
+                                    label="Delete account"
+                                    onClick={() =>
+                                      setConfirmDelete({ open: true, id: acc.id, last4: acc.last4 })
+                                    }
+                                  />
                                 </div>
                               </div>
                             ))}

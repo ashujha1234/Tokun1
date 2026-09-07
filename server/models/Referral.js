@@ -16,8 +16,16 @@ const mongoose = require("mongoose");
  */
 const ReferralSchema = new mongoose.Schema(
   {
-    referrerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
-    referredId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    /* Neither carries `index: true` — both are indexed below, and declaring it
+       in both places is what produced this on every server boot:
+
+         [MONGOOSE] Warning: Duplicate schema index on {"referredId":1} found.
+
+       referrerId is covered by the compound { referrerId, createdAt } index,
+       which serves an equality match on referrerId alone as a prefix, so a
+       second single-field index on it earns nothing either. */
+    referrerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    referredId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
 
     // The code as typed, kept for support ("which link did they use?").
     code: { type: String, required: true, trim: true, uppercase: true },

@@ -127,40 +127,32 @@ body.is-loading { overflow: hidden; }
   line-height: 0.9;
   letter-spacing: -0.05em;
   user-select: none;
-}
 
-.tokun-title__letter {
-  display: inline-block;
+  /* See the note below on why the ramp lives here rather than per letter. */
+  background-image: linear-gradient(90deg, #38bdf8 0%, #6366f1 52%, #a855f7 100%);
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-.tokun-title__letter--t,
-.tokun-title__letter--k {
-  background-image: linear-gradient(180deg, #f0f9ff 0%, #bae6fd 18%, #60a5fa 55%, #3b82f6 85%, #2563eb 100%);
-}
+/* ONE gradient across the whole word, not five stacked per letter.
+   Option 02 "Modern SaaS" from the brand exploration: Sky Blue -> Indigo ->
+   Purple, running left to right.
 
-.tokun-title__letter--o {
-  background-image: linear-gradient(180deg, #faf5ff 0%, #ddd6fe 20%, #a78bfa 55%, #7c3aed 85%, #6d28d9 100%);
-}
+   What this replaces: each letter carried its own TOP-TO-BOTTOM ramp, and they
+   disagreed — T and K blue, O violet, U blue-into-violet, N its own thing. Read
+   together they were five small gradients rather than one wordmark, and the
+   colour reset at every letter boundary. A single horizontal ramp is what the
+   reference actually shows: the word starts sky blue and arrives at purple, and
+   each letter is simply the slice of that ramp it happens to sit on.
 
-.tokun-title__letter--u {
-  background-image: linear-gradient(180deg, #e0f2fe 0%, #38bdf8 25%, #6366f1 60%, #8b5cf6 85%, #7c3aed 100%);
-}
-
-/* The N used to be rose — #fff1f2 -> #db2777, a hot pink with no blue in it at
-   all. Every other letter here is on a cool blue-to-violet ramp, so the word
-   read as four letters of one brand and then a fifth borrowed from another; the
-   jump landed on the last letter, which is where the eye finishes.
-
-   Fuchsia instead, picked up from where the U's gradient ends (#7c3aed) and
-   carried through #d946ef to #a21caf. The word still warms as it goes — which
-   is what the pink was reaching for — but as a continuation rather than a
-   break, and the end colour sits in the same family as the --sg/--ec sections'
-   #c266ff. */
-.tokun-title__letter--n {
-  background-image: linear-gradient(180deg, #fdf4ff 0%, #f0abfc 20%, #d946ef 55%, #c026d3 85%, #a21caf 100%);
+   The gradient lives on the WORD and is clipped to the text of everything
+   inside it, so the letters need no background of their own. They keep their
+   spans because the markup builds them one at a time; `-webkit-text-fill-color`
+   is inherited, so a letter with no background of its own paints as the
+   parent's clipped gradient rather than as nothing. */
+.tokun-title__letter {
+  display: inline-block;
 }
 
 @media (max-width: 480px) {

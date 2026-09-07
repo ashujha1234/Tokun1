@@ -388,6 +388,8 @@ const {
   sendEscrowReleasedEmail,
 } = require("../services/creatorEmail.service");
 const { sendWorkSubmittedEmail } = require("../services/buyerEmail.service");
+// Accepts camelCase / snake_case / bare Razorpay callback field names.
+const { readPaymentFields } = require("../utils/paymentIntegrity");
 // Same window the stale-request cron closes on, read the same way, so the
 // deadline promised in the email is the deadline actually enforced.
 const REQUEST_RESPONSE_DAYS = Number(process.env.REQUEST_RESPONSE_DAYS || 3);
@@ -1210,7 +1212,15 @@ router.post("/:dealId/create-payment-order", requireAuth, blockIfSuspended, asyn
 // ─── VERIFY PAYMENT ─────────────────────────────────────────────────────────────
 router.post("/:dealId/verify-payment", requireAuth, blockIfSuspended, async (req, res) => {
   try {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    /* Razorpay's own snake_case names, which is what its Checkout handler
+       gives the browser. Read through readPaymentFields so this endpoint also
+       accepts the camelCase spelling the prompt checkouts use, rather than
+       silently seeing undefined and failing the signature check. */
+    const {
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+      razorpaySignature: razorpay_signature,
+    } = readPaymentFields(req.body);
 
     const deal = await HireDeal.findById(req.params.dealId)
       .populate("clientId", "name email profileImage image")
@@ -1938,26 +1948,24 @@ router.post("/:dealId/request-revision", requireAuth, async (req, res) => {
   }
 });
 
-// ─── 5. GET deal status (SelfDash ke liye) ───
-router.get("/:dealId", requireAuth, async (req, res) => {
-  try {
-    const deal = await HireDeal.findById(req.params.dealId)
-      .populate("clientId", "name email avatar")
-      .populate("freelancerId", "name email avatar");
-
-    if (!deal) return res.status(404).json({ success: false, error: "Deal not found" });
-
-    const isParty =
-      String(deal.clientId._id) === String(req.user._id) ||
-      String(deal.freelancerId._id) === String(req.user._id);
-
-    if (!isParty) return res.status(403).json({ success: false, error: "Not authorized" });
-
-    return res.json({ success: true, deal });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: "Failed to fetch deal" });
-  }
-});
+/* REMOVED: a second GET /:dealId — "5. GET deal status (SelfDash ke liye)".
+ *
+ * Express matches the FIRST registration, so this one (declared ~560 lines
+ * after the handler above) was unreachable: every request for a deal was
+ * already answered before it. Two consequences, both worth recording:
+ *
+ *   - It populated `avatar`, while the live handler populates
+ *     `profileImage image`. Anything written against this shape would have
+ *     silently received undefined. Checked before deleting: no frontend caller
+ *     reads clientId.avatar / freelancerId.avatar, so nothing depended on it.
+ *
+ *   - It dereferenced `deal.clientId._id` unguarded. A populated ref comes back
+ *     NULL when the user it points at has been deleted, so that line would have
+ *     thrown a 500 and made the deal unreachable for the surviving party. The
+ *     live handler fixes exactly that with optional chaining and a documented
+ *     reason. The better implementation happened to be the one registered
+ *     first — luck, not design, which is the argument for not keeping two.
+ */
 
 
 // ─── GET my earnings + requests + active projects (SelfDash ke liye) ───

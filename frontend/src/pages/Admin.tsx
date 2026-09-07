@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import TokenUsageSection from "@/components/TokenUsageSection";
-import { Pencil, Trash2, Plus, X, ChevronDown, RefreshCcw, Send, MessageCircle, User as UserIcon } from "lucide-react";
+import { Pencil, Plus, X, ChevronDown, RefreshCcw, Send, MessageCircle, User as UserIcon } from "lucide-react";
 import { startConversation } from "@/lib/startConversation";
 import { toast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -16,6 +16,7 @@ import OrgPromptCard from "@/components/OrgPromptCard";
 import DetailsPrompt from "@/components/DetailsPrompt";
 import type { MarketplacePrompt } from "@/components/DetailsPrompt";
 import { toMarketplacePrompt } from "@/lib/promptDetails";
+import BinButton from "@/components/BinButton";
 
 type Role = "Admin" | "Member";
 // "Invited" is a real membership state, not a stand-in for "hasn't verified
@@ -1093,15 +1094,17 @@ const handleResendInvite = async (memberId: string) => {
                     >
                       <Pencil className="w-4 h-4" />
                     </button>
-                    <button
-                      className="grid place-items-center w-9 h-9 rounded-full bg-red-500 text-white"
+                    {/* Keeps its confirm step: removing a member revokes their
+                        access to the org's allowance and listings, and getting
+                        them back means a fresh invite they have to accept. */}
+                    <BinButton
+                      size="sm"
+                      label={`Remove ${m.name || "member"}`}
                       onClick={() => {
                         setDeleteTarget(m);
                         setDeleteOpen(true);
                       }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    />
                   </>
                 )}
 

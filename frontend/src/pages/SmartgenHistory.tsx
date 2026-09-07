@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import HistoryPagination from "@/components/HistoryPagination";
 import { Loader2, Trash, Star, Copy } from "lucide-react";
+import BinButton from "@/components/BinButton";
 
 const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 const base = API_BASE || ""; // if you proxy in dev, relative works
@@ -430,18 +431,15 @@ function HistorySmartgenList() {
 
                   {/* actions */}
                   <div className="absolute right-3 bottom-3 flex items-center gap-2">
-                    <button
-                      title="Delete"
-                      className="h-9 w-9 rounded-full bg-[#3A3A3A] hover:bg-[#4A4A4A] flex items-center justify-center disabled:opacity-60"
+                    {/* Deletes on the click. In-flight state rides on
+                        `disabled` rather than swapping the bin for a spinner —
+                        same reasoning as the matching row in pages/History.tsx. */}
+                    <BinButton
+                      size="sm"
+                      label="Delete this generation"
                       disabled={deletingId === it._id || bulkDeleting}
                       onClick={() => delSmartgen(it._id)}
-                    >
-                      {deletingId === it._id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash className="h-4 w-4" />
-                      )}
-                    </button>
+                    />
                     <button
                       title="Copy"
                       className="h-9 px-3 rounded-[10px] bg-[#3A3A3A] hover:bg-[#4A4A4A] inline-flex items-center gap-2"

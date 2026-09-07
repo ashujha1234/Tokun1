@@ -87,3 +87,6 @@ desktop.ini
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+
+# TypeScript incremental build state — written by `tsc --build`, never source.
+*.tsbuildinfo

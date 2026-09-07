@@ -1146,6 +1146,7 @@ import type { PromptCodeMeta } from "@/components/PromptCodePanel";
 import { withTokunBranding } from "@/lib/razorpayTheme";
 import { useMode } from "@/contexts/ModeContext";
 import { MODE_UI_ENABLED } from "@/lib/mode";
+import { ensureRazorpay } from "@/lib/razorpayCheckout";
 
 const GRADIENT = "linear-gradient(270deg,#FF14EF 0%, #1A73E8 100%)";
 const GRAD = "linear-gradient(270deg, #1A73E8 0%, #FF14EF 100%)";
@@ -2162,16 +2163,9 @@ const [acceptingRequestId, setAcceptingRequestId] = useState<string | number | n
    
 const [creatingPlan, setCreatingPlan] = useState(false);
 
-const ensureRazorpay = () =>
-  new Promise<void>((resolve, reject) => {
-    if ((window as any).Razorpay) return resolve();
-
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("razorpay_script_load_failed"));
-    document.body.appendChild(script);
-  });
+// The per-file loader that used to live here is gone — see
+// src/lib/razorpayCheckout.ts for why one shared, race-free loader
+// replaced six subtly different copies.
 
 const openCheckout = ({
   key,
@@ -2560,6 +2554,43 @@ const [clarificationReviewModalOpen, setClarificationReviewModalOpen] = useState
 const [clarificationInputs, setClarificationInputs] = useState<Record<string, string>>({});
 const [clarificationSubmitting, setClarificationSubmitting] = useState(false);
 
+// Seller-initiated bank-account change. Razorpay Route gives a seller exactly
+// one Linked Account (keyed by email), so there is no "add a second payout
+// account" — what a seller actually wants is to repoint the existing one at a
+// different bank, which is what POST /:id/update-settlement does.
+const [bankChangeModalOpen, setBankChangeModalOpen] = useState(false);
+const [bankChangeSubmitting, setBankChangeSubmitting] = useState(false);
+const [bankChangeError, setBankChangeError] = useState<string | null>(null);
+const emptyBankChangeForm = {
+  accountHolderName: "",
+  accountNumber: "",
+  confirmAccountNumber: "",
+  ifscCode: "",
+  bankName: "",
+};
+const [bankChangeForm, setBankChangeForm] = useState(emptyBankChangeForm);
+
+// payout-status ships the account back as a labelled `submittedDetails` array
+// rather than flat fields, so the card reads individual values through here.
+const payoutDetail = (key: string) => payoutSubmittedDetails.find((d) => d.key === key);
+// Sensitive fields carry a maskedValue for read-only display; everything else
+// only has `value`.
+const payoutDetailDisplay = (key: string) => {
+  const detail = payoutDetail(key);
+  return detail?.maskedValue ?? detail?.value ?? null;
+};
+
+// CREATED is grouped with UNDER_REVIEW for the same reason the banners above
+// group them: to a seller both mean "Razorpay hasn't finished checking yet".
+const PAYOUT_STATUS_CHIP: Record<string, { label: string; className: string }> = {
+  ACTIVATED: { label: "Active", className: "bg-green-500/15 text-green-300" },
+  UNDER_REVIEW: { label: "Under review", className: "bg-yellow-500/15 text-yellow-200" },
+  CREATED: { label: "Under review", className: "bg-yellow-500/15 text-yellow-200" },
+  NEEDS_CLARIFICATION: { label: "Needs clarification", className: "bg-amber-500/20 text-amber-200" },
+  SUSPENDED: { label: "Disabled", className: "bg-red-500/15 text-red-300" },
+  REJECTED: { label: "Rejected", className: "bg-red-500/15 text-red-300" },
+};
+
 const fetchPayoutStatus = async () => {
   if (!token) return;
   try {
@@ -2668,6 +2699,60 @@ const submitAllClarifications = async () => {
     toast({ title: "Something went wrong", description: "Please try again." });
   } finally {
     setClarificationSubmitting(false);
+  }
+};
+
+// Prefills everything except the account number, which the seller has to type
+// twice — that confirm step is the whole safety net on a payout destination,
+// and prefilling it would defeat it.
+const openBankChangeModal = () => {
+  setBankChangeError(null);
+  setBankChangeForm({
+    ...emptyBankChangeForm,
+    accountHolderName: payoutDetail("accountHolderName")?.value || "",
+    ifscCode: payoutDetail("ifscCode")?.value || "",
+    bankName: payoutDetail("bankName")?.value || "",
+  });
+  setBankChangeModalOpen(true);
+};
+
+const submitBankChange = async () => {
+  if (!payoutAccountId || !token) return;
+
+  setBankChangeSubmitting(true);
+  setBankChangeError(null);
+  try {
+    const res = await fetch(`${API_BASE}/api/bankaccount/${payoutAccountId}/update-settlement`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(bankChangeForm),
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data?.success) {
+      // Shown inline rather than as a toast: every failure here is a field the
+      // seller has to correct in the form that's still open in front of them.
+      setBankChangeError(data?.message || "Couldn't update your bank account. Please try again.");
+      return;
+    }
+
+    setBankChangeModalOpen(false);
+    setBankChangeForm(emptyBankChangeForm);
+    toast({
+      title: "Bank account updated",
+      description:
+        data.message ||
+        "Razorpay is verifying your new settlement account. Payouts resume once it's approved.",
+    });
+    await fetchPayoutStatus();
+  } catch (err) {
+    console.error("Bank account update failed:", err);
+    setBankChangeError("Something went wrong. Please try again.");
+  } finally {
+    setBankChangeSubmitting(false);
   }
 };
 
@@ -4419,6 +4504,130 @@ const RequestCard = ({ item }: { item: any }) => {
             {hasPayoutSetup === true && activationStatus === "ACTIVATED" && (
               <div className="relative z-10 mt-4 rounded-lg border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-200">
                 <strong>Payout account activated:</strong> Buyers can now see and purchase your products.
+              </div>
+            )}
+
+            {/* ── The linked bank account itself ──────────────────────────────
+                The banners above only ever reported a status; the account they
+                describe was never shown, so a seller had no way to check which
+                bank their earnings were going to — or change it. There is
+                deliberately no "add another account" here: Razorpay Route keys
+                a Linked Account by seller email and allows exactly one, so a
+                second one can't exist. Changing the bank on the existing one is
+                the equivalent operation. */}
+            {canSell && hasPayoutSetup === true && payoutSubmittedDetails.length > 0 && (
+              <div className="relative z-10 mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-white">Payout account</p>
+                      {activationStatus && PAYOUT_STATUS_CHIP[activationStatus] && (
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${PAYOUT_STATUS_CHIP[activationStatus].className}`}
+                        >
+                          {PAYOUT_STATUS_CHIP[activationStatus].label}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-xs text-white/40">
+                      Your sale earnings are settled to this bank account.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={openBankChangeModal}
+                    className="rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
+                  >
+                    Change bank account
+                  </button>
+                </div>
+
+                <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
+                  {[
+                    { label: "Bank", value: payoutDetailDisplay("bankName") },
+                    { label: "Account number", value: payoutDetailDisplay("accountNumber") },
+                    { label: "IFSC", value: payoutDetailDisplay("ifscCode") },
+                    { label: "Account holder", value: payoutDetailDisplay("accountHolderName") },
+                  ].map((row) => (
+                    <div key={row.label} className="flex items-center justify-between gap-3 border-b border-white/5 pb-1.5">
+                      <dt className="text-xs text-white/40">{row.label}</dt>
+                      <dd className="text-xs font-medium text-white/80">{row.value || "—"}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            )}
+
+            {bankChangeModalOpen && (
+              <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+                <div className="max-h-[85vh] w-[460px] max-w-full overflow-y-auto rounded-2xl border border-white/10 bg-[#0F0F12] text-white">
+                  <div className="flex items-start justify-between gap-3 border-b border-white/10 p-4">
+                    <div>
+                      <p className="font-semibold">Change bank account</p>
+                      <p className="mt-0.5 text-xs text-white/40">
+                        Your earnings will settle here instead. Razorpay re-verifies the new
+                        account, so payouts pause until it's approved.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setBankChangeModalOpen(false)}
+                      className="text-white/50 transition hover:text-white"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="space-y-3 p-4">
+                    {[
+                      { key: "bankName", label: "Bank name", placeholder: "HDFC Bank" },
+                      { key: "accountHolderName", label: "Account holder name", placeholder: "As printed on the account" },
+                      { key: "accountNumber", label: "Account number", placeholder: "Enter the new account number" },
+                      { key: "confirmAccountNumber", label: "Confirm account number", placeholder: "Re-enter the account number" },
+                      { key: "ifscCode", label: "IFSC code", placeholder: "HDFC0001234" },
+                    ].map((field) => (
+                      <div key={field.key}>
+                        <label className="mb-1 block text-xs text-white/50">{field.label}</label>
+                        <input
+                          className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/25 focus:border-white/30 focus:outline-none"
+                          placeholder={field.placeholder}
+                          // The confirm field exists to catch a typo in the field
+                          // above it, which it can't do if the browser autofills
+                          // both from the same saved entry.
+                          autoComplete="off"
+                          value={(bankChangeForm as Record<string, string>)[field.key]}
+                          onChange={(e) =>
+                            setBankChangeForm((prev) => ({
+                              ...prev,
+                              [field.key]:
+                                field.key === "ifscCode" ? e.target.value.toUpperCase() : e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    ))}
+
+                    {bankChangeForm.confirmAccountNumber &&
+                      bankChangeForm.accountNumber.trim() !== bankChangeForm.confirmAccountNumber.trim() && (
+                        <p className="text-xs text-red-300">The two account numbers don't match.</p>
+                      )}
+
+                    {bankChangeError && <p className="text-xs text-red-300">{bankChangeError}</p>}
+
+                    <button
+                      type="button"
+                      disabled={
+                        bankChangeSubmitting ||
+                        !Object.values(bankChangeForm).every((v) => v.trim()) ||
+                        bankChangeForm.accountNumber.trim() !== bankChangeForm.confirmAccountNumber.trim()
+                      }
+                      onClick={submitBankChange}
+                      className="w-full rounded-md bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-white/90 disabled:opacity-40"
+                    >
+                      {bankChangeSubmitting ? "Updating…" : "Update bank account"}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 

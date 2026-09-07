@@ -2585,7 +2585,7 @@ import ApiKeyModal from "@/components/ApiKeyModal";
 import SubscriptionModal from "@/components/SubscriptionModal";
 import { toast } from "@/components/ui/use-toast";
 import SellPromptModal from "@/components/SellPromptModal";
-import { User, Landmark, FileText, CreditCard ,X,Download,Trash, Check , Star,Bell,ChevronRight,AlertTriangle} from "lucide-react";
+import { User, Landmark, FileText, CreditCard ,X,Download, Check , Star,Bell,ChevronRight,AlertTriangle} from "lucide-react";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { ShoppingCart } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
@@ -2608,9 +2608,11 @@ import { userInitials, userAvatarUrl } from "@/lib/userInitials";
 import DetailsPrompt, { type MarketplacePrompt } from "@/components/DetailsPrompt";
 import { fetchPromptDetails } from "@/lib/promptDetails";
 import { withTokunBranding } from "@/lib/razorpayTheme";
+import { ensureRazorpay } from "@/lib/razorpayCheckout";
 // The one site bar. A signed-out visitor gets it instead of everything in this
 // file, and it is the SAME component the landing page renders.
 import SiteNav from "@/components/SiteNav";
+import BinButton from "@/components/BinButton";
 // import { useAuth } from "@/contexts/AuthContext";
 // import { toast } from "@/components/ui/use-toast";
 
@@ -3581,6 +3583,33 @@ const doCheckout = async () => {
   const CHECKOUT_URL = `${API_BASE}/api/cart/checkout`;
   const VERIFY_URL = `${API_BASE}/api/cart/verify`;
 
+  /* Both of these are started HERE, before the order request, and awaited
+     later — they have no dependency on the order and used to run after it,
+     one after the other, with the buyer watching.
+
+     1. Razorpay's checkout.js (~100 kB from a third-party CDN). It used to be
+        fetched after the order call returned, so the two round trips were
+        strictly sequential: create order, THEN download the script, THEN open.
+        Overlapping them removes the whole script download from the wait — by
+        the time the order comes back it is usually already there. (This got
+        worse when the script stopped being loaded on every page; the on-demand
+        fetch was correct, putting it after the order call was not.)
+
+     2. The /self-dash route chunk (~93 kB, lazy in App.tsx). This is where the
+        buyer is sent the moment payment verifies, and nothing had asked for it
+        yet — so the navigation after a successful payment stalled on a fresh
+        chunk download while they stared at a Suspense fallback, at exactly the
+        moment they most want to see what they bought. Warmed while the
+        Razorpay sheet is open, which is several seconds of free time.
+
+     Both are best-effort: a failed prefetch just means the old timing, and the
+     awaited ensureRazorpay below still reports a genuine load failure. */
+  const razorpayReady = ensureRazorpay().then(
+    () => true,
+    () => false
+  );
+  void import("@/pages/self-dash").catch(() => {});
+
   try {
     console.groupCollapsed(
       "%c[Checkout] POST → /api/cart/checkout",
@@ -3717,6 +3746,18 @@ navigate("/self-dash?tab=prompts&p=purchased", {
 });
       },
     };
+
+    /* Awaits the load started before the order request, so in the normal case
+       this resolves immediately and the sheet opens as soon as the order is
+       back. Only a genuinely failed script download reaches the toast. */
+    if (!(await razorpayReady)) {
+      toast({
+        title: "Could not open checkout",
+        description:
+          "Razorpay's payment script failed to load. Check your connection or any ad blocker, then try again.",
+      });
+      return;
+    }
 
     const razorpayInstance = new (window as any).Razorpay(withTokunBranding(options));
     razorpayInstance.open();
@@ -5100,19 +5141,23 @@ useEffect(() => {
               ₹{(item.listPrice ?? item.price ?? 0).toFixed(2)}
             </span>
 
-            {/* Remove. h-9 w-9 rather than a bare icon: a 20px tap target is
-                below what a thumb can hit reliably, and this one deletes
-                something. */}
+            {/* Remove. The bin rather than the bare cross this used to be: a
+                cross is what closes a panel, and it sat one column away from
+                the panel's own close button. The bin says what the click does.
+
+                No confirmation, deliberately — a cart line is one click from
+                coming back, so an "are you sure?" here costs more than the
+                mistake it prevents. Contrast the bank-account bin further down
+                this file, which keeps its confirm because that one can't be
+                undone. */}
             <div className="shrink-0 sm:w-[80px] flex justify-end sm:justify-center">
-              <button
-                onClick={async () => {
-                  await removeFromCart(item.id);
+              <BinButton
+                size="sm"
+                label={`Remove ${item.title} from cart`}
+                onClick={() => {
+                  void removeFromCart(item.id);
                 }}
-                aria-label={`Remove ${item.title} from cart`}
-                className="grid place-items-center h-9 w-9 rounded-md text-red-400 hover:text-red-500 hover:bg-white/5 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              />
             </div>
           </div>
         ))}
@@ -5729,15 +5774,15 @@ style={{
     Set Default
   </button>
                   )}
-                 <button
-  type="button"
-  onClick={() => requestDelete(acc)}   // ← was: deleteAccount(acc.id)
-  className="grid place-items-center rounded-md h-9 w-9 border border-white/15 hover:border-white/25 transition"
-  style={{ background: "#1F1F22" }}
-  aria-label="Delete account"
->
-  <Trash className="w-4.5 h-4.5 text-white/80" />
-</button>
+                 {/* Still goes through requestDelete, not deleteAccount: a
+                     linked payout account can't be re-added with one click —
+                     it's a whole Razorpay onboarding — so this is one of the
+                     few bins that asks first. */}
+                 <BinButton
+                   size="sm"
+                   label="Delete account"
+                   onClick={() => requestDelete(acc)}
+                 />
 
                 </div>
               </div>

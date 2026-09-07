@@ -175,6 +175,8 @@ const {
   ServiceEscrowAlreadyReleasedError,
 } = require("../services/serviceEscrowRelease.service");
 const { actorFromReq } = require("../utils/activityLogger");
+// Accepts camelCase / snake_case / bare Razorpay callback field names.
+const { readPaymentFields } = require("../utils/paymentIntegrity");
 const router = express.Router();
 
 // ─── Work file upload setup (mirrors hire.routes.js's hire-work dir) ───
@@ -1192,7 +1194,13 @@ router.post("/orders/:orderId/create-payment-order", requireAuth, blockIfSuspend
 router.post("/orders/:orderId/verify-payment", requireAuth, blockIfSuspended, async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body || {};
+    // Accepts every spelling — see readPaymentFields. Local names stay
+    // snake_case to match the assignments below and Razorpay's own payload.
+    const {
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+      razorpaySignature: razorpay_signature,
+    } = readPaymentFields(req.body);
 
     const order = await ServiceOrder.findById(orderId)
       .populate("buyerId", "name email profileImage image")

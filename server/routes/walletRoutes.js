@@ -2038,8 +2038,29 @@ const Wallet = require("../models/Wallet");
 const WalletTopup = require("../models/WalletTopup");
 const Razorpay = require("../utils/razorpay");
 const { requireAuth, blockIfSuspended } = require("../utils/auth");
+const { requireAdmin } = require("../middleware/requireAdmin");
+const { validate } = require("../middleware/validate");
 const BankAccount = require("../models/BankAccount");
 const WalletWithdrawal = require("../models/WalletWithdrawal");
+// Accepts camelCase / snake_case / bare Razorpay callback field names.
+const { readPaymentFields } = require("../utils/paymentIntegrity");
+
+/* Every /admin/* route in this file, gated in one place.
+ *
+ * All eight were defined with NO middleware — the four GETs answered 200 to an
+ * anonymous request, and the four POSTs (approve/reject withdrawal,
+ * approve/reject bank transfer) answered 400 only because a probe sent an empty
+ * body. With real ids from the open GETs, an anonymous caller could approve a
+ * payout. `walletwithdrawals` being empty is the only reason that never
+ * happened.
+ *
+ * Mounted here rather than added to each handler on purpose: this is the money
+ * surface, and a router-level gate means the NEXT /admin/ route added to this
+ * file inherits it instead of depending on whoever writes it remembering.
+ * Placed immediately after the imports and before any route definition —
+ * Express walks the stack in registration order, so anything registered above
+ * a `use()` would bypass it. There is nothing above this. */
+router.use("/admin", requireAuth, requireAdmin);
 
 function describePayoutDestination(bankAccount) {
   if (bankAccount.payoutMethod === "upi") {
@@ -2236,7 +2257,12 @@ router.post("/add-fund/create-order", requireAuth, async (req, res) => {
 router.post("/add-fund/verify", requireAuth, async (req, res) => {
   try {
     const userId = req.user._id;
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    // Accepts every spelling — see readPaymentFields.
+    const {
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+      razorpaySignature: razorpay_signature,
+    } = readPaymentFields(req.body);
 
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
       return res.status(400).json({ success: false, error: "missing_payment_fields" });
@@ -2763,7 +2789,10 @@ router.get("/admin/pending-bank-transfers", async (req, res) => {
 // ══════════════════════════════════════════════════════════════
 // POST /api/wallet/admin/approve-bank-transfer
 // ══════════════════════════════════════════════════════════════
-router.post("/admin/approve-bank-transfer", async (req, res) => {
+router.post(
+  "/admin/approve-bank-transfer",
+  validate({ body: { walletId: { objectId: true, required: true }, txnId: { type: "string", trim: true, required: true, max: 128 } } }),
+  async (req, res) => {
   try {
     const { walletId, txnId } = req.body;
 
@@ -2833,7 +2862,10 @@ router.post("/admin/approve-bank-transfer", async (req, res) => {
 // ══════════════════════════════════════════════════════════════
 // POST /api/wallet/admin/reject-bank-transfer
 // ══════════════════════════════════════════════════════════════
-router.post("/admin/reject-bank-transfer", async (req, res) => {
+router.post(
+  "/admin/reject-bank-transfer",
+  validate({ body: { walletId: { objectId: true, required: true }, txnId: { type: "string", trim: true, required: true, max: 128 }, reason: { type: "string", trim: true, max: 500 } } }),
+  async (req, res) => {
   try {
     const { walletId, txnId, reason } = req.body;
 
@@ -2947,7 +2979,10 @@ router.get("/admin/all-withdrawals", async (req, res) => {
 // ══════════════════════════════════════════════════════════════
 // POST /api/wallet/admin/approve-withdrawal
 // ══════════════════════════════════════════════════════════════
-router.post("/admin/approve-withdrawal", async (req, res) => {
+router.post(
+  "/admin/approve-withdrawal",
+  validate({ body: { withdrawalId: { objectId: true, required: true }, utrNumber: { type: "string", trim: true, max: 64 } } }),
+  async (req, res) => {
   try {
     const { withdrawalId, utrNumber } = req.body;
 
@@ -3063,7 +3098,10 @@ router.post("/admin/approve-withdrawal", async (req, res) => {
 // ══════════════════════════════════════════════════════════════
 // POST /api/wallet/admin/reject-withdrawal
 // ══════════════════════════════════════════════════════════════
-router.post("/admin/reject-withdrawal", async (req, res) => {
+router.post(
+  "/admin/reject-withdrawal",
+  validate({ body: { withdrawalId: { objectId: true, required: true }, reason: { type: "string", trim: true, max: 500 } } }),
+  async (req, res) => {
   try {
     const { withdrawalId, reason } = req.body;
 

@@ -25,6 +25,8 @@ const { requireAuth } = require("../utils/auth");
 const express = require("express");
 const User = require("../models/User");
 const Organization = require("../models/organization");
+const SubscriptionPeriod = require("../models/SubscriptionPeriod");
+const { reconcileUserEntitlement } = require("../service/billing");
  
 const router = express.Router();
 
@@ -88,9 +90,39 @@ async function summarizeOrgTokens(org) {
 router.get("/", requireAuth, async (req, res) => {
   try {
     // FETCH FRESH USER FROM DB
-    const user = await User.findById(req.user._id).lean();
+    let user = await User.findById(req.user._id).lean();
     if (!user) {
       return res.status(404).json({ success: false, error: "user_not_found" });
+    }
+
+    /* Self-heal a paid plan with no entitlement behind it.
+       This endpoint hands the raw user document to the client, which reads
+       monthlyTokensCap straight off it — so a Pro subscriber whose cap was
+       never written saw "Monthly Tokens: 0" and was refused every request,
+       with nothing in the UI to suggest why. The repair is derivable
+       (config/plans.js for the cap, their own SubscriptionPeriod for the
+       dates), so it happens here rather than leaving a paying customer stuck
+       until someone runs a script.
+       reconcileUserEntitlement no-ops when there is nothing to fix, so the
+       common case is one extra `in` check, not a write. Re-read after the
+       repair because the copy above is .lean() and the repair works on a
+       document. */
+    if (user.plan && user.plan !== "free" && (!user.monthlyTokensCap || !user.currentPeriodEnd)) {
+      const doc = await User.findById(user._id);
+      const latestPeriod = await SubscriptionPeriod.findOne({
+        subjectType: "USER",
+        subjectId: user._id,
+      })
+        .sort({ periodEnd: -1 })
+        .lean();
+
+      const { changed, fields } = await reconcileUserEntitlement(doc, latestPeriod);
+      if (changed) {
+        console.warn(
+          `quota: repaired entitlement for ${user.email} — ${fields.join(", ")}`
+        );
+        user = await User.findById(user._id).lean();
+      }
     }
  
     let org = null;

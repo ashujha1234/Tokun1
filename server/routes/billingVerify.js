@@ -682,6 +682,8 @@ const {
 
 const { generateInvoicePDF } = require("../services/invoice.service");
 const { sendInvoiceEmail } = require("../services/email.service");
+// Accepts camelCase / snake_case / bare Razorpay callback field names.
+const { readPaymentFields } = require("../utils/paymentIntegrity");
 
 /* -------------------- Razorpay signature verify -------------------- */
 function verifySignature(orderId, paymentId, signature) {
@@ -693,7 +695,15 @@ function verifySignature(orderId, paymentId, signature) {
 /* -------------------- VERIFY PAYMENT -------------------- */
 router.post("/verifypayment", async (req, res) => {
   try {
-    const { paymentId, orderId, signature } = req.body || {};
+    /* This endpoint's own naming — bare orderId/paymentId/signature — is the
+       third convention in the codebase. Kept on the wire (the plans checkout
+       posts it) but read through the shared normalizer, so the camelCase and
+       snake_case spellings work here too. */
+    const {
+      razorpayOrderId: orderId,
+      razorpayPaymentId: paymentId,
+      razorpaySignature: signature,
+    } = readPaymentFields(req.body);
 
     if (!paymentId || !orderId || !signature) {
       return res
@@ -714,17 +724,36 @@ router.post("/verifypayment", async (req, res) => {
         .json({ success: false, error: "payment_not_found" });
     }
 
-    // Idempotency — agar already paid hai toh seedha success return karo
+    /* Idempotency, but on the ENTITLEMENT rather than on the payment row.
+
+       This used to be `if (payment.status === "paid") return alreadyProcessed`,
+       and combined with the ordering below it was a one-way trap. The row was
+       marked paid and SAVED first, and only then was the plan provisioned — so
+       anything that threw in between (renewUserPlanFromDue throws by design on
+       a user with no billingCycle or no currentPeriodEnd) left the payment paid
+       and the account unprovisioned. Every retry after that hit this guard,
+       answered "already processed", and skipped provisioning forever. The
+       subscriber had paid, the books said paid, and their plan never arrived.
+       That is the state ten paying Pro accounts were found in.
+
+       So a paid row is only "done" if the SubscriptionPeriod it should have
+       created exists. If it doesn't, fall through and provision — the steps
+       below are safe to re-run, and this is the only path that can repair it. */
     if (payment.status === "paid") {
-      return res.json({ success: true, alreadyProcessed: true });
+      const alreadyProvisioned = await SubscriptionPeriod.exists({ paymentId: payment._id });
+      if (alreadyProvisioned) {
+        return res.json({ success: true, alreadyProcessed: true });
+      }
+      console.warn(
+        `billing verify: payment ${payment._id} is paid but has no SubscriptionPeriod — re-provisioning`
+      );
     }
 
-    /* -------------------- MARK PAID -------------------- */
-    payment.status = "paid";
+    /* Recorded on the row but NOT saved yet — see the save below. The signature
+       and payment id are what a later reconciliation needs, so they are set
+       here where they arrived. */
     payment.razorpay_payment_id = paymentId;
     payment.razorpay_signature = signature;
-    payment.processedAt = new Date();
-    await payment.save();
 
     /* ====================================================
        USER PLAN
@@ -778,6 +807,19 @@ router.post("/verifypayment", async (req, res) => {
         razorpay_payment_id: payment.razorpay_payment_id,
         status: "active",
       });
+
+      /* ── MARK PAID, LAST ────────────────────────────────────────────────
+         Deliberately after provisioning, not before. This save used to happen
+         the moment the signature checked out, which meant a throw anywhere
+         between there and here produced a paid payment against an
+         unprovisioned account — and the idempotency guard above then refused
+         to ever try again. Written only once the plan and its
+         SubscriptionPeriod actually exist, so "paid" means "the subscriber
+         got what they paid for". A crash before this line leaves the row
+         unpaid and the next verify re-runs the whole thing. */
+      payment.status = "paid";
+      payment.processedAt = new Date();
+      await payment.save();
 
       /* ── ANSWER THE SUBSCRIBER HERE ──────────────────────────────────────
          The plan is live: the payment is marked paid, the user's plan/cycle/
@@ -939,6 +981,19 @@ router.post("/verifypayment", async (req, res) => {
         razorpay_payment_id: payment.razorpay_payment_id,
         status: "active",
       });
+
+      /* ── MARK PAID, LAST ────────────────────────────────────────────────
+         Deliberately after provisioning, not before. This save used to happen
+         the moment the signature checked out, which meant a throw anywhere
+         between there and here produced a paid payment against an
+         unprovisioned account — and the idempotency guard above then refused
+         to ever try again. Written only once the plan and its
+         SubscriptionPeriod actually exist, so "paid" means "the subscriber
+         got what they paid for". A crash before this line leaves the row
+         unpaid and the next verify re-runs the whole thing. */
+      payment.status = "paid";
+      payment.processedAt = new Date();
+      await payment.save();
 
       // Same reasoning as the USER branch above: the org's plan is live, so
       // the answer goes out now and the paperwork follows.

@@ -356,4 +356,16 @@ const NotificationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+/* This collection had NO secondary index — every read was a collection scan.
+   187 documents made that free, but these are the two filters the read paths
+   actually use, and both sit on screens that poll:
+
+     adminNotifications.js:26     { receiverAdminId }        .sort({ createdAt })
+     orgMembers.js:2580-2581      { receiverOrgId, type }    countDocuments + find
+
+   createdAt is the trailing key because both callers sort on it, which lets the
+   sort come from the index rather than an in-memory pass. */
+NotificationSchema.index({ receiverAdminId: 1, createdAt: -1 });
+NotificationSchema.index({ receiverOrgId: 1, type: 1, createdAt: -1 });
+
 module.exports = mongoose.model("Notification", NotificationSchema);

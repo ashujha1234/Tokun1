@@ -1997,24 +1997,32 @@ type Category = { _id: string; name: string; description?: string };
 const GRAD = "linear-gradient(270.19deg, #1A73E8 0.16%, #FF14EF 99.84%)";
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
-/* Attachment ceiling for a prompt listing. Named once because the number
-   appeared in three places — the check, the rejection toast and the hint under
-   the drop zone — and they have to agree, or the UI promises one limit and
-   enforces another. Must match `limits.fileSize` on the multer instance in
-   server/routes/promptRoutes.js. */
-const MAX_ATTACHMENT_MB = 100;
-const MAX_ATTACHMENT_BYTES = MAX_ATTACHMENT_MB * 1024 * 1024;
+/* ── UPLOAD CEILINGS ───────────────────────────────────────────────────────
+   The server owns these. It enforces them (multer's `limits.fileSize` and
+   utils/promptCode.js) and now also serves them, on the same
+   GET /api/prompt/code-languages call this modal already makes when it opens —
+   so there is no extra round trip and no second copy to keep in step.
 
-/* ── CODE ATTACHMENTS ──────────────────────────────────────────────────────
-   All three ceilings mirror utils/promptCode.js on the server, which is where
-   they are enforced. Repeated here so a rejection happens in the form, next to
-   the field that caused it, instead of arriving as a toast after the whole
-   upload has been sent — the same reason MAX_ATTACHMENT_MB above is duplicated.
-   Change one, change both. */
-const MAX_CODE_ITEMS = 10;
-const MAX_CODE_FILE_MB = 10;
-const MAX_CODE_FILE_BYTES = MAX_CODE_FILE_MB * 1024 * 1024;
-const MAX_INLINE_CHARS = 100_000;
+   These constants remain as the FALLBACK, used until that response arrives and
+   kept if it never does. That is deliberate: the reason the numbers were
+   duplicated in the first place is worth preserving — a rejection should
+   happen in the form, next to the field that caused it, rather than arriving
+   as a toast after 100 MB has already been sent. A possibly-stale local limit
+   still does that; no local limit does not.
+
+   What changed is only which side wins when they disagree. Previously nothing
+   did: the two copies were held together by a comment asking the next person
+   to remember, and a drift meant the form quietly accepted a file the server
+   would refuse, or refused one it would have taken. */
+const DEFAULT_UPLOAD_LIMITS = {
+  attachmentMb: 100,
+  attachmentMimePrefixes: ["image/", "video/"] as string[],
+  codeItems: 10,
+  codeFileMb: 10,
+  inlineChars: 100_000,
+};
+
+type UploadLimits = typeof DEFAULT_UPLOAD_LIMITS;
 
 type CodeLanguage = { id: string; label: string; ext: string };
 
@@ -2076,6 +2084,11 @@ export default function SellPromptModal({
   const [codeEnabled, setCodeEnabled] = useState(false);
   const [codeItems, setCodeItems] = useState<CodeItem[]>([]);
   const [codeLanguages, setCodeLanguages] = useState<CodeLanguage[]>([]);
+  /* Seeded from the defaults so the form is usable on first paint, then
+     replaced by whatever the server reports. See DEFAULT_UPLOAD_LIMITS. */
+  const [limits, setLimits] = useState<UploadLimits>(DEFAULT_UPLOAD_LIMITS);
+  const maxAttachmentBytes = limits.attachmentMb * 1024 * 1024;
+  const maxCodeFileBytes = limits.codeFileMb * 1024 * 1024;
   const [uploading, setUploading] = useState(false);
 
   const { toast } = useToast();
@@ -2165,8 +2178,29 @@ export default function SellPromptModal({
       try {
         const res = await fetch(`${API_BASE}/api/prompt/code-languages`);
         const data = await res.json().catch(() => ({}));
-        if (!cancelled && data?.success && Array.isArray(data.languages)) {
+        if (cancelled || !data?.success) return;
+
+        if (Array.isArray(data.languages)) {
           setCodeLanguages(data.languages);
+        }
+
+        /* Merged over the defaults rather than replacing them, and each field
+           is taken only if it is a usable value — an older server that does not
+           send `limits`, or sends a partial object, must leave the form with
+           working ceilings rather than `undefined`, which would compare false
+           against every size and let everything through. */
+        if (data.limits && typeof data.limits === "object") {
+          const l = data.limits;
+          setLimits((prev) => ({
+            attachmentMb: Number(l.attachmentMb) > 0 ? Number(l.attachmentMb) : prev.attachmentMb,
+            attachmentMimePrefixes:
+              Array.isArray(l.attachmentMimePrefixes) && l.attachmentMimePrefixes.length
+                ? l.attachmentMimePrefixes.map(String)
+                : prev.attachmentMimePrefixes,
+            codeItems: Number(l.codeItems) > 0 ? Number(l.codeItems) : prev.codeItems,
+            codeFileMb: Number(l.codeFileMb) > 0 ? Number(l.codeFileMb) : prev.codeFileMb,
+            inlineChars: Number(l.inlineChars) > 0 ? Number(l.inlineChars) : prev.inlineChars,
+          }));
         }
       } catch {
         // See above — the fallback below covers it.
@@ -2272,13 +2306,13 @@ export default function SellPromptModal({
       // Keep this in step with the multer limit in server/routes/promptRoutes.js
       // — if the client allows more than the server does, the upload dies with a
       // generic network error after the whole file has been sent.
-      const okSize = file.size <= MAX_ATTACHMENT_BYTES;
+      const okSize = file.size <= maxAttachmentBytes;
       if (!okType) {
         toast({ title: "Invalid file type", description: "Only image and video files are allowed" });
         return false;
       }
       if (!okSize) {
-        toast({ title: "File too large", description: `Files must be under ${MAX_ATTACHMENT_MB}MB` });
+        toast({ title: "File too large", description: `Files must be under ${limits.attachmentMb}MB` });
         return false;
       }
       return true;
@@ -2302,7 +2336,7 @@ export default function SellPromptModal({
   const addCodeItem = (item: CodeItem): boolean => {
     let added = false;
     setCodeItems((prev) => {
-      if (prev.length >= MAX_CODE_ITEMS) return prev;
+      if (prev.length >= limits.codeItems) return prev;
       added = true;
       return [...prev, item];
     });
@@ -2310,7 +2344,7 @@ export default function SellPromptModal({
     if (!added) {
       toast({
         title: "That's the limit",
-        description: `A product can carry at most ${MAX_CODE_ITEMS} code items.`,
+        description: `A product can carry at most ${limits.codeItems} code items.`,
       });
     }
     return added;
@@ -2332,10 +2366,10 @@ export default function SellPromptModal({
 
   const handleCodeFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     for (const file of Array.from(e.target.files || [])) {
-      if (file.size > MAX_CODE_FILE_BYTES) {
+      if (file.size > maxCodeFileBytes) {
         toast({
           title: "Code file too large",
-          description: `"${file.name}" is over ${MAX_CODE_FILE_MB}MB. A big project travels better as a .zip of just the source.`,
+          description: `"${file.name}" is over ${limits.codeFileMb}MB. A big project travels better as a .zip of just the source.`,
         });
         continue;
       }
@@ -2370,7 +2404,7 @@ export default function SellPromptModal({
   );
 
   const oversizeSnippet = codeItemsToSend.find(
-    (c) => c.kind === "inline" && c.content.length > MAX_INLINE_CHARS
+    (c) => c.kind === "inline" && c.content.length > limits.inlineChars
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -2402,7 +2436,7 @@ export default function SellPromptModal({
     if (oversizeSnippet) {
       toast({
         title: "Snippet too long",
-        description: `Pasted code is capped at ${MAX_INLINE_CHARS / 1000}k characters — attach that one as a file instead.`,
+        description: `Pasted code is capped at ${limits.inlineChars / 1000}k characters — attach that one as a file instead.`,
       });
       return;
     }
@@ -2772,7 +2806,7 @@ export default function SellPromptModal({
               <p className="text-sm text-white/70">Click to upload</p>
               <input ref={attachRef} type="file" accept="image/*,video/*" onChange={handleFileUpload} className="hidden" />
             </div>
-            <p className="text-xs text-white/50">Upload exactly one image or video (max {MAX_ATTACHMENT_MB}MB).</p>
+            <p className="text-xs text-white/50">Upload exactly one image or video (max {limits.attachmentMb}MB).</p>
 
             {attachments.length > 0 && (
               <div className="space-y-2">
@@ -2913,10 +2947,10 @@ export default function SellPromptModal({
                           <span>{item.content.split("\n").length} lines</span>
                           <span
                             className={
-                              item.content.length > MAX_INLINE_CHARS ? "text-red-400" : undefined
+                              item.content.length > limits.inlineChars ? "text-red-400" : undefined
                             }
                           >
-                            {item.content.length.toLocaleString()} / {MAX_INLINE_CHARS.toLocaleString()}
+                            {item.content.length.toLocaleString()} / {limits.inlineChars.toLocaleString()}
                           </span>
                         </div>
                       </>
@@ -3001,7 +3035,7 @@ export default function SellPromptModal({
                 </div>
 
                 <p className="text-[11px] text-white/40">
-                  Up to {MAX_CODE_ITEMS} items · {MAX_CODE_FILE_MB}MB per file
+                  Up to {limits.codeItems} items · {limits.codeFileMb}MB per file
                 </p>
               </div>
             )}

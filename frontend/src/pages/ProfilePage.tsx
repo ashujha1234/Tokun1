@@ -2979,11 +2979,6 @@ const isAdminView = new URLSearchParams(location.search).get("adminView") === "1
 const fileRef = useRef<HTMLInputElement | null>(null);
 const [avatar, setAvatar] = useState<string | null>(null);
 
-const [kycInfo, setKycInfo] = useState<{
-  kycStatus: "NOT_SUBMITTED" | "PENDING" | "VERIFIED" | "REJECTED" | "FLAGGED";
-  docType: "AADHAAR" | "PASSPORT" | null;
-  verifiedAt: string | null;
-} | null>(null);
 
 
 const [projectTitle, setProjectTitle] = useState("");
@@ -3212,21 +3207,10 @@ const locationLine = useMemo(() => {
 }, [displayedFreelancer]);
 
 
-useEffect(() => {
-  if (!userId) return;
-fetch(`${API_BASE}/api/kyc/public/${userId}`)
-    .then((r) => r.json())
-    .then((data) => {
-      if (!data?.success) return;
-     setKycInfo({
-  kycStatus: data.kycStatus || "NOT_SUBMITTED",
-  docType: data.docType || null,
-  verifiedAt: data.verifiedAt || null,
-});
-
-    })
-    .catch(() => {});
-}, [userId]);
+/* The identity-KYC badge that used to be fetched here is gone with the
+   document flow behind it (GET /api/kyc/public/:userId no longer exists).
+   Nothing replaces it on this page: seller trust is carried by the Razorpay
+   payout account, which is not a claim about who someone is. */
 
 
 
@@ -3738,7 +3722,27 @@ const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       body: formData,
     });
 
-    const data = await res.json();
+    const data = await res.json().catch(() => null);
+
+    /* Say something when it fails. This branch did not exist: a rejected
+       upload fell straight through to the `if` below, which simply didn't
+       match, and the function returned having done nothing at all. No toast,
+       no retry, no trace — the catch below only console.error'd, and
+       vite.config drops console entirely from production builds. So a photo
+       the server had refused looked exactly like a photo that was still
+       uploading, forever. Prefer the server's own `message`; it names the
+       actual cause (wrong file type, unreadable image, too large). */
+    if (!res.ok || !data?.success) {
+      toast({
+        title: "Photo not uploaded",
+        description:
+          data?.message ||
+          (res.status === 413
+            ? "That image is too large. Please choose one under 15MB."
+            : "Something went wrong uploading that photo. Please try again."),
+      });
+      return;
+    }
 
     // 🔐 VERIFY OWNER
     if (data.success && data.avatar && data.userId === user._id) {
@@ -3885,18 +3889,11 @@ const sendMessage = () => {
                         {userName || "—"}
                       </h1>
 
-                      {/* Only shown when identity is actually verified. It used
-                          to render unconditionally, which made it meaningless. */}
-                      {kycInfo?.kycStatus === "VERIFIED" && (
-                        <span
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold"
-                          style={{ background: "rgba(16,185,129,0.15)", color: "#6EE7B7" }}
-                          title="Identity verified"
-                        >
-                          <ShieldCheck className="w-3 h-3" />
-                          VERIFIED
-                        </span>
-                      )}
+                      {/* The "VERIFIED" identity badge that sat here is gone
+                          with the KYC document flow that backed it. Nothing
+                          conditional replaces it on purpose: a badge with no
+                          verification behind it is the meaningless version this
+                          one was already fixed once for being. */}
 
                       {/* The tier — claimed only once it's real, exactly as on
                           the directory card for the same person. It used to
@@ -5022,8 +5019,13 @@ const sendMessage = () => {
 
       {/* HEADER */}
       <div className="flex items-start gap-3 p-4 border-b border-white/10">
+        {/* alt="" on purpose, not an oversight: the creator's name is in the
+            heading immediately to the right, so giving this an alt would make a
+            screen reader announce the same person twice. An empty alt marks it
+            decorative, which is what it is. */}
         <img loading="lazy" decoding="async"
           src={avatarFallback(user)}
+          alt=""
           className="w-10 h-10 rounded-full"
         />
         <div className="flex-1">
@@ -5176,6 +5178,7 @@ const sendMessage = () => {
       ? selectedService.media[0]   // ✅ FIXED
       : "/services/demo-placeholder.png"
   }
+  alt={selectedService.title ? `${selectedService.title} — cover image` : "Service cover image"}
   className="w-full h-full object-cover"
 />
 
@@ -5697,6 +5700,7 @@ onBookNow: (s: Service) => void;
               {service.media?.length > 0 && (
                 <img loading="lazy" decoding="async"
                   src={service.media[0]}
+                  alt={service.title ? `${service.title} — cover image` : "Service cover image"}
                   className="w-full h-full object-cover"
                 />
               )}
@@ -6565,13 +6569,19 @@ onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
     Browse Files
   </label>
 
-  {/* PREVIEW */}
+  {/* PREVIEW
+
+      The alt below is numbered rather than empty: these are the files the
+      seller just picked, and the count is the useful part — "is the one I
+      meant in there?" A decorative alt would leave a screen-reader user with
+      no way to tell four selected images apart. */}
   {servicePreview.length > 0 && (
     <div className="flex gap-3 mt-4 flex-wrap justify-center">
       {servicePreview.map((src, i) => (
         <img loading="lazy" decoding="async"
           key={i}
           src={src}
+          alt={`Selected image ${i + 1} of ${servicePreview.length}`}
           className="w-20 h-20 object-cover rounded-lg border border-white/10"
         />
       ))}

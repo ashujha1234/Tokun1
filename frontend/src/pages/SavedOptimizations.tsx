@@ -305,6 +305,7 @@ import { Loader2, Trash, Star, Copy } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import HistoryPagination from "@/components/HistoryPagination";
+import BinButton from "@/components/BinButton";
 
 interface OptimizedPromptDoc {
   _id: string;
@@ -609,13 +610,13 @@ const SavedOptimizations = () => {
 
                     {/* Bottom-right actions */}
                     <div className="absolute right-3 bottom-3 flex items-center gap-2">
-                      <button
-                        title="Delete"
-                        className="h-9 w-9 rounded-full bg-[#3A3A3A] hover:bg-[#4A4A4A] flex items-center justify-center"
+                      {/* Deletes on the click, no confirm — a saved
+                          optimization can be saved again. */}
+                      <BinButton
+                        size="sm"
+                        label="Delete this optimization"
                         onClick={() => del(it._id)}
-                      >
-                        <Trash className="h-4 w-4" />
-                      </button>
+                      />
                       <button
                         title="Copy"
                         className="h-9 px-3 rounded-[10px] bg-[#3A3A3A] hover:bg-[#4A4A4A] inline-flex items-center gap-2"

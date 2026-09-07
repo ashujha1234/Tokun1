@@ -15,9 +15,29 @@ async function uploadToAzure(fileBuffer, originalName, containerName) {
   const containerClient =
     blobServiceClient.getContainerClient(containerName);
 
-  // ⚠️ Only affects first creation
+  /* "blob", never "container". Azure's three levels are:
+       (none)      private — a read needs a credential or a SAS
+       "blob"      anyone with the full blob URL can read THAT blob
+       "container" anyone can read AND **list every blob in the container**
+
+     This helper asked for "container", so every container it has ever created
+     is world-listable: an <img src> only ever needed "blob", and the extra
+     level hands out the index. Guessing one timestamped blob URL is hard;
+     asking Azure for all of them is a single unauthenticated request. Ten
+     containers were created this way — avatars, prompt-attachments,
+     prompt-code, refund-attachments, chat-attachments, feedback-screenshots,
+     report-screenshots, admin-message-attachments, services, and
+     kyc-documents, which held Aadhaar and passport scans.
+
+     ⚠️ This line only takes effect when a container is FIRST created. The ten
+     that already exist keep the access level they were made with, so this
+     fixes new containers only — the existing ones have to be changed in the
+     Azure portal (Storage account → Containers → each one → Change access
+     level → Private or Blob). See utils/blobStorage.js, which has always done
+     this correctly and also supports fully-private containers read through a
+     short-lived SAS. */
   await containerClient.createIfNotExists({
-    access: "container",
+    access: "blob",
   });
 
   const timestamp = Date.now();

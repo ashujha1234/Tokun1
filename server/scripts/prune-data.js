@@ -53,7 +53,7 @@ const TARGETS = [
 const NOT_TOUCHED = [
   "User", "Prompt", "FreelancerProfile", "Organization", "Category",
   "Conversation", "Message", "Notification", "Review", "Service",
-  "BankAccount", "KycSubmission", "AdminUser", "Cart", "Wallet",
+  "BankAccount", "AdminUser", "Cart", "Wallet",
 ];
 
 const money = (n) => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });

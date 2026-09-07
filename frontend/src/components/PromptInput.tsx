@@ -1414,16 +1414,20 @@ const generateOptimizedVersion = (originalText: string, optimizedText: string) =
     .join("\n")
     .trim();
 
-  const originalWords = originalText.split(/\s+/).filter(Boolean);
   const optimizedWords = cleanOptimizedText.split(/\s+/).filter(Boolean);
-  
-  // Calculate realistic token counts based on actual content
-  const originalTokens = Math.ceil(originalText.length / 4);
-  const optimizedTokens = Math.ceil(cleanOptimizedText.length / 4);
 
+  /* No token count here, deliberately.
+     There were two `Math.ceil(length / 4)` estimates on this spot — one of them
+     computed from the ORIGINAL text and never read at all, the other returned
+     as `tokens` and then thrown away by the only caller, which overrides it
+     with a real count from llmService.countTokens. So the number this function
+     produced was either unused or wrong, and it read like the authority on the
+     figure the whole panel is about.
+     `originalText` stays a parameter because the caller passes it and the
+     signature is used elsewhere in this file's history; it is only the
+     estimate that has gone. */
   return {
     text: cleanOptimizedText, // ✅ Use the full optimized text
-    tokens: optimizedTokens,
     words: optimizedWords.length,
     description: "Optimized for clarity and conciseness",
   };
@@ -1648,7 +1652,11 @@ const [inviteEmail, setInviteEmail] = useState("");
       const { tokens, words } = await llmService.countTokens(newText);
       onTokensChange(tokens, words);
     } catch {
-      // fallback: works offline / without API keys
+      /* Offline only. llmService.countTokens already falls back internally, so
+         reaching here means fetch itself threw — no network at all. A rough
+         number beside the box beats an empty one; the figure that matters, the
+         before/after on the result panel, is measured server-side during the
+         optimise call and never comes from this line. */
       const words = newText.trim() ? newText.trim().split(/\s+/).length : 0;
       const tokens = Math.ceil(newText.length / 4);
       onTokensChange(tokens, words);

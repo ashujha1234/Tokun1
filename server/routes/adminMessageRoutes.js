@@ -16,6 +16,40 @@ const Message = require("../models/Message");
 const { requireAuth } = require("../utils/auth");
 const { notifyAdmins } = require("../utils/notifyAdmins");
 
+/**
+ * Unread counts for a whole list of conversations, in one query.
+ *
+ * Both inbox endpoints in this file used to do this inside
+ * `conversations.map(async …)` — one countDocuments per conversation, fired
+ * concurrently but still one round trip each. Twenty threads meant twenty
+ * queries to build one screen, and the count grows with the inbox, which is
+ * the wrong direction for a support queue.
+ *
+ * `readBy: { $ne: viewerId }` reads as "this array does not contain the viewer",
+ * which is the same semantics the per-conversation version had — an array field
+ * with $ne matches documents where no element equals the value.
+ *
+ * Returns a Map keyed by conversation id as a STRING: an ObjectId is a fresh
+ * object each time it is deserialised, so Map lookups keyed on the ObjectId
+ * itself would miss.
+ */
+async function unreadCountsByConversation(conversationIds, viewerId) {
+  if (!conversationIds.length) return new Map();
+
+  const rows = await AdminMessage.aggregate([
+    {
+      $match: {
+        conversationId: { $in: conversationIds },
+        sender: { $ne: viewerId },
+        readBy: { $ne: viewerId },
+      },
+    },
+    { $group: { _id: "$conversationId", n: { $sum: 1 } } },
+  ]);
+
+  return new Map(rows.map((r) => [String(r._id), r.n]));
+}
+
 const uploadToAzure = require("../utils/uploadToAzure");
 const upload = require("../utils/chatUpload");
 
@@ -362,29 +396,29 @@ router.get("/admin/conversations", requireAuth, async (req, res) => {
       .populate("lastSender", "name email avatar avatarUrl role userType")
       .sort({ updatedAt: -1 });
 
-    const enriched = await Promise.all(
-      conversations.map(async (c) => {
-        const unreadCount = await AdminMessage.countDocuments({
-          conversationId: c._id,
-          sender: { $ne: adminId },
-          readBy: { $ne: adminId },
-        });
-
-        return {
-          _id: String(c._id),
-          id: String(c._id),
-          conversationId: String(c._id),
-          admin: c.adminId,
-          seller: c.sellerId,
-          otherUser: c.sellerId,
-          lastMessage: c.lastMessage || "",
-          lastSender: c.lastSender || null,
-          unreadCount,
-          updatedAt: c.updatedAt,
-          createdAt: c.createdAt,
-        };
-      })
+    /* One aggregate for the whole inbox instead of a countDocuments per
+       conversation — see unreadCountsByConversation. The map below is now
+       synchronous, so Promise.all is gone too. */
+    const unreadByConversation = await unreadCountsByConversation(
+      conversations.map((c) => c._id),
+      adminId
     );
+
+    const enriched = conversations.map((c) => ({
+      _id: String(c._id),
+      id: String(c._id),
+      conversationId: String(c._id),
+      admin: c.adminId,
+      seller: c.sellerId,
+      otherUser: c.sellerId,
+      lastMessage: c.lastMessage || "",
+      lastSender: c.lastSender || null,
+      // Absent from the aggregate means nothing unread, which $group cannot
+      // express as a zero row.
+      unreadCount: unreadByConversation.get(String(c._id)) || 0,
+      updatedAt: c.updatedAt,
+      createdAt: c.createdAt,
+    }));
 
     res.json({
       success: true,
@@ -714,29 +748,25 @@ router.get("/seller/conversations", requireAuth, async (req, res) => {
       .populate("lastSender", "name email avatar avatarUrl role userType")
       .sort({ updatedAt: -1 });
 
-    const enriched = await Promise.all(
-      conversations.map(async (c) => {
-        const unreadCount = await AdminMessage.countDocuments({
-          conversationId: c._id,
-          sender: { $ne: sellerId },
-          readBy: { $ne: sellerId },
-        });
-
-        return {
-          _id: String(c._id),
-          id: String(c._id),
-          conversationId: String(c._id),
-          admin: c.adminId,
-          seller: c.sellerId,
-          otherUser: c.adminId,
-          lastMessage: c.lastMessage || "",
-          lastSender: c.lastSender || null,
-          unreadCount,
-          updatedAt: c.updatedAt,
-          createdAt: c.createdAt,
-        };
-      })
+    /* Same single-aggregate shape as the admin inbox above. */
+    const unreadByConversation = await unreadCountsByConversation(
+      conversations.map((c) => c._id),
+      sellerId
     );
+
+    const enriched = conversations.map((c) => ({
+      _id: String(c._id),
+      id: String(c._id),
+      conversationId: String(c._id),
+      admin: c.adminId,
+      seller: c.sellerId,
+      otherUser: c.adminId,
+      lastMessage: c.lastMessage || "",
+      lastSender: c.lastSender || null,
+      unreadCount: unreadByConversation.get(String(c._id)) || 0,
+      updatedAt: c.updatedAt,
+      createdAt: c.createdAt,
+    }));
 
     res.json({
       success: true,

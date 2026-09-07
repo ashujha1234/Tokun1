@@ -4825,10 +4825,30 @@ export default function SavedCollection() {
       /* No heading, and no top margin to clear a folder grid that isn't there —
          the cards start where you'd expect them to. */
       <div className="w-full mt-2">
-        {/* items-start so a reel keeps its 9:16 shape — grid items stretch to
-            the tallest in the row by default, which overrides the card's own
-            aspect-ratio. */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6 lg:gap-8 items-start">
+        {/* Two different grids, because the two card types want opposite
+            things from it.
+
+            A prompt/reel card needs `items-start`: grid items stretch to the
+            tallest in the row by default, and that stretch overrides the
+            card's own 9:16 aspect-ratio.
+
+            A creator card needs exactly the reverse — the stretch is what
+            makes every card in a row the same height regardless of whether
+            someone wrote a long title or listed six skills. Saved creators
+            were rendering at ragged heights for precisely this reason: this
+            page put CreatorCard inside an `items-start` grid, while
+            /find-creators renders the same component in a plain
+            `grid ... gap-5`. Same card, different container, different result.
+
+            So the creator tab now uses the directory's grid verbatim. Any
+            change to one should be made to the other. */}
+        <div
+          className={
+            isCreatorSection
+              ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"
+              : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6 lg:gap-8 items-start"
+          }
+        >
           {isPromptSection &&
             directItems.map((it, idx) =>
               renderPromptCard(

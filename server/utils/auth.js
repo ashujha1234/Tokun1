@@ -164,4 +164,47 @@ function blockOrgTeamMemberPurchase(req, res, next) {
   return next();
 }
 
-module.exports = { requireAuth, blockIfSuspended, blockOrgTeamMemberPurchase };
+/**
+ * Sets `req.isAdmin` on a route that must stay reachable without a token.
+ *
+ * Some endpoints serve two audiences from one handler: a public payload for
+ * anonymous visitors and a wider one for the admin console. `requireAuth`
+ * cannot express that — it answers 401 — so those handlers were left
+ * unauthenticated and read `req.isAdmin`, which nothing had ever set. It was
+ * therefore always undefined, meaning an admin-only branch guarded by it was
+ * dead in both directions: the admin view could not be reached, and any field
+ * that should have been admin-only was either always or never sent.
+ *
+ * Never rejects. A missing, malformed, expired or non-admin token all mean the
+ * same thing here — treat the caller as the public — because on these routes
+ * that is a legitimate way to call them, not an error.
+ *
+ * Deliberately does NOT resolve normal user tokens into `req.user`: the
+ * distinction these routes draw is admin vs. everyone else, and loading a User
+ * that no handler reads would be a database round trip per anonymous request.
+ */
+async function optionalAdmin(req, _res, next) {
+  req.isAdmin = false;
+
+  try {
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+    if (!token) return next();
+
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    if (payload.type !== "admin") return next();
+
+    // Uncached and isActive-checked, matching requireAuth — a deactivated
+    // admin must lose the wider payload on their very next request.
+    const admin = await AdminUser.findById(payload.sub);
+    if (!admin || admin.isActive === false) return next();
+
+    req.user = admin;
+    req.isAdmin = true;
+    return next();
+  } catch {
+    return next();
+  }
+}
+
+module.exports = { requireAuth, optionalAdmin, blockIfSuspended, blockOrgTeamMemberPurchase };

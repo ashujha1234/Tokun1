@@ -438,15 +438,24 @@ import Footer from "@/components/Footer";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 
+/* `iconSrc` where the tool has a mark of its own; lucide only where it does
+   not. Same files the signed-in nav, the tool rail and the landing page's
+   What We Offer render — so a tool is named by one picture everywhere.
+
+   This page was the odd one out: Smartgen showed a lucide Sparkles and the
+   Optimiser a lucide Zap, while every other surface in the app showed their
+   real marks. Two different pictures for one tool reads as two tools. */
 const features = [
   {
     icon: Zap,
+    iconSrc: "/icons/prompt-optimization.svg",
     title: "Product Optimization",
     description:
       "Reduce token usage while keeping the meaning, clarity, and output quality strong across leading LLM platforms.",
   },
   {
     icon: Sparkles,
+    iconSrc: "/icons/smartgen.svg",
     title: "Smartgen Creation",
     description:
       "Turn rough ideas into structured, high-performing products in seconds with AI-assisted product generation.",
@@ -675,7 +684,20 @@ export default function AboutPage() {
                 >
                   <div className="rounded-[29px] bg-[#08090B] p-6 h-full transition-colors duration-300 group-hover:bg-[#0B0D11]">
                     <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/5 border border-white/10">
-                      <Icon className="h-6 w-6" />
+                      {item.iconSrc ? (
+                        <img
+                          src={item.iconSrc}
+                          alt=""
+                          aria-hidden="true"
+                          width={24}
+                          height={24}
+                          loading="lazy"
+                          decoding="async"
+                          style={{ display: "block" }}
+                        />
+                      ) : (
+                        <Icon className="h-6 w-6" />
+                      )}
                     </div>
 
                     <h3 className="text-xl font-semibold mb-3">

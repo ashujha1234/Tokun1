@@ -165,8 +165,9 @@ const looksLikeDuplicate = (a, b) => hammingDistance(a, b) <= DUPLICATE_DISTANCE
    way. */
 
 // One worker for the process, started on first use. Spinning one up per upload
-// costs a second or two of pure setup — the KYC OCR does the same, for the same
-// reason (see utils/kyc/ocrFrontNameRegion.js).
+// costs a second or two of pure setup. (The KYC OCR under utils/kyc did the
+// same, for the same reason; that whole flow is deleted, so this is now the
+// only Tesseract worker in the app.)
 let workerPromise;
 function getWorker() {
   if (!workerPromise) {

@@ -7,7 +7,6 @@ const path = require("path");
 // global (Node 18+), which has no createHmac — so /verify threw a TypeError on
 // its very first statement and every cart payment 500'd before a single purchase
 // was written.
-const crypto = require("crypto");
 const mongoose = require("mongoose");
 const Purchase = require("../models/Purchase");
 const { requireAuth, blockIfSuspended, blockOrgTeamMemberPurchase } = require("../utils/auth"); // your JWT middleware
@@ -16,6 +15,14 @@ const user=require('../models/User');
 const Prompt=require('../models/Prompt');
 const  razorpay  = require("../utils/razorpay");
 const { splitPromptSale } = require("../utils/commission");
+// Same rule as POST /api/purchase/verify — one place, so the two checkouts
+// cannot disagree about what a valid payment callback is.
+const {
+  PaymentRejected,
+  readPaymentFields,
+  resolvePaidOrder,
+  assertOrderUnused,
+} = require("../utils/paymentIntegrity");
 const { promptUnavailableReason } = require("../utils/promptVisibility");
 const ledger = require("../utils/ledger");
 const {
@@ -211,15 +218,41 @@ router.get("/", requireAuth, async (req, res) => {
       try {
         let ceiling = tokunCut;
 
+        /* One query for every seller in the cart, instead of one findOne per
+           seller inside the loop. This runs on GET /cart, so it fired on every
+           cart render.
+
+           The original took the SOONEST-EXPIRING active waiver per seller
+           (`.sort({ expiresAt: 1 })` + findOne). That is preserved by sorting
+           the batched result the same way and keeping the first row seen for
+           each seller — `Map.set` is skipped on subsequent rows, so first wins,
+           and first is soonest. */
+        /* [...sellerIds], not sellerIds — it is a Set (declared above), and
+           $in needs an array. Handed a Set, Mongoose casts it as a single
+           value and throws:
+
+             Cast to ObjectId failed for value "Set(1) { '6a72...' }"
+               (type Set) at path "userId" for model "CommissionRebate"
+
+           The loop this replaced iterated the Set with for..of, which works,
+           so the type was easy to miss when batching the query. */
+        const waiverRows = await CommissionRebate.find({
+          userId: { $in: [...sellerIds] },
+          kind: "seller_commission",
+          status: "ACTIVE",
+          expiresAt: { $gt: new Date() },
+        })
+          .sort({ expiresAt: 1 })
+          .lean();
+
+        const soonestWaiverBySeller = new Map();
+        for (const w of waiverRows) {
+          const key = String(w.userId);
+          if (!soonestWaiverBySeller.has(key)) soonestWaiverBySeller.set(key, w);
+        }
+
         for (const sellerId of sellerIds) {
-          const waiver = await CommissionRebate.findOne({
-            userId: sellerId,
-            kind: "seller_commission",
-            status: "ACTIVE",
-            expiresAt: { $gt: new Date() },
-          })
-            .sort({ expiresAt: 1 })
-            .lean();
+          const waiver = soonestWaiverBySeller.get(String(sellerId));
           if (waiver) ceiling -= Number(waiver.maxAmount || 0);
         }
 
@@ -500,24 +533,44 @@ router.post("/checkout", requireAuth, blockIfSuspended, blockOrgTeamMemberPurcha
 // POST /api/cart/verify
 router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
   try {
-    const { razorpayPaymentId, razorpayOrderId, razorpaySignature, pricePaid } = req.body;
+    // All three spellings accepted — see readPaymentFields. `pricePaid` rides
+    // along in this body and is ignored: the charge comes off the order.
+    const { razorpayOrderId, razorpayPaymentId, razorpaySignature } =
+      readPaymentFields(req.body);
 
     let cart = await Cart.findOne({ user: req.user._id }).populate("items.prompt");
     if (!cart || cart.items.length === 0) {
       return res.status(400).json({ success: false, error: "cart_empty" });
     }
 
-    // verify signature. Keyed off the env var, same as every other Razorpay
-    // signature check in the app — `razorpay.key_secretT` was a typo for a
-    // property the SDK instance doesn't expose either way, so the HMAC key was
-    // undefined and no signature could ever have matched.
-    const generatedSignature = crypto
-      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(razorpayOrderId + "|" + razorpayPaymentId)
-      .digest("hex");
-
-    if (generatedSignature !== razorpaySignature) {
-      return res.status(400).json({ success: false, error: "invalid_signature" });
+    /* The signature used to be the entire check, and this endpoint is the worse
+       half of that story: it reads the cart AT VERIFY TIME, so a signature from
+       a paid ₹10 cart could be replayed against a cart refilled with anything.
+       See utils/paymentIntegrity.js. The order carries notes.userId and
+       notes.kind, so the callback is checked against the order it claims to be
+       for, and an order can only be redeemed once. */
+    let orderAmountPaid = 0;
+    try {
+      await assertOrderUnused(razorpayOrderId);
+      ({ amountPaid: orderAmountPaid } = await resolvePaidOrder({
+        razorpayOrderId,
+        razorpayPaymentId,
+        razorpaySignature,
+        buyerId: req.user._id,
+        kind: "CART_CHECKOUT",
+      }));
+    } catch (rejected) {
+      if (rejected instanceof PaymentRejected) {
+        console.warn(
+          `cart verify rejected (${rejected.code}) buyer=${req.user._id} order=${razorpayOrderId}`
+        );
+        return res.status(rejected.status).json({
+          success: false,
+          error: rejected.code,
+          message: rejected.buyerMessage,
+        });
+      }
+      throw rejected;
     }
 
     /* The buyer's welcome discount, if this checkout spent one. Read once here
@@ -537,8 +590,8 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
       return sum + Number(s.buyerPays || 0);
     }, 0);
 
-    /* Taken from the ORDER, with the credit row as the fallback — the same fix
-       as POST /api/purchase/verify, for the same reason.
+    /* Taken from the ORDER — resolvePaidOrder already fetched it above, so this
+       is the same figure with no second call.
 
        Reading it off the credit alone recorded the full price whenever that
        lookup came back empty, while the card had been charged the discounted
@@ -548,19 +601,33 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
        bindCreditToOrder's failure is logged rather than raised. Razorpay was
        handed the discounted figure at checkout, so its order is the only record
        that cannot disagree with the card. */
-    let cartDiscountApplied = null;
-    try {
-      const order = await razorpay.orders.fetch(String(razorpayOrderId));
-      const paise = Number(order?.amount_paid) || Number(order?.amount) || 0;
-      if (paise > 0) {
-        cartDiscountApplied = +Math.max(0, cartTotalBeforeDiscount - paise / 100).toFixed(2);
-      }
-    } catch (orderErr) {
-      console.error("Cart order fetch failed at verify:", orderErr?.message || orderErr);
-    }
+    let cartDiscountApplied =
+      orderAmountPaid > 0
+        ? +Math.max(0, cartTotalBeforeDiscount - orderAmountPaid).toFixed(2)
+        : Number(buyerDiscountCreditDoc?.amountPaid || 0);
 
-    if (cartDiscountApplied == null) {
-      cartDiscountApplied = Number(buyerDiscountCreditDoc?.amountPaid || 0);
+    /* ── The cart must still be the cart that was paid for ──────────────────
+       A cart order's notes carry the buyer but no item list, so unlike the
+       single-listing endpoint there is nothing to bind line-by-line. What CAN
+       be checked is the money: the gap between what this cart costs now and
+       what Razorpay actually charged is a discount, and a discount is only
+       legitimate up to the credit this buyer actually holds for this order.
+
+       Anything beyond that means the cart grew after payment — add a ₹10 item,
+       check out, pay, then refill the cart with ₹50,000 of listings and post
+       the same callback. Without this the excess was silently absorbed into
+       `cartDiscountApplied` and every line was granted.
+
+       ₹1 of tolerance for the rounding that per-line splitPromptSale does
+       against a single order amount. */
+    const discountEntitlement = Number(buyerDiscountCreditDoc?.amountPaid || 0);
+    if (cartDiscountApplied > discountEntitlement + 1) {
+      console.warn(
+        `cart verify rejected (cart_changed_after_payment) buyer=${req.user._id} ` +
+          `order=${razorpayOrderId} paid=${orderAmountPaid} cartNow=${cartTotalBeforeDiscount.toFixed(2)} ` +
+          `entitled=${discountEntitlement}`
+      );
+      return res.status(400).json({ success: false, error: "cart_changed_after_payment" });
     }
 
     // Which sellers Razorpay already paid via a Route transfer on this order.
@@ -614,21 +681,63 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
         purchases.length = 0;
         ledgerRows = [];
 
+        /* Both per-item lookups below used to run INSIDE the loop: one
+           Purchase.findOne and one CommissionRebate.findOne per line, so a
+           10-item cart made 20 round trips before it wrote anything — on the
+           payment path, serially, inside a transaction that holds locks the
+           whole time.
+
+           Hoisted here rather than outside withTransaction so they stay on the
+           same session and therefore the same snapshot the loop reads; moving
+           them out would have changed the isolation, not just the count. */
+        const promptIds = cart.items.map((i) => i.prompt._id);
+        const sellerIds = [
+          ...new Set(cart.items.map((i) => String(i.prompt.userId)).filter(Boolean)),
+        ];
+
+        const ownedRows = await Purchase.find({
+          buyer: req.user._id,
+          prompt: { $in: promptIds },
+          paymentStatus: "SUCCESS",
+        })
+          .select({ prompt: 1 })
+          .session(session)
+          .lean();
+
+        /* A Set of prompt ids the buyer already owns.
+
+           This is ALSO the guard against the same prompt appearing twice in one
+           cart: the per-item findOne caught that, because by the second line the
+           first Purchase.create had already committed within the transaction. A
+           batched read taken once cannot see writes made later in the loop, so
+           ids are added to this set as they are created (see below). Without
+           that, a duplicated cart line would be charged twice. */
+        const owned = new Set(ownedRows.map((r) => String(r.prompt)));
+
+        const rebateRows = await CommissionRebate.find({
+          userId: { $in: sellerIds },
+          status: "RESERVED",
+          reservedForOrderId: String(razorpayOrderId || ""),
+        })
+          .session(session)
+          .lean();
+
+        /* Keyed by seller, which reproduces findOne's behaviour exactly —
+           including that two lines from the SAME seller both match the same
+           reserved rebate. Whether that should waive twice is a question about
+           CommissionRebate.maxAmount semantics, not about this loop, so it is
+           left as it was rather than quietly changed here. */
+        const rebateBySeller = new Map(rebateRows.map((r) => [String(r.userId), r]));
+
         for (let item of cart.items) {
           const p = item.prompt;
 
           // skip free prompts (still save record)
           if (p.free || (!p.free && !p.exclusive) || (p.exclusive && !p.sold)) {
-            // Don't process a prompt the buyer already owns. Guards both a
-            // double-submitted /verify and a retry of this transaction.
-            const alreadyOwned = await Purchase.findOne({
-              buyer: req.user._id,
-              prompt: p._id,
-              paymentStatus: "SUCCESS",
-            })
-              .select({ _id: 1 })
-              .session(session);
-            if (alreadyOwned) continue;
+            // Don't process a prompt the buyer already owns. Guards a
+            // double-submitted /verify, a retry of this transaction, and a
+            // duplicated line within this same cart — see `owned` above.
+            if (owned.has(String(p._id))) continue;
 
             const split = splitPromptSale(p);
 
@@ -637,13 +746,7 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
                somebody's abandoned cart can't be read as this one. The numbers
                recorded below have to be the ones Razorpay actually transferred
                — the refund path recovers `pricePaid − platformCommission`. */
-            const waivedCredit = await CommissionRebate.findOne({
-              userId: p.userId,
-              status: "RESERVED",
-              reservedForOrderId: String(razorpayOrderId || ""),
-            })
-              .session(session)
-              .lean();
+            const waivedCredit = rebateBySeller.get(String(p.userId)) || null;
 
             const commissionWaived = waivedCredit
               ? Math.min(split.sellerFee, waivedCredit.maxAmount)
@@ -758,6 +861,13 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
 
             req.user.purchasedPrompts.push(purchase._id);
             purchases.push(purchase);
+
+            /* Keeps the batched ownership set in step with what this loop has
+               just written. The per-item findOne this replaced saw its own
+               earlier writes inside the transaction; a set read once before the
+               loop does not, so a cart holding the same prompt on two lines
+               would otherwise be charged for it twice. */
+            owned.add(String(p._id));
 
             // Pure JS, no I/O — cannot affect the transaction. Flushed below,
             // once the commit has actually happened.

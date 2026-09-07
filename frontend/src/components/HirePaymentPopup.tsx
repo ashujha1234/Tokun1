@@ -1,22 +1,18 @@
 import { X } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import { withTokunBranding } from "@/lib/razorpayTheme";
+import { ensureRazorpay } from "@/lib/razorpayCheckout";
 
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
+/* Kept as a thin wrapper rather than replacing every call below: this one
+   resolved `false` on failure where the others rejected, and the callers are
+   written around that. See src/lib/razorpayCheckout.ts. */
 function loadRazorpayScript() {
-  return new Promise<boolean>((resolve) => {
-    if ((window as any).Razorpay) {
-      resolve(true);
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
+  return ensureRazorpay().then(
+    () => true,
+    () => false
+  );
 }
 
 export default function HirePaymentPopup({

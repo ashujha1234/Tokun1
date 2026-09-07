@@ -670,6 +670,7 @@ const { logActivity } = require("../utils/activityLogger");
    not just an out-of-date number. */
 const SELLER_ID_CACHE_TTL_MS = 30 * 1000;
 const { runPromptMediaValidation } = require("../utils/promptMediaValidation");
+const { verifyVideoBuffer, verifyImageBuffer } = require("../utils/promptAttachment");
 const {
   applyPublicPromptFilter,
   excludeSoldOut,
@@ -679,12 +680,25 @@ const {
   MAX_CODE_ASSETS,
   MAX_CODE_FILE_MB,
   MAX_CODE_FILE_BYTES,
+  MAX_INLINE_CHARS,
   CODE_LANGUAGES,
   isAllowedCodeFile,
   languageFromFilename,
   normalizeAuthoredCodeAssets,
   buildCodeMeta,
 } = require("../utils/promptCode");
+
+/* The attachment ceiling, named rather than inlined into the multer config.
+   It is now also served to the client (see GET /code-languages), and a limit
+   that is enforced in one place and displayed from another has to be readable
+   from both. */
+const MAX_ATTACHMENT_MB = 100;
+const MAX_ATTACHMENT_BYTES = MAX_ATTACHMENT_MB * 1024 * 1024;
+
+/* Only what the browser can actually preview and what the server can screen —
+   see the fileFilter and the video probe on POST /. Kept next to the ceiling so
+   the two halves of "what may be uploaded" are read together. */
+const ALLOWED_ATTACHMENT_MIME_PREFIXES = ["image/", "video/"];
 
 /**
  * Puts `promptText` back on the free listings in a public payload, in place.
@@ -900,7 +914,39 @@ const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // before it goes to Azure, so this ceiling is also the per-request memory cost.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
+  limits: { fileSize: MAX_ATTACHMENT_BYTES },
+
+  /* This route was one of only two upload routes with no fileFilter at all.
+     The handler did check the mimetype, but only AFTER multer had buffered the
+     whole part into memory — so a rejected 100 MB upload still cost 100 MB of
+     RAM and the bandwidth to receive it. Rejecting at the stream boundary is
+     the point of fileFilter.
+
+     `uploadCode` is passed through here and validated by name and size in
+     collectCodeAssets, which owns the code-file allowlist
+     (utils/promptCode.js). Two different rules for two different fields, so
+     the filter only adjudicates the one it knows about.
+
+     Note this is still the CLIENT'S declared mimetype and remains spoofable —
+     it is a cheap early reject, not the real check. The real check is decoding
+     the bytes, which happens in the handler via utils/promptAttachment.js. */
+  fileFilter: (_req, file, cb) => {
+    if (file.fieldname !== "attachment") return cb(null, true);
+
+    const mime = String(file.mimetype || "");
+    if (ALLOWED_ATTACHMENT_MIME_PREFIXES.some((p) => mime.startsWith(p))) {
+      return cb(null, true);
+    }
+
+    /* A real multer.MulterError, not a plain Error carrying a `code`.
+       index.js's handler branches on `err instanceof multer.MulterError`, so a
+       look-alike falls through to the 500 branch — which is exactly what
+       happened on the first attempt at this: uploading a .html answered
+       500 server_error instead of a 400 the seller could act on. */
+    const err = new multer.MulterError("LIMIT_UNEXPECTED_FILE", file.fieldname);
+    err.message = "Only image or video files can be attached to a listing.";
+    return cb(err);
+  },
 });
 
 /* =====================================================================
@@ -965,6 +1011,30 @@ router.post(
         });
       }
 
+      /* The mimetype above is the CLIENT'S claim — multer reads it off the
+         multipart part's Content-Type. Everything downstream branches on it:
+         image uploads get perceptual-hash and watermark screening, video
+         uploads used to get nothing at all and were passed straight through to
+         a publicly-listable Azure container. So a request declaring video/mp4
+         on any 100 MB payload skipped every check in this handler.
+
+         Decoding the bytes is the only answer that a crafted file cannot
+         satisfy, so both branches now do it — before the hash checks, since
+         there is no point hashing something that will be rejected, and well
+         before anything reaches Azure. */
+      const verified =
+        fileType === "video"
+          ? await verifyVideoBuffer(file.buffer, file.originalname)
+          : await verifyImageBuffer(file.buffer);
+
+      if (!verified.ok) {
+        return res.status(400).json({
+          success: false,
+          error: fileType === "video" ? "invalid_video_file" : "invalid_image_file",
+          message: verified.reason,
+        });
+      }
+
       // Duplicate check — same prompt text OR same attachment file (by
       // content hash) already listed by ANY seller. Checked before
       // watermarking/uploading to Azure so a rejected upload doesn't waste
@@ -1009,18 +1079,25 @@ router.post(
       }
 
       // Image → tokun.world text watermark
-      // Video → TOKUN.AI intro clip aage jodo (Netflix style)
+      /* Images get the tokun.world watermark. Videos are uploaded as received.
+         The comment here used to promise "Video → TOKUN.AI intro clip aage jodo
+         (Netflix style)" — no such concatenation exists, in this file or
+         anywhere else, so it described a feature that was never built. Removed
+         rather than left to mislead the next reader into thinking video is
+         already branded. */
       let bufferToUpload = file.buffer;
 
       if (fileType === "image") {
         try {
           bufferToUpload = await watermarkImage(file.buffer);
         } catch (e) {
+          /* Falls back to the unwatermarked original deliberately: a failed
+             watermark should not block a listing. Note this is why image
+             validity is now checked explicitly above rather than inferred from
+             sharp succeeding here — this catch would have swallowed it. */
           console.error("watermark failed, original upload:", e.message);
           bufferToUpload = file.buffer;
         }
-      } else if (fileType === "video") {
-        bufferToUpload = file.buffer;
       }
 
       // Video output hamesha mp4 hota hai — blob ka naam/mimetype usी hisaab se
@@ -2171,9 +2248,31 @@ router.post("/:id/code/access", requireAuth, async (req, res) => {
    value normalizeLanguage() will quietly rewrite to "other". Static, public, and
    safe to cache hard.
    ===================================================================== */
+/* `limits` rides along on this request for the same reason the KYC matrix rides
+   along on GET /bankaccount/business-categories: the upload form needs both
+   before it can render a field correctly, and the modal already calls this
+   endpoint on open — so serving them together costs no extra round trip.
+
+   Why serve them at all: every one of these numbers existed twice, once here
+   and once as a literal in SellPromptModal.tsx, kept in step by a comment
+   asking the next person to remember. Nothing failed when they drifted — the
+   client would simply accept a file the server then rejected, or refuse one the
+   server would have taken. Now the server owns them and the client displays
+   what it is told. The client keeps its literals as a fallback for when this
+   fetch fails, which is the one case where a stale limit beats no limit. */
 router.get("/code-languages", (_req, res) => {
   res.set("Cache-Control", "public, max-age=86400");
-  return res.json({ success: true, languages: CODE_LANGUAGES });
+  return res.json({
+    success: true,
+    languages: CODE_LANGUAGES,
+    limits: {
+      attachmentMb: MAX_ATTACHMENT_MB,
+      attachmentMimePrefixes: ALLOWED_ATTACHMENT_MIME_PREFIXES,
+      codeItems: MAX_CODE_ASSETS,
+      codeFileMb: MAX_CODE_FILE_MB,
+      inlineChars: MAX_INLINE_CHARS,
+    },
+  });
 });
 
 /* =====================================================================

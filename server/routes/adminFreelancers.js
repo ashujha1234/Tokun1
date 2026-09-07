@@ -92,7 +92,6 @@ function serializeRow(profile) {
           email: user.email,
           avatarUrl: user.avatarUrl,
           userType: user.userType,
-          kycStatus: user.kycStatus,
           isVerified: user.isVerified,
           createdAt: user.createdAt,
         }
@@ -189,7 +188,7 @@ router.get("/videos", async (req, res) => {
         .sort(sort)
         .skip((page - 1) * limit)
         .limit(limit)
-        .populate("userId", "name email avatarUrl userType kycStatus isVerified createdAt")
+        .populate("userId", "name email avatarUrl userType isVerified createdAt")
         .populate("specializations", "name slug")
         .lean(),
       FreelancerProfile.countDocuments(filter),
@@ -263,7 +262,7 @@ router.get("/", async (req, res) => {
         .sort({ activatedAt: -1, updatedAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
-        .populate("userId", "name email avatarUrl userType kycStatus isVerified createdAt")
+        .populate("userId", "name email avatarUrl userType isVerified createdAt")
         .populate("specializations", "name slug")
         .lean(),
       FreelancerProfile.countDocuments(filter),
@@ -302,7 +301,7 @@ router.get("/:id", async (req, res) => {
     const profile = await FreelancerProfile.findById(id)
       .populate(
         "userId",
-        "name email avatarUrl userType kycStatus isVerified createdAt location sellerStatus"
+        "name email avatarUrl userType isVerified createdAt location sellerStatus"
       )
       .populate("specializations", "name slug group description")
       .lean();

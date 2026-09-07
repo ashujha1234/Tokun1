@@ -6,7 +6,6 @@
 // // const Purchase = require("../models/Purchase");
 const CommissionRebate = require("../models/CommissionRebate");
 // // const { requireAuth } = require("../utils/auth");
-// // const { requireKycVerified } = require("../utils/requireKycVerified");
 // // const { logActivity } = require("../utils/activityLogger");
 // // const crypto = require('crypto');
 
@@ -191,7 +190,6 @@ const CommissionRebate = require("../models/CommissionRebate");
 // const Purchase = require("../models/Purchase");
 // const Wallet = require("../models/Wallet");           // ← NEW
 // const { requireAuth } = require("../utils/auth");
-// const { requireKycVerified } = require("../utils/requireKycVerified");
 // const { logActivity } = require("../utils/activityLogger");
 // const crypto = require("crypto");
 
@@ -390,12 +388,19 @@ const Wallet = require("../models/Wallet");
 const PlatformWallet = require("../models/PlatformWallet");
 const BankAccount = require("../models/BankAccount");
 const { requireAuth, blockIfSuspended, blockOrgTeamMemberPurchase } = require("../utils/auth");
+const { requireAdmin } = require("../middleware/requireAdmin");
+// What turns a signed Razorpay callback into proof that THIS listing was paid
+// for by THIS buyer. Shared with cartRoute.js so both checkouts cannot drift.
+const {
+  PaymentRejected,
+  readPaymentFields,
+  resolvePaidOrder,
+  assertOrderUnused,
+} = require("../utils/paymentIntegrity");
 const { splitPromptSale } = require("../utils/commission");
 const { promptUnavailableReason } = require("../utils/promptVisibility");
 const ledger = require("../utils/ledger");
-const { requireKycVerified } = require("../utils/requireKycVerified");
 const { logActivity } = require("../utils/activityLogger");
-const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
 const { embedWatermark, extractWatermark } = require("../utils/nvisibleWatermark");
@@ -706,12 +711,19 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
   try {
     const { promptId } = req.params;
 
-    const {
-      razorpayPaymentId,
-      razorpayOrderId,
-      razorpaySignature,
-      pricePaid,
-    } = req.body;
+    /* Accepts camelCase, Razorpay's own snake_case, and the bare
+       orderId/paymentId/signature triple — see readPaymentFields.
+
+       `pricePaid` also arrives in this body and is deliberately not read. It
+       used to be destructured here and reached four places in
+       settleAfterPurchase — the payment ledger row, the invoice email, the
+       seller's sale email and the activity log — even though the Purchase row
+       itself already ignored it in favour of the order's own amount. So a
+       caller could name the figure that appeared on an invoice and in the
+       books while the stored record said something else. All four now read
+       `chargedToBuyer`, which is what purchase.pricePaid is written from. */
+    const { razorpayOrderId, razorpayPaymentId, razorpaySignature } =
+      readPaymentFields(req.body);
 
     const prompt = await Prompt.findById(promptId);
 
@@ -737,20 +749,36 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
       });
     }
 
-    // Verify Razorpay signature
-    const generatedSignature = crypto
-      .createHmac(
-        "sha256",
-        process.env.RAZORPAY_KEY_SECRET
-      )
-      .update(razorpayOrderId + "|" + razorpayPaymentId)
-      .digest("hex");
-
-    if (generatedSignature !== razorpaySignature) {
-      return res.status(400).json({
-        success: false,
-        error: "invalid_payment_signature",
-      });
+    /* The signature ALONE used to be the whole check here, and a signature is
+       not a receipt for a particular listing — it stays valid for any promptId
+       this endpoint is called with. See utils/paymentIntegrity.js for the
+       replay that bought the catalogue for ₹10; this resolves the callback
+       into the paid order it is actually for and refuses anything else.
+       `order` is authoritative from here on: status paid, notes.userId is this
+       buyer, notes.promptId is this listing. */
+    let orderAmountPaid = 0;
+    try {
+      await assertOrderUnused(razorpayOrderId);
+      ({ amountPaid: orderAmountPaid } = await resolvePaidOrder({
+        razorpayOrderId,
+        razorpayPaymentId,
+        razorpaySignature,
+        buyerId: req.user._id,
+        kind: "PROMPT_PURCHASE",
+        promptId,
+      }));
+    } catch (rejected) {
+      if (rejected instanceof PaymentRejected) {
+        console.warn(
+          `verify rejected (${rejected.code}) buyer=${req.user._id} prompt=${promptId} order=${razorpayOrderId}`
+        );
+        return res.status(rejected.status).json({
+          success: false,
+          error: rejected.code,
+          message: rejected.buyerMessage,
+        });
+      }
+      throw rejected;
     }
 
     // Check if buyer already purchased this prompt
@@ -807,18 +835,16 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
        credit row is a record of a decision, not the decision itself.
 
        The order is. Razorpay was handed the discounted amount at create-order
-       time and that is what it charged, so fetching the order server-side gives
-       the one figure that cannot disagree with the card. `amount` is in paise.
-       (Fetched rather than taken from the request body, where `pricePaid` also
-       arrives — a client-named price decides what a refund pays out.) */
-    let chargedToBuyer = null;
-    try {
-      const order = await Razorpay.orders.fetch(String(razorpayOrderId));
-      const paise = Number(order?.amount_paid) || Number(order?.amount) || 0;
-      if (paise > 0) chargedToBuyer = +(paise / 100).toFixed(2);
-    } catch (orderErr) {
-      console.error("Order fetch failed at verify:", orderErr?.message || orderErr);
-    }
+       time and that is what it charged, so the order's own figure is the one
+       that cannot disagree with the card. (Read from the order rather than from
+       the request body, where `pricePaid` also arrives — a client-named price
+       decides what a refund pays out.)
+
+       No second fetch: resolvePaidOrder above already returned this, and it
+       fetched the order because it HAD to in order to check the binding. What
+       used to be a best-effort read with a silent fallback is now a value the
+       request cannot get this far without. */
+    let chargedToBuyer = orderAmountPaid > 0 ? orderAmountPaid : null;
 
     /* Falling back to the credit lookup, which is what this did all along, and
        then to the undiscounted split. A sale must not fail to record because
@@ -955,7 +981,12 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
         kind: "PAYMENT",
         direction: "IN",
         purpose: "PROMPT_PURCHASE",
-        amount: ledger.toPaise(pricePaid),
+        /* chargedToBuyer, which is what `purchase.pricePaid` was written from.
+           This used to be the client's `pricePaid` off the request body — so a
+           ledger row, an invoice and two emails could all quote a figure the
+           caller named while the Purchase itself stored the server-derived one.
+           The four uses below moved for the same reason. */
+        amount: ledger.toPaise(chargedToBuyer),
         occurredAt: purchase.purchasedAt || new Date(),
         razorpayPaymentId,
         razorpayOrderId,
@@ -1074,7 +1105,7 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
         // Mirrors generateInvoicePDF's own maths so the email body matches the
         // attached PDF exactly. GST is off in both — see the note in
         // services/invoice.service.js.
-        const subtotal = Number(pricePaid || 0);
+        const subtotal = Number(chargedToBuyer || 0);
         // const gst = +(subtotal * 0.18).toFixed(2);
         const gst = 0;
         const total = +subtotal.toFixed(2);
@@ -1169,7 +1200,7 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
             sellerName: seller.name,
             productTitle: prompt.title,
             buyerName: req.user.name,
-            salePrice: pricePaid,
+            salePrice: chargedToBuyer,
             platformCut: platformCommission,
             netEarning: split.sellerNet,
             soldAt: purchase.purchasedAt,
@@ -1193,7 +1224,7 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
         targetType: "Prompt",
         targetName: prompt.title,
         meta: {
-          price: pricePaid,
+          price: chargedToBuyer,
           promptId: String(prompt._id),
           razorpayPaymentId,
         },
@@ -1287,14 +1318,10 @@ router.get("/history", requireAuth, async (req, res) => {
 });
 
 
-// Admin-only. Local guard mirroring sellerRoutes.js — requireAuth sets
-// req.isAdmin from the admin JWT; this just rejects non-admins.
-function requireAdmin(req, res, next) {
-  if (!req.isAdmin) {
-    return res.status(403).json({ success: false, error: "forbidden" });
-  }
-  next();
-}
+/* The local copy of this that used to live here is gone — see
+   middleware/requireAdmin.js, imported at the top of this file. Identical
+   behaviour; the point of centralising it is that a local definition is what
+   let userAdminRoutes.js ship a pass-through stub that read as a real gate. */
 
 // GET /api/purchase/admin/user/:userId
 // Itemized "bought" list for ANY user, for the admin user-profile view.
@@ -1356,6 +1383,42 @@ router.get("/admin/user/:userId", requireAuth, requireAdmin, async (req, res) =>
 const refundUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024, files: 5 },
+
+  /* This was the second of the two upload routes with no fileFilter at all —
+     the other was the listing attachment in routes/promptRoutes.js. Nothing
+     downstream looked at the mimetype either: whatever multer buffered went
+     straight to uploadToAzure and its URL was stored on the RefundRequest, so
+     an .html or .svg attached here became a file served from our own Blob
+     container and opened by an admin from the refund queue.
+
+     Images only, matching the `accept="image/*"` on both refund pickers
+     (frontend/src/pages/self-dash.tsx, components/PromptHistory.tsx) — the
+     admin queue renders these as <img>, so a video was never viewable here
+     even though listings allow them.
+
+     Still the CLIENT'S declared mimetype and therefore spoofable. It is a
+     cheap reject at the stream boundary, not proof of content; the value is
+     that a rejected file costs neither the RAM to buffer nor the Blob write. */
+  fileFilter: (_req, file, cb) => {
+    const mime = String(file.mimetype || "").toLowerCase();
+
+    /* SVG is excluded even though it is an image/* type. A screenshot is never
+       an SVG, and an SVG is a document that can carry script — AdminRefundsPage
+       links each attachment with target="_blank", so opening one would run it
+       on the Blob container's own origin. */
+    const isSvg = mime.startsWith("image/svg");
+
+    if (!isSvg && mime.startsWith("image/")) return cb(null, true);
+
+    /* A real multer.MulterError, not a plain object carrying a `code` —
+       index.js branches on `err instanceof multer.MulterError` and anything
+       else falls through to the 500 branch instead of a 400 the buyer can
+       act on. The trailing period matters too: that handler only passes a
+       message through when it reads like a sentence. */
+    const err = new multer.MulterError("LIMIT_UNEXPECTED_FILE", file.fieldname);
+    err.message = "Only image files can be attached to a refund request.";
+    return cb(err);
+  },
 });
 
 router.post("/:purchaseId/refund-request", requireAuth, refundUpload.array("attachments", 5), async (req, res) => {
@@ -1523,7 +1586,11 @@ router.get("/refund-requests/mine", requireAuth, async (req, res) => {
 });
 
 // GET /api/purchase/analytics/sales
-router.get("/analytics/sales", async (req, res) => {
+/* Admin-only. All four analytics routes here were defined with no middleware,
+   so revenue by month, revenue by category and seller/buyer trends were
+   readable by anyone who knew the URL. No PII in them, but it is the
+   platform's commercial position. */
+router.get("/analytics/sales", requireAuth, requireAdmin, async (req, res) => {
   try {
     const monthlySales = await Purchase.aggregate([
       {
@@ -1562,7 +1629,11 @@ router.get("/analytics/sales", async (req, res) => {
 // Monthly sales count broken down by prompt category — capped to the top N
 // categories (by total sales in-range) plus an "Other" bucket, since this
 // platform has 20+ categories and a chart can't show that many series at once.
-router.get("/analytics/sales-by-category", async (req, res) => {
+/* Admin-only. All four analytics routes below were defined with no middleware,
+   so revenue by month, revenue by category, and seller/buyer trends were
+   readable by anyone who knew the URL. No PII in them, but it is the
+   platform's commercial position. */
+router.get("/analytics/sales-by-category", requireAuth, requireAdmin, async (req, res) => {
   try {
     const TOP_N = 6;
     const monthsBack = Math.max(1, Math.min(24, parseInt(req.query.months, 10) || 6));
@@ -1672,7 +1743,7 @@ function buildMonthBuckets(monthsBack) {
 // Real seller-side signal: money actually paid out to sellers (revenue minus
 // platform commission) and how many distinct sellers made at least one sale
 // that month — NOT the same platform-wide revenue/count pair shown before.
-router.get("/analytics/seller-trends", async (req, res) => {
+router.get("/analytics/seller-trends", requireAuth, requireAdmin, async (req, res) => {
   try {
     const monthsBack = Math.max(1, Math.min(24, parseInt(req.query.months, 10) || 6));
     const { since, keys, labels } = buildMonthBuckets(monthsBack);
@@ -1719,7 +1790,7 @@ router.get("/analytics/seller-trends", async (req, res) => {
 // GET /api/purchase/analytics/user-trends?months=6
 // Real user-side signal: new signups and total buyer spend per month —
 // distinct from the seller-trends numbers above, not a relabeled duplicate.
-router.get("/analytics/user-trends", async (req, res) => {
+router.get("/analytics/user-trends", requireAuth, requireAdmin, async (req, res) => {
   try {
     const monthsBack = Math.max(1, Math.min(24, parseInt(req.query.months, 10) || 6));
     const { since, keys, labels } = buildMonthBuckets(monthsBack);

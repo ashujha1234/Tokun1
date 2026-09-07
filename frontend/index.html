@@ -65,24 +65,18 @@
   <body>
     <div id="root"></div>
 
-    <!-- Razorpay Checkout.
-         `defer` is the whole point of this line. Without it this is a classic
-         parser-blocking script: the browser stops parsing, fetches ~100 kB from
-         a third-party CDN, runs it, and only THEN reaches the module below that
-         actually renders the app. Nothing on first paint needs Razorpay — it is
-         needed the moment someone opens checkout, which is never within the
-         first second. Deferred, it downloads alongside the page and executes
-         after parsing, so it no longer sits in front of first render.
+    <!-- Razorpay Checkout is NOT loaded here.
+         It used to be, deferred, which kept it out of the render path but still
+         put a third-party payment bundle on the wire for every visitor to every
+         page — the landing page, a shared profile link, the marketplace. Most
+         visits never reach a checkout at all.
 
-         It still loads on every page, which is more than necessary. The real
-         fix is on-demand loading, and half of it already exists: Subscription
-         and self-dash both have an `ensureRazorpay()` that injects this script
-         when they need it and no-ops if it is already there. Five other call
-         sites (Header, PromptLibraryPage, PromptMarketplacePage, ChatPage,
-         HirePaymentPopup) still use `window.Razorpay` directly and depend on
-         this tag, so it cannot be removed until they move to a shared loader
-         too. Payments are not the place to be clever in a hurry. -->
-    <script defer src="https://checkout.razorpay.com/v1/checkout.js"></script>
+         It is now fetched on the click that needs it. Every call site goes
+         through ensureRazorpay() in src/lib/razorpayCheckout.ts, which loads it
+         once, shares one in-flight request between concurrent callers, and
+         retries after a failed load. Do not add this tag back: a global script
+         would silently satisfy the `window.Razorpay` guard in that module and
+         hide any call site that forgot to await it. -->
 
     <script type="module" src="/src/main.tsx"></script>
   </body>

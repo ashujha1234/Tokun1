@@ -14323,7 +14323,6 @@ type SellerRow = {
   plan?: string | null;
   userType?: "IND" | "ORG" | "TM";
   isDeleted?: boolean;
-  kycStatus?: "NOT_SUBMITTED" | "PENDING" | "VERIFIED" | "REJECTED" | "FLAGGED";
 };
 
 // ✅ REPORT TYPES (left + right flow)
@@ -14412,7 +14411,6 @@ type UserRow = {
   userType?: "IND" | "ORG" | "TM";
   plan?: "free" | "pro" | null;
   isVerified?: boolean;
-  kycStatus?: "NOT_SUBMITTED" | "PENDING" | "VERIFIED" | "REJECTED" | "FLAGGED";
   createdAt?: string;
   lastLoginAt?: string;
   // ✅ purchased prompts count
@@ -16290,7 +16288,6 @@ const [userSearch, setUserSearch] = useState("");
   totalRevenue: 0,
   totalSellers: 0,
 });
-const [pendingUsersCount, setPendingUsersCount] = useState(0);
 const [pendingSellersCount, setPendingSellersCount] = useState(0);
 const [platformRevenue, setPlatformRevenue] = useState({
   availableBalance: 0,
@@ -16753,7 +16750,6 @@ useEffect(() => {
           userType: u?.userType,
           plan: u?.plan ?? null,
           isVerified: !!u?.isVerified,
-          kycStatus: u?.kycStatus,
           createdAt: u?.createdAt,
           lastLoginAt: u?.lastLoginAt,
 
@@ -17383,9 +17379,17 @@ useEffect(() => {
 useEffect(() => {
   const fetchSalesAnalytics = async () => {
     try {
-      const res = await fetch(
-        `${API_BASE}/api/purchase/analytics/sales`
-      );
+      /* These four analytics routes are admin-only now — they expose
+         platform-wide revenue, per-category sales and per-seller trends, and
+         they used to be mounted with no middleware at all, readable by anyone
+         who knew the path. When requireAuth/requireAdmin were added to them
+         these callers were not updated, so the whole analytics half of this
+         dashboard 401'd: every chart sat empty and the only trace was a
+         console.error that production builds strip. */
+      const res = await fetch(`${API_BASE}/api/purchase/analytics/sales`, {
+        headers: getAuthHeaders(),
+        credentials: "include",
+      });
 
       if (!res.ok) {
         throw new Error("Failed to fetch sales analytics");
@@ -17464,7 +17468,10 @@ useEffect(() => {
   const fetchSalesByCategory = async () => {
     try {
       setCategorySalesLoading(true);
-      const res = await fetch(`${API_BASE}/api/purchase/analytics/sales-by-category?months=6`);
+      const res = await fetch(`${API_BASE}/api/purchase/analytics/sales-by-category?months=6`, {
+        headers: getAuthHeaders(),
+        credentials: "include",
+      });
       const data = await res.json();
       if (res.ok && data?.success) {
         setCategorySalesSeries(data.categories || []);
@@ -17487,7 +17494,10 @@ useEffect(() => {
   const fetchSellerTrends = async () => {
     try {
       setSellerTrendsLoading(true);
-      const res = await fetch(`${API_BASE}/api/purchase/analytics/seller-trends?months=6`);
+      const res = await fetch(`${API_BASE}/api/purchase/analytics/seller-trends?months=6`, {
+        headers: getAuthHeaders(),
+        credentials: "include",
+      });
       const data = await res.json();
       if (res.ok && data?.success) setSellerTrendsData(data.data || []);
     } catch (err) {
@@ -17507,7 +17517,10 @@ useEffect(() => {
   const fetchUserTrends = async () => {
     try {
       setUserTrendsLoading(true);
-      const res = await fetch(`${API_BASE}/api/purchase/analytics/user-trends?months=6`);
+      const res = await fetch(`${API_BASE}/api/purchase/analytics/user-trends?months=6`, {
+        headers: getAuthHeaders(),
+        credentials: "include",
+      });
       const data = await res.json();
       if (res.ok && data?.success) setUserTrendsData(data.data || []);
     } catch (err) {
@@ -17718,7 +17731,6 @@ const [sellerSearch, setSellerSearch] = useState("");
           status: s?.status === "SUSPENDED" || s?.isBanned ? "Blocked" : "Active",
           avatar: s?.avatar || s?.avatarUrl,
           joined: s?.joined || s?.createdAt || null,
-          kycStatus: s?.kycStatus,
           isDeleted: !!s?.isDeleted || !!s?.deleted,
 
           // ✅ Sell/upload count
@@ -17814,42 +17826,27 @@ useEffect(() => {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       };
 
-      // Users: KYC (identity document) review still pending.
-      // Sellers: uploaded at least one prompt but haven't finished Razorpay
-      // payout verification yet (no ACTIVATED linked account) — a distinct
-      // concept from user KYC, so it needs its own count, not a shared one.
-      const [usersRes, sellersRes] = await Promise.all([
-        fetch(`${USERS_BASE}?limit=1000&page=1`, {
-          headers,
-          credentials: "include",
-        }),
-        fetch(`${SELLERS_BASE}?limit=1000`, {
-          headers,
-          credentials: "include",
-        }),
-      ]);
+      /* Pending sellers: uploaded at least one prompt but haven't finished
+         Razorpay payout verification (no ACTIVATED linked account).
 
-      const [usersData, sellersData] = await Promise.all([
-        usersRes.json(),
-        sellersRes.json(),
-      ]);
+         There used to be a second count beside it — users whose identity-KYC
+         was "PENDING" — which fetched a thousand user records on every
+         dashboard open to feed `pendingUsersCount`, a state variable nothing
+         ever rendered. KYC is gone and so is that request. */
+      const sellersRes = await fetch(`${SELLERS_BASE}?limit=1000`, {
+        headers,
+        credentials: "include",
+      });
 
-      const isPendingUser = (u: any) => {
-        return String(u?.kycStatus || "") === "PENDING";
-      };
+      const sellersData = await sellersRes.json();
 
       const isPendingSeller = (s: any) => {
         return s?.linkedAccountActivated === false;
       };
 
-      const pendingUsers = (usersData?.users || []).filter(isPendingUser).length;
-      const pendingSellers = (sellersData?.sellers || []).filter(isPendingSeller).length;
-
-      setPendingUsersCount(pendingUsers);
-      setPendingSellersCount(pendingSellers);
+      setPendingSellersCount((sellersData?.sellers || []).filter(isPendingSeller).length);
     } catch (err) {
       console.error("Pending approvals fetch failed:", err);
-      setPendingUsersCount(0);
       setPendingSellersCount(0);
     }
   };

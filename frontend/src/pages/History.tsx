@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Trash, Star, Copy } from "lucide-react";
 import { useLocation,useNavigate } from "react-router-dom";
+import BinButton from "@/components/BinButton";
 // import { useEffect, useState } from "react";
 
 /* ----------------------- Shared helpers ----------------------- */
@@ -311,13 +312,14 @@ const setTabAndUrl = (next: TabKey) => {
 
                   {/* Bottom-right actions */}
                   <div className="absolute right-3 bottom-3 flex items-center gap-2">
-                    <button
-                      title="Delete"
-                      className="h-9 w-9 rounded-full bg-[#3A3A3A] hover:bg-[#4A4A4A] flex items-center justify-center"
+                    {/* Deletes on the click, no confirm: this is a history
+                        row, and the optimization it points at can be run
+                        again. */}
+                    <BinButton
+                      size="sm"
+                      label="Delete this optimization"
                       onClick={() => del(it._id)}
-                    >
-                      <Trash className="h-4 w-4" />
-                    </button>
+                    />
                     <button
                       title="Copy"
                       className="h-9 px-3 rounded-[10px] bg-[#3A3A3A] hover:bg-[#4A4A4A] inline-flex items-center gap-2"
@@ -764,18 +766,17 @@ useEffect(() => {
 
                   {/* actions */}
                   <div className="absolute right-3 bottom-3 flex items-center gap-2">
-                    <button
-                      title="Delete"
-                      className="h-9 w-9 rounded-full bg-[#3A3A3A] hover:bg-[#4A4A4A] flex items-center justify-center disabled:opacity-60"
+                    {/* Deletes on the click. The in-flight state is carried by
+                        `disabled` rather than by swapping the bin for a
+                        spinner: these requests return in well under the time it
+                        takes to read a spinner, and the swap made the control
+                        flicker on every delete. */}
+                    <BinButton
+                      size="sm"
+                      label="Delete this generation"
                       disabled={deletingId === it._id || bulkDeleting}
                       onClick={() => delSmartgen(it._id)}
-                    >
-                      {deletingId === it._id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash className="h-4 w-4" />
-                      )}
-                    </button>
+                    />
                     <button
                       title="Copy"
                       className="h-9 px-3 rounded-[10px] bg-[#3A3A3A] hover:bg-[#4A4A4A] inline-flex items-center gap-2"

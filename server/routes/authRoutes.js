@@ -57,6 +57,38 @@ const otpLimiter = rateLimit({
     message: "Too many codes requested. Please wait 10 minutes and try again.",
   },
 });
+/* The guess limiter, separate from otpLimiter above.
+ *
+ * otpLimiter caps how many codes can be REQUESTED. Nothing capped how many
+ * could be GUESSED except User.otpAttempts, and that counter is reset by
+ * /login/initiate — so the ceiling was 5 requests x 5 guesses = 25 tries per
+ * 10 minutes per IP+email, against a code with 9,000 possibilities. Roughly a
+ * 0.3% chance per window, which compounds: an attacker willing to spend a day,
+ * or to spread across IPs, gets there.
+ *
+ * This one cannot be cleared by the caller, so it is the actual bound. Keyed on
+ * IP+email like otpLimiter, and deliberately more generous than the 5-attempt
+ * counter (a real person mistyping is stopped by that first, with a clearer
+ * error) — this exists to stop the machine, not the human.
+ *
+ * The durable fix is a 6-digit code: 9,000 -> 900,000 possibilities makes the
+ * arithmetic uninteresting. That changes gen4DigitOtp, the email template and
+ * the frontend input, so it is left as a product decision rather than folded in
+ * here.
+ */
+const otpVerifyLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 15,
+  keyGenerator: (req) => {
+    return `${ipKeyGenerator(req.ip)}:${(req.body.email || "").toLowerCase().trim()}`;
+  },
+  message: {
+    success: false,
+    error: "too_many_requests",
+    message: "Too many attempts. Please wait 10 minutes and try again.",
+  },
+});
+
 function gen4DigitOtp() {
   return String(Math.floor(1000 + Math.random() * 9000)); // 1000..9999
 }
@@ -274,6 +306,23 @@ router.post("/signup/initiate", otpLimiter, async (req, res) => {
     }
 
     const normalizedEmail = String(email).toLowerCase().trim();
+
+    /* Same rule as /login/initiate: an active lockout is not cleared by asking
+       for a new code. The $set below zeroes otpAttempts and lockedUntil, so
+       without this check the five-guess lock could be reset at will by whoever
+       tripped it. Read before the upsert because findOneAndUpdate would have
+       already overwritten the lock by the time we could inspect it. */
+    const locked = await User.findOne({ email: normalizedEmail })
+      .select("lockedUntil")
+      .lean();
+    if (locked?.lockedUntil && new Date(locked.lockedUntil) > new Date()) {
+      return res.status(429).json({
+        success: false,
+        error: "temporarily_locked",
+        message: "Too many incorrect codes. Please wait a few minutes before requesting a new one.",
+      });
+    }
+
     const otp = gen4DigitOtp();
     const otpHash = hashOTP(otp);
     const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
@@ -515,7 +564,7 @@ return res.json({
 
 
 
-router.post("/signup/verify", async (req, res) => {
+router.post("/signup/verify", otpVerifyLimiter, async (req, res) => {
   try {
     const { email, otp } = req.body || {};
     if (!email || !otp) {
@@ -682,9 +731,25 @@ router.post("/login/initiate", otpLimiter, async (req, res) => {
       return res.status(400).json({ success: false, error: "no_account_or_not_verified" });
     }
 
+    /* An active lockout survives a new code request.
+       This used to set lockedUntil = null unconditionally, which meant the
+       ten-minute lock earned by five wrong guesses could be cleared by the
+       person who earned it, just by asking for another code. The 5-guess
+       counter then bounded nothing: 5 requests per 10 minutes (otpLimiter)
+       times 5 guesses each is 25 tries per window against a 4-digit code, and
+       the limiter is keyed on IP, so rotating IPs multiplies it. */
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      return res.status(429).json({
+        success: false,
+        error: "temporarily_locked",
+        message: "Too many incorrect codes. Please wait a few minutes before requesting a new one.",
+      });
+    }
+
     const otp = gen4DigitOtp();
     user.otpHash = hashOTP(otp);
     user.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    // Safe to zero now: the branch above has established there is no live lock.
     user.otpAttempts = 0;
     user.lockedUntil = null;
     await user.save();
@@ -735,7 +800,7 @@ await sendEmail({
 });
 
 // POST /api/auth/login/verify -> verify OTP and issue JWT
-router.post("/login/verify", async (req, res) => {
+router.post("/login/verify", otpVerifyLimiter, async (req, res) => {
   try {
     const { email, otp } = req.body;
     if (!email || !otp) {
@@ -959,25 +1024,30 @@ router.post("/org/members/add", requireAuth, async (req, res) => {
 
 
 
-// DELETE all users (⚠️ dangerous - protect this route!)
-router.delete("/delete-all", async (req, res) => {
-  try {
-    // 👉 Optional: Protect with an environment flag
-    if (process.env.NODE_ENV === "production") {
-      return res.status(403).json({ success: false, error: "forbidden_in_production" });
-    }
-
-    const result = await User.deleteMany({});
-    return res.json({
-      success: true,
-      message: "All users deleted",
-      deletedCount: result.deletedCount,
-    });
-  } catch (err) {
-    console.error("delete-all error", err);
-    return res.status(500).json({ success: false, error: "server_error" });
-  }
-});
+/* REMOVED: DELETE /delete-all — User.deleteMany({}), no authentication.
+ *
+ * It carried its own warning ("dangerous - protect this route!") and one guard:
+ *
+ *   if (process.env.NODE_ENV === "production") return 403;
+ *
+ * which fails OPEN. NODE_ENV is unset on a developer machine and on any server
+ * that forgot to set it, so the guard passes and the delete runs — while
+ * MONGO_URI points wherever .env says, which here is the production Cosmos
+ * cluster. On 7 Sep 2026 that combination deleted all 76 user accounts during
+ * an endpoint sweep. The rows were rebuilt from surviving references
+ * (adminactivities carried actorId + actorName + meta.email per login), but 21
+ * could not be recovered and token quotas were lost.
+ *
+ * Not re-added behind auth, because nothing in the product needs it: there is
+ * no "reset everything" feature, and a real reset belongs in scripts/ with the
+ * dry-run-by-default pattern the rest of that folder uses, not on the public
+ * API surface.
+ *
+ * If a reset helper is ever wanted, the guard must read
+ *   if (process.env.NODE_ENV !== "development") return 403;
+ * so an unset variable denies. Same inversion is worth checking on any other
+ * environment-gated destructive path.
+ */
 
 
 

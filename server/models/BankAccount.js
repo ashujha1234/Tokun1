@@ -247,6 +247,33 @@ const BankAccountSchema = new mongoose.Schema(
       enum: ["CREATED", "UNDER_REVIEW", "NEEDS_CLARIFICATION", "SUSPENDED", "REJECTED", "ACTIVATED", null],
       default: null,
     },
+
+    /* When activationStatus/activationRequirements were last read from
+       Razorpay, and what that read returned.
+
+       GET /payout-status used to call Razorpay's product-configuration endpoint
+       on EVERY request. It runs on every seller dashboard load and measured
+       1728 ms — the slowest endpoint in the app, and the latency is an outbound
+       HTTP call, so it is not something an index can fix.
+
+       Caching is safe because the live fetch was never the primary source:
+       razorpayWebhook.js updates activationStatus from the account.* webhooks
+       (ACCOUNT_EVENT_TO_STATUS), and the fetch exists as a fallback for
+       environments where webhooks do not arrive — local and test setups. A
+       short TTL keeps that fallback while making the common case free.
+
+       requirements is stored alongside because the clarification screen reads
+       it from the same response; caching the status but not the requirements
+       would mean a cache hit returned a status with no fields to fix. */
+    activationCheckedAt: {
+      type: Date,
+      default: null,
+    },
+
+    activationRequirements: {
+      type: [mongoose.Schema.Types.Mixed],
+      default: [],
+    },
   },
   { timestamps: true }
 );

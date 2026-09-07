@@ -310,6 +310,8 @@ const ORG_BUSINESS_TYPE_LABELS = {
 };
 
 const PAN_REGEX = /^[A-Z]{3}[PCHFATBJGL][A-Z]\d{4}[A-Z]$/;
+// 4-letter bank code + a literal "0" (reserved) + 6-char branch code.
+const IFSC_REGEX = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 // 2-digit state code + the entity's 10-char PAN + entity code + "Z" + checksum.
 const GSTIN_REGEX = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
@@ -619,7 +621,17 @@ function buildSubmittedDetails(account) {
 
   const details = [
     { key: "accountHolderName", label: "Account holder name", value: account.accountHolderName, fieldReference: "settlements.beneficiary_name" },
-    { key: "accountNumber", label: "Bank account number", value: account.accountNumber, fieldReference: "settlements.account_number" },
+    // maskedValue is what read-only screens render; `value` stays raw because
+    // the clarification flow prefills its edit box from it and diffs against
+    // it to decide what actually changed — masking that would either send
+    // "XXXX1234" to Razorpay or make every field look edited.
+    {
+      key: "accountNumber",
+      label: "Bank account number",
+      value: account.accountNumber,
+      maskedValue: maskAccountNumber(account.accountNumber || ""),
+      fieldReference: "settlements.account_number",
+    },
     { key: "ifscCode", label: "IFSC code", value: account.ifscCode, fieldReference: "settlements.ifsc_code" },
     { key: "bankName", label: "Bank name", value: account.bankName, fieldReference: "bankName" },
     {
@@ -1414,13 +1426,32 @@ router.get("/payout-status", requireAuth, async (req, res) => {
     }).sort({ default: -1, createdAt: -1 });
 
     let apiStatus = null; // raw Razorpay string, e.g. "needs_clarification"
-    let requirements = [];
+    let requirements = account?.activationRequirements || [];
+
+    /* Whether to spend a Razorpay round trip on this request.
+       Two TTLs, because the cost of stale data is not the same in both states:
+
+         non-terminal (CREATED / UNDER_REVIEW / NEEDS_CLARIFICATION) — the
+           seller is waiting for an answer and refreshing to get it, so 60s.
+         ACTIVATED — settled, and any change arrives by webhook. 10 minutes.
+
+       `?refresh=1` forces a read regardless, so the UI can offer an explicit
+       "check now" instead of making people reload and hope. */
+    const ACTIVATED_TTL_MS = 10 * 60 * 1000;
+    const PENDING_TTL_MS = 60 * 1000;
+    const ttl = account?.activationStatus === "ACTIVATED" ? ACTIVATED_TTL_MS : PENDING_TTL_MS;
+
+    const cacheAge = account?.activationCheckedAt
+      ? Date.now() - new Date(account.activationCheckedAt).getTime()
+      : Infinity;
+    const forceRefresh = req.query.refresh === "1" || req.query.refresh === "true";
+    const cacheIsFresh = cacheAge < ttl && !forceRefresh;
 
     // Dry-run records hold placeholder ids Razorpay has never seen — fetching
     // them would just 404 on every dashboard load. Skip straight to the cached
     // status so the seller-facing flow still behaves normally while the org
     // path is switched off.
-    if (account?.routeProductId && !account.routeDryRun) {
+    if (account?.routeProductId && !account.routeDryRun && !cacheIsFresh) {
       try {
         const productConfiguration = await fetchRouteProductConfiguration({
           accountId: account.routeLinkedAccountId,
@@ -1431,15 +1462,29 @@ router.get("/payout-status", requireAuth, async (req, res) => {
         requirements = productConfiguration?.requirements || [];
 
         const mappedStatus = PRODUCT_ACTIVATION_STATUS_MAP[apiStatus];
+        if (mappedStatus) account.activationStatus = mappedStatus;
 
-        if (mappedStatus && mappedStatus !== account.activationStatus) {
-          account.activationStatus = mappedStatus;
-          await account.save();
-        }
+        account.activationRequirements = requirements;
+        account.activationCheckedAt = new Date();
+        await account.save();
       } catch (razorpayErr) {
         // Non-fatal — fall back to whatever's cached on the account already.
+        // Deliberately does NOT stamp activationCheckedAt: a failed read must
+        // not start a fresh TTL, or one Razorpay outage would freeze the status
+        // for the whole window.
         console.error("Live activation status sync failed:", razorpayErr?.message);
       }
+    }
+
+    /* On a cache hit there is no raw Razorpay string to translate, so derive it
+       back from our own enum for getAccountErrorMessage below. Without this the
+       cached path fell through to the default "something went wrong" sentence
+       even when the account was healthy. */
+    if (!apiStatus && account?.activationStatus) {
+      apiStatus =
+        Object.keys(PRODUCT_ACTIVATION_STATUS_MAP).find(
+          (k) => PRODUCT_ACTIVATION_STATUS_MAP[k] === account.activationStatus
+        ) || null;
     }
 
     // Backfill for accounts created before `phone` was persisted locally —
@@ -1633,6 +1678,203 @@ router.post("/:accountId/resolve-clarification", requireAuth, async (req, res) =
   } catch (err) {
     console.error("Resolve clarification error:", err);
     return res.status(500).json({ success: false, error: "server_error" });
+  }
+});
+
+// -----------------------------
+// Change the settlement bank account on an existing Route Linked Account.
+// POST /api/bankaccount/:accountId/update-settlement
+// Body: { accountHolderName, accountNumber, confirmAccountNumber, ifscCode, bankName }
+//
+// Razorpay Route gives a seller exactly ONE Linked Account — it keys them by
+// email, so a second POST /add for the same seller comes back as a duplicate
+// (see razorpayErrors.js, "This email is already linked to another payout
+// account"). So "add another bank account" is really "point the existing
+// Linked Account at a different bank", which is a settlements PATCH on its
+// product configuration — the same call resolveClarificationFields already
+// makes, except seller-initiated instead of driven by Razorpay's requirements
+// array. Deliberately narrower than that path: only the settlement fields are
+// touched here, never KYC or account-level ones.
+// -----------------------------
+router.post("/:accountId/update-settlement", requireAuth, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const {
+      accountHolderName,
+      accountNumber,
+      confirmAccountNumber,
+      ifscCode,
+      bankName,
+    } = req.body;
+
+    if (!accountHolderName || !accountNumber || !confirmAccountNumber || !ifscCode || !bankName) {
+      return res.status(400).json({
+        success: false,
+        error: "all_fields_required",
+        message: "Account holder name, account number, IFSC code and bank name are all required.",
+      });
+    }
+
+    const cleanHolder = String(accountHolderName).trim();
+    const cleanAccountNumber = normalizeAccountNumber(accountNumber);
+    const cleanConfirm = normalizeAccountNumber(confirmAccountNumber);
+    const cleanIfsc = normalizeIfsc(ifscCode);
+    const cleanBankName = String(bankName).trim();
+
+    if (cleanAccountNumber !== cleanConfirm) {
+      return res.status(400).json({
+        success: false,
+        error: "account_numbers_mismatch",
+        message: "The two account numbers don't match.",
+      });
+    }
+
+    if (!IFSC_REGEX.test(cleanIfsc)) {
+      return res.status(400).json({
+        success: false,
+        error: "invalid_ifsc",
+        message: "Invalid IFSC code — e.g. HDFC0001234.",
+      });
+    }
+
+    const account = await BankAccount.findOne({ _id: accountId, userId: req.user._id });
+
+    if (!account) {
+      return res.status(404).json({ success: false, error: "account_not_found" });
+    }
+
+    if (!account.routeLinkedAccountId || !account.routeProductId) {
+      return res.status(400).json({
+        success: false,
+        error: "no_linked_account",
+        message: "This account isn't linked with Razorpay yet — submit the payout form first.",
+      });
+    }
+
+    // Same reasoning as resolve-clarification: these ids were minted locally
+    // before Route onboarding went live, so there is no Razorpay object to
+    // PATCH. The remedy is a full resubmission, not a settlement change.
+    if (account.routeDryRun) {
+      return res.status(409).json({
+        success: false,
+        error: "dry_run_account",
+        message:
+          "This account was submitted before Route onboarding went live, so Razorpay has no record of it. Please resubmit the payout form instead.",
+      });
+    }
+
+    // Suspended/rejected linked accounts can't be repaired by swapping the
+    // bank — Razorpay requires a fresh linked account, which is what POST /add
+    // does for these statuses (isResubmission).
+    if (RESUBMISSION_REQUIRED_STATUSES.includes(account.activationStatus)) {
+      return res.status(409).json({
+        success: false,
+        error: "requires_resubmission",
+        message:
+          "This payout account was suspended or rejected, so Razorpay won't accept a bank-account change on it. Please resubmit the full payout form instead.",
+      });
+    }
+
+    const isUnchanged =
+      cleanAccountNumber === normalizeAccountNumber(account.accountNumber || "") &&
+      cleanIfsc === normalizeIfsc(account.ifscCode || "") &&
+      cleanHolder === String(account.accountHolderName || "").trim() &&
+      cleanBankName === String(account.bankName || "").trim();
+
+    if (isUnchanged) {
+      return res.status(400).json({
+        success: false,
+        error: "no_changes",
+        message: "These are the same details already on file — change at least one before submitting.",
+      });
+    }
+
+    // Not a hard block, for the same reason POST /add doesn't block it: "M/s
+    // <name>" and proprietorship accounts held in the proprietor's own name are
+    // legitimate. Logged so a later penny-test failure is traceable.
+    if (account.sellerType === "organization" && account.legalBusinessName) {
+      const normalize = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (normalize(cleanHolder) !== normalize(account.legalBusinessName)) {
+        console.warn(
+          `[ORG ROUTE] Settlement change: beneficiary "${cleanHolder}" differs from legal business name "${account.legalBusinessName}" — Razorpay penny-testing may flag this account.`
+        );
+      }
+    }
+
+    try {
+      await razorpayV2Request(
+        "PATCH",
+        `/accounts/${account.routeLinkedAccountId}/products/${account.routeProductId}`,
+        {
+          settlements: {
+            account_number: cleanAccountNumber,
+            ifsc_code: cleanIfsc,
+            beneficiary_name: cleanHolder,
+          },
+          tnc_accepted: true,
+        }
+      );
+    } catch (razorpayErr) {
+      console.error(
+        "Settlement account update failed:",
+        razorpayErr?.message,
+        JSON.stringify(razorpayErr?.razorpay || null)
+      );
+
+      const translated = translateRazorpayError(razorpayErr?.razorpay);
+
+      return res.status(translated.sellerFacing ? 400 : 502).json({
+        success: false,
+        error: "razorpay_update_failed",
+        message: translated.message,
+        field: translated.field,
+      });
+    }
+
+    // Only written after Razorpay accepted the PATCH — otherwise our record
+    // would claim a bank Razorpay is still not settling to.
+    account.accountHolderName = cleanHolder;
+    account.accountNumber = cleanAccountNumber;
+    account.ifscCode = cleanIfsc;
+    account.bankName = cleanBankName;
+
+    // A new settlement account sends the linked account back through Razorpay's
+    // own verification (it penny-tests the new bank), so an ACTIVATED account
+    // can land back in under_review here. Re-read rather than assume.
+    let apiStatus = null;
+    let requirements = [];
+
+    try {
+      const productConfiguration = await fetchRouteProductConfiguration({
+        accountId: account.routeLinkedAccountId,
+        productId: account.routeProductId,
+      });
+      apiStatus = productConfiguration?.activation_status || null;
+      requirements = productConfiguration?.requirements || [];
+
+      const mappedStatus = PRODUCT_ACTIVATION_STATUS_MAP[apiStatus];
+      if (mappedStatus) account.activationStatus = mappedStatus;
+    } catch (razorpayErr) {
+      console.error("Refresh after settlement update failed:", razorpayErr?.message);
+    }
+
+    await account.save();
+
+    return res.json({
+      success: true,
+      account: toSafeAccount(account),
+      activationStatus: account.activationStatus,
+      message: getAccountErrorMessage(apiStatus, requirements[0]?.reason_code || null),
+      requirements,
+      submittedDetails: buildSubmittedDetails(account),
+    });
+  } catch (err) {
+    console.error("Update settlement account:", err);
+    return res.status(500).json({
+      success: false,
+      error: "server_error",
+      message: err?.message || "Failed to update bank account",
+    });
   }
 });
 

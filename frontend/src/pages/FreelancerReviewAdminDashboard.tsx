@@ -115,7 +115,6 @@ interface QueueRow {
     email?: string;
     avatarUrl?: string | null;
     userType?: string;
-    kycStatus?: string;
     isVerified?: boolean;
     createdAt?: string;
   } | null;
@@ -903,9 +902,6 @@ export default function FreelancerReviewAdminDashboard() {
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
                     <Badge status={detail.status} />
                     <Badge status={detail.introVideo.status} />
-                    {detail.user?.kycStatus && detail.user.kycStatus !== "NOT_SUBMITTED" && (
-                      <Chip>KYC: {detail.user.kycStatus}</Chip>
-                    )}
                     <Chip>{detail.payoutReadyAt ? "Payouts ready" : "No payout account yet"}</Chip>
                     {/* Says plainly that approving or rejecting this video won't
                         change what they can do — an allowlisted account trades

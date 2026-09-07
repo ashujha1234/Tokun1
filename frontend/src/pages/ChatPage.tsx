@@ -3109,6 +3109,7 @@ import {
 } from "@/lib/serviceDeliverables";
 import { openBriefAttachment } from "@/lib/escrowApi";
 import { withTokunBranding } from "@/lib/razorpayTheme";
+import { ensureRazorpayOrToast } from "@/lib/razorpayCheckout";
 import { useDealRecord, ndaFullySigned, sideOf } from "@/hooks/useDealRecord";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
@@ -4358,7 +4359,10 @@ const CARD_BG = "#161A18";
 
       const { key, order } = orderData;
 
-      // Step 2: Open Razorpay checkout
+      // Step 2: Open Razorpay checkout. The script is fetched on demand now
+      // rather than on every page load, so it has to be awaited first.
+      if (!(await ensureRazorpayOrToast(toast))) return;
+
       const rzp = new (window as any).Razorpay(withTokunBranding({
         key,
         amount: order.amount,
@@ -4874,6 +4878,11 @@ function ServiceOrderCard({
       }
 
       const { key, order } = orderData;
+
+      if (!(await ensureRazorpayOrToast(toast))) {
+        setPayState("idle");
+        return;
+      }
 
       const rzp = new (window as any).Razorpay(withTokunBranding({
         key,

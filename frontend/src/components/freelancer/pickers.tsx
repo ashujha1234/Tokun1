@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type InputHTMLAttributes } from "react";
-import { Check, Loader2, Plus, Search, Trash2, X } from "lucide-react";
+import { Check, Loader2, Plus, Search, X } from "lucide-react";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { COUNTRIES, LANGUAGES, PROFESSIONAL_TITLES } from "@/lib/referenceData";
 import { cachedCities, fetchCities, type CityLookup } from "@/lib/cityLookup";
@@ -878,14 +878,29 @@ export function RepeatableRows<T>({
       ) : (
         <div className="space-y-3 mb-3">
           {items.map((item, index) => (
-            <div key={index} className="rounded-lg border border-white/10 bg-black/20 p-3 relative">
+            <div key={index} className="rounded-lg border border-white/10 bg-black/20 p-3 pr-9 relative">
+              {/* An ✕, not the red bin. BinButton is a 32px solid red square
+                  even at `sm`, and these rows are experience / education /
+                  certification entries in an edit form — unsaved state that a
+                  re-add restores. A destructive-looking control that size next
+                  to a text field reads as "delete my certification", and it was
+                  large enough to sit on top of the row's own inputs.
+
+                  Matching the ✕ this file already uses for removing a skill and
+                  clearing a language row, so one edit form has one remove
+                  affordance rather than three.
+
+                  `pr-9` on the row is what actually places it: the ✕ is
+                  absolute, so without padding reserved for it the field labels
+                  and long entry titles run underneath. */}
               <button
                 type="button"
                 onClick={() => onChange(items.filter((_, i) => i !== index))}
-                className="absolute top-2 right-2 text-white/35 hover:text-red-400 transition-colors"
+                className="absolute top-2.5 right-2.5 z-10 text-white/40 hover:text-red-400 transition-colors"
                 aria-label="Remove entry"
+                title="Remove entry"
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <X className="w-4 h-4" />
               </button>
               {renderRow(item, (p) =>
                 onChange(items.map((it, i) => (i === index ? { ...it, ...p } : it)))

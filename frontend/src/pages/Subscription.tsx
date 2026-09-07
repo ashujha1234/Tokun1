@@ -675,6 +675,7 @@ import { withTokunBranding } from "@/lib/razorpayTheme";
    than from Tokun. The rest of the app reports outcomes with this toast; the
    pricing page was the one place that didn't. */
 import { toast } from "@/components/ui/use-toast";
+import { ensureRazorpay } from "@/lib/razorpayCheckout";
 
 type PlanKey = "Free" | "Pro" | "Enterprise";
 type ServerPlanKey = "free" | "pro";
@@ -790,15 +791,9 @@ export default function Subscription() {
     return `${INR(v)}/month`;
   };
 
-  const ensureRazorpay = () =>
-    new Promise<void>((resolve, reject) => {
-      if ((window as any).Razorpay) return resolve();
-      const s = document.createElement("script");
-      s.src = "https://checkout.razorpay.com/v1/checkout.js";
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error("razorpay_script_load_failed"));
-      document.body.appendChild(s);
-    });
+  // The per-file loader that used to live here is gone — see
+  // src/lib/razorpayCheckout.ts for why one shared, race-free loader
+  // replaced six subtly different copies.
 
   function openCheckout({ key, order }: { key: string; order: any }) {
     return new Promise<{
@@ -1436,7 +1431,21 @@ function PlanCard({
             onChoose();
           }}
           disabled={disabled}
-          className='font-["Inter"] text-[16px] w-[200px] h-[50px] rounded-[6px] disabled:opacity-100 disabled:cursor-default'
+          /* `whitespace-normal` and an auto height are the fix, and they have
+             to come together.
+
+             The base Button (components/ui/button.tsx) sets whitespace-nowrap.
+             Combined with the fixed w-[200px] here, any label wider than 200px
+             at 16px had nowhere to go and rendered straight out through both
+             sides of the button's own border — which is what "Included with
+             every account", the longest label of the five, did on desktop. It
+             is 27 characters; every other label is at most 13.
+
+             Allowing the wrap needs the height to stop being fixed too, or the
+             second line just overflows vertically instead. min-h keeps the
+             one-line buttons on the other cards exactly the size they were, so
+             the three cards still line up. */
+          className='font-["Inter"] text-[16px] leading-tight w-[200px] max-w-full min-h-[50px] h-auto px-3 py-2 whitespace-normal rounded-[6px] disabled:opacity-100 disabled:cursor-default'
           style={
             /* The plan you're already on is a state, not an offer. */
             isCurrent

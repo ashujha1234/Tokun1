@@ -10783,6 +10783,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { withTokunBranding } from "@/lib/razorpayTheme";
+import { ensureRazorpay } from "@/lib/razorpayCheckout";
 
 declare global {
   interface Window {
@@ -11095,9 +11096,15 @@ const TXN_PER_PAGE = 5;
       return;
     }
 
-    if (!window.Razorpay) {
+    /* This used to assert the global was already there, which only held
+       because index.html loaded checkout.js on every page. That tag is gone,
+       so the script is fetched here — the error text stays, it just now
+       reports a fetch that actually failed rather than a race. */
+    try {
+      await ensureRazorpay();
+    } catch {
       setPaymentError(
-        "Razorpay not loaded. Please check your internet connection."
+        "Razorpay could not be loaded. Check your connection or any ad blocker, then try again."
       );
       return;
     }

@@ -14,6 +14,19 @@ import UploadProductButton from "@/components/UploadProductButton";
 import ModeToggle from "@/components/ModeToggle";
 import { useMode } from "@/contexts/ModeContext";
 
+/* The original mark — deep blue into magenta.
+
+   Reverted from Tokun-opt2.png, which was a recoloured COPY of this PNG whose
+   hue had been moved onto Option 02 "Modern SaaS" (Sky Blue -> Indigo ->
+   Purple) to match the hero wordmark's ramp (.tokun-title__word in
+   pages/landing-page.css). That alignment is what this revert gives up: the
+   mark in the bar and the word under it read as different brands again. The
+   recoloured copy is still in public/icons if it's wanted back — one line,
+   here and in Header/Footer/Landing, which all reference it separately.
+
+   A CSS filter can't stand in for either direction: no hue-rotate maps deep
+   blue -> magenta onto sky -> purple without taking the blue somewhere green
+   along the way, which is why it was a separate file to begin with. */
 const TOKUN_LOGO_SRC = "/icons/Tokun.png";
 
 /**

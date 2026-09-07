@@ -1,3 +1,40 @@
+/* ┌──────────────────────────────────────────────────────────────────────────┐
+   │  DO NOT TYPECHECK WITH THIS FILE.                                        │
+   │                                                                          │
+   │    tsc --noEmit -p tsconfig.json     ->  0 errors, exit 0, ALWAYS        │
+   │    npm run typecheck                 ->  the real answer                 │
+   └──────────────────────────────────────────────────────────────────────────┘
+
+   This is a SOLUTION file, not a project: `files: []` plus `references` is the
+   standard Vite layout, and it means tsc compiles NOTHING when pointed here. It
+   does not fail — it succeeds, on any code at all, including code that does not
+   compile. There is no compiler flag that makes an empty project loud, which is
+   why this warning is a comment.
+
+   It has already caused a wrong conclusion: three separate changes in one
+   session were reported as "typecheck clean" on the strength of
+   `tsc -p tsconfig.json` exiting 0. Re-run against the real config and the
+   project has a 55-error baseline.
+
+   ── Where the real check lives ──────────────────────────────────────────────
+
+     npm run typecheck      tsc --noEmit -p tsconfig.app.json   (the truth)
+     npm run typecheck:ci   scripts/typecheck-baseline.mjs      (ratchet on 55)
+     tsc --build            also correct — it follows `references` — but it
+                            writes .tsbuildinfo files and caches incrementally,
+                            so a stale cache can under-report. Prefer the
+                            scripts above.
+
+   CI runs `npm run typecheck:ci`, so a regression is caught there regardless of
+   what anyone types locally. This warning is for the local case, and for the
+   next tool wired up to the obvious filename.
+
+   ── Why compilerOptions are here at all ────────────────────────────────────
+
+   Editors and some tooling read the nearest tsconfig.json for path aliases, so
+   `baseUrl`/`paths` have to be resolvable from here even though nothing is
+   compiled. The loosened flags below mirror tsconfig.app.json so an editor does
+   not show a different set of errors than the build does. */
 {
   "files": [],
   "references": [

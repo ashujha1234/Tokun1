@@ -854,7 +854,7 @@ const BankAccount = require("../models/BankAccount");
 const Notification = require("../models/Notification");
 const { sendSellingSuspendedEmail } = require("../services/creatorEmail.service");
 const { notifyAdmins } = require("../utils/notifyAdmins");
-const { requireAuth } = require("../utils/auth");
+const { requireAuth, optionalAdmin } = require("../utils/auth");
 
 // When a seller gets suspended: auto-cancel their not-yet-paid hire deals
 // (no money involved, safe to automate) and flag any funded/in-progress
@@ -909,10 +909,16 @@ function requireAdmin(req, res, next) {
  *
  * Deliberately public (no requireAuth/requireAdmin) — this is also the
  * directory the public "Find Creators" page (frontend/src/pages/
- * FindCreatorsPage.tsx) fetches for logged-out visitors. The `?deleted=true`
- * admin-only view is gated separately below via requireAdmin on that param.
+ * FindCreatorsPage.tsx) fetches for logged-out visitors.
+ *
+ * `optionalAdmin` is what lets one handler serve both audiences: it never
+ * rejects, it only answers whether an admin token came along. Two things
+ * depend on that answer — the `?deleted=true` view and the `email` field —
+ * and before it was added nothing on this route set `req.isAdmin` at all, so
+ * the deleted-sellers gate below rejected admins too while every seller's
+ * email address went out to anonymous callers.
  */
-router.get("/", async (req, res) => {
+router.get("/", optionalAdmin, async (req, res) => {
   try {
     const rawLimit = req.query.limit;
     const page = Math.max(parseInt(req.query.page || "1", 10), 1);
@@ -937,11 +943,16 @@ router.get("/", async (req, res) => {
       // Suspended sellers shouldn't be publicly discoverable/hireable either —
       // same intent as hiding their listings from the marketplace feed.
       ...(showDeleted ? {} : { sellerStatus: { $ne: "SUSPENDED" } }),
+      /* Admins search by email — it is how a support ticket gets matched to an
+         account. The public does not: matching on email turns a directory
+         search box into a confirmation oracle ("is this address a seller
+         here?"), which is the same disclosure as returning the field, just one
+         address at a time. Public search is by name only. */
       ...(search
         ? {
             $or: [
               { name: { $regex: search, $options: "i" } },
-              { email: { $regex: search, $options: "i" } },
+              ...(req.isAdmin ? [{ email: { $regex: search, $options: "i" } }] : []),
             ],
           }
         : {}),
@@ -949,7 +960,11 @@ router.get("/", async (req, res) => {
 
     let q = User.find(query)
       .select(
-        "name email avatarUrl isVerified createdAt sellerStatus status location sellerRating sellerReviewsCount isDeleted deletedAt plan userType orgId"
+        "name avatarUrl isVerified createdAt sellerStatus status location sellerRating sellerReviewsCount isDeleted deletedAt plan userType orgId" +
+          // Projected, not just withheld from the response: an email address
+          // that never leaves Mongo cannot be leaked by a later edit to the
+          // mapping below.
+          (req.isAdmin ? " email" : "")
       )
       .sort({ createdAt: -1 })
       .lean();
@@ -1126,7 +1141,18 @@ router.get("/", async (req, res) => {
       return {
         _id: id,
         name: s.name || "Unknown",
-        email: s.email || null,
+        /* Admin-only. This directory is public by design — the listings, the
+           names, the ratings are the point of it — but the email addresses
+           behind those names are not part of the product, and a public,
+           unpaginated (`?limit=0`) list of them is a scraping target and a
+           phishing list for exactly the people who take payments here.
+
+           Spread rather than a null, so the key is absent for the public
+           instead of present-and-empty: a client reading `"email" in seller`
+           gets the truth, and nothing can accidentally render "—" as if an
+           address were merely missing. The admin console (Dashboard.tsx
+           fetchAllSellers) sends its token and still gets the field. */
+        ...(req.isAdmin ? { email: s.email || null } : {}),
         avatar: s.avatarUrl || null,
         verified: !!s.isVerified,
         joined: s.createdAt || null,

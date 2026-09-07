@@ -455,17 +455,17 @@ const mine =
               <div className="text-xs uppercase tracking-[0.18em] text-white/45">Recent Activity</div>
               <div className="mt-4 space-y-5">
                 <div className="flex gap-3"><span className="mt-1 h-2 w-2 rounded-full bg-blue-400" /><div><div className="text-sm text-white/75">{subjectRole} profile opened</div><div className="text-xs text-white/35">Just now</div></div></div>
-                <div className="flex gap-3"><span className="mt-1 h-2 w-2 rounded-full bg-orange-400" /><div><div className="text-sm text-white/75">KYC status checked</div><div className="text-xs text-white/35">{seller.verified ? "Verified" : "Pending"}</div></div></div>
+                <div className="flex gap-3"><span className="mt-1 h-2 w-2 rounded-full bg-orange-400" /><div><div className="text-sm text-white/75">Account status checked</div><div className="text-xs text-white/35">{seller.verified ? "Verified" : "Unverified"}</div></div></div>
                 <div className="flex gap-3"><span className="mt-1 h-2 w-2 rounded-full bg-emerald-400" /><div><div className="text-sm text-white/75">Message channel ready</div><div className="text-xs text-white/35">Live support</div></div></div>
               </div>
             </div>
 
             <div className="mt-auto rounded-2xl border border-sky-500/25 bg-sky-500/10 p-4">
               <div className="text-sm font-semibold text-sky-300 inline-flex items-center gap-2"><Sparkles className="h-4 w-4" /> AI Smart Reply</div>
-              <p className="mt-3 text-xs text-white/60 leading-relaxed">Use this for KYC or payout related answers.</p>
+              <p className="mt-3 text-xs text-white/60 leading-relaxed">Use this for payout related answers.</p>
               <button
                 type="button"
-                onClick={() => setDraft("Please update your KYC documents through the Compliance Portal. Our team will review them and update your status shortly.")}
+                onClick={() => setDraft("Please finish your payout account setup from your seller dashboard — that is what verifies you for payouts. Once Razorpay activates the account your status updates automatically.")}
                 className="mt-4 w-full h-10 rounded-xl bg-[#249AF2] hover:opacity-90 text-sm font-semibold text-[#06111A]"
               >
                 Insert Suggestion

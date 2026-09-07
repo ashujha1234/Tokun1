@@ -28,9 +28,11 @@
  *   "blob"      anyone with the full blob URL can read THAT blob
  *   "container" anyone can read AND **list every blob in the container**
  *
- * uploadToAzure.js creates every container it touches with "container", which
- * is how eleven of them — including kyc-documents — ended up world-listable.
- * Guessing a URL is hard; asking Azure for the whole index is one request.
+ * uploadToAzure.js used to create every container it touches with "container",
+ * which is how ten of them — including kyc-documents, holding Aadhaar and
+ * passport scans — ended up world-listable. Guessing a URL is hard; asking
+ * Azure for the whole index is one request. That helper now asks for "blob",
+ * but see the caveat below: it cannot retighten what already exists.
  *
  * Nothing here ever asks for "container". A public container gets "blob",
  * which is all an <img src> or a <video src> has ever needed, and a private one
@@ -38,9 +40,23 @@
  *
  * Note the same caveat that applies to every createIfNotExists call in this
  * codebase: the access level is only applied when the container is FIRST
- * created. An existing container keeps whatever it has, so this code cannot
- * tighten the eleven that already exist — that is a change to make in the
- * Azure portal.
+ * created. An existing container keeps whatever it has, so no code change can
+ * tighten the ten that already exist — that is a change to make in the Azure
+ * portal, per container:
+ *
+ *   Storage account → Containers → <name> → Change access level
+ *     Private  — refund-attachments, chat-attachments, admin-message-attachments,
+ *                feedback-screenshots, report-screenshots
+ *                (evidence and private conversations; nothing renders these
+ *                 from a bare URL except an admin screen, which can be moved
+ *                 onto getBlobSasUrl below)
+ *     Blob     — avatars, prompt-attachments, prompt-code, services
+ *                (public marketplace media; <img>/<video> need URL reads)
+ *     DELETE   — kyc-documents. No code writes or reads it any more (the whole
+ *                identity-document flow is gone), and what is in there is
+ *                government ID scans. Leaving it is retained personal data
+ *                with no purpose, which is the storage-limitation problem
+ *                under DPDP, not just an access-level one.
  */
 
 const fs = require("fs");

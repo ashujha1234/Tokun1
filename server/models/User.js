@@ -145,27 +145,17 @@ const userSchema = new mongoose.Schema(
       
 
 
-    // KYC
-kycStatus: {
-  type: String,
-  enum: ["NOT_SUBMITTED", "PENDING", "VERIFIED", "REJECTED", "FLAGGED"],
-  default: "NOT_SUBMITTED",
-},
-kycStage: {
-  type: String,
-  enum: ["DOCUMENTS_RECEIVED", "OCR_EXTRACTION", "NAME_MATCHING", "MANUAL_REVIEW", null],
-  default: null,
-},
-kycReasonCode: { type: String, default: null },  // e.g. NAME_MISMATCH
-kycReasonText: { type: String, default: null },  // readable reason
-kycExtractedName: { type: String, default: null },
-kycMatchScore: { type: Number, default: null },
-kycLastSubmittedAt: { type: Date, default: null },
-kycCooldownUntil: { type: Date, default: null }, // resubmit after cooldown
-kycVerifiedAt: { type: Date, default: null },
-kycDocType: { type: String, enum: ["AADHAAR", "PASSPORT"], default: null },
-kycLastSubmissionId: { type: mongoose.Schema.Types.ObjectId, ref: "KycSubmission", default: null },
-kycVerifiedAt: { type: Date, default: null },
+    /* The kyc* block that sat here is gone with the identity-document flow that
+       wrote it (routes/kycRoutes.js, utils/kyc, models/KycSubmission). Removing
+       the schema fields stops new writes and drops them from every projection;
+       it does NOT remove what is already stored, and eleven of these — a
+       document type, an OCR-extracted name, a match score — are personal data
+       on live User documents. Unsetting them is a migration to run against the
+       database, not something a schema edit does. `kycDocType` in particular
+       records that someone handed over an Aadhaar.
+
+       Not to be confused with Razorpay's payout KYC, which is a different
+       system and still in use: constants/kycRequirements.js + BankAccount. */
     // TM (team member) assignment (from org)
     orgAssignedCap: { type: Number, default: 0 },     // assigned monthly cap by org
     orgTokensRemaining: { type: Number, default: 0 }, // remaining for TM in this period

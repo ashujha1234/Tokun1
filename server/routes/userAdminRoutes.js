@@ -3,9 +3,15 @@ const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
 
-// ✅ Replace with your real middlewares
-const requireAuth = (req, res, next) => next();
-const requireAdmin = (req, res, next) => next();
+/* These were pass-through stubs — `(req, res, next) => next()` — left behind a
+   "replace with your real middlewares" note. The route below listed both and
+   enforced neither, so GET /api/user answered with every account's email, name,
+   role, plan and kycStatus to unauthenticated callers, and `?limit=1000`
+   returned the whole table at once.
+
+   Imported now, never redeclared. See middleware/requireAdmin.js. */
+const { requireAuth } = require("../utils/auth");
+const { requireAdmin } = require("../middleware/requireAdmin");
 
 /**
  * ✅ GET /api/user?limit=10&page=1&search=
@@ -34,7 +40,7 @@ router.get("/", requireAuth, requireAdmin, async (req, res) => {
 
     let q = User.find(query)
       .select(
-        "name email avatarUrl isVerified userType role plan subscriptionStatus createdAt lastLoginAt kycStatus"
+        "name email avatarUrl isVerified userType role plan subscriptionStatus createdAt lastLoginAt"
       )
       .sort({ createdAt: -1 })
       .lean();

@@ -17,6 +17,7 @@ import { releaseCheckoutHold } from "@/lib/referral";
 import { withTokunBranding } from "@/lib/razorpayTheme";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCart } from "@/contexts/CartContext";
+import { ensureRazorpayOrToast } from "@/lib/razorpayCheckout";
 
 /* ---------------------------------------------------------------------- */
 /*  Backend wiring (same endpoints/pattern as PromptMarketplacePage.tsx)   */
@@ -814,19 +815,8 @@ const PromptMarketplacePage = () => {
 
   const [rzpReady, setRzpReady] = useState(false);
 
-  /* ---------- Load Razorpay checkout script once ---------- */
-  useEffect(() => {
-    if ((window as any).Razorpay) {
-      setRzpReady(true);
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-    script.onload = () => setRzpReady(true);
-    script.onerror = () => setRzpReady(false);
-    document.body.appendChild(script);
-  }, []);
+  /* Loaded on demand at the buy click instead of on mount — see
+     src/lib/razorpayCheckout.ts. */
 
   /* ---------- Fetch prompts (same endpoint as Prompt Marketplace) ---------- */
   useEffect(() => {
@@ -951,8 +941,8 @@ const PromptMarketplacePage = () => {
       return;
     }
     if (!rzpReady) {
-      toast({ title: "Loading payment…", description: "still initializing." });
-      return;
+      if (!(await ensureRazorpayOrToast(toast))) return;
+      setRzpReady(true);
     }
 
     setConfirmPrompt(detailsP);

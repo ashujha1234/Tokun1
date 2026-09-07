@@ -4669,8 +4669,44 @@ class LLMService {
     return { ...this.config };
   }
 
+  /**
+   * Real token count, from the server's tokenizer.
+   *
+   * This used to be `words × 1.3` — a per-provider multiplier over a word
+   * count. On plain English that lands close enough to look right, which is
+   * why it survived; on anything else it is not close at all. A twenty-token
+   * JSON object counted as one token, because it is one "word". The optimiser
+   * exists to report a percentage, and the percentage was being computed from
+   * that.
+   *
+   * The tables are megabytes, so they stay on the server (see
+   * utils/tokenizer.js) and this asks over HTTP. Callers debounce — see
+   * PromptInput — because this runs while someone is typing.
+   *
+   * The old multiplier survives as the OFFLINE fallback only. A wrong number
+   * beside the box is bad; a blank one while the network is down is worse, and
+   * the count that decides the reduction percentage is measured on the server
+   * during the optimise call itself, not here.
+   */
   async countTokens(text: string): Promise<TokenizerResponse> {
     const words = text.split(/\s+/).filter(Boolean).length;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/tokens/count`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, model: this.config.model || "gpt-4o-mini" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof data?.tokens === "number") {
+          return { tokens: data.tokens, words: data.words ?? words };
+        }
+      }
+    } catch {
+      // fall through to the estimate
+    }
+
     const multipliers: Record<string, number> = {
       openai: 1.3, perplexity: 1.35, anthropic: 1.25, google: 1.2,
     };
