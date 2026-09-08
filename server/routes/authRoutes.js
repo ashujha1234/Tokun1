@@ -1180,6 +1180,20 @@ router.post("/refresh", refreshLimiter, async (req, res) => {
       });
     }
 
+    /* A retry served out of the rotation grace window — the client presented a
+       token it had already spent, within seconds, because it never received the
+       replacement. Logged, but as the network event it is: `warn`, not the
+       `SECURITY` error above. The distinction is the point of the whole change
+       — that error line is what a real stolen token looks like, and it is
+       useless if ordinary dropped responses print it too. Worth keeping visible
+       so a rising count points at the network rather than at an attacker. */
+    if (result.retried) {
+      console.warn("refresh retried within grace window (lost response, not a replay)", {
+        ip: req.ip,
+        userAgent: req.get("user-agent"),
+      });
+    }
+
     return res.json({
       success: true,
       token: signUserToken(result.user),

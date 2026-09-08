@@ -55,6 +55,24 @@ const ADMIN_TOKEN_TTL = "12h";
    stored as a Date on a document rather than signed into a claim. */
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+/* How long after a rotation the token it replaced is still honoured — see the
+   retry branch in rotateRefreshToken.
+
+   15 seconds is chosen from both ends. It has to outlast the case it exists
+   for: a request that reached the server, committed, and whose response was
+   lost — so roughly one request timeout on a bad mobile connection. And it has
+   to stay far short of anything useful to an attacker, who would need to
+   capture a token and replay it inside the same fifteen seconds during which
+   the real client is also mid-refresh. Even then the family is not lost to
+   detection: whichever of the two rotates next leaves the other holding a
+   spent token, and that presentation lands outside the window and revokes.
+
+   Widening this trades that detection away. It should not need widening: the
+   cross-tab lock in the client (contexts/AuthContext.tsx) removes the
+   multiple-tabs case entirely, and this window only covers the lost response
+   that no client-side lock can prevent. */
+const ROTATION_GRACE_MS = 15 * 1000;
+
 // Renew once the token is past this fraction of its life. Without a threshold,
 // every renew call would mint a new token and the client would churn them on
 // each focus event; at 50% a 1-hour token is refreshed at most every ~30
@@ -182,11 +200,97 @@ async function rotateRefreshToken(rawToken, ctx = {}) {
   // No such token. Also the answer for one already swept by the TTL index.
   if (!record) return { ok: false, reason: "not_found" };
 
-  /* Already spent — see the note above. Checked BEFORE the revoked and expired
-     cases, because a replayed token is a security event whichever of those it
-     also happens to be, and it must not be reported as a mundane "your session
-     ended". */
+  /* Already spent. Two very different things arrive here, and until now both
+     were treated as theft:
+
+       a RETRY   the rotation succeeded but its response never reached the
+                 client — a dropped mobile connection, or iOS freezing a
+                 backgrounded tab mid-request. The client still holds the old
+                 token because it never saw the new one, and it has no way to
+                 recover: every attempt presents the same dead token.
+
+       a REPLAY  someone is using a copy of a token that has been spent.
+
+     The retry case was a guaranteed logout, and one that no amount of
+     client-side care can avoid — the client cannot know whether the server
+     committed a rotation whose answer it never got. Since re-login here means
+     an emailed OTP (routes/authRoutes.js /login/initiate), that cost a user
+     their session for a network blip.
+
+     They ARE distinguishable, by time. A retry happens seconds after the
+     rotation it lost; a replay is whenever the attacker gets around to it. So
+     a short window after the rotation is served instead of punished. */
   if (record.replacedByHash) {
+    const rotatedAgoMs = record.revokedAt ? Date.now() - new Date(record.revokedAt).getTime() : Infinity;
+    const withinGrace = record.revokedReason === "rotated" && rotatedAgoMs <= ROTATION_GRACE_MS;
+
+    if (withinGrace) {
+      /* Follow this token's OWN replacement chain, not the family head.
+
+         The head is the wrong thing to look at: in a family where the real
+         client received B and spent it normally (B→C), the head is C and it is
+         very much alive — so keying off the head served the attacker replaying
+         A and never detected anything.
+
+         What separates a retry from a replay is WHY the replacement was spent:
+
+           spent by the real client ("rotated")        → the client HAS it, so
+                                                         presenting A again is a
+                                                         replay
+           spent by an earlier retry ("rotated_grace") → still the same client
+                                                         still not holding
+                                                         anything, so keep going
+           not spent at all                            → the lost-response case
+                                                         this exists for
+
+         So walk forward across links this branch itself created, and stop at
+         the first one that is either unspent (rotate it) or was spent by the
+         real client (revoke). Bounded, because a chain that long is not a
+         retry any more. */
+      let link = await RefreshToken.findOne({ tokenHash: record.replacedByHash });
+
+      for (let hop = 0; hop < 5 && link; hop++) {
+        const unspent = !link.replacedByHash && !link.revokedAt && link.expiresAt > new Date();
+
+        if (unspent) {
+          const user = await User.findById(link.userId);
+          if (!user || user.isDeleted) return { ok: false, reason: "revoked" };
+
+          const retryRaw = generateRefreshToken();
+          const retryHash = hashRefreshToken(retryRaw);
+
+          await RefreshToken.create({
+            tokenHash: retryHash,
+            userId: user._id,
+            family: link.family,
+            expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+            userAgent: String(ctx.userAgent || "").slice(0, 300),
+            ip: String(ctx.ip || "").slice(0, 60),
+          });
+
+          /* "rotated_grace", not "rotated" — this marker is the whole
+             mechanism. It records that this link was spent serving a retry
+             rather than by a client that actually held it, which is what lets
+             the next retry walk past it and a replay stop at it. */
+          link.replacedByHash = retryHash;
+          link.revokedAt = new Date();
+          link.revokedReason = "rotated_grace";
+          await link.save();
+
+          return { ok: true, user, refreshToken: retryRaw, retried: true };
+        }
+
+        // Spent by an earlier retry — keep walking. Anything else is a replay.
+        if (link.revokedReason !== "rotated_grace" || !link.replacedByHash) break;
+        link = await RefreshToken.findOne({ tokenHash: link.replacedByHash });
+      }
+    }
+
+    /* A genuine replay: spent long ago, or spent and its replacement already
+       used. Revoke the whole family — both the thief and the real user are
+       signed out, which is the right trade. Checked before the revoked and
+       expired cases below, because a replay is a security event whichever of
+       those it also happens to be. */
     await RefreshToken.updateMany(
       { family: record.family, revokedAt: null },
       { $set: { revokedAt: new Date(), revokedReason: "reuse_detected" } }

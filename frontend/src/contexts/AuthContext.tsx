@@ -1,6 +1,7 @@
 // src/contexts/AuthContext.tsx
 import React, { createContext, useContext, useMemo, useState, useEffect } from "react";
 import { socket } from "@/lib/socket";
+import { withRefreshLock } from "@/lib/refreshLock";
 import {
   claimUserScopedStorage,
   clearUserScopedStorage,
@@ -234,12 +235,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * would let this become reactive, and it is the reason the access token is an
    * hour rather than the fifteen minutes this pattern normally uses.
    *
-   * Only one refresh may be in flight at a time. Refresh tokens are single-use
-   * and rotate: two concurrent calls would send the same token twice, the
-   * server would read the second as a replay of a stolen token, and it would
-   * revoke the entire family — logging the user out as a direct result of
-   * having two tabs. `refreshInFlight` is what stops that, and it matters more
-   * than it looks.
+   * Only one refresh may be in flight at a time, and that has to hold ACROSS
+   * TABS. Refresh tokens are single-use and rotate: two concurrent calls send
+   * the same token twice, the server reads the second as a replay of a stolen
+   * token, and it revokes the entire family — signing the user out of
+   * everything.
+   *
+   * `refreshInFlight` below is a ref, so it only ever covered one tab. It was
+   * commented as preventing the two-tab logout and it does not: localStorage is
+   * shared across tabs, each tab has its own AuthProvider and its own ref, and
+   * two tabs coming to the same conclusion about an aging token is exactly the
+   * race it claimed to stop. That is what `SECURITY refresh token reuse
+   * detected` in the server log was — not theft, a second tab.
+   *
+   * So there are two layers now:
+   *   refreshInFlight   this tab, cheap, avoids even taking the lock twice
+   *   withRefreshLock   every tab of this origin (lib/refreshLock.ts)
+   *
+   * And a third thing that matters as much as either: inside the lock, the
+   * decision is made AGAIN. A tab that waited usually finds the work already
+   * done and returns without a request. Without that re-check the tabs would
+   * take turns spending tokens rather than racing to — the same bug, serialised.
    */
   const refreshInFlight = React.useRef<Promise<boolean> | null>(null);
 
@@ -250,12 +266,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       typeof window !== "undefined" ? localStorage.getItem("refreshToken") : null;
     if (!storedRefresh) return false;
 
-    const run = (async (): Promise<boolean> => {
+    const run = withRefreshLock(async (): Promise<boolean> => {
       try {
+        /* Re-read inside the lock, never the value captured before waiting.
+           Whichever tab held the lock first has probably just rotated, and the
+           token read outside is the one it spent — presenting that is the
+           replay this whole change exists to stop. */
+        const refreshNow = localStorage.getItem("refreshToken");
+        if (!refreshNow) return false;
+
+        /* And re-decide. If another tab refreshed while this one queued, the
+           access token in localStorage is already fresh and there is nothing to
+           do — adopt it and return. This is the branch that turns a queue of
+           tabs into a single request. */
+        const tokenNow = localStorage.getItem("token");
+        const leftNow = secondsUntilExpiry(tokenNow);
+        if (tokenNow && leftNow !== null && leftNow > (60 * 60) / 2) {
+          setToken(tokenNow);
+          return true;
+        }
+
         const res = await fetch(`${API_BASE}/api/auth/refresh`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ refreshToken: storedRefresh }),
+          body: JSON.stringify({ refreshToken: refreshNow }),
         });
 
         /* 401 is the server saying this refresh token is no good — unknown,
@@ -287,7 +321,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } finally {
         refreshInFlight.current = null;
       }
-    })();
+    });
 
     refreshInFlight.current = run;
     return run;
