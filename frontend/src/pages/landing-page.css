@@ -1738,9 +1738,14 @@ body.is-loading { overflow: hidden; }
 
 /* ── stat ── */
 
+/* 32 + 32 put 64px between the feature links and this line, which left the
+   "Upto 60% token reduction" figure sitting well below the divider and near
+   the bottom of the column. Pulled up 22px in total — most of it off the
+   padding, so the gap above the rule stays wide enough to read as a section
+   break rather than the rule crowding the links. */
 .sg-show__stats {
-  margin-top: 32px;
-  padding-top: 32px;
+  margin-top: 24px;
+  padding-top: 18px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 

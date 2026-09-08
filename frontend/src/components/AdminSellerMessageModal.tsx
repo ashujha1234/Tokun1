@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { avatarFor, avatarFallback } from "@/lib/avatar";
 import { X, Image as ImageIcon, Paperclip, Send, Sparkles } from "lucide-react";
 import { io, Socket } from "socket.io-client";
@@ -276,7 +277,23 @@ export default function AdminSellerMessageModal({
 
   if (!open || !seller) return null;
 
-  return (
+  /* PORTALLED TO <body>, and that is the whole fix for this modal opening
+     off the top of the screen.
+
+     `position: fixed` does NOT resolve against the viewport when any ancestor
+     has a `transform`, `filter` or `backdrop-filter` — it resolves against
+     THAT element's box. This modal renders deep inside the admin dashboard,
+     which uses backdrop-blur on seventeen panels, so `fixed inset-0` was
+     sizing itself to whichever blurred card contained it. The panel below is
+     `h-[86vh]` — 86% of the real viewport regardless — so it was far taller
+     than that containing block, and `items-center` then centred the overflow:
+     half of it above the top of the box, which is why the header and the top
+     of the conversation were cut off and the modal looked stuck to the top.
+
+     Nothing about the CSS here could fix that from the inside; it has to leave
+     the subtree. Same fix, and the same reason, as PhotoDialog in
+     components/ProfileAvatar.tsx. */
+  return createPortal(
     <div className="fixed inset-0 z-[80] bg-black/70 backdrop-blur-sm flex items-center justify-center px-4 py-5">
       <div className="w-full max-w-[1180px] h-[86vh] rounded-[24px] overflow-hidden border border-white/10 bg-[#050607] shadow-2xl flex flex-col">
         <div className="h-[76px] px-5 md:px-7 border-b border-white/10 bg-[#121212] flex items-center justify-between">
@@ -474,6 +491,7 @@ const mine =
           </aside>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

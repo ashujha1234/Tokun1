@@ -40,7 +40,16 @@ const run = promisify(execFile);
 
 /* Measured on main at the time this script was added. Lower it whenever the
    real count drops — never raise it. */
-const BASELINE = 55;
+/* 55 -> 30: the whole Landing.tsx block went in one pass. Twenty-five of the
+   original errors were three mechanical shapes on one page — an untyped
+   `fadeUp`/`heroFadeUp` whose `ease` widened to number[] instead of
+   framer-motion's 4-tuple (13), `style={{ '--custom-prop': … }}` against a
+   CSSProperties with no `--*` index signature (9), plus navigator.connection
+   and a `user.id` spelling (2). None of them changed a line of runtime
+   behaviour. The remaining 30 are genuine shape mismatches — component props,
+   context types, a duplicate object key — and each needs deciding, not
+   annotating. */
+const BASELINE = 30;
 
 const PROJECT = "tsconfig.app.json";
 

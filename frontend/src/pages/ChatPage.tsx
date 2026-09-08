@@ -5797,7 +5797,16 @@ function HireCard({
     <>
       <div
         onClick={() => setShowProposalPopup(true)}
-        style={{ width: "100%", maxWidth: 505, borderRadius: 24, background: "#292929", overflow: "hidden", fontFamily: "Inter, sans-serif", boxShadow: "0 20px 60px rgba(0,0,0,0.35)", cursor: "pointer" }}
+        /* `width: 505` with `maxWidth: "100%"`, not `width: "100%"` with
+           `maxWidth: 505`. The two are not equivalent here: this card's parent
+           bubble is a shrink-to-fit flex item, so its width comes FROM its
+           content — and a child asking for 100% of a parent sized by its child
+           resolves to the content's own max-content width, not to 505. The card
+           was rendering about 350px wide inside a 610px bubble that had room
+           for all of it, which is what pushed the ✕ onto a second line.
+           A definite width breaks that circularity; maxWidth keeps it fitting
+           on a narrow screen. */
+        style={{ width: 505, maxWidth: "100%", borderRadius: 24, background: "#292929", overflow: "hidden", fontFamily: "Inter, sans-serif", boxShadow: "0 20px 60px rgba(0,0,0,0.35)", cursor: "pointer" }}
       >
         <div style={{ height: 50, background: TOP_GRADIENT, padding: "0 24px", display: "flex", alignItems: "center", justifyContent: "space-between", boxSizing: "border-box" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -5846,18 +5855,28 @@ function HireCard({
               `viewerSide` comes from the fetched deal, so it is null until that
               lands — and null hides the row. Hiding is the safe direction: a
               missing button for a moment beats a button that 403s. */}
+          {/* One row, always. It was `flexWrap: "wrap"` with flex-basis
+              140px + 130px + a 48px square = 342px of minimum, so any
+              container under that dropped the ✕ to its own line — which is
+              exactly what a narrow card did.
+
+              nowrap plus `flex: 1 1 0` and `minWidth: 0` on the two text
+              buttons means they share whatever is left after the fixed square
+              and shrink together, instead of the row breaking. The labels
+              ellipsis rather than wrap, so the row keeps its height whatever
+              the width. */}
           {!isAccepted && !isRejected && viewerSide === "worker" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "nowrap", marginTop: 8 }}>
               <button
                 disabled={acceptLoading}
                 onClick={(e) => { e.stopPropagation(); handleAcceptProposal(); }}
-                style={{ flex: "1 1 140px", height: 48, border: "none", borderRadius: 8, background: TOP_GRADIENT, color: "#FFFFFF", cursor: acceptLoading ? "not-allowed" : "pointer", opacity: acceptLoading ? 0.6 : 1, fontWeight: 400, fontSize: 15 }}
+                style={{ flex: "1 1 0", minWidth: 0, height: 48, padding: "0 10px", border: "none", borderRadius: 8, background: TOP_GRADIENT, color: "#FFFFFF", cursor: acceptLoading ? "not-allowed" : "pointer", opacity: acceptLoading ? 0.6 : 1, fontWeight: 400, fontSize: 15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
               >
                 {acceptLoading ? "Accepting..." : "Accept Proposal"}
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); setShowCounterPopup(true); }}
-                style={{ flex: "1 1 130px", height: 48, borderRadius: 8, background: "#202020", border: "1px solid #FFFFFF0D", color: "#FFFFFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontWeight: 400, fontSize: 15 }}
+                style={{ flex: "1 1 0", minWidth: 0, height: 48, padding: "0 10px", borderRadius: 8, background: "#202020", border: "1px solid #FFFFFF0D", color: "#FFFFFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontWeight: 400, fontSize: 15, whiteSpace: "nowrap", overflow: "hidden" }}
               >
                 <img loading="lazy" decoding="async" src="/icons/counter.svg" alt="" style={{ width: 18, height: 18, objectFit: "contain", flexShrink: 0 }} />
                 Counter Offer

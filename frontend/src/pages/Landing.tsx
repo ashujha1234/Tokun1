@@ -121,7 +121,21 @@ const ROUTES = {
  * travel is smaller too, since a 36px slide is what makes a late reveal read as
  * "jumping into place".
  */
-const fadeUp = {
+/**
+ * `style={}` when it carries CSS custom properties.
+ *
+ * React's CSSProperties has no index signature for `--*`, so every
+ * `style={{ '--foo': x }}` on this page was an excess-property error — nine of
+ * them, and this file animates almost entirely through custom properties.
+ *
+ * Spread rather than casting the whole style object, so the REAL properties
+ * beside them stay type-checked: `{ left, top, ...cssVars({ '--token-delay': x }) }`
+ * still catches a typo in `left`, where `{ left, '--token-delay': x } as
+ * React.CSSProperties` would silence that too.
+ */
+const cssVars = (vars: Record<string, string | number>) => vars as React.CSSProperties
+
+const fadeUp: Variants = {
   hidden: { opacity: 0, y: 18 },
   visible: (i = 0) => ({
     opacity: 1,
@@ -279,7 +293,10 @@ function HeroAccountMenu() {
       label: 'My Account',
       icon: UserIcon,
       onClick: () => {
-        const id = user?._id || user?.id
+        /* Both spellings, because they come from different places: the auth
+           context types `_id`, while some endpoints hand back `id`. The cast
+           names that rather than leaving `.id` as a property error. */
+        const id = user?._id || (user as { id?: string } | null)?.id
         go(id ? `/profile/${id}` : '/profile')
       },
     },
@@ -659,7 +676,7 @@ function OrbitRing({ radius, duration, reverse, nodes, offset }) {
   return (
     <div
       className={`tokun-ai-aura__ring${reverse ? ' tokun-ai-aura__ring--reverse' : ''}`}
-      style={{ '--orbit-duration': `${duration}s` }}
+      style={cssVars({ '--orbit-duration': `${duration}s` })}
     >
       {Array.from({ length: nodes }).map((_, i) => {
         const angle = offset + (360 / nodes) * i
@@ -671,7 +688,7 @@ function OrbitRing({ radius, duration, reverse, nodes, offset }) {
           >
             <span
               className="tokun-ai-aura__node-core"
-              style={{ '--node-delay': `${i * 0.3}s` }}
+              style={cssVars({ '--node-delay': `${i * 0.3}s` })}
             />
           </div>
         )
@@ -724,7 +741,7 @@ function TokunAiAura({ variant = 'title' }) {
             strokeWidth="0.15"
             vectorEffect="non-scaling-stroke"
             strokeDasharray="2 4"
-            style={{ '--synapse-delay': `${i * 0.15}s` }}
+            style={cssVars({ '--synapse-delay': `${i * 0.15}s` })}
           />
         ))}
         {!isAmbient && (
@@ -745,7 +762,7 @@ function TokunAiAura({ variant = 'title' }) {
           <span
             key={bit.id}
             className="tokun-ai-aura__bit"
-            style={{
+            style={cssVars({
               '--bit-duration': `${bit.duration}s`,
               '--bit-delay': `${bit.delay}s`,
               '--bit-x0': `${bit.p0.x}px`,
@@ -754,7 +771,7 @@ function TokunAiAura({ variant = 'title' }) {
               '--bit-y1': `${bit.p1.y}px`,
               '--bit-x2': `${bit.p2.x}px`,
               '--bit-y2': `${bit.p2.y}px`,
-            }}
+            })}
           >
             {bit.char}
           </span>
@@ -765,7 +782,7 @@ function TokunAiAura({ variant = 'title' }) {
         <span
           key={token.text + token.x}
           className="tokun-ai-aura__token"
-          style={{ left: token.x, top: token.y, '--token-delay': `${token.delay}s` }}
+          style={{ left: token.x, top: token.y, ...cssVars({ '--token-delay': `${token.delay}s` }) }}
         >
           {token.text}
         </span>
@@ -1054,8 +1071,10 @@ function HeroBackground({ variant = 'full' }) {
               top: `${p.y}%`,
               width: p.size,
               height: p.size,
-              '--particle-duration': `${p.duration}s`,
-              '--particle-delay': `${p.delay}s`,
+              ...cssVars({
+                '--particle-duration': `${p.duration}s`,
+                '--particle-delay': `${p.delay}s`,
+              }),
             }}
           />
         ))}
@@ -1381,7 +1400,7 @@ const STATS = [
   { label: 'Support', value: '24/7' },
 ]
 
-const heroFadeUp = {
+const heroFadeUp: Variants = {
   hidden: { opacity: 0, y: 32 },
   visible: (i = 0) => ({
     opacity: 1,
@@ -1607,7 +1626,7 @@ function WhatWeOffer() {
             <motion.article
               key={offer.num}
               className="offer-card"
-              style={{ '--card-accent': offer.accent }}
+              style={cssVars({ '--card-accent': offer.accent })}
               initial="hidden"
               whileInView="visible"
               viewport={REVEAL_VIEWPORT}
@@ -1829,9 +1848,10 @@ const SG_FEATURES = [
    are eleven of them, and the typecheck ratchet in CI counts them.
 
    Annotating this one `: Variants` gives the array a contextual type, so it
-   narrows to the tuple and no twelfth error is added. Applying the same
-   annotation to fadeUp itself would fix all eleven at once and is worth doing —
-   separately, since it touches every section on this page. */
+   narrows to the tuple and no twelfth error is added. `fadeUp` and
+   `heroFadeUp` now carry the same annotation, which is what this note asked
+   for — so this one is no longer special, and the next reveal added to this
+   page should just use `fadeUp`. */
 const SG_REVEAL: Variants = {
   hidden: { opacity: 0, y: 18 },
   visible: {
@@ -2161,7 +2181,7 @@ function HowItWorks() {
             <motion.article
               key={step.num}
               className="how-step"
-              style={{ '--step-accent': step.accent }}
+              style={cssVars({ '--step-accent': step.accent })}
               initial="hidden"
               whileInView="visible"
               viewport={REVEAL_VIEWPORT}
@@ -2656,7 +2676,12 @@ function GlobeSection() {
      reader is looking at the hero.
      Skipped on Save-Data, where a megabyte of optional 3D is the wrong call. */
   useEffect(() => {
-    if (navigator.connection?.saveData) return
+    /* Save-Data is the Network Information API, which lib.dom does not
+       declare — it is Chromium-only, which is also why the access stays
+       optional. Narrowed here rather than globally so the assertion sits with
+       the one use. */
+    const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection
+    if (connection?.saveData) return
     // Nothing to warm up if the globe is never going to mount.
     if (!webglOk) return
 
@@ -3050,7 +3075,7 @@ function LoadingScreen({ onComplete }) {
               <span
                 key={token}
                 className="loading-screen__token"
-                style={{ '--token-i': i }}
+                style={cssVars({ '--token-i': i })}
               >
                 {token}
               </span>
