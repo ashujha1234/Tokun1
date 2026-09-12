@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/toaster";
+import { currentAsNext } from "@/lib/nextPath";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -64,6 +65,7 @@ const AdminNotificationsPage = lazy(() => import("@/pages/AdminNotificationsPage
 const AdminRefundsPage = lazy(() => import("@/pages/AdminRefundsPage"));
 const AdminNdaPage = lazy(() => import("@/pages/AdminNdaPage"));
 const SelfDash = lazy(() => import("@/pages/self-dash"));
+const AcceptInvite = lazy(() => import("@/pages/AcceptInvite"));
 const OrdersPage = lazy(() => import("@/pages/OrdersPage"));
 const OrderDetailPage = lazy(() => import("@/pages/OrderDetailPage"));
 const AdminDisputesPage = lazy(() => import("@/pages/AdminDisputesPage"));
@@ -94,7 +96,13 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
+    /* ?next=, not router state. The state this used to pass was never read by
+       the login screens, so every sign-in ended on /smartgen — and state would
+       not have survived the case that matters most anyway: arriving cold from
+       an email link, where there is no history entry to carry it. The param
+       survives that and the login → OTP → verified hop in between. */
+    const next = encodeURIComponent(currentAsNext(location));
+    return <Navigate to={`/login?next=${next}`} replace />;
   }
 
   return <>{children}</>;
@@ -240,7 +248,16 @@ export default function App() {
 <Route path="/terms" element={<TermsPage />} />
 <Route path="/refund-policy" element={<RefundPolicyPage />} />
 <Route path="/report-policy" element={<ReportPolicyPage />} />
-<Route path="/my-refunds" element={<MyRefundsPage />} />
+{/* Behind auth for the same reason as /self-dash — it lists this
+    person's own refund requests. */}
+<Route
+  path="/my-refunds"
+  element={
+    <RequireAuth>
+      <MyRefundsPage />
+    </RequireAuth>
+  }
+/>
 <Route path="/subscription" element={<Subscription />} />
   <Route path="/prompty-history" element={<PromptHistory />} />
 <Route
@@ -253,7 +270,28 @@ export default function App() {
 />
  <Route path="/saved" element={<SavedCollection />} />
  <Route path="/admin" element={<Admin />} />
- <Route path="/self-dash" element={<SelfDash />} />
+ {/* Where an organisation invitation email lands. Guarded, so a signed-out
+     recipient goes to /login?next=/accept-invite?... and is brought back
+     here the moment they are verified. */}
+ <Route
+   path="/accept-invite"
+   element={
+     <RequireAuth>
+       <AcceptInvite />
+     </RequireAuth>
+   }
+ />
+ {/* Behind auth: fifteen of the transactional email CTAs point here, and it
+     shows a person's own purchases, sales and payouts. Unguarded, an email link
+     opened while signed out rendered the page with nothing in it. */}
+ <Route
+   path="/self-dash"
+   element={
+     <RequireAuth>
+       <SelfDash />
+     </RequireAuth>
+   }
+ />
  {/* Everything bought and sold in one list. Behind auth because it's
      entirely the caller's own transaction history. */}
  <Route
