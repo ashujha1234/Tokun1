@@ -173,8 +173,23 @@ function buildOtpEmailHtml({ name = "there", otp }) {
               <td align="center" style="padding-bottom: 28px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:20px; overflow:hidden;">
                   <tr>
-                    <td align="center" style="background: linear-gradient(90deg, #A300FF 0%, #6A67FF 50%, #2F86FF 100%); padding: 28px 24px; border-radius: 20px; box-shadow: 0px 5px 14px 0px #080F340A;">
-                      <div style="font-family: Inter, Arial, Helvetica, sans-serif; font-weight:600; color:#ffffff; font-size:14px;">What would you like to create today?</div>
+                    <!-- The hero: brand first, then the line.
+
+                         background-color is set as well as the gradient, and
+                         it has to be. Outlook's Word rendering engine does not
+                         support linear-gradient at all — without a solid colour
+                         underneath it the cell falls back to transparent, and
+                         white text on the near-black body below is invisible.
+                         The mid-stop of the gradient is used so the fallback
+                         reads as the same banner rather than a different one.
+
+                         Sizes are in px and line-height is explicit on both
+                         lines: email clients do not inherit a body line-height
+                         reliably, and without it the two lines collide as soon
+                         as the font grows. -->
+                    <td align="center" style="background-color:#6A67FF; background: linear-gradient(90deg, #A300FF 0%, #6A67FF 50%, #2F86FF 100%); padding: 40px 28px; border-radius: 20px; box-shadow: 0px 5px 14px 0px #080F340A;">
+                      <div style="font-family: Inter, Arial, Helvetica, sans-serif; font-weight:700; color:#ffffff; font-size:30px; line-height:38px; letter-spacing:1px;">TOKUN.WORLD</div>
+                      <div style="font-family: Inter, Arial, Helvetica, sans-serif; font-weight:500; color:#EDE9FF; font-size:17px; line-height:26px; padding-top:8px;">What would you like to create today?</div>
                     </td>
                   </tr>
                 </table>

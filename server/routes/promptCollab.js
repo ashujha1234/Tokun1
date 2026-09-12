@@ -1198,7 +1198,10 @@ const finalMessage = `${senderName} invited you to collaborate on a prompt in To
 
       await sendEmail({
         to: email,
-        subject: "Invitation to collaborate on a product on Tokun.World",
+        /* "a product" was wrong — this invites someone into a prompt
+           collaboration session, which is what the body and the button both say.
+           The sender's name is what makes it recognisable in a full inbox. */
+        subject: `${senderName} invited you to work on a prompt — Tokun.World`,
         html: withFooter(html, { receivingBecause: "an invitation to collaborate on Tokun.World" }),
         attachments: socialAttachments(),
       });

@@ -175,9 +175,29 @@
       </div>
 
       <!-- Main text body -->
+      <!-- This said only "{{SenderName}} has invited you to collaborate on a
+           prompt." — one sentence, above a button, for someone who may never
+           have opened a collaboration session before. It named neither what
+           they were being invited into nor what they would be able to do, so
+           the button was the only way to find out.
+
+           Everything claimed below is checkable: a CollabSession holds one
+           shared `text` with a `rev` counter and a participants list, and the
+           link opens /prompt-optimization. Deliberately NOT claimed: "live" or
+           "real time" (there are no sockets on this route — changes are seen on
+           save, not as they are typed) and any expiry (the session has none).
+           An email that promises either would be lying about the product. -->
       <div class="body-section">
         <p>Hello {{Name}},</p>
-        <p>{{SenderName}} has invited you to collaborate on a prompt.</p>
+        <p><strong>{{SenderName}}</strong> has invited you to work on a prompt together on Tokun.World.</p>
+        <p>
+          Opening the invitation puts you both into the same prompt in the Prompt Optimiser.
+          You can rewrite it, cut the tokens it burns and keep whichever version reads best —
+          and whatever either of you saves, the other sees.
+        </p>
+        <p class="muted-text">
+          If you weren’t expecting this invitation, you can safely ignore this email.
+        </p>
       </div>
 
       <!-- CTA button -->
