@@ -21,17 +21,32 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
  *   - omitted  → navigate(-1), for screens whose "back" is genuinely wherever
  *                you came from.
  *
- * `fallbackTo` is the third case, and it exists because of a real bug: the login
- * and signup screens both hard-coded `to="/"`. Reach /login from /about and
- * "Back" took you to the landing page — a place you had never been — and your
- * actual page was gone. Plain navigate(-1) fixes that but breaks the other
- * entry: someone opening /login from a bookmark or an email has no history to
- * go back to, and -1 walks them out of the site.
+ * `fallbackTo` is the third case: step back if there IS a step, otherwise go to
+ * the named fallback. `location.key` is React Router's own answer to "is this
+ * the first entry in this session?" — it is the literal string "default" only
+ * for the very first location, which is exactly the case where -1 must not be
+ * used.
  *
- * So: step back if there IS a step, otherwise go to the named fallback.
- * `location.key` is React Router's own answer to "is this the first entry in
- * this session?" — it is the literal string "default" only for the very first
- * location, which is exactly the case where -1 must not be used.
+ * ── Login and signup deliberately do NOT use fallbackTo ──────────────────────
+ *
+ * They use `to="/"`, so Back always lands on the landing page whatever came
+ * before it. That is a product decision and it is the second time this has been
+ * decided, so it is worth writing down rather than rediscovering:
+ *
+ *   `fallbackTo` was introduced FOR those two screens, because always-"/" means
+ *   reaching /login from /about and pressing Back drops you on the landing page
+ *   — somewhere you had never been — with the page you were actually reading
+ *   gone. navigate(-1) is the better answer to that specific complaint.
+ *
+ *   It was changed back on purpose. Sign-in is a detour, not a step in a
+ *   journey, and "Back" on it is read as "leave this, take me to the front of
+ *   the site" rather than "undo my last navigation". Landing every time is
+ *   predictable; going somewhere different depending on how you arrived is not.
+ *
+ * So if Back on /login looks wrong to you, it is intentional — change it with
+ * whoever owns the flow, not because this comment made it look like an
+ * oversight. `fallbackTo` stays because it is the right default for any future
+ * screen that is genuinely mid-journey.
  */
 export default function BackLink({
   to,

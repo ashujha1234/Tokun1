@@ -1231,6 +1231,10 @@ const { siteUrl } = require("../utils/siteUrl");
 // const fs =require("fs");
 // const path= require("path");
 // const { sendEmail } = require("../utils/SendEmail"); // ← make sure filename & path match exactly
+/* The footer glyphs travel with the message instead of being fetched from a
+   CDN — see services/emailSocialIcons.js for why that was the only way to
+   make them appear outside Gmail. */
+const { withFooter, socialAttachments } = require("../services/emailSocialIcons");
 
 
 // // Helper: YYYY-MM-DD in IST
@@ -2122,16 +2126,29 @@ router.post("/add", requireAuth, async (req, res) => {
         const base = siteUrl();
         const inviteUrl = `${base}/login?invite=${member._id}`;
 
+        /* Every placeholder the template contains has to be replaced here.
+           Two were missing, and an unreplaced {{token}} does not fail — it
+           renders. The invite email was going out with the literal text
+           "{{inviterName}}" in its footer, and with href="{{featuresLink}}"
+           on the "explore our features" link, which is a dead link in every
+           invitation this platform has ever sent.
+
+           If you add a placeholder to TeamMemberInviteTemplate.html, add it
+           here and to the resend branch in the same commit. */
         const html = invitationTemplate
           .replace(/{{memberName}}/g, member.name || member.email.split("@")[0])
           .replace(/{{memberEmail}}/g, member.email)
           .replace(/{{orgName}}/g, org.name)
+          .replace(/{{inviterName}}/g, req.user?.name || org.name || "your organisation")
+          .replace(/{{featuresLink}}/g, `${base}/features`)
           .replace(/{{loginLink}}/g, inviteUrl);
+        const htmlWithSocial = withFooter(html, { receivingBecause: "an invitation to a Tokun.World organisation" });
 
         await sendEmail({
           to: member.email,
           subject: `${org.name} invites you to Tokun.World`,
-          html,
+          html: htmlWithSocial,
+          attachments: socialAttachments(),
         });
         results.push({ email, success: true, invited:true ,created: !member.isVerified, tokens });
 
@@ -2990,18 +3007,24 @@ router.post("/resend-invite/:memberId", requireAuth, async (req, res) => {
     const inviteBase = siteUrl();
     const inviteUrl = `${inviteBase}/login?invite=${member._id}`;
 
-    // ✅ Build email HTML (use the template we created earlier)
+    /* Same two placeholders the first-invite branch above was missing — the
+       resend template carries them too, so a reminder went out with a literal
+       "{{inviterName}}" and a dead features link. See the note there. */
     const html = resendInvitationTemplate
       .replace(/{{memberName}}/g, member.name || member.email.split("@")[0])
       .replace(/{{memberEmail}}/g, member.email)
       .replace(/{{orgName}}/g, org.name)
+      .replace(/{{inviterName}}/g, req.user?.name || org.name || "your organisation")
+      .replace(/{{featuresLink}}/g, `${inviteBase}/features`)
       .replace(/{{loginLink}}/g, inviteUrl);
+    const htmlWithSocial = withFooter(html, { receivingBecause: "an invitation to a Tokun.World organisation" });
 
     // ✅ Send the reminder email
     await sendEmail({
       to: member.email,
       subject: `Reminder: Your Tokun.World Invitation Awaits 🚀`,
-      html,
+      html: htmlWithSocial,
+      attachments: socialAttachments(),
     });
 
     return res.json({

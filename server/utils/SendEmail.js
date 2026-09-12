@@ -16,13 +16,17 @@ const transporter = nodemailer.createTransport({
 transporter.verify()
   .catch(err => console.error("❌ SMTP error:", err?.response || err?.message || err));
 
-async function sendEmail({ to, subject, html, text }) {
+async function sendEmail({ to, subject, html, text, attachments }) {
   return transporter.sendMail({
     from: process.env.EMAIL_FROM, // "Tokun <ashutoshjha1701@gmail.com>"
     to,
     subject,
     text,
     html,
+    /* Carries the inline footer glyphs (services/emailSocialIcons.js). Omitted
+       when empty rather than passed as [] — some transports treat an empty
+       array as "this message has attachments" and mark it accordingly. */
+    ...(attachments && attachments.length ? { attachments } : {}),
   });
 }
 

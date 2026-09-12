@@ -375,13 +375,12 @@ const fs = require("fs");
 const { tempUploadDir } = require("../utils/privateUploadDirs");
 const { uploadFileToBlob, blobNameFor } = require("../utils/blobStorage");
 const { PLANS } = require("../config/plans");
-const {
-  spendTokensForIndividual,
-  spendTokensForTeamMember,
-  spendTokensForOrgOwner,
-  assertCanSpend,
-  SPEND_ERRORS,
-} = require("../service/spend");
+/* No spend functions here any more — this router records runs, it does not bill
+   for them. assertCanSpend stays because GET /eligibility answers "could I
+   generate right now?", and SPEND_ERRORS because the account-type and org
+   checks below still speak that vocabulary. The deduction happens in
+   index.js on POST /api/smartgen/stream. */
+const { assertCanSpend, SPEND_ERRORS } = require("../service/spend");
 const User = require("../models/User");
 const Organization = require("../models/organization");
 
@@ -528,6 +527,23 @@ router.post("/", requireAuth, upload.array("attachments", 5), async (req, res) =
     if (!inputPrompt || !detailedPrompt) {
       return res.status(400).json({ success: false, error: "inputPrompt_and_detailedPrompt_required" });
     }
+    /* This route RECORDS a run. It does not bill for one.
+     *
+     * Billing moved to POST /api/smartgen/stream, which is the request that
+     * actually calls the model — see the quota-gate block there for the three
+     * ways the old split went wrong. The short version: a run that never
+     * reached this endpoint was free, the amount came from the browser
+     * unverified, and it counted output tokens only.
+     *
+     * `tokensUsed` is still read, still required, and still stored, because
+     * models/Smartgen.js requires it and the history UI displays it. It is now
+     * a display figure attached to a record, not an instruction to deduct
+     * anything — so a wrong value here costs nothing but a wrong label.
+     *
+     * Deliberately still accepted from older clients: a browser running cached
+     * JS keeps sending it, and those requests must keep working. They no longer
+     * double-bill, because this is the only place that used to charge and it
+     * has stopped. */
     const amount = Number(tokensUsed);
     if (!Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({ success: false, error: "tokensUsed_required_positive_number" });
@@ -536,9 +552,12 @@ router.post("/", requireAuth, upload.array("attachments", 5), async (req, res) =
     let updatedUser = null;
     let updatedOrg = null;
 
+    /* The account-type branch stays. It is no longer choosing a spend function,
+     * but it still decides whether this account may record a run at all, and it
+     * still assembles the fresh user/org the client reads its remaining quota
+     * from — which by now reflects the deduction the stream route made. */
     if (req.user.userType === "IND") {
       await enforceSmartgenHistoryLimit(req.user);
-      await spendTokensForIndividual(req.user._id, amount, "smartgen");
       updatedUser = await User.findById(req.user._id);
       req.user = updatedUser; // Update req.user
 
@@ -548,18 +567,14 @@ router.post("/", requireAuth, upload.array("attachments", 5), async (req, res) =
       // .plan off it used to throw and surface as a 500.
       if (!updatedOrg) throw new Error("org_not_found");
       if (!updatedOrg.plan) throw new Error("org_subscription_inactive");
-      await spendTokensForTeamMember(req.user._id, amount, "smartgen");
       updatedUser = await User.findById(req.user._id);
-      updatedOrg = await Organization.findById(req.user.orgId);
       req.user = updatedUser;
 
     } else if (req.user.userType === "ORG" && req.user.role === "Owner") {
       updatedOrg = await Organization.findById(req.user.orgId);
       if (!updatedOrg) throw new Error("org_not_found");
       if (!updatedOrg.plan) throw new Error("org_subscription_inactive");
-      await spendTokensForOrgOwner(req.user._id, amount, "smartgen");
       updatedUser = await User.findById(req.user._id);
-      updatedOrg = await Organization.findById(req.user.orgId);
       req.user = updatedUser;
 
     } else {

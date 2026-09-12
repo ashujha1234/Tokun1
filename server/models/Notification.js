@@ -304,6 +304,17 @@ const NotificationSchema = new mongoose.Schema(
     "PROGRESS_REVIEW_SHARED",
     "PROGRESS_REVIEW_DECLINED",
 
+    /* The access checklist — what the creator needs from the client before
+       work can start (routes/accessRequests.js). Every one of these has to be
+       listed here or it fails validation silently inside the try/catch its
+       caller wraps notification writes in, exactly as the block above this
+       one documents. */
+    "ACCESS_REQUEST_RAISED",
+    "ACCESS_ITEM_PROVIDED",
+    "ACCESS_ITEM_DECLINED",
+    "ACCESS_ITEM_REOPENED",
+    "ACCESS_REQUEST_FULFILLED",
+
     "REVIEW_RECEIVED",
 
     // Team invitations — an invite is no longer applied on the owner's click,

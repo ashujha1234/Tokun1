@@ -16111,7 +16111,7 @@ const Dashboard = () => {
      cases in it, so the only way to find out was to open them — which is how a
      dispute sits unruled for days. Polled, because an admin leaves this tab
      open all day and a count fetched once at mount goes stale immediately. */
-  const [queueCounts, setQueueCounts] = useState({ refunds: 0, disputes: 0 });
+  const [queueCounts, setQueueCounts] = useState({ refunds: 0, disputes: 0, ndaMismatch: 0 });
 
   useEffect(() => {
     let cancelled = false;
@@ -16121,11 +16121,14 @@ const Dashboard = () => {
       if (!token) return;
       const headers = { Authorization: `Bearer ${token.replace(/^Bearer\s+/i, "")}` };
 
-      const [refunds, disputes] = await Promise.all([
+      const [refunds, disputes, nda] = await Promise.all([
         fetch(`${API_BASE}/api/admin/refunds?status=PENDING`, { headers })
           .then((r) => r.json())
           .catch(() => null),
         fetch(`${API_BASE}/api/admin/disputes?status=ADMIN_REVIEW`, { headers })
+          .then((r) => r.json())
+          .catch(() => null),
+        fetch(`${API_BASE}/api/admin/nda/stats`, { headers })
           .then((r) => r.json())
           .catch(() => null),
       ]);
@@ -16134,6 +16137,12 @@ const Dashboard = () => {
       setQueueCounts({
         refunds: refunds?.success ? refunds.refundRequests?.length ?? 0 : 0,
         disputes: disputes?.success ? disputes.total ?? disputes.disputes?.length ?? 0 : 0,
+        /* Deliberately NOT the count of half-signed agreements. Those are
+           normal — one party signs, the other signs an hour later — and a pill
+           permanently showing "14" would train the admin to ignore it. A
+           version mismatch is the only state here that actually needs a human:
+           both parties are bound, but not demonstrably to the same text. */
+        ndaMismatch: nda?.success ? nda.stats?.versionMismatch ?? 0 : 0,
       });
     };
 
@@ -22733,6 +22742,29 @@ const WithdrawalsView = () => {
             {queueCounts.disputes > 0 && (
               <span className="min-w-[18px] sm:min-w-[20px] h-[18px] sm:h-5 px-1 sm:px-1.5 rounded-full bg-[#C084FC] text-[#07080B] text-[10px] sm:text-[11px] font-bold grid place-items-center">
                 {queueCounts.disputes}
+              </span>
+            )}
+          </button>
+
+          {/* The signed-agreement archive. Not a queue like the two above — an
+              admin comes here holding an order id from a dispute, or to produce
+              a signed copy on request — so it stays grey by default. It only
+              goes red for a version mismatch, the one state here that needs
+              someone to look at it. */}
+          <button
+            onClick={() => { window.location.href = "/admin/nda"; }}
+            aria-label={`Signed agreements${queueCounts.ndaMismatch > 0 ? ` (${queueCounts.ndaMismatch} with a version mismatch)` : ""}`}
+            className={`h-9 sm:h-10 px-2.5 sm:px-4 rounded-full border flex items-center gap-1.5 sm:gap-2 text-sm transition shrink-0 ${
+              queueCounts.ndaMismatch > 0
+                ? "border-red-500/40 bg-red-500/[0.10] text-red-300 hover:bg-red-500/[0.16]"
+                : "border-white/10 bg-white/[0.04] text-white/80 hover:bg-white/[0.06]"
+            }`}
+          >
+            <FileText className="h-4 w-4 sm:hidden" />
+            <span className="hidden sm:inline">Agreements</span>
+            {queueCounts.ndaMismatch > 0 && (
+              <span className="min-w-[18px] sm:min-w-[20px] h-[18px] sm:h-5 px-1 sm:px-1.5 rounded-full bg-red-400 text-[#07080B] text-[10px] sm:text-[11px] font-bold grid place-items-center">
+                {queueCounts.ndaMismatch}
               </span>
             )}
           </button>

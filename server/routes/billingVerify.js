@@ -866,7 +866,7 @@ router.post("/verifypayment", async (req, res) => {
           const gst = 0;
           const total = +Number(subtotal).toFixed(2);
 
-          const planCard = { plan: planKey, billingCycle, price: subtotal };
+          const planCard = { plan: planKey, billingCycle, price: subtotal, currentPeriodEnd: periodEnd };
 
           const pdfBuffer = await generateInvoicePDF({
             logo: "",
@@ -1041,6 +1041,8 @@ router.post("/verifypayment", async (req, res) => {
               plan: "enterprise",
               billingCycle: payment.billingCycle,
               price: subtotal,
+                // So the invoice can say when the pool stops refilling.
+                currentPeriodEnd: periodEnd,
             };
 
             const pdfBuffer = await generateInvoicePDF({

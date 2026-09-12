@@ -129,22 +129,89 @@ body.is-loading { overflow: hidden; }
   user-select: none;
 
   /* See the note below on why the ramp lives here rather than per letter. */
-  background-image: linear-gradient(90deg, #38bdf8 0%, #6366f1 52%, #a855f7 100%);
+  background-image: linear-gradient(
+    135deg,
+    #ffffff 0%,
+    #d4e4fa 25%,
+    #60a5fa 50%,
+    #a78bfa 75%,
+    #f472b6 100%
+  );
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+
+  /* The brand glow: rgba(96,165,250,0.3), 12px blur, 20px spread.
+     `filter`, not `text-shadow` — see the note below on why text-shadow is
+     actively wrong here. CSS drop-shadow() has no spread parameter, so the
+     spread is stood up by a second, wider, fainter pass. */
+  filter:
+    drop-shadow(0 0 12px rgba(96, 165, 250, 0.30))
+    drop-shadow(0 0 26px rgba(96, 165, 250, 0.16));
 }
 
 /* ONE gradient across the whole word, not five stacked per letter.
-   Option 02 "Modern SaaS" from the brand exploration: Sky Blue -> Indigo ->
-   Purple, running left to right.
 
-   What this replaces: each letter carried its own TOP-TO-BOTTOM ramp, and they
-   disagreed — T and K blue, O violet, U blue-into-violet, N its own thing. Read
-   together they were five small gradients rather than one wordmark, and the
-   colour reset at every letter boundary. A single horizontal ramp is what the
-   reference actually shows: the word starts sky blue and arrives at purple, and
-   each letter is simply the slice of that ramp it happens to sit on.
+   Option 05 "Holographic Chrome" — the brand spec, five stops on a 135°
+   diagonal. Each stop has a job, and that is why none of them can be nudged
+   without losing something:
+
+     #FFFFFF  0%   Highlight anchor. Keeps the word sharp and instantly legible
+                   on the dark hero before any colour arrives.
+     #D4E4FA  25%  Frosted transition. Stops white from hitting saturated blue
+                   as a hard edge — this is the "liquid metal" step.
+     #60A5FA  50%  The core body colour. The deep tech/AI read and most of the
+                   contrast the wordmark actually has.
+     #A78BFA  75%  The iridescent shift, and the bridge from blue to pink.
+                   Without it the two ends look like two different logos.
+     #F472B6 100%  Edge warmth. A cool-only ramp goes flat at the tail; this is
+                   what keeps the right-hand side alive.
+
+   ── Why 135° and not 90° ────────────────────────────────────────────────────
+   The diagonal is what makes this read as a reflective SURFACE rather than as
+   a coloured word. The box is wide and short, so roughly 85% of the ramp is
+   still spent horizontally — the word does go white -> pink left to right —
+   but the vertical component tilts each glyph's slice slightly, which is the
+   sheen. Note the consequence at narrow widths: as the box gets narrower the
+   vertical share grows and the tilt becomes more pronounced. That is inherent
+   to a fixed angle on a fluid box, not a bug to chase.
+
+   ── Why filter: drop-shadow and not text-shadow ─────────────────────────────
+   The spec's glow is rgba(96,165,250,0.3) at 12px blur / 20px spread, and
+   `text-shadow` is the wrong tool for both halves of that:
+
+     • text-shadow has no spread parameter at all. Only blur.
+     • More importantly, text-shadow paints ABOVE the clipped background here.
+       With background-clip:text + transparent fill, the gradient is painted as
+       the element's background and the shadow is part of text rendering on top
+       of it — so a blurred blue shadow would wash across the glyphs themselves
+       and turn the whole wordmark muddy. drop-shadow() operates on the
+       already-composited alpha of the element, so it glows around the glyph
+       shapes, which is what was asked for.
+
+   Two stacked drop-shadows: the tight one is the 12px blur, the wider fainter
+   one stands in for the 20px spread that drop-shadow cannot express.
+
+   The glow is additive with .tokun-ai-aura sitting behind the word (a low
+   opacity purple/cyan radial). They are meant to stack — the aura is ambient
+   and diffuse, this is tight to the letterforms — but if the hero ever looks
+   over-bloomed, this is the second of the two lights, not the first.
+
+   Replaced Option 02 "Modern SaaS" (#38bdf8 -> #6366f1 -> #a855f7), and before
+   that a mistaken near-white reading of this same option (#e3f1fd / #d6c8f9)
+   taken off a compressed screenshot rather than from the spec above. That pass
+   dropped the #60A5FA core and the #F472B6 tail entirely, which is most of
+   what makes this option itself.
+
+   The mark in the nav bar (/icons/Tokun.png, deep blue -> magenta) is a
+   separate asset and does NOT follow this — see the note on TOKUN_LOGO_SRC in
+   components/SiteNav.tsx. The two have been deliberately out of step since
+   that revert; this widens the gap rather than creating it.
+
+   What the single ramp replaces: each letter once carried its own TOP-TO-BOTTOM
+   gradient, and they disagreed — T and K blue, O violet, U blue-into-violet, N
+   its own thing. Read together they were five small gradients rather than one
+   wordmark, and the colour reset at every letter boundary.
 
    The gradient lives on the WORD and is clipped to the text of everything
    inside it, so the letters need no background of their own. They keep their

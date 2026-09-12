@@ -1,3 +1,5 @@
+const { footerBlock } = require("../services/emailLayout");
+
 //  function buildOtpEmailHtml({ name = "there", otp, siteUrl = "https://tokun.world" }) {
 //   const firstName = (name || "there").split(" ")[0];
 //   const digits = String(otp).split(""); // supports 4 or 6 digits
@@ -55,7 +57,7 @@
 //               <td align="center" style="padding-bottom: 28px;">
 //                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:20px; overflow:hidden;">
 //                   <tr>
-//                     <td align="center" style="background: linear-gradient(90deg, #A300FF 0%, #6A67FF 50%, #2F86FF 100%); padding: 28px 24px; border-radius: 20px; box-shadow: 0px 5px 14px 0px #080F340A;">
+//                     <td align="center" style="background: linear-gradient(90deg, #A300FF 0%, #6A67FF 50%, #2F86FF 100%); padding: 44px 24px; border-radius: 20px; box-shadow: 0px 5px 14px 0px #080F340A;">
 //                      <a href="${siteUrl}" 
 //   style="
 //     display:inline-block;
@@ -76,7 +78,7 @@
 // </a>
 
 //                       <div style="height:10px; line-height:10px;">&nbsp;</div>
-//                       <div style="font-family: Inter, Arial, Helvetica, sans-serif; font-weight:600; color:#ffffff; font-size:14px;">What would you like to create today?</div>
+//                       <div style="font-family: Inter, Arial, Helvetica, sans-serif; font-weight:600; color:#ffffff; font-size:26px; line-height:34px;">What would you like to create today?</div>
 //                     </td>
 //                   </tr>
 //                 </table>
@@ -103,20 +105,7 @@
 
 //             <tr><td style="padding-top:28px;"><table role="presentation" width="100%"><tr><td style="border-top:1px solid #24262B; font-size:0; line-height:0;">&nbsp;</td></tr></table></td></tr>
 
-//             <tr>
-//               <td align="center" style="padding: 18px 0;">
-//                 <a href="#"><img src="https://cdn-icons-png.flaticon.com/512/733/733547.png" width="28" alt="Facebook" /></a>
-//                 <a href="#"><img src="https://cdn-icons-png.flaticon.com/512/733/733579.png" width="28" alt="X" /></a>
-//                 <a href="#"><img src="https://cdn-icons-png.flaticon.com/512/733/733558.png" width="28" alt="Instagram" /></a>
-//                 <a href="#"><img src="https://cdn-icons-png.flaticon.com/512/733/733561.png" width="28" alt="LinkedIn" /></a>
-//               </td>
-//             </tr>
-
-//             <tr><td style="padding-top:10px;"><table role="presentation" width="100%"><tr><td style="border-top:1px solid #24262B; font-size:0; line-height:0;">&nbsp;</td></tr></table></td></tr>
-
-//             <tr><td align="center" style="padding: 6px 16px 0;"><div style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:10px; color:#B4BAC5; text-align:center;">You are receiving this mail because you registered to join the TOKUN.WORLD platform as a user or a creator. This also shows that you agree to our Terms of use and Privacy Policies. If you no longer want to receive mails from us, click the unsubscribe link below to unsubscribe.</div></td></tr>
-
-//             <tr><td align="center" style="padding: 14px 8px 32px;"><a href="${siteUrl}/privacy" style="font-family: Inter, Arial, Helvetica, sans-serif; color:#9CA3AF; font-size:12px; text-decoration:underline; padding:0 6px;">Privacy policy</a> | <a href="${siteUrl}/terms" style="font-family: Inter, Arial, Helvetica, sans-serif; color:#9CA3AF; font-size:12px; text-decoration:underline; padding:0 6px;">Terms of use</a> | <a href="${siteUrl}/help" style="font-family: Inter, Arial, Helvetica, sans-serif; color:#9CA3AF; font-size:12px; text-decoration:underline; padding:0 6px;">Help center</a> | <a href="${siteUrl}/unsubscribe" style="font-family: Inter, Arial, Helvetica, sans-serif; color:#9CA3AF; font-size:12px; text-decoration:underline; padding:0 6px;">Unsubscribe</a></td></tr>
+//             <tr><td align="center" style="padding: 14px 8px 32px;"><a href="${siteUrl}/privacy">Privacy</a></td></tr>
 
 //           </table>
 //         </td>
@@ -181,37 +170,10 @@ function buildOtpEmailHtml({ name = "there", otp }) {
           <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="600" class="container" style="width:600px; max-width:600px;">
 
             <tr>
-              <td align="center" style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:28px; font-weight:700; color:#FFFFFF; padding-bottom: 24px;">
-                TOKUN.WORLD
-              </td>
-            </tr>
-
-            <tr>
               <td align="center" style="padding-bottom: 28px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:20px; overflow:hidden;">
                   <tr>
                     <td align="center" style="background: linear-gradient(90deg, #A300FF 0%, #6A67FF 50%, #2F86FF 100%); padding: 28px 24px; border-radius: 20px; box-shadow: 0px 5px 14px 0px #080F340A;">
-                      <a href="#" 
-                        style="
-                          display:inline-block;
-                          text-decoration:none;
-                          font-family: Inter, Arial, Helvetica, sans-serif;
-                          color:#FFFFFF;
-                          padding:14px 22px;
-                          border-radius:12px;
-                          font-weight:700;
-                          font-size:36px;
-                          background: linear-gradient(90deg, #A300FF 0%, #6A67FF 50%, #2F86FF 100%);
-                          background-image: url('cid:cube');
-                          background-repeat: no-repeat;
-                          background-size: cover;
-                          background-position: center;
-                          box-shadow:0px 5px 14px 0px #080F340A;
-                        ">
-                        Tokun.World
-                      </a>
-
-                      <div style="height:10px; line-height:10px;">&nbsp;</div>
                       <div style="font-family: Inter, Arial, Helvetica, sans-serif; font-weight:600; color:#ffffff; font-size:14px;">What would you like to create today?</div>
                     </td>
                   </tr>
@@ -235,33 +197,7 @@ function buildOtpEmailHtml({ name = "there", otp }) {
 
             <tr><td style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:14px; color:#C9CDD6; line-height:22px; padding: 0 4px;">Best Regards,<br/><strong style="color:#FFFFFF;">Team Tokun.World</strong></td></tr>
 
-            <tr><td style="padding-top:28px;"><table role="presentation" width="100%"><tr><td style="border-top:1px solid #24262B; font-size:0; line-height:0;">&nbsp;</td></tr></table></td></tr>
-
-            <!-- ✅ Footer Icons -->
-            <tr>
-              <td align="center" style="padding: 18px 0;">
-                <a href="#"><img src="https://cdn-icons-png.flaticon.com/512/733/733547.png" width="28" alt="Facebook" /></a>
-                <a href="#"><img src="https://cdn-icons-png.flaticon.com/512/733/733579.png" width="28" alt="X" /></a>
-                <a href="#"><img src="https://cdn-icons-png.flaticon.com/512/733/733558.png" width="28" alt="Instagram" /></a>
-                <a href="#"><img src="https://cdn-icons-png.flaticon.com/512/733/733561.png" width="28" alt="LinkedIn" /></a>
-              </td>
-            </tr>
-
-            <tr><td style="padding-top:10px;"><table role="presentation" width="100%"><tr><td style="border-top:1px solid #24262B; font-size:0; line-height:0;">&nbsp;</td></tr></table></td></tr>
-
-            <!-- ✅ Footer Text -->
-            <tr><td align="center" style="padding: 6px 16px 0;">
-              <div style="font-family: Inter, Arial, Helvetica, sans-serif; font-size:10px; color:#B4BAC5; text-align:center;">
-                You are receiving this mail because you registered to join the TOKUN.WORLD platform as a user or a creator. This also shows that you agree to our Terms of use and Privacy Policies. If you no longer want to receive mails from us, click the unsubscribe link below to unsubscribe.
-              </div>
-            </td></tr>
-
-            <tr><td align="center" style="padding: 14px 8px 32px;">
-              <a href="#" style="font-family: Inter, Arial, Helvetica, sans-serif; color:#9CA3AF; font-size:12px; text-decoration:underline; padding:0 6px;">Privacy policy</a> |
-              <a href="#" style="font-family: Inter, Arial, Helvetica, sans-serif; color:#9CA3AF; font-size:12px; text-decoration:underline; padding:0 6px;">Terms of use</a> |
-              <a href="#" style="font-family: Inter, Arial, Helvetica, sans-serif; color:#9CA3AF; font-size:12px; text-decoration:underline; padding:0 6px;">Help center</a> |
-              <a href="#" style="font-family: Inter, Arial, Helvetica, sans-serif; color:#9CA3AF; font-size:12px; text-decoration:underline; padding:0 6px;">Unsubscribe</a>
-            </td></tr>
+            <tr><td style="padding-top:28px;"><table role="presentation" width="100%"><tr><td style="padding:0">${footerBlock({ receivingBecause: "a verification request on your Tokun.World account" })}</td></tr>
 
           </table>
         </td>

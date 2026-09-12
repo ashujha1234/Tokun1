@@ -326,6 +326,8 @@ router.post("/:id/approve", async (req, res) => {
         to: buyer?.email,
         buyerName: buyer?.name,
         itemTitle: purchase.promptSnapshot?.title || "Prompt",
+        // Which kind of order was refunded — the email said only its title.
+        itemKind: "prompt",
         amount: refundRequest.refundAmount,
         reason: refundRequest.adminNote || "",
         referenceId: refund.id,
@@ -408,6 +410,8 @@ router.post("/:id/reject", async (req, res) => {
         to: buyer?.email,
         buyerName: buyer?.name,
         itemTitle: refundRequest.purchase?.promptSnapshot?.title || "Prompt",
+        // Which kind of order was refunded — the email said only its title.
+        itemKind: "prompt",
         adminNote: refundRequest.adminNote,
       });
     } catch (mailErr) {

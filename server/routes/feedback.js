@@ -7,6 +7,9 @@ const Notification = require("../models/Notification");
 const Sentiment = require("sentiment");
 const { sendEmail } = require("../utils/SendEmail");
 const { buildOtpEmailHtml } = require("../utils/otpemailtemplate");
+/* The OTP template renders its footer glyphs as cid: references, so the
+   message has to carry them — see services/emailSocialIcons.js. */
+const { socialAttachments } = require("../services/emailSocialIcons");
 const { requireAuth } = require("../utils/auth");
 
 function requireAdmin(req, res, next) {
@@ -101,6 +104,7 @@ router.post("/send-otp", async (req, res) => {
       to: email,
       subject: "Tokun Feedback – Your OTP",
       html,
+      attachments: socialAttachments(),
       text: `Your OTP for Tokun feedback is: ${otp}. It expires in 5 minutes.`,
     });
 

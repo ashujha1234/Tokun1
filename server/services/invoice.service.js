@@ -1480,10 +1480,26 @@ exports.generateInvoicePDF = async (data) => {
   // Copy lives in config/invoiceCopy.js so this and the emailed body can't
   // drift apart.
   const copy = getInvoiceCopy(data.kind);
-  const introText = data.planCard
-    ? `This is your invoice for your Tokun ${(PLAN_CARD_CONTENT[String(data.planCard.plan || "pro").toLowerCase()] || PLAN_CARD_CONTENT.pro).title} subscription — thank you for subscribing!`
-    : copy.intro;
-  {
+  /* Subscription invoices say when the period ends and that nothing renews on
+     its own — see buildIntroText in services/email.service.js for why. Kept
+     word-for-word in step with the emailed body: the two are the same document
+     and someone WILL hold them side by side. */
+  let introText = copy.intro;
+  if (data.planCard) {
+    const pc = PLAN_CARD_CONTENT[String(data.planCard.plan || "pro").toLowerCase()] || PLAN_CARD_CONTENT.pro;
+    const until = data.planCard.currentPeriodEnd
+      ? new Date(data.planCard.currentPeriodEnd).toLocaleDateString("en-IN", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        })
+      : "";
+    introText =
+      (until ? `Your ${pc.title} plan is active until ${until}. ` : `Your ${pc.title} plan is now active. `) +
+      "It won't renew on its own — nothing is charged to your card again. " +
+      "We'll email you a few days before it ends. Thank you for subscribing!";
+  }
+  if (introText) {
     const introLines = wrapText(introText, fontReg, 11, R - L, 3);
     for (const l2 of introLines) {
       text(l2, L, y, { size: 11, color: COLORS.muted });

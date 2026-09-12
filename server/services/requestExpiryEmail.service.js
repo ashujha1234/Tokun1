@@ -16,6 +16,14 @@ const transporter = require("../utils/mailer");
 /* Shell/escaping/site URL come from services/emailLayout.js — see the note
    there about the three copies this design used to have. */
 const { escapeHtml, SITE, shell } = require("./emailLayout");
+/* shell() renders the footer glyphs as cid: references, so every message
+   built here has to carry the matching parts. This file posts through its own
+   transporter rather than sendShellEmail, which is where they were lost. */
+const { socialAttachments } = require("./emailSocialIcons");
+/* Same one-liner buyerEmail/creatorEmail use, so every template greets the
+   same way: "Hello Laxmi," not "Hello Laxmi Patil,". */
+const firstName = (name) => String(name || "there").trim().split(/\s+/)[0];
+
 
 // Said on every one of these. It's the first question either side has.
 const NO_CHARGE_NOTE =
@@ -44,7 +52,7 @@ exports.sendHireRequestExpiredToClient = async ({
   const html = shell({
     heading: "Your request was closed",
     accent: "#FABC4E",
-    introHtml: `Hi ${escapeHtml(clientName || "there")}, ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(firstName(clientName))}, ${escapeHtml(
       freelancerName || "the creator"
     )} didn't respond to your request within ${days} days, so we've closed it. You're free to send the same brief to someone else.`,
     rows,
@@ -57,6 +65,7 @@ exports.sendHireRequestExpiredToClient = async ({
     to,
     subject: `Request closed — no response for "${title || "your project"}"`,
     html,
+    attachments: socialAttachments(),
   });
 };
 
@@ -87,7 +96,7 @@ exports.sendHireRequestExpiredToFreelancer = async ({
   const html = shell({
     heading: "A request expired before you replied",
     accent: "#FABC4E",
-    introHtml: `Hi ${escapeHtml(freelancerName || "there")}, a request from ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(firstName(freelancerName))}, a request from ${escapeHtml(
       clientName || "a client"
     )} went unanswered for ${days} days, so it was closed automatically. Replying within ${days} days keeps requests open.`,
     rows,
@@ -100,6 +109,7 @@ exports.sendHireRequestExpiredToFreelancer = async ({
     to,
     subject: `Request expired — "${title || "a project"}"`,
     html,
+    attachments: socialAttachments(),
   });
 };
 
@@ -122,7 +132,7 @@ exports.sendServiceRequestExpiredToClient = async ({ to, clientName, title, days
   const html = shell({
     heading: "Your booking request was closed",
     accent: "#FABC4E",
-    introHtml: `Hi ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(
       clientName || "there"
     )}, your booking wasn't paid for within ${days} days, so we've closed the request. You can book the same service again whenever you're ready.`,
     rows,
@@ -135,6 +145,7 @@ exports.sendServiceRequestExpiredToClient = async ({ to, clientName, title, days
     to,
     subject: `Booking closed — "${title || "your booking"}"`,
     html,
+    attachments: socialAttachments(),
   });
 };
 
@@ -159,7 +170,7 @@ exports.sendServiceRequestExpiredToSeller = async ({
   const html = shell({
     heading: "A booking request expired",
     accent: "#FABC4E",
-    introHtml: `Hi ${escapeHtml(sellerName || "there")}, a booking request from ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(firstName(sellerName))}, a booking request from ${escapeHtml(
       clientName || "a client"
     )} was closed because payment wasn't completed within ${days} days.`,
     rows,
@@ -172,5 +183,6 @@ exports.sendServiceRequestExpiredToSeller = async ({
     to,
     subject: `Booking request expired — "${title || "a service"}"`,
     html,
+    attachments: socialAttachments(),
   });
 };

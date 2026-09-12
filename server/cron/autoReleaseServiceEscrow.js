@@ -16,7 +16,10 @@ const {
   ServiceEscrowAlreadyReleasedError,
 } = require("../services/serviceEscrowRelease.service");
 
-const AUTO_RELEASE_HOURS = 72;
+// Same window as cron/autoReleaseEscrow.js and routes/hire.routes.js, read from
+// the one place rather than repeated — see config/engagementRules.js.
+const { RULES } = require("../config/engagementRules");
+const AUTO_RELEASE_HOURS = RULES.autoReleaseHours;
 
 async function releaseOrderEscrowToWallet(order) {
   const payoutAmount = Number(order.sellerAmount || 0);

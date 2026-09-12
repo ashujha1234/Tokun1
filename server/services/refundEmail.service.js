@@ -21,6 +21,32 @@
    a third variant of the same email design came to exist. */
 const transporter = require("../utils/mailer");
 const { escapeHtml, rupees, shell } = require("./emailLayout");
+/* shell() renders the footer glyphs as cid: references, so every message
+   built here has to carry the matching parts. This file posts through its own
+   transporter rather than sendShellEmail, which is where they were lost. */
+const { socialAttachments } = require("./emailSocialIcons");
+/* Same one-liner buyerEmail/creatorEmail use, so every template greets the
+   same way: "Hello Laxmi," not "Hello Laxmi Patil,". */
+const firstName = (name) => String(name || "there").trim().split(/\s+/)[0];
+
+/* What was actually bought, in the words the buyer used at checkout.
+ *
+ * Every refund email said "Item: <title>" and nothing else, so a refund for a
+ * prompt, a booked service and a hired project all read identically. Someone
+ * with more than one order open could not tell which one had been refunded
+ * without opening the app — which is the thing the email exists to avoid.
+ *
+ * Unknown falls back to "Order" rather than guessing: a wrong label is worse
+ * than a generic one on a mail about money. */
+const KIND_LABEL = {
+  prompt: "Prompt",
+  service: "Service booking",
+  hire: "Project",
+  project: "Project",
+  booking: "Service booking",
+};
+const kindLabel = (kind) => KIND_LABEL[String(kind || "").toLowerCase()] || "Order";
+
 
 // Said on every buyer-facing refund email. People chase support on day two
 // otherwise, and the answer is always the same.
@@ -38,20 +64,22 @@ const BANK_TIMING_NOTE =
  * @param {string} [args.reason]     shown only when there is one worth showing
  * @param {string} [args.referenceId]
  */
-exports.sendFullRefundEmail = async ({ to, buyerName, itemTitle, amount, reason, referenceId }) => {
+exports.sendFullRefundEmail = async ({ to, buyerName, itemTitle,
+  itemKind, amount, reason, referenceId }) => {
   if (!to) return;
 
   const rows = [
+    { label: "Type", value: kindLabel(itemKind) },
     { label: "Item", value: itemTitle || "—" },
     { label: "Refunded to you", value: rupees(amount), emphasis: true },
   ];
-  if (reason) rows.push({ label: "Reason", value: reason });
+  if (reason) rows.push({ label: "Reason", value: reason, block: true });
   if (referenceId) rows.push({ label: "Reference", value: referenceId });
 
   const html = shell({
     heading: "Your refund is on its way",
     accent: "#19E66C",
-    introHtml: `Hi ${escapeHtml(buyerName || "there")}, we've refunded your payment in full.`,
+    introHtml: `Hello ${escapeHtml(firstName(buyerName))}, we've refunded your payment in full.`,
     rows,
     footerNote: BANK_TIMING_NOTE,
   });
@@ -61,6 +89,7 @@ exports.sendFullRefundEmail = async ({ to, buyerName, itemTitle, amount, reason,
     to,
     subject: `Refund processed — ${rupees(amount)} for "${itemTitle || "your order"}"`,
     html,
+    attachments: socialAttachments(),
   });
 };
 
@@ -75,6 +104,7 @@ exports.sendPartialRefundEmail = async ({
   to,
   buyerName,
   itemTitle,
+  itemKind,
   refundAmount,
   sellerPayout,
   sellerPercent,
@@ -86,12 +116,13 @@ exports.sendPartialRefundEmail = async ({
   if (!to) return;
 
   const rows = [
+    { label: "Type", value: kindLabel(itemKind) },
     { label: "Item", value: itemTitle || "—" },
     { label: "You originally paid", value: rupees(totalPaid) },
     { label: `Paid to the creator (${sellerPercent}% completed)`, value: rupees(sellerPayout) },
     { label: "Refunded to you", value: rupees(refundAmount), emphasis: true },
   ];
-  if (note) rows.push({ label: "Note", value: note });
+  if (note) rows.push({ label: "Note", value: note, block: true });
   if (referenceId) rows.push({ label: "Reference", value: referenceId });
 
   const decidedLine =
@@ -102,7 +133,7 @@ exports.sendPartialRefundEmail = async ({
   const html = shell({
     heading: "Your cancellation has been settled",
     accent: "#FABC4E",
-    introHtml: `Hi ${escapeHtml(buyerName || "there")}, "${escapeHtml(itemTitle || "your booking")}" was cancelled after work had started. ${escapeHtml(decidedLine)} The creator was paid for the share they completed, and the rest is coming back to you.`,
+    introHtml: `Hello ${escapeHtml(firstName(buyerName))}, "${escapeHtml(itemTitle || "your booking")}" was cancelled after work had started. ${escapeHtml(decidedLine)} The creator was paid for the share they completed, and the rest is coming back to you.`,
     rows,
     footerNote: BANK_TIMING_NOTE,
   });
@@ -112,6 +143,7 @@ exports.sendPartialRefundEmail = async ({
     to,
     subject: `Cancellation settled — ${rupees(refundAmount)} refunded for "${itemTitle || "your booking"}"`,
     html,
+    attachments: socialAttachments(),
   });
 };
 
@@ -136,6 +168,7 @@ exports.sendNoRefundEmail = async ({
   to,
   buyerName,
   itemTitle,
+  itemKind,
   totalPaid,
   sellerPayout,
   decidedBy,
@@ -144,6 +177,7 @@ exports.sendNoRefundEmail = async ({
   if (!to) return;
 
   const rows = [
+    { label: "Type", value: kindLabel(itemKind) },
     { label: "Item", value: itemTitle || "—" },
     { label: "You paid", value: rupees(totalPaid) },
     { label: "Released to the creator", value: rupees(sellerPayout), emphasis: true },
@@ -159,7 +193,7 @@ exports.sendNoRefundEmail = async ({
   const html = shell({
     heading: "This cancellation was settled in the creator's favour",
     accent: "#8F8996",
-    introHtml: `Hi ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(
       buyerName || "there"
     )}, "${escapeHtml(itemTitle || "your booking")}" has been settled and no refund is due. ${escapeHtml(decidedLine)}`,
     rows,
@@ -172,6 +206,7 @@ exports.sendNoRefundEmail = async ({
     to,
     subject: `Cancellation settled — no refund for "${itemTitle || "your booking"}"`,
     html,
+    attachments: socialAttachments(),
   });
 };
 
@@ -179,6 +214,7 @@ exports.sendSellerSettlementEmail = async ({
   to,
   sellerName,
   itemTitle,
+  itemKind,
   sellerPayout,
   sellerPercent,
   fullAmount,
@@ -190,6 +226,7 @@ exports.sendSellerSettlementEmail = async ({
   const isNil = Number(sellerPayout || 0) <= 0;
 
   const rows = [
+    { label: "Type", value: kindLabel(itemKind) },
     { label: "Item", value: itemTitle || "—" },
     { label: "Full payout if completed", value: rupees(fullAmount) },
     { label: "Assessed as completed", value: `${sellerPercent}%` },
@@ -207,7 +244,7 @@ exports.sendSellerSettlementEmail = async ({
   }
 
   rows.push({ label: "Paid to you", value: rupees(sellerPayout), emphasis: true });
-  if (note) rows.push({ label: "Note", value: note });
+  if (note) rows.push({ label: "Note", value: note, block: true });
 
   const decidedLine =
     decidedBy === "admin"
@@ -217,7 +254,7 @@ exports.sendSellerSettlementEmail = async ({
   const html = shell({
     heading: isNil ? "A booking was cancelled" : "Your cancellation payout",
     accent: isNil ? "#8F8996" : "#19E66C",
-    introHtml: `Hi ${escapeHtml(sellerName || "there")}, "${escapeHtml(itemTitle || "your booking")}" was cancelled. ${escapeHtml(decidedLine)}`,
+    introHtml: `Hello ${escapeHtml(firstName(sellerName))}, "${escapeHtml(itemTitle || "your booking")}" was cancelled. ${escapeHtml(decidedLine)}`,
     rows,
     footerNote: isNil
       ? "Nothing was paid out for this booking. If you believe this is wrong, reply to this email and our team will take another look."
@@ -231,20 +268,23 @@ exports.sendSellerSettlementEmail = async ({
       ? `Booking cancelled — "${itemTitle || "your booking"}"`
       : `Cancellation payout — ${rupees(sellerPayout)} for "${itemTitle || "your booking"}"`,
     html,
+    attachments: socialAttachments(),
   });
 };
 
 /** Buyer's refund request was turned down. */
-exports.sendRefundRejectedEmail = async ({ to, buyerName, itemTitle, adminNote }) => {
+exports.sendRefundRejectedEmail = async ({ to, buyerName, itemTitle,
+  itemKind, adminNote }) => {
   if (!to) return;
 
-  const rows = [{ label: "Item", value: itemTitle || "—" }];
-  if (adminNote) rows.push({ label: "Reason", value: adminNote });
+  const rows = [{ label: "Type", value: kindLabel(itemKind) },
+    { label: "Item", value: itemTitle || "—" }];
+  if (adminNote) rows.push({ label: "Reason", value: adminNote, block: true });
 
   const html = shell({
     heading: "About your refund request",
     accent: "#8F8996",
-    introHtml: `Hi ${escapeHtml(buyerName || "there")}, we've reviewed your refund request and can't approve it this time.`,
+    introHtml: `Hello ${escapeHtml(firstName(buyerName))}, we've reviewed your refund request and can't approve it this time.`,
     rows,
     footerNote:
       "If you think something was missed, reply to this email with any extra detail and our team will take another look.",
@@ -255,5 +295,6 @@ exports.sendRefundRejectedEmail = async ({ to, buyerName, itemTitle, adminNote }
     to,
     subject: `Your refund request for "${itemTitle || "your order"}"`,
     html,
+    attachments: socialAttachments(),
   });
 };

@@ -53,7 +53,7 @@ async function sendAdminAlert({
     rows,
     cta: { label: ctaLabel, href: `${SITE}${adminPath}` },
     footerNote,
-    receivingBecause: "you're on the Tokun.World admin alert list",
+    receivingBecause: "your place on the Tokun.World admin alert list",
   });
 }
 
@@ -109,7 +109,7 @@ exports.alertRefundRequested = async ({ itemTitle, buyerName, amount, reason, re
  * creator cannot list a single service or accept any hire work, so every hour
  * it sits in the queue is an hour they're locked out of earning.
  */
-exports.alertIntroVideoReviewNeeded = async ({ creatorName, creatorEmail, profileId }) =>
+exports.alertIntroVideoReviewNeeded = async ({ creatorName, creatorEmail, profileId, videoUrl }) =>
   sendAdminAlert({
     subject: `Intro video to review — ${creatorName || creatorEmail || "a creator"}`,
     heading: "A creator is waiting to be unlocked",
@@ -120,9 +120,24 @@ exports.alertIntroVideoReviewNeeded = async ({ creatorName, creatorEmail, profil
     rows: [
       { label: "Creator", value: creatorName || "—" },
       { label: creatorEmail ? "Email" : "", value: creatorEmail || "" },
-      { label: profileId ? "Profile" : "", value: profileId ? String(profileId) : "" },
+      /* Both this row and the button below go to the review queue, not to the
+         raw blob URL.
+
+         An admin does not want the file on its own: approving or rejecting
+         happens on the dashboard, next to the creator's profile and the
+         approve/reject controls. Sending them to a bare .mp4 means watching it
+         and then finding the queue themselves.
+
+         The row is still called "Video" because that is what they are going to
+         look at; profileId only survives as a last-resort identifier when the
+         alert predates the URL being recorded. */
+      {
+        label: videoUrl || profileId ? "Video" : "",
+        value: videoUrl || profileId ? "Open in the review queue" : "",
+        href: `${SITE}/admin/dashboard?tab=freelancers`,
+      },
     ],
-    adminPath: "/admin/freelancer-review",
+    adminPath: "/admin/dashboard?tab=freelancers",
     ctaLabel: "Review the video",
     footerNote:
       "The creator has been told reviews usually take under a working day, and they're emailed either way once you decide.",

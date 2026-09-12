@@ -156,6 +156,12 @@ const {
   normalizeDeliverableLink,
 } = require("../utils/serviceWorkStorage");
 const { uploadFileToBlob, blobNameFor, getBlobSasUrl } = require("../utils/blobStorage");
+/* The append-only signature archive. The order's own ndaBuyerUrl /
+   ndaSellerUrl fields still gate payment; this is the record. See
+   models/NdaRecord.js. */
+const { recordNdaSignature, sha256File } = require("../utils/ndaRecord");
+/* Read-only here — see the same require in routes/hire.routes.js. */
+const AccessRequest = require("../models/AccessRequest");
 const { tempUploadDir } = require("../utils/privateUploadDirs");
 const { generateInvoicePDF } = require("../services/invoice.service");
 const { sendInvoiceEmail } = require("../services/email.service");
@@ -165,11 +171,15 @@ const {
   sendEscrowReleasedEmail,
 } = require("../services/creatorEmail.service");
 const { sendWorkSubmittedEmail } = require("../services/buyerEmail.service");
+const { sendEngagementStartedOnce } = require("../services/engagementEmail.service");
 // Both mirror the crons that actually enforce them — staleRequestWatch.js and
 // autoReleaseServiceEscrow.js. The email must never promise a different window
 // from the one the job keeps.
 const REQUEST_RESPONSE_DAYS = Number(process.env.REQUEST_RESPONSE_DAYS || 3);
-const AUTO_RELEASE_HOURS = 72;
+/* Read, not repeated. This was the fifth copy of the same literal — see
+   config/engagementRules.js for why that mattered. */
+const { RULES: ENGAGEMENT_RULES } = require("../config/engagementRules");
+const AUTO_RELEASE_HOURS = ENGAGEMENT_RULES.autoReleaseHours;
 const {
   releaseServiceEscrowToSeller,
   ServiceEscrowAlreadyReleasedError,
@@ -972,6 +982,11 @@ router.post("/orders/:orderId/upload-nda", requireAuth, uploadNdaFile.single("nd
 
     if (!req.file) return res.status(400).json({ success: false, error: "no_file_uploaded" });
 
+    /* Hashed before the upload, which unlinks the temp copy — see the same
+       block in routes/hire.routes.js. Non-fatal by construction. */
+    const docSha256 = await sha256File(req.file.path);
+    const docByteSize = req.file.size || 0;
+
     /* Into the private container before the order is touched — see the same
        block in routes/hire.routes.js for why this order matters and what it
        replaces. In short: the previous code recorded a "/uploads/service-nda/…"
@@ -1020,6 +1035,30 @@ router.post("/orders/:orderId/upload-nda", requireAuth, uploadNdaFile.single("nd
     const signer = isBuyer ? order.buyerId : order.sellerId;
     const otherParty = isBuyer ? order.sellerId : order.buyerId;
     const signerRoleLabel = isBuyer ? "Client" : "Creator";
+
+    /* The append-only signature archive — same call, same non-fatal treatment
+       and same reasoning as the hire route. See models/NdaRecord.js. */
+    try {
+      await recordNdaSignature({
+        orderKind: "service",
+        order,
+        role: isBuyer ? "client" : "creator",
+        signer,
+        signedAt: now,
+        blobName,
+        container: SERVICE_NDA_CONTAINER,
+        sha256: docSha256,
+        byteSize: docByteSize,
+        signatureImage: validSignature,
+        agreementVersion: String(req.body?.agreementVersion || ""),
+        req,
+      });
+    } catch (recordErr) {
+      console.error(
+        `⚠️ NDA record write failed for service order ${order._id} (signature itself saved):`,
+        recordErr.message
+      );
+    }
 
     try {
       await Notification.create({
@@ -1301,6 +1340,14 @@ router.post("/orders/:orderId/verify-payment", requireAuth, blockIfSuspended, as
     } catch (notifyErr) {
       console.error("Service order notification failed:", notifyErr);
     }
+
+    /* The funded-engagement email: project detail, the rules now in force, and
+       each side's signed agreement attached. At most once per order — the
+       Razorpay webhook reaches this same state and either path can win.
+
+       Not awaited: the buyer is waiting on this response and should not sit
+       through two Blob fetches and two sends. It swallows its own errors. */
+    sendEngagementStartedOnce("service", order._id);
 
     // Invoice email (non-fatal)
     try {
@@ -2127,10 +2174,16 @@ router.get("/orders/:orderId", requireAuth, async (req, res) => {
 
     if (!isParty) return res.status(403).json({ success: false, error: "not_authorized" });
 
+    /* The access checklist in ask-only form — see the same block in
+       routes/hire.routes.js. Both the agreement's Schedule C and the welcome
+       doc are generated in the browser from this response. */
+    const accessItems = await AccessRequest.itemsForOrder("service", order._id);
+
     return res.json({
       success: true,
       order: {
         ...order,
+        accessItems,
         // The client renders a live countdown off deliveryDueAt, but whether
         // the deadline has actually passed is the server's call — its clock is
         // the one the submit guard uses.

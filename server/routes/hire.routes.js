@@ -374,6 +374,15 @@ const {
   WORK_FILE_MAX_LABEL,
 } = require("../utils/serviceWorkStorage");
 const { uploadFileToBlob, blobNameFor, getBlobSasUrl } = require("../utils/blobStorage");
+/* The append-only signature archive. The deal's own ndaClientUrl /
+   ndaFreelancerUrl fields are still the gate on payment; this is the record an
+   admin, or a dispute two years from now, actually reads. See
+   models/NdaRecord.js for why it is a separate collection. */
+const { recordNdaSignature, sha256File } = require("../utils/ndaRecord");
+/* Read-only here: GET /:dealId attaches the checklist's asks so the agreement
+   and the welcome doc can render them. Mutations live in
+   routes/accessRequests.js. */
+const AccessRequest = require("../models/AccessRequest");
 const { isPreviewableVideo, isSettled } = require("../utils/deliverableWatermark");
 // The one place that decides what a client may see before the money moves —
 // shared with the service and checkpoint routes.
@@ -388,14 +397,18 @@ const {
   sendEscrowReleasedEmail,
 } = require("../services/creatorEmail.service");
 const { sendWorkSubmittedEmail } = require("../services/buyerEmail.service");
+const { sendEngagementStartedOnce } = require("../services/engagementEmail.service");
 // Accepts camelCase / snake_case / bare Razorpay callback field names.
 const { readPaymentFields } = require("../utils/paymentIntegrity");
 // Same window the stale-request cron closes on, read the same way, so the
 // deadline promised in the email is the deadline actually enforced.
 const REQUEST_RESPONSE_DAYS = Number(process.env.REQUEST_RESPONSE_DAYS || 3);
-// Mirrors cron/autoReleaseEscrow.js. If that changes, this must too — the email
-// promises a date the cron is the one actually keeping.
-const AUTO_RELEASE_HOURS = 72;
+/* Mirrors cron/autoReleaseEscrow.js — the email promises a date the cron is the
+   one actually keeping. That used to be a comment asking whoever edited one to
+   remember the other; it is now a shared constant, so there is nothing to
+   remember. See config/engagementRules.js. */
+const { RULES: ENGAGEMENT_RULES } = require("../config/engagementRules");
+const AUTO_RELEASE_HOURS = ENGAGEMENT_RULES.autoReleaseHours;
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -814,6 +827,15 @@ router.post("/:dealId/upload-nda", requireAuth, uploadNdaFile.single("nda"), asy
 
     if (!req.file) return res.status(400).json({ success: false, error: "No file uploaded" });
 
+    /* Hashed HERE, before the upload — uploadFileToBlob() unlinks the temp copy
+       on success, so this is the only moment the bytes are readable from disk.
+       The hash is what makes the archived record provable rather than merely
+       plausible: the stored blob can be shown to be the document that was
+       signed, or shown not to be. Never fatal — a signature with no hash is
+       still a signature, and sha256File() returns "" rather than throwing. */
+    const docSha256 = await sha256File(req.file.path);
+    const docByteSize = req.file.size || 0;
+
     /* Streamed into the private container and the temp copy unlinked, before
        anything is written to the deal. Order matters: if the upload throws, the
        deal is left untouched and the signer is told it failed — where saving
@@ -869,6 +891,37 @@ router.post("/:dealId/upload-nda", requireAuth, uploadNdaFile.single("nda"), asy
     const signer = isClient ? deal.clientId : deal.freelancerId;
     const otherParty = isClient ? deal.freelancerId : deal.clientId;
     const signerRoleLabel = isClient ? "Client" : "Freelancer";
+
+    /* ── The archive write ────────────────────────────────────────────────────
+       AFTER the deal is saved, and never allowed to fail the request. The deal's
+       NDA fields are what gate payment, so they are the write that must land;
+       this is the record, and a party being told "signing failed" because an
+       audit row didn't insert would be strictly worse than an audit gap.
+       Logged loudly instead, because a silent gap here is the one thing that
+       makes the collection untrustworthy. */
+    try {
+      await recordNdaSignature({
+        orderKind: "hire",
+        order: deal,
+        role: isClient ? "client" : "creator",
+        signer,
+        signedAt: now,
+        blobName,
+        container: NDA_CONTAINER,
+        sha256: docSha256,
+        byteSize: docByteSize,
+        signatureImage: validSignature,
+        // Sent by the browser that rendered the document — the server cannot
+        // know which text the signer actually read. See NdaCard.tsx.
+        agreementVersion: String(req.body?.agreementVersion || ""),
+        req,
+      });
+    } catch (recordErr) {
+      console.error(
+        `⚠️ NDA record write failed for hire deal ${deal._id} (signature itself saved):`,
+        recordErr.message
+      );
+    }
 
     // 🔔 Notify the other party that this side has signed the NDA
     await Notification.create({
@@ -1310,6 +1363,16 @@ router.post("/:dealId/verify-payment", requireAuth, blockIfSuspended, async (req
       },
     });
 
+    /* The funded-engagement email: project detail, the rules now in force, and
+       each side's signed agreement attached. Sends at most once per deal — the
+       Razorpay webhook reaches this same point and either path can win, which
+       is what sendEngagementStartedOnce's claim is for.
+
+       Not awaited: the client is waiting on this response, and fetching two
+       agreements out of Blob and sending two emails is not work they should sit
+       through. It swallows its own errors. */
+    sendEngagementStartedOnce("hire", deal._id);
+
     /* -------------------- INVOICE (safe — deal already saved) -------------------- */
     try {
       const client = deal.clientId;
@@ -1416,11 +1479,21 @@ router.get("/:dealId", requireAuth, async (req, res) => {
       return res.status(403).json({ success: false, error: "Access denied" });
     }
 
-    // Sent alongside the deal so the order screen can show "1 of 3 revisions
-    // used" without re-deriving the cap. The service endpoint has always
-    // returned this; hire deals only gained a cap alongside it, so this is the
-    // matching half.
-    return res.json({ success: true, deal, revisionState: getRevisionState(deal) });
+    /* The access checklist, in ask-only form. Attached here because BOTH
+       browser-generated documents need it and neither should make a second
+       round trip for it: the agreement renders it as Schedule C, and the
+       welcome doc lists it under "what we need from you". Only the asks travel,
+       never the client's answers — see AccessRequest.itemsForOrder(). */
+    const accessItems = await AccessRequest.itemsForOrder("hire", deal._id);
+
+    // revisionState is sent alongside so the order screen can show "1 of 3
+    // revisions used" without re-deriving the cap. The service endpoint has
+    // always returned this; hire deals only gained a cap alongside it.
+    return res.json({
+      success: true,
+      deal: { ...deal.toObject(), accessItems },
+      revisionState: getRevisionState(deal),
+    });
   } catch (err) {
     console.error("get deal error:", err);
     return res.status(500).json({ success: false, error: "Failed to fetch deal" });

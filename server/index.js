@@ -492,6 +492,10 @@ const multer = require("multer");
 const pdfParse = require("pdf-parse");
 const docToMarkdown = require("./services/docToMarkdown");
 const tokenizer = require("./utils/tokenizer");
+/* Metering for /api/smartgen/stream. It lives here rather than in
+   routes/smartgenRoutes.js because this is the endpoint that actually calls the
+   model — see the block above that route for why that distinction matters. */
+const { assertCanSpend, spendTokensForUser, SPEND_ERRORS } = require("./service/spend");
 const cron = require("node-cron");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -551,10 +555,18 @@ const adminEscrowRouter = require("./routes/adminEscrow");
 const adminPromptValidationRouter = require("./routes/adminPromptValidation");
 const adminNotificationsRouter = require("./routes/adminNotifications");
 const adminRefundsRouter = require("./routes/adminRefunds");
+/* Every signed engagement agreement, in one place. Read-only: the archive it
+   reads (models/NdaRecord.js) is append-only, and an audit trail an admin can
+   edit is not an audit trail. */
+const adminNdaRouter = require("./routes/adminNda");
 const escrowCancellationRoutes = require("./routes/escrowCancellation");
 const myOrdersRoutes = require("./routes/myOrders");
 const briefAttachmentRoutes = require("./routes/briefAttachments");
 const progressReviewRoutes = require("./routes/progressReview");
+/* "Here's what I need from you before I can start" as a tracked checklist
+   rather than prose in chat — including refusing to store the credentials
+   clients used to paste into that prose. See routes/accessRequests.js. */
+const accessRequestRoutes = require("./routes/accessRequests");
 const reviewRoutes = require("./routes/reviews");
 /* Reviews OF A PRODUCT, as opposed to reviews of a person — different model,
    different uniqueness rule. See the header of models/ProductReview.js. */
@@ -1430,6 +1442,42 @@ app.post("/api/smartgen/stream", requireAuth, llmLimiter, async (req, res) => {
 
   const userId = req.user?.id || req.user?._id?.toString?.() || null;
 
+  /* ── Quota gate ───────────────────────────────────────────────────────────
+     Generation is metered HERE, not on POST /api/smartgen, because this is the
+     request that spends money. The old arrangement split the two: this route
+     called the model and billed nothing, and a *separate* POST /api/smartgen
+     recorded the run and billed whatever number the browser put in
+     `tokensUsed`. Three things followed from that, and none of them needed
+     anyone to be acting in bad faith:
+
+       - A run that never reached the save call was free. Closing the tab,
+         losing the network, or any failure between the two requests meant the
+         model had been paid for and nothing was deducted.
+       - The amount billed was the client's arithmetic, unverified.
+       - That arithmetic was `completionTokens` only, so input tokens were never
+         billed at all — on a long document that is most of the real cost.
+
+     The check runs BEFORE flushHeaders() so a user who cannot pay gets an
+     ordinary JSON error with a status, rather than an SSE stream carrying an
+     error event. assertCanSpend writes nothing; the actual deduction happens
+     after the model replies, when the true token count is known. */
+  if (userId) {
+    try {
+      await assertCanSpend(userId);
+    } catch (quotaErr) {
+      const known = SPEND_ERRORS[quotaErr?.message];
+      if (known) {
+        return res.status(known.status).json({
+          success: false,
+          error: quotaErr.message,
+          message: known.message,
+        });
+      }
+      console.error("[stream] quota pre-check failed:", quotaErr?.message || quotaErr);
+      return res.status(500).json({ success: false, error: "quota_check_failed" });
+    }
+  }
+
   /* Answers present is what makes a request "deep" — unless the caller says
      otherwise. The client currently sends deepMode:false with answers attached
      on purpose: it wants Skill Mode's sectioned format, with the answers used as
@@ -1642,9 +1690,55 @@ app.post("/api/smartgen/stream", requireAuth, llmLimiter, async (req, res) => {
       }
     }
 
+    /* ── Meter the run ────────────────────────────────────────────────────
+       total_tokens, not completion_tokens: input is billable and on a long
+       document it is most of the cost. The provider's own count is used when
+       it arrives, which is the only number that matches what we are charged.
+
+       When it does not arrive — a truncated stream, or a response that carried
+       no usage block — the fallback counts the same text locally with
+       utils/tokenizer.js rather than dividing characters by 3.5. The estimate
+       it replaces is roughly right for English prose and badly wrong for code,
+       JSON and Devanagari, all of which this endpoint handles.
+
+       A failure here cannot be surfaced: the output has already been streamed
+       to the client token by token, so there is nothing left to refuse. It is
+       logged and reported instead. The pre-check above is what keeps this rare
+       — by this point the account was solvent a few seconds ago, so the
+       remaining cases are races between two concurrent generations. */
+    let billedTokens = null;
+    if (userId && optimizedText) {
+      try {
+        billedTokens = usage?.total_tokens;
+        if (!Number.isFinite(billedTokens) || billedTokens <= 0) {
+          const model = process.env.OPENAI_STREAM_MODEL || "gpt-4o-mini";
+          billedTokens =
+            tokenizer.countTokens(systemPrompt || "", model).tokens +
+            tokenizer.countTokens(prompt.trim(), model).tokens +
+            tokenizer.countTokens(optimizedText, model).tokens;
+        }
+        if (billedTokens > 0) {
+          await spendTokensForUser(userId, billedTokens, "smartgen");
+        }
+      } catch (spendErr) {
+        console.error(
+          `[stream] metering failed for user ${userId} (${billedTokens} tokens):`,
+          spendErr?.message || spendErr
+        );
+        telemetry.trackError(spendErr, {
+          kind: "smartgenMeteringFailed",
+          userId: String(userId),
+          tokens: billedTokens,
+        });
+      }
+    }
+
     sendEvent({
       done: true,
       optimizedText,
+      /* billedTokens is what was actually deducted. `usage` stays as it was so
+         nothing that already reads promptTokens/completionTokens breaks. */
+      billedTokens,
       usage: usage
         ? { promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens, totalTokens: usage.total_tokens }
         : null,
@@ -1996,6 +2090,7 @@ app.use("/api/admin/escrow", adminEscrowRouter);
 app.use("/api/admin/prompt-validation", adminPromptValidationRouter);
 app.use("/api/admin/notifications", adminNotificationsRouter);
 app.use("/api/admin/refunds", adminRefundsRouter);
+app.use("/api/admin/nda", adminNdaRouter);
 /* Cancelling a funded booking, and the split when the two sides can't agree.
    One router for both hire deals and service bookings — the order kind is a
    path param, because the money maths is identical for the two. */
@@ -2011,6 +2106,7 @@ app.use("/api/brief", briefAttachmentRoutes);
    answers with a screenshot or recording. Doubles as dated evidence when a
    cancellation turns into an argument about how much was done. */
 app.use("/api/progress-review", progressReviewRoutes);
+app.use("/api/access-requests", accessRequestRoutes);
 /* Reviews between the two sides of a finished booking — anchored to a real
    paid transaction, one per booking per direction. */
 app.use("/api/reviews", reviewRoutes);

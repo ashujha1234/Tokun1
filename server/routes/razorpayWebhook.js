@@ -21,6 +21,7 @@ const {
   sendPayoutAccountActivatedEmail,
   sendPayoutAccountNeedsAttentionEmail,
 } = require("../services/creatorEmail.service");
+const { sendEngagementStartedOnce } = require("../services/engagementEmail.service");
 
 function verifySignature(rawBody, signature, secret) {
   if (!signature || !secret) return false;
@@ -404,6 +405,12 @@ async function handleRazorpayWebhook(req, res) {
     );
 
     if (deal) {
+      /* This webhook is the safety net for a client who closed the tab before
+         /verify-payment ran — so for them, this is the ONLY path that fires,
+         and the funded-engagement email has to go from here too. Its own claim
+         keeps it to one send when both paths do run. Not awaited: Razorpay
+         wants a fast 200 and retries anything slow. */
+      sendEngagementStartedOnce("hire", deal._id);
       return res.status(200).json({ received: true, dealId: deal._id });
     }
 
@@ -411,6 +418,7 @@ async function handleRazorpayWebhook(req, res) {
     // same server-side safety net.
     const serviceOrder = await handleServiceOrderPaid(orderId, paymentId);
     if (serviceOrder) {
+      sendEngagementStartedOnce("service", serviceOrder._id);
       return res.status(200).json({ received: true, serviceOrderId: serviceOrder._id });
     }
 

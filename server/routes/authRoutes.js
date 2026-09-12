@@ -19,7 +19,10 @@ const {
   revokeRefreshToken,
 } = require("../utils/authTokens");
 const { ensureMonthlyQuota } = require("../utils/quota");
-const { buildOtpEmailHtml } = require("../utils/otpemailtemplate"); // adjust path
+const { buildOtpEmailHtml } = require("../utils/otpemailtemplate");
+/* The OTP template renders its footer glyphs as cid: references, so the
+   message has to carry them — see services/emailSocialIcons.js. */
+const { socialAttachments } = require("../services/emailSocialIcons"); // adjust path
 const {applyUserPlan} = require("../service/billing");
 const { logActivity } = require("../utils/activityLogger");
 const passport = require("passport");
@@ -235,6 +238,7 @@ await sendEmail({
     otp,                       // e.g., "4821" or "935612"
     siteUrl: siteUrl(),
   }),
+    attachments: socialAttachments(),
 });
 
 
@@ -454,6 +458,7 @@ if (userType === "ORG" && orgName && !user.orgId) {
         otp,
         siteUrl: siteUrl(),
       }),
+    attachments: socialAttachments(),
     });
 
 
@@ -762,6 +767,7 @@ await sendEmail({
     otp,
     siteUrl: siteUrl(),
   }),
+    attachments: socialAttachments(),
 
 });
 

@@ -474,6 +474,20 @@ const HireDealSchema = new mongoose.Schema(
       default: null,
     },
 
+    /* Set the moment the funded-engagement email is claimed, BEFORE it is sent
+       (services/engagementEmail.service.js).
+
+       There are two ways a deal reaches FUNDED — the client's verify call and
+       the Razorpay webhook — and either can win. Only the webhook claims its
+       transition atomically, so without a flag of its own this email would go
+       out twice whenever both paths land. Claimed with findOneAndUpdate on
+       `null`, which is the same shape services/escrowRelease.service.js uses to
+       make sure escrow is only ever released once. */
+    welcomeEmailSentAt: {
+      type: Date,
+      default: null,
+    },
+
     acceptedAt: Date,
     paidAt: Date,
     workStartedAt: Date,

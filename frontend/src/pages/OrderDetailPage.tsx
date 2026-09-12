@@ -14,7 +14,7 @@
  * absorbs.
  */
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import { useAuth } from "@/contexts/AuthContext";
@@ -24,6 +24,12 @@ import DisputePanel from "@/components/escrow/DisputePanel";
 import ProgressReviewPanel from "@/components/escrow/ProgressReviewPanel";
 import ExecutionTimeline from "@/components/escrow/ExecutionTimeline";
 import SubmitWorkModal from "@/components/escrow/SubmitWorkModal";
+/* "You've paid — now what?" The process, the deadline, and what happens
+   automatically if nobody does anything, in plain language. */
+import WelcomeDocPanel from "@/components/escrow/WelcomeDoc";
+/* "Here's what I need from you before I can start", as a tracked checklist —
+   and the reason nobody has to paste a password into chat. */
+import AccessRequestPanel from "@/components/escrow/AccessRequestPanel";
 import {
   openBriefAttachment,
   rupees,
@@ -56,6 +62,19 @@ const STATUS_TONE: Record<string, { color: string; bg: string }> = {
 
 const CANCELLABLE = ["FUNDED", "IN_PROGRESS", "WORK_SUBMITTED", "REVISION_REQUESTED"];
 const WORK_UNDERWAY = ["FUNDED", "IN_PROGRESS", "REVISION_REQUESTED"];
+
+/* Where the welcome/orientation panel is worth showing: while the engagement is
+   live and something is still going to happen to it. DISPUTED is included on
+   purpose — its "if something isn't right" section is the part someone in a
+   dispute most needs. Excluded: COMPLETED, CANCELLED, REFUNDED and SETTLED,
+   where "what happens next" is nothing. */
+const WELCOME_STATUSES = [
+  "FUNDED",
+  "IN_PROGRESS",
+  "WORK_SUBMITTED",
+  "REVISION_REQUESTED",
+  "DISPUTED",
+];
 
 /** Flattens the two order shapes into the one this page renders. */
 function normalizeOrder(kind: OrderKind, raw: any, viewerId: string) {
@@ -102,6 +121,25 @@ function normalizeOrder(kind: OrderKind, raw: any, viewerId: string) {
     deliverables: raw.deliverables || [],
     submissionNote: raw.submissionNote || "",
     revisions: raw.revisions || [],
+    /* The cap agreed at booking. null is a term — "unlimited, no cap agreed" —
+       and undefined means the order predates the field, which getRevisionState
+       also reads as unlimited. Both are kept distinct from a number, because
+       "unlimited" and "not set" read very differently on a document. */
+    revisionsAllowed: raw.revisionsAllowed ?? null,
+    /* "What the engagement includes", from the listing — populated on the
+       service order response, absent on a hire deal, which has no listing to
+       promise anything. */
+    packageItems: (raw.serviceId?.deliverables?.length
+      ? raw.serviceId.deliverables
+      : [
+          raw.serviceId?.screens,
+          raw.serviceId?.prototype && `Prototype: ${raw.serviceId.prototype}`,
+          raw.serviceId?.fileType,
+        ]
+    )?.filter(Boolean) || [],
+    /* The access checklist, attached to the order response by the
+       access-request router. Empty on an engagement where none was raised. */
+    accessItems: raw.accessItems || [],
     settlementSellerPercent: raw.settlementSellerPercent,
     settlementSellerPayout: raw.settlementSellerPayout,
     refundAmount: raw.refundAmount,
@@ -192,6 +230,27 @@ export default function OrderDetailPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  /* Scroll to whatever the URL fragment names, once the order has loaded.
+     The browser does this on its own for a normal page load, but not here: the
+     route is lazy and the panels only mount after the fetch resolves, so at
+     navigation time the target does not exist yet and the attempt is silently
+     dropped.
+
+     This is what makes the access-request notifications land on the checklist
+     instead of the top of the page — see the actionUrl built in
+     routes/accessRequests.js. Guarded so it runs once per hash rather than on
+     every reload `onChanged` triggers, which would yank the page back while
+     someone is mid-upload. */
+  const scrolledToHash = useRef<string | null>(null);
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!order || !hash || scrolledToHash.current === hash) return;
+    const target = document.getElementById(hash.slice(1));
+    if (!target) return;
+    scrolledToHash.current = hash;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [order]);
 
   /* One POST helper for start-work / approve-work / request-revision — the
      three differ only in path and body, and the paths differ only by order
@@ -406,6 +465,44 @@ export default function OrderDetailPage() {
           revisionCount={order.revisions.length}
         />
 
+        {/* The orientation panel, immediately under the timeline: the timeline
+            says where the engagement has got to, this says what that means and
+            what happens next — including the automatic release, which is the
+            most consequential rule on the platform and used to be written down
+            nowhere either party would see before it fired.
+
+            Hidden once the engagement has ended. "What happens next" on a
+            refunded booking is noise, and noise here is what trains people not
+            to read the one panel carrying a deadline. */}
+        {WELCOME_STATUSES.includes(order.status) && order.role && (
+          <WelcomeDocPanel
+            doc={{
+              orderKind: kind,
+              orderId: order.id,
+              title: order.title,
+              brief: order.note || order.description,
+              packageItems: order.packageItems,
+              attachments: order.briefAttachments,
+              amount: order.amount,
+              totalPayable: order.totalPayable,
+              currency: "INR",
+              deliveryDays: order.deliveryDays,
+              deliveryDueAt: order.deliveryDueAt,
+              revisionsAllowed: order.revisionsAllowed,
+              revisionsUsed: order.revisions.length,
+              escrowExpiresAt: order.escrowExpiresAt,
+              status: order.status,
+              fundsStatus: order.fundsStatus,
+              paidAt: order.paidAt,
+              workSubmittedAt: order.workSubmittedAt,
+              clientName: order.buyer?.name,
+              creatorName: order.seller?.name,
+              accessItems: order.accessItems,
+              viewerRole: order.role,
+            }}
+          />
+        )}
+
         <Section title="What the client asked for">
           {order.note || order.description ? (
             <p className="text-sm text-white/80 whitespace-pre-line leading-relaxed">
@@ -437,6 +534,34 @@ export default function OrderDetailPage() {
             </div>
           )}
         </Section>
+
+        {/* What the creator needs from the client. Sits between the brief and
+            the progress checkpoints because that is the real sequence: this is
+            what has to happen before there is any progress to show.
+
+            Renders nothing at all when no checklist exists and the viewer can't
+            raise one, so it costs a client nothing on an engagement where the
+            creator never asked for anything.
+
+            `onChanged` reloads the order rather than only the panel: the
+            welcome doc's headline and the agreement's Schedule C both read the
+            checklist off the order response, and a provided item that leaves
+            them stale would have the guide still telling the client to send
+            something they just sent. */}
+        {/* The id is the landing target for the access-request notifications,
+            which link to /orders/:kind/:id#access-checklist. Wrapping rather
+            than putting the id inside AccessRequestPanel keeps the anchor here,
+            next to the route that owns the URL. */}
+        {order.role && (
+          <div id="access-checklist" style={{ scrollMarginTop: 90 }}>
+            <AccessRequestPanel
+              orderKind={kind}
+              orderId={order.id}
+              token={token}
+              onChanged={load}
+            />
+          </div>
+        )}
 
         {showProgress && (
           <ProgressReviewPanel orderKind={kind} orderId={order.id} token={token} />

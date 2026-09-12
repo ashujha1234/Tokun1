@@ -35,7 +35,7 @@ exports.sendPlanExpiringSoonEmail = async ({
     heading: `Your ${planLabel(plan)} plan is ending`,
     accent: ACCENT.warn,
     preheader: `Renew before ${onDate(currentPeriodEnd)} to keep your monthly tokens.`,
-    introHtml: `Hi ${escapeHtml(firstName(name))}, your Tokun <strong style="color:#fff">${escapeHtml(
+    introHtml: `Hello ${escapeHtml(firstName(name))}, your Tokun <strong style="color:#fff">${escapeHtml(
       planLabel(plan)
     )}</strong> plan ends on ${escapeHtml(onDate(currentPeriodEnd))}. Renew before then and nothing changes${
       isOrg ? " for you or your team" : ""
@@ -62,7 +62,7 @@ exports.sendPlanExpiredEmail = async ({ to, name, plan, endedOn, isOrg = false }
     preheader: isOrg
       ? "The shared token pool has stopped refilling."
       : "You're back on the Free allowance of 5,000 monthly tokens.",
-    introHtml: `Hi ${escapeHtml(firstName(name))}, your Tokun <strong style="color:#fff">${escapeHtml(
+    introHtml: `Hello ${escapeHtml(firstName(name))}, your Tokun <strong style="color:#fff">${escapeHtml(
       planLabel(plan)
     )}</strong> plan ended on ${escapeHtml(onDate(endedOn))}${
       isOrg

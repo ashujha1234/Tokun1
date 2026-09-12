@@ -24,6 +24,12 @@ import { useMode } from "@/contexts/ModeContext";
    recoloured copy is still in public/icons if it's wanted back — one line,
    here and in Header/Footer/Landing, which all reference it separately.
 
+   Note that bringing it back would no longer align anything: the hero has
+   since moved to Option 05 "Holographic Chrome" — a five-stop 135° ramp,
+   #FFFFFF -> #D4E4FA -> #60A5FA -> #A78BFA -> #F472B6 — so Tokun-opt2.png now
+   matches neither this PNG nor the word under it. Aligning the two properly
+   means a new asset on the Option 05 ramp, not a swap back.
+
    A CSS filter can't stand in for either direction: no hue-rotate maps deep
    blue -> magenta onto sky -> purple without taking the blue somewhere green
    along the way, which is why it was a separate file to begin with. */

@@ -11,7 +11,10 @@ const { sendEscrowReleasedEmail } = require("../services/creatorEmail.service");
 const { sendAutoReleaseApproachingEmail } = require("../services/buyerEmail.service");          // adjust path
 const { releaseEscrowToFreelancer, EscrowAlreadyReleasedError } = require("../services/escrowRelease.service");
 
-const AUTO_RELEASE_HOURS = 72; // change as needed
+// Was written out here as a literal. It is the same window three other files
+// depend on, so it now comes from the one place — see config/engagementRules.js.
+const { RULES } = require("../config/engagementRules");
+const AUTO_RELEASE_HOURS = RULES.autoReleaseHours;
 
 // ── Core release logic — delegates the actual credit/commission/status-claim
 // to the shared service (same one used by client approve-work and admin

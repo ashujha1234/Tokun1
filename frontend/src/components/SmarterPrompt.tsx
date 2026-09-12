@@ -952,10 +952,32 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
         return; // the `finally` below clears isGenerating
       }
 
+      /* Quota and account-type refusals must NOT fall through to the catch
+         below. That catch retries on /api/optimize, which takes no auth and
+         meters nothing — so treating "you are out of tokens" as a transport
+         failure would hand the user the generation they were just refused, for
+         free. Same shape as the 429 branch above: say why, stop here.
+
+         402 is billing (out of tokens, subscription lapsed), 403 is the account
+         type. Both are answers, not faults, and neither is worth a retry. */
+      if (res.status === 402 || res.status === 403) {
+        const body = await res.json().catch(() => null);
+        toast({
+          title: res.status === 402 ? "You're out of tokens" : "Not available on this account",
+          description:
+            body?.message ||
+            "This account can't run a generation right now. Check your plan and try again.",
+        });
+        return; // the `finally` below clears isGenerating
+      }
+
       if (!res.ok || !res.body) throw new Error("stream_unavailable");
       const reader = res.body.getReader(); const decoder = new TextDecoder();
       let buf = ""; let accum = ""; let final = "";
       let finalUsage: {promptTokens?:number; completionTokens?:number; totalTokens?:number}|null = null;
+      // What the server actually deducted. It meters the run itself now, so this
+      // is a figure to display, not one to compute — see the note at `billed`.
+      let finalBilled: number|null = null;
 
       while (true) {
         const {done,value} = await reader.read(); if (done) break;
@@ -967,21 +989,36 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
             const evt = JSON.parse(line.slice(6));
             if (evt.error) throw new Error(evt.message||"stream_error");
             if (evt.delta) { accum += evt.delta; setStreamedText(unwrapJson(accum)); }
-            if (evt.done)  { final = evt.optimizedText || unwrapJson(accum); finalUsage = evt.usage ?? null; }
+            if (evt.done)  {
+              final = evt.optimizedText || unwrapJson(accum);
+              finalUsage = evt.usage ?? null;
+              finalBilled = typeof evt.billedTokens === "number" ? evt.billedTokens : null;
+            }
           } catch(pe) { if ((pe as Error).message!=="stream_error") continue; throw pe; }
         }
       }
 
       const result = final || unwrapJson(accum);
       if (!result) throw new Error("empty_response");
-      // Only count the tokens actually generated (the output) — not the tokens spent
-      // reading the input — that's what "tokens used" should mean to the user.
-      const outputTokens = finalUsage?.completionTokens ?? Math.ceil(result.length/3.5);
+      /* `billedTokens` is what the server charged, and it is authoritative: the
+         stream endpoint meters the run itself now, using the provider's own
+         total (input + output) rather than anything computed here.
+
+         This used to be `completionTokens ?? result.length/3.5`, sent up for the
+         server to deduct verbatim. Three things were wrong with that — a run
+         that never reached the save call was never billed at all, the amount was
+         the browser's arithmetic taken on trust, and counting output only meant
+         the input side of a long document was free.
+
+         The fallbacks below are display-only. If an older server replies without
+         `billedTokens`, the figure shown may differ slightly from what was
+         charged; nothing is deducted from it either way. */
+      const billed = finalBilled ?? finalUsage?.totalTokens ?? finalUsage?.completionTokens ?? Math.ceil(result.length/3.5);
       setGenerated(result); setStreamedText("");
-      setTokensUsed(outputTokens);
-      // Deduct quota BEFORE notifying the parent (which refreshes the quota widget) —
-      // otherwise the widget refetches before the spend lands and looks stale.
-      const saveRes = await llmService.saveSmartgen({inputPrompt:prompt.trim(),detailedPrompt:result,tokensUsed:outputTokens});
+      setTokensUsed(billed);
+      // Record the run. The quota was already deducted by the stream request, so
+      // the fresh user/org this returns already reflects it.
+      const saveRes = await llmService.saveSmartgen({inputPrompt:prompt.trim(),detailedPrompt:result,tokensUsed:billed});
       warnIfQuotaSaveFailed(saveRes);
       setSmartgenDocId(saveRes.id ?? null);
       onPromptGenerated?.(result);

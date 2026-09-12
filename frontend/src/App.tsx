@@ -62,6 +62,7 @@ const AddFunds = lazy(() => import("@/pages/AddFunds"));
 const EscrowAdminDashboard = lazy(() => import("@/pages/EscrowAdminDashboard"));
 const AdminNotificationsPage = lazy(() => import("@/pages/AdminNotificationsPage"));
 const AdminRefundsPage = lazy(() => import("@/pages/AdminRefundsPage"));
+const AdminNdaPage = lazy(() => import("@/pages/AdminNdaPage"));
 const SelfDash = lazy(() => import("@/pages/self-dash"));
 const OrdersPage = lazy(() => import("@/pages/OrdersPage"));
 const OrderDetailPage = lazy(() => import("@/pages/OrderDetailPage"));
@@ -309,6 +310,8 @@ export default function App() {
 <Route path="/admin/escrow" element={<RequireAdminAuth><EscrowAdminDashboard /></RequireAdminAuth>} />
 <Route path="/admin/notifications" element={<RequireAdminAuth><AdminNotificationsPage /></RequireAdminAuth>} />
 <Route path="/admin/refunds" element={<RequireAdminAuth><AdminRefundsPage /></RequireAdminAuth>} />
+{/* The signed-agreement archive. Read-only — see routes/adminNda.js. */}
+<Route path="/admin/nda" element={<RequireAdminAuth><AdminNdaPage /></RequireAdminAuth>} />
 {/* Cancellations the two parties couldn't split between themselves. */}
 <Route path="/admin/disputes" element={<RequireAdminAuth><AdminDisputesPage /></RequireAdminAuth>} />
 

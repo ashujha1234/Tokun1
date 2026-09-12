@@ -224,10 +224,107 @@ async function assertCanSpend(userId, n = 0) {
   throw new Error("invalid_user_type");
 }
 
+// Which "you're out of tokens" error belongs to which account type, so a fully
+// exhausted account reports the same code here that the spend functions and
+// assertCanSpend would have produced.
+const TYPE_QUOTA_ERROR = {
+  IND: "token_quota_exceeded",
+  TM: "member_cap_exceeded",
+  ORG: "org_pool_exhausted",
+};
+
+/**
+ * How many tokens this account could still spend right now.
+ *
+ * Same arithmetic assertCanSpend uses to decide whether to let a request
+ * through, pulled out so spendTokensForUser can also use it to size a final
+ * charge. Returns 0 for an account that cannot spend at all; the caller is
+ * expected to have run assertCanSpend already, so this does not re-check
+ * subscription state.
+ */
+async function headroomFor(user) {
+  if (user.userType === "IND") {
+    return (
+      Number(user.extraTokensRemaining || 0) +
+      Math.max(0, Number(user.monthlyTokensCap || 0) - Number(user.monthlyTokensUsed || 0))
+    );
+  }
+
+  if (user.userType === "TM" || (user.userType === "ORG" && user.role === "Owner")) {
+    if (!user.orgId) return 0;
+    const org = await Organization.findById(user.orgId).lean();
+    if (!org) return 0;
+    const poolLeft = Math.max(
+      0,
+      Number(org.orgPoolCap || 0) + Number(org.orgExtraTokensRemaining || 0) - Number(org.orgPoolUsed || 0)
+    );
+    // A team member is capped by their own allowance as well as the pool.
+    if (user.userType === "TM") return Math.min(Number(user.orgTokensRemaining || 0), poolLeft);
+    return poolLeft;
+  }
+
+  return 0;
+}
+
+/**
+ * Dispatches to whichever of the three spend functions above fits this account.
+ *
+ * The account-type branch used to be written out by hand at each call site. That
+ * was survivable while POST /api/smartgen was the only place that spent, but the
+ * metering has moved to the endpoint that actually calls the model
+ * (/api/smartgen/stream), and two hand-written copies of the same branch is how
+ * one of them ends up missing the ORG-owner case.
+ *
+ * ── Why this clamps, and the three functions it calls do not ────────────────
+ *
+ * The functions above are all-or-nothing: ask for more than the account has and
+ * they throw, deducting nothing. That is the right shape when the amount is
+ * known before the work happens, and the wrong one here, because the true cost
+ * of a generation is only known after the model has already replied and been
+ * paid for.
+ *
+ * Left unclamped it opens a loop. assertCanSpend admits anyone with at least one
+ * token left. A user sitting on 100 tokens asks for a run costing 3,000; the
+ * charge throws; nothing is deducted; they still have 100 tokens and can repeat
+ * it forever — unlimited free generation for anyone near their cap.
+ *
+ * So an overage is charged down to zero instead of being refused. The user
+ * overshoots their last run — which they always could, since nobody knows the
+ * cost in advance — and then has nothing left, so the next assertCanSpend stops
+ * them at the door. The shortfall is logged rather than swallowed: a run that
+ * routinely costs more than a whole plan is a pricing signal, not a billing
+ * detail.
+ */
+async function spendTokensForUser(userId, n, section) {
+  const user = await User.findById(userId).lean();
+  if (!user) throw new Error("user_not_found");
+
+  const amount = Math.max(0, Math.floor(Number(n) || 0));
+  if (amount === 0) return { ok: true, used: 0 };
+
+  const headroom = await headroomFor(user);
+  const charge = Math.min(amount, headroom);
+
+  if (charge <= 0) throw new Error(TYPE_QUOTA_ERROR[user.userType] || "invalid_user_type");
+  if (charge < amount) {
+    console.warn(
+      `[spend] ${section || "usage"}: user ${userId} used ${amount} tokens with ${headroom} left — charged ${headroom}, ${amount - headroom} unbilled.`
+    );
+  }
+
+  if (user.userType === "IND") return spendTokensForIndividual(userId, charge, section);
+  if (user.userType === "TM") return spendTokensForTeamMember(userId, charge, section);
+  if (user.userType === "ORG" && user.role === "Owner") {
+    return spendTokensForOrgOwner(userId, charge, section);
+  }
+  throw new Error("invalid_user_type");
+}
+
 module.exports = {
   spendTokensForIndividual,
   spendTokensForTeamMember,
   spendTokensForOrgOwner,
+  spendTokensForUser,
   assertCanSpend,
   SPEND_ERRORS,
 };

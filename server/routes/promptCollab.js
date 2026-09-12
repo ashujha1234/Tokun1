@@ -610,6 +610,8 @@ const Prompt = require("../models/Prompt");
 const Purchase = require("../models/Purchase");
 const { embedWatermark } = require("../utils/nvisibleWatermark");
 const { sendEmail } = require("../utils/SendEmail");
+/* Renders {{footer}} and carries the inline footer glyphs. */
+const { withFooter, socialAttachments } = require("../services/emailSocialIcons");
 const { requireAuth } = require("../utils/auth");
 const CollabSession = require("../models/CollabSession");
 // const inviteCollaborativeTemplate = require("../htmltemplate/")
@@ -1191,12 +1193,14 @@ const finalMessage = `${senderName} invited you to collaborate on a prompt in To
       const html = inviteCollaborativeTemplate
         .replace(/{{Name}}/g, name || receiverUser.name || "there")
         .replace(/{{SenderName}}/g, req.user?.name || "Someone")
-        .replace(/{{CollaborationLink}}/g, inviteUrl);
+        .replace(/{{CollaborationLink}}/g, inviteUrl)
+        .replace(/{{featuresLink}}/g, `${siteUrl()}/features`);
 
       await sendEmail({
         to: email,
         subject: "Invitation to collaborate on a product on Tokun.World",
-        html,
+        html: withFooter(html, { receivingBecause: "an invitation to collaborate on Tokun.World" }),
+        attachments: socialAttachments(),
       });
     } catch (mailErr) {
       console.error(`Failed to send invitation to ${email}:`, mailErr);

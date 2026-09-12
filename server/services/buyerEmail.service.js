@@ -40,7 +40,7 @@ exports.sendWorkSubmittedEmail = async ({
     preheader: autoReleaseAt
       ? `Review it before ${onDate(autoReleaseAt)}, or the payment releases automatically.`
       : "Review it and approve or request changes.",
-    introHtml: `Hi ${escapeHtml(firstName(clientName))}, ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(firstName(clientName))}, ${escapeHtml(
       creatorName || "your creator"
     )} has submitted the work for <strong style="color:#fff">${escapeHtml(
       title || "your order"
@@ -84,7 +84,7 @@ exports.sendAutoReleaseApproachingEmail = async ({
     heading: "Your review window is closing",
     accent: ACCENT.warn,
     preheader: `Payment releases to ${creatorName || "the creator"} on ${onDate(releasesAt)}.`,
-    introHtml: `Hi ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(
       firstName(clientName)
     )}, the work on <strong style="color:#fff">${escapeHtml(
       title || "your order"
@@ -117,7 +117,7 @@ exports.sendDisputeOpenedEmail = async ({ to, recipientName, openedByName, title
     heading: "A dispute has been opened",
     accent: ACCENT.warn,
     preheader: `${openedByName || "The other party"} has raised a dispute. The payment stays in escrow.`,
-    introHtml: `Hi ${escapeHtml(firstName(recipientName))}, ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(firstName(recipientName))}, ${escapeHtml(
       openedByName || "the other party"
     )} has opened a dispute on <strong style="color:#fff">${escapeHtml(
       title || "your order"
@@ -140,7 +140,7 @@ exports.sendDisputeEscalatedEmail = async ({ to, recipientName, title, escalated
     heading: "The dispute is now with our team",
     accent: ACCENT.warn,
     preheader: "We'll review what was agreed and delivered, then decide.",
-    introHtml: `Hi ${escapeHtml(firstName(recipientName))}, the dispute on <strong style="color:#fff">${escapeHtml(
+    introHtml: `Hello ${escapeHtml(firstName(recipientName))}, the dispute on <strong style="color:#fff">${escapeHtml(
       title || "your order"
     )}</strong> has been escalated to Tokun${
       escalatedByName ? ` by ${escapeHtml(escalatedByName)}` : ""
@@ -167,7 +167,7 @@ exports.sendDisputeResolvedEmail = async ({
     heading: "The dispute has been settled",
     accent: ACCENT.info,
     preheader: outcome ? String(outcome).slice(0, 120) : "Here's how the payment was split.",
-    introHtml: `Hi ${escapeHtml(firstName(recipientName))}, the dispute on <strong style="color:#fff">${escapeHtml(
+    introHtml: `Hello ${escapeHtml(firstName(recipientName))}, the dispute on <strong style="color:#fff">${escapeHtml(
       title || "your order"
     )}</strong> has been settled${decidedBy ? ` by ${escapeHtml(decidedBy)}` : ""}.`,
     rows: [
@@ -204,7 +204,7 @@ exports.sendRefundRequestReceivedEmail = async ({ to, buyerName, itemTitle, amou
     heading: "Refund request received",
     accent: ACCENT.info,
     preheader: "Our team is reviewing it — you'll get a decision by email.",
-    introHtml: `Hi ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(
       firstName(buyerName)
     )}, we've received your refund request for <strong style="color:#fff">${escapeHtml(
       itemTitle || "your purchase"

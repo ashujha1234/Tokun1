@@ -265,6 +265,50 @@ async function blobExists(container, blobName) {
   }
 }
 
+/**
+ * Pulls a blob into memory.
+ *
+ * The other read path here is getBlobSasUrl, which hands out a short-lived URL
+ * for a browser to follow. That is the right shape for anything a person clicks
+ * and the wrong one for an email attachment, which has to be bytes the server
+ * holds at send time — a link in an attachment slot is just a link, and a SAS
+ * link expires while the mail is still in someone's inbox.
+ *
+ * Deliberately capped. downloadToBuffer with no ceiling is an out-of-memory bug
+ * waiting for the first oversized file: the whole thing lands in the heap at
+ * once, per concurrent send. Signed agreements are tens of kilobytes, so 10 MB
+ * is far above anything legitimate and far below anything dangerous.
+ *
+ * Returns null rather than throwing on a missing or oversized blob. Every
+ * caller so far is attaching something to an email that has its own reason to
+ * exist, and none of them should fail to send because an attachment could not
+ * be fetched.
+ *
+ * @returns {Promise<Buffer|null>}
+ */
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+async function downloadBlobToBuffer(container, blobName, maxBytes = MAX_ATTACHMENT_BYTES) {
+  if (!container || !blobName || !isBlobConfigured()) return null;
+  try {
+    const client = getContainerClient(container).getBlockBlobClient(blobName);
+
+    // Ask how big it is before pulling it in, not after.
+    const props = await client.getProperties();
+    if (props.contentLength && props.contentLength > maxBytes) {
+      console.warn(
+        `blobStorage: ${container}/${blobName} is ${props.contentLength} bytes, over the ${maxBytes} cap — not attaching.`
+      );
+      return null;
+    }
+
+    return await client.downloadToBuffer();
+  } catch (err) {
+    console.error(`blobStorage: download failed for ${container}/${blobName}:`, err.message);
+    return null;
+  }
+}
+
 /** Is Azure configured at all? Lets a route fall back rather than 500. */
 function isBlobConfigured() {
   return Boolean(process.env.AZURE_STORAGE_CONNECTION_STRING);
@@ -274,6 +318,7 @@ module.exports = {
   uploadFileToBlob,
   blobNameFor,
   getBlobSasUrl,
+  downloadBlobToBuffer,
   deleteBlob,
   blobExists,
   isBlobConfigured,

@@ -44,7 +44,7 @@ exports.sendPromptSoldEmail = async ({
     heading: "You made a sale",
     accent: ACCENT.money,
     preheader: `${rupees(netEarning)} from "${productTitle || "your product"}"`,
-    introHtml: `Hi ${escapeHtml(firstName(sellerName))}, ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(firstName(sellerName))}, ${escapeHtml(
       buyerName || "someone"
     )} just bought <strong style="color:#fff">${escapeHtml(
       productTitle || "your product"
@@ -78,7 +78,7 @@ exports.sendPayoutAccountActivatedEmail = async ({ to, creatorName }) =>
     heading: "You're ready to get paid",
     accent: ACCENT.money,
     preheader: "Razorpay has verified your account. Your products are visible to buyers.",
-    introHtml: `Hi ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(
       firstName(creatorName)
     )}, Razorpay has finished verifying your payout account. Your products are now visible to buyers and any sale is transferred straight to your bank account.`,
     cta: { label: "Go to your dashboard", href: `${SITE}/self-dash` },
@@ -123,7 +123,7 @@ exports.sendPayoutAccountNeedsAttentionEmail = async ({ to, creatorName, status,
     heading: copy.heading,
     accent: status === "REJECTED" || status === "SUSPENDED" ? ACCENT.danger : ACCENT.warn,
     preheader: "Your products stay hidden from buyers until this is resolved.",
-    introHtml: `Hi ${escapeHtml(firstName(creatorName))}, ${escapeHtml(copy.line)}`,
+    introHtml: `Hello ${escapeHtml(firstName(creatorName))}, ${escapeHtml(copy.line)}`,
     rows: message ? [{ label: "What Razorpay said", value: message }] : [],
     cta: { label: "Fix it now", href: `${SITE}/self-dash` },
     footerNote:
@@ -142,7 +142,7 @@ exports.sendProductApprovedEmail = async ({ to, creatorName, productTitle, produ
     heading: "Your product is live",
     accent: ACCENT.money,
     preheader: "It's approved and buyers can find it now.",
-    introHtml: `Hi ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(
       firstName(creatorName)
     )}, <strong style="color:#fff">${escapeHtml(
       productTitle || "your product"
@@ -176,7 +176,7 @@ exports.sendProductRejectedEmail = async ({
     heading: editable ? "Your product needs changes" : "Your product wasn't approved",
     accent: editable ? ACCENT.warn : ACCENT.danger,
     preheader: reason ? String(reason).slice(0, 120) : "Review didn't pass.",
-    introHtml: `Hi ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(
       firstName(creatorName)
     )}, we reviewed <strong style="color:#fff">${escapeHtml(
       productTitle || "your product"
@@ -185,7 +185,7 @@ exports.sendProductRejectedEmail = async ({
         ? "it needs a few changes before it can go live."
         : "unfortunately it can't be listed as it is."
     }`,
-    rows: reason ? [{ label: "Reason", value: reason }] : [],
+    rows: reason ? [{ label: "Reason", value: reason, block: true }] : [],
     cta: { label: "Open My Products", href: `${SITE}/self-dash?tab=prompts&p=uploaded` },
     footerNote: editable
       ? "Edit the product from My Products and submit it again — it goes back into the review queue straight away."
@@ -203,7 +203,7 @@ exports.sendProductReportedEmail = async ({ to, creatorName, productTitle, reaso
     preheader: takenDown
       ? "It's hidden from buyers while we review the report."
       : "We're reviewing a report about it.",
-    introHtml: `Hi ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(
       firstName(creatorName)
     )}, someone reported <strong style="color:#fff">${escapeHtml(
       productTitle || "your product"
@@ -227,10 +227,10 @@ exports.sendSellingSuspendedEmail = async ({ to, creatorName, reason }) =>
     heading: "Selling is suspended on your account",
     accent: ACCENT.danger,
     preheader: "Your products are hidden and new sales are blocked.",
-    introHtml: `Hi ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(
       firstName(creatorName)
     )}, selling has been suspended on your Tokun account. Your products are hidden from the marketplace and you can't take new orders.`,
-    rows: reason ? [{ label: "Reason", value: reason }] : [],
+    rows: reason ? [{ label: "Reason", value: reason, block: true }] : [],
     footerNote:
       "Money already earned and any work in progress is unaffected — existing orders still settle normally. Reply to this email if you'd like this reviewed.",
     receivingBecause: "your Tokun.World creator account",
@@ -265,7 +265,7 @@ exports.sendNewWorkRequestEmail = async ({
     preheader: respondWithinDays
       ? `Respond within ${respondWithinDays} days or it closes automatically.`
       : "A client is waiting on your reply.",
-    introHtml: `Hi ${escapeHtml(firstName(creatorName))}, <strong style="color:#fff">${escapeHtml(
+    introHtml: `Hello ${escapeHtml(firstName(creatorName))}, <strong style="color:#fff">${escapeHtml(
       clientName || "a client"
     )}</strong> has sent you a ${escapeHtml(kind)} request for <strong style="color:#fff">${escapeHtml(
       title || "your work"
@@ -291,7 +291,7 @@ exports.sendRevisionRequestedEmail = async ({ to, creatorName, clientName, title
     heading: "The client asked for changes",
     accent: ACCENT.warn,
     preheader: note ? String(note).slice(0, 120) : "Your delivery needs another pass.",
-    introHtml: `Hi ${escapeHtml(firstName(creatorName))}, ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(firstName(creatorName))}, ${escapeHtml(
       clientName || "the client"
     )} has reviewed your work on <strong style="color:#fff">${escapeHtml(
       title || "the order"
@@ -323,7 +323,7 @@ exports.sendEscrowReleasedEmail = async ({
     preheader: automatic
       ? "The review window closed, so the payment was released automatically."
       : `${clientName || "The client"} approved your work.`,
-    introHtml: `Hi ${escapeHtml(firstName(creatorName))}, ${
+    introHtml: `Hello ${escapeHtml(firstName(creatorName))}, ${
       automatic
         ? "the review window on"
         : `${escapeHtml(clientName || "the client")} has approved your work on`
@@ -348,7 +348,7 @@ exports.sendReviewReceivedEmail = async ({ to, creatorName, reviewerName, rating
     heading: "You have a new review",
     accent: Number(rating) >= 4 ? ACCENT.money : ACCENT.info,
     preheader: comment ? String(comment).slice(0, 120) : "A client reviewed your work.",
-    introHtml: `Hi ${escapeHtml(firstName(creatorName))}, ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(firstName(creatorName))}, ${escapeHtml(
       reviewerName || "a client"
     )} left a review${title ? ` on <strong style="color:#fff">${escapeHtml(title)}</strong>` : ""}.`,
     rows: [
@@ -375,7 +375,7 @@ exports.sendIntroVideoApprovedEmail = async ({ to, creatorName }) =>
     heading: "You're a Super Creator",
     accent: ACCENT.money,
     preheader: "Your intro video is approved. Services and hire work are unlocked.",
-    introHtml: `Hi ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(
       firstName(creatorName)
     )}, your intro video has been approved. Your profile is live in Find Creators, and you can now list services and accept project requests.`,
     cta: { label: "List your first service", href: `${SITE}/self-dash` },
@@ -392,7 +392,7 @@ exports.sendIntroVideoRejectedEmail = async ({ to, creatorName, reason }) =>
     heading: "Your intro video wasn't approved",
     accent: ACCENT.warn,
     preheader: reason ? String(reason).slice(0, 120) : "Record another one and resubmit.",
-    introHtml: `Hi ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(
       firstName(creatorName)
     )}, we reviewed your intro video and it isn't quite there yet. You can record another one and submit it straight away — there's no waiting period.`,
     rows: reason ? [{ label: "What needs fixing", value: reason }] : [],
@@ -416,7 +416,7 @@ exports.sendIntroVideoPendingEmail = async ({ to, creatorName }) =>
     heading: "Almost there",
     accent: ACCENT.info,
     preheader: "Your intro video is with our reviewers. Services unlock once it's approved.",
-    introHtml: `Hi ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(
       firstName(creatorName)
     )}, your creator profile is complete and live. One thing is still pending: your intro video is with our reviewers, and services and hire work stay locked until it's approved.`,
     cta: { label: "Check your status", href: `${SITE}/self-dash` },
@@ -449,7 +449,7 @@ exports.sendRatingPenaltyEmail = async ({
     heading: "Your rating has been adjusted",
     accent: ACCENT.danger,
     preheader: reason ? String(reason).slice(0, 120) : "An admin reviewed a case on your account.",
-    introHtml: `Hi ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(
       firstName(creatorName)
     )}, after reviewing ${escapeHtml(contextLabel || "a case on your account")}, our team has reduced your creator rating.`,
     rows: [
@@ -471,7 +471,7 @@ exports.sendRatingPenaltyRevokedEmail = async ({ to, creatorName, stars, newRati
     heading: "Your rating has been restored",
     accent: ACCENT.money,
     preheader: "The deduction on your account has been lifted.",
-    introHtml: `Hi ${escapeHtml(
+    introHtml: `Hello ${escapeHtml(
       firstName(creatorName)
     )}, the ${stars}-star adjustment on your creator rating has been removed and your rating is back to what your reviews say.`,
     rows: [

@@ -282,6 +282,186 @@ export const uploadBriefFile = (file: File, token?: string) =>
 export const uploadProgressMedia = (file: File, token?: string) =>
   uploadTo("/api/progress-review/media/upload", file, token);
 
+/** A file the CLIENT supplies in answer to an access-checklist item. */
+export const uploadAccessAsset = (file: File, token?: string) =>
+  uploadTo("/api/access-requests/assets/upload", file, token);
+
+/* ── Access checklist ──────────────────────────────────────────────────────────
+   "Here's what I need from you before I can start", as tracked items rather
+   than prose in chat. See models/AccessRequest.js for why it's a model.       */
+
+export type AccessItemKind = "ASSET" | "ACCESS" | "INFO" | "APPROVAL";
+export type AccessItemStatus = "PENDING" | "PROVIDED" | "DECLINED" | "NOT_APPLICABLE";
+
+export type AccessItem = {
+  _id: string;
+  label: string;
+  kind: AccessItemKind;
+  note?: string;
+  required: boolean;
+  status: AccessItemStatus;
+  responseNote?: string;
+  /** ACCESS items only: the account the client says they invited. Never a secret. */
+  grantedTo?: string;
+  providedAt?: string | null;
+  declineReason?: string;
+  reopenCount?: number;
+  reopenNote?: string;
+  requestedAt?: string;
+  attachments: { index: number; name: string; size: number; mimeType: string; uploadedAt: string }[];
+};
+
+export type AccessRequest = {
+  _id: string;
+  orderKind: OrderKind;
+  status: "OPEN" | "FULFILLED" | "CANCELLED";
+  orderTitle?: string;
+  items: AccessItem[];
+  summary: {
+    total: number;
+    outstanding: number;
+    /** What is actually holding the work up — the only count worth badging. */
+    outstandingRequired: number;
+    provided: number;
+    declined: number;
+  };
+  /** Advisory: hours this checklist has held the work up. See the model. */
+  blockedHours: number;
+  blockedSince?: string | null;
+  fulfilledAt?: string | null;
+  cancelledAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AccessTemplateSummary = {
+  id: string;
+  label: string;
+  description: string;
+  itemCount: number;
+};
+
+export type AccessTemplate = AccessTemplateSummary & {
+  items: { label: string; kind: AccessItemKind; required: boolean; note: string }[];
+};
+
+export async function fetchAccessRequest(
+  kind: OrderKind,
+  orderId: string,
+  token?: string
+): Promise<{
+  request: AccessRequest | null;
+  viewerRole: "buyer" | "seller";
+  /** Whether the creator may raise or add to a checklist right now. */
+  canRaise: boolean;
+}> {
+  const res = await fetch(`${API_BASE}/api/access-requests/${kind}/${orderId}`, {
+    headers: authHeaders(token, false),
+  });
+  return readJson(res);
+}
+
+export async function fetchAccessTemplates(token?: string): Promise<{ templates: AccessTemplateSummary[] }> {
+  const res = await fetch(`${API_BASE}/api/access-requests/templates`, {
+    headers: authHeaders(token, false),
+  });
+  return readJson(res);
+}
+
+export async function fetchAccessTemplate(id: string, token?: string): Promise<{ template: AccessTemplate }> {
+  const res = await fetch(`${API_BASE}/api/access-requests/templates?id=${encodeURIComponent(id)}`, {
+    headers: authHeaders(token, false),
+  });
+  return readJson(res);
+}
+
+/** Creator raises a checklist, or adds to the existing one. */
+export async function addAccessItems(
+  kind: OrderKind,
+  orderId: string,
+  body: { items?: { label: string; kind: AccessItemKind; required: boolean; note?: string }[]; templateId?: string },
+  token?: string
+): Promise<{ request: AccessRequest; added: number }> {
+  const res = await fetch(`${API_BASE}/api/access-requests/${kind}/${orderId}/items`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(body),
+  });
+  return readJson(res);
+}
+
+/**
+ * Client answers one item.
+ *
+ * A 400 with code "looks_like_credential" is expected and normal here — the
+ * server refuses to store anything that looks like a password and explains what
+ * to do instead. readJson() turns that into an Error carrying the server's own
+ * sentence, which is the message that has to reach the screen intact.
+ */
+export async function respondToAccessItem(
+  kind: OrderKind,
+  orderId: string,
+  itemId: string,
+  body: {
+    action: "provide" | "decline";
+    note?: string;
+    grantedTo?: string;
+    attachments?: BriefAttachment[];
+    reason?: string;
+  },
+  token?: string
+): Promise<{ outcome: "provided" | "declined"; fulfilled?: boolean; request: AccessRequest }> {
+  const res = await fetch(
+    `${API_BASE}/api/access-requests/${kind}/${orderId}/items/${itemId}/respond`,
+    { method: "POST", headers: authHeaders(token), body: JSON.stringify(body) }
+  );
+  return readJson(res);
+}
+
+/** Creator sends an answered item back — wrong file, wrong access level. */
+export async function reopenAccessItem(
+  kind: OrderKind,
+  orderId: string,
+  itemId: string,
+  note: string,
+  token?: string
+): Promise<{ request: AccessRequest }> {
+  const res = await fetch(
+    `${API_BASE}/api/access-requests/${kind}/${orderId}/items/${itemId}/reopen`,
+    { method: "POST", headers: authHeaders(token), body: JSON.stringify({ note }) }
+  );
+  return readJson(res);
+}
+
+/** Creator no longer needs it. Marked, never deleted. */
+export async function withdrawAccessItem(
+  kind: OrderKind,
+  orderId: string,
+  itemId: string,
+  token?: string
+): Promise<{ request: AccessRequest }> {
+  const res = await fetch(
+    `${API_BASE}/api/access-requests/${kind}/${orderId}/items/${itemId}/withdraw`,
+    { method: "POST", headers: authHeaders(token) }
+  );
+  return readJson(res);
+}
+
+/** A file the client supplied, gated the same way as every other private blob. */
+export async function openAccessAttachment(
+  requestId: string,
+  itemId: string,
+  index: number,
+  token?: string
+) {
+  const res = await fetch(
+    `${API_BASE}/api/access-requests/${requestId}/items/${itemId}/attachments/${index}/download`,
+    { headers: authHeaders(token, false) }
+  );
+  const data = await readJson(res);
+  window.open(data.url, "_blank", "noopener,noreferrer");
+}
+
 /** A brief attachment on an existing order — gated the same way as work files. */
 export async function openBriefAttachment(
   kind: OrderKind,

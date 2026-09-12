@@ -959,6 +959,8 @@ router.post(
         creatorName: profile.displayName || req.user.name,
         creatorEmail: req.user.email,
         profileId: String(profile._id),
+        // What the admin actually needs: the video, not its row id.
+        videoUrl: profile.introVideo?.url || "",
       }).catch((err) => console.error("Admin video-review alert failed:", err.message));
 
       return res.json({

@@ -168,6 +168,11 @@ const ServiceOrderSchema = new mongoose.Schema(
     escrowExpiresAt: { type: Date, default: null, index: true },
     escrowWarningSentAt: { type: Date, default: null },
 
+    /* Claimed before the funded-engagement email is sent — see the same field
+       on models/HireDeal.js for why a flag is needed at all (two routes reach
+       FUNDED and either can win). */
+    welcomeEmailSentAt: { type: Date, default: null },
+
     /* ── Delivery deadline ─────────────────────────────────────────────────
        What the listing promised ("7 Days Delivery"), turned into a real date.
 
