@@ -241,11 +241,10 @@ function SignatureBlock({
           description:
             data?.message ||
             "The signature is on record but its file could not be fetched.",
-          variant: "destructive",
         });
       }
     } catch {
-      toast({ title: "Network error", description: "Try again.", variant: "destructive" });
+      toast({ title: "Network error", description: "Try again." });
     }
     setOpening(false);
   }, [recordId, role]);
@@ -367,10 +366,10 @@ function DetailPanel({ recordId, onClose }: { recordId: string; onClose: () => v
           setLiveOrder(data.liveOrder || null);
           setDrift(data.drift || null);
         } else {
-          toast({ title: "Couldn't load the record", variant: "destructive" });
+          toast({ title: "Couldn't load the record" });
         }
       } catch {
-        if (alive) toast({ title: "Network error", variant: "destructive" });
+        if (alive) toast({ title: "Network error" });
       }
       if (alive) setLoading(false);
     })();
@@ -640,10 +639,10 @@ export default function AdminNdaPage() {
         setPages(data.pages || 1);
         setTotal(data.total || 0);
       } else {
-        toast({ title: "Couldn't load agreements", variant: "destructive" });
+        toast({ title: "Couldn't load agreements" });
       }
     } catch {
-      toast({ title: "Network error", description: "Try again.", variant: "destructive" });
+      toast({ title: "Network error", description: "Try again." });
     }
     setLoading(false);
   }, [tab, kind, mismatchOnly, query, page]);
