@@ -25,6 +25,22 @@ const AdminUserSchema = new mongoose.Schema(
     /* Throttles "resend" so the box can't be used to mailbomb an admin. */
     lastOtpSentAt: { type: Date, default: null },
 
+    /* ── Password reset ──────────────────────────────────────────────────────
+       A SEPARATE code from the login one above, deliberately, even though both
+       are six digits with the same TTL and the same hashing.
+
+       Sharing the otpHash field would mean the code emailed by "I forgot my
+       password" also satisfies step 2 of a normal login — so anyone who can
+       trigger a reset gets a code that signs them in without ever knowing the
+       password, which is the opposite of what the second factor is for. The
+       reverse holds too: a login code would set a new password.
+
+       Kept apart, each code only does the thing it was asked for. */
+    resetOtpHash: { type: String, default: null },
+    resetOtpExpiresAt: { type: Date, default: null },
+    resetOtpAttempts: { type: Number, default: 0 },
+    lastResetOtpSentAt: { type: Date, default: null },
+
     /* ── Password attempts ───────────────────────────────────────────────────
        The rate limiter in front of the route stops a fast attack from one IP.
        This stops a slow one from many: it counts against the ACCOUNT, so a

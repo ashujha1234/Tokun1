@@ -126,7 +126,13 @@ async function recordNdaSignature({
   if (!cfg) throw new Error(`unknown orderKind: ${orderKind}`);
   if (role !== "client" && role !== "creator") throw new Error(`unknown role: ${role}`);
 
-  const filter = { [cfg.idField]: order._id };
+  /* Keyed on orderRef, not on the id field.
+     The two nullable id fields could not carry a working unique index between
+     them — see the long note above the indexes in models/NdaRecord.js. This is
+     one string, present on every record and distinct per engagement, so the
+     upsert and the index agree on what "already exists" means. */
+  const orderRef = `${orderKind}:${order._id}`;
+  const filter = { orderRef };
 
   /* Written ONCE, when the record is created by whichever party signs first.
      $setOnInsert and not $set: these are the terms as signed, and the second
@@ -135,6 +141,8 @@ async function recordNdaSignature({
      collection exists at all. */
   const onInsert = {
     ...filter,
+    // Still written, for the lookups and populates that read them by name.
+    [cfg.idField]: order._id,
     orderKind,
     clientId: idOf(order[cfg.clientField]),
     creatorId: idOf(order[cfg.creatorField]),

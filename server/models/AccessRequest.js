@@ -198,6 +198,13 @@ const AccessRequestSchema = new mongoose.Schema(
     /* When the current blocking period started, or null if nothing required is
        outstanding. The open end of the interval being accumulated above. */
     blockedSince: { type: Date, default: null },
+
+    /* When the client was last chased about the outstanding items.
+       cron/accessChecklistReminder.js runs hourly and reminds on a widening
+       ladder (2, 5, 10 days, then weekly); this is both what makes that ladder
+       work across runs and the duplicate guard that stops every run inside a
+       due window from sending again. */
+    lastReminderAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

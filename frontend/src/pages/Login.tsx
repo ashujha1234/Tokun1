@@ -474,7 +474,8 @@ import { authError } from "@/lib/authErrors";
 
 
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { readNext } from "@/lib/nextPath";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/use-toast";
 import BackLink from "@/components/ui/BackLink";
@@ -496,6 +497,7 @@ const Login = () => {
   const canRequestOtp = !isLoading && isValidEmail(email);
 
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -540,7 +542,14 @@ const Login = () => {
         description: "Check your inbox for the 4-digit code.",
       });
 
-      const navTo = `/verify-login?email=${encodeURIComponent(emailNorm)}`;
+      /* `next` rides along to the OTP screen, which is what finally consumes
+         it. Without this the chain breaks in the middle: RequireAuth (or an
+         email link) puts it on /login, the hop to /verify-login dropped it, and
+         every sign-in still ended on /smartgen. */
+      const next = readNext(location.search, "");
+      const navTo =
+        `/verify-login?email=${encodeURIComponent(emailNorm)}` +
+        (next ? `&next=${encodeURIComponent(next)}` : "");
       console.log("[LOGIN] navigate →", navTo);
       // ✅ handleRequestOtp mein — navigate se PEHLE add karo:
         

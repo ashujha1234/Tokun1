@@ -125,6 +125,53 @@ function footerHtml(opts) {
   return `<tr><td colspan="2" style="padding:0">${footerBlock(opts)}</td></tr>`;
 }
 
+/* ── Which order this email is about ─────────────────────────────────────────
+ *
+ * Every transactional email named the thing that was bought — "your booking",
+ * "Landing page copy" — and nothing else. Titles are not identifiers: a creator
+ * with three "Logo design" bookings open, or a buyer who bought the same prompt
+ * twice, could not tell which one a refund or a cancellation belonged to, and
+ * neither could support when they forwarded it on.
+ *
+ * So every email about an order now carries the order's id, and every CTA on
+ * one points at that specific order rather than at the list it sits in.
+ *
+ * The raw id, not a prettier short code: this is the string support pastes into
+ * a lookup and the string already in the URL of the page it links to. A
+ * truncated "TKN-4F9A" would read better and be useless at the only moment it
+ * gets used.
+ */
+const ORDER_KIND_PATH = { hire: "hire", service: "service" };
+
+/**
+ * The page for one booking or project.
+ *
+ * Returns null for a kind with no order page of its own — a prompt purchase is
+ * the case that matters, and it belongs on /my-refunds or in the library, which
+ * only the caller knows. Callers must handle null rather than be handed a
+ * plausible-looking URL that 404s.
+ *
+ * @param {"hire"|"service"} orderKind
+ * @param {string} orderId
+ * @param {string} [hash]  e.g. "#dispute", to land on the panel rather than the top
+ */
+function orderUrl(orderKind, orderId, hash = "") {
+  const seg = ORDER_KIND_PATH[String(orderKind || "").toLowerCase()];
+  return seg && orderId ? `${SITE}/orders/${seg}/${orderId}${hash}` : null;
+}
+
+/**
+ * The "Order ID" row, ready to drop into a shell() rows array.
+ *
+ * Renders an empty value when there is no id, which shell() filters out — so a
+ * call site with nothing to show loses one line rather than printing
+ * "Order ID: undefined".
+ */
+const orderIdRow = (orderId, label = "Order ID") => ({
+  label,
+  value: orderId ? String(orderId) : "",
+});
+
 function escapeHtml(str) {
   return String(str ?? "")
     .replace(/&/g, "&amp;")
@@ -150,6 +197,8 @@ const onDate = (value) => {
  * @param {object}  opts
  * @param {string}  opts.heading      the one line that says what happened
  * @param {string}  opts.accent       one of ACCENT
+ * @param {string}  [opts.greeting]   the name to greet — "Hello Ashutosh," on
+ *                                    its own line. Plain text, escaped here.
  * @param {string}  opts.introHtml    already-escaped HTML; 1–3 sentences
  * @param {Array}   [opts.rows]       [{label, value, emphasis}] detail table
  * @param {object}  [opts.cta]        {label, href}
@@ -160,6 +209,7 @@ const onDate = (value) => {
 function shell({
   heading,
   accent = ACCENT.info,
+  greeting,
   introHtml,
   rows,
   footerNote,
@@ -244,6 +294,27 @@ function shell({
        </td></tr>`
     : "";
 
+  /* ── The greeting gets its own line ──────────────────────────────────────
+   *
+   * Every template used to open by splicing the name into the first sentence:
+   *
+   *     Hello Manjeet, Ashutosh has submitted the work for Cinematic Product
+   *     Photography Prompt. Have a look and either approve it or ask for changes.
+   *
+   * Two names and the thing that happened all run together in one paragraph,
+   * and the reader has to parse which name is theirs before anything else makes
+   * sense. The OTP template — the oldest one here — never did that: it puts
+   * "Hello {{Name}}," on a line of its own at 18px, and the message starts
+   * underneath. That reads at a glance, and it is what every template does now.
+   *
+   * Rendered from a plain name rather than left to each call site, so the size,
+   * colour and the comma are decided once. */
+  const greetingHtml = greeting
+    ? `<tr><td style="padding:18px 28px 0;font-size:18px;line-height:26px;color:${
+        TEXT.strong
+      };font-weight:600">Hello ${escapeHtml(greeting)},</td></tr>`
+    : "";
+
   // Gmail and Outlook show this next to the subject. Without it they pull the
   // first words of the body, which here is always the word "Tokun.World".
   const preheaderHtml = preheader
@@ -265,7 +336,10 @@ function shell({
               heading
             )}</h1>
           </td></tr>
-          <tr><td style="padding:12px 28px 0;font-size:14px;line-height:22px;color:${TEXT.body}">
+          ${greetingHtml}
+          <tr><td style="padding:${
+            greeting ? "10px" : "12px"
+          } 28px 0;font-size:14px;line-height:22px;color:${TEXT.body}">
             ${introHtml}
           </td></tr>
           ${tableHtml}
@@ -309,4 +383,18 @@ async function sendShellEmail({ to, subject, attachments, ...shellOpts }) {
   });
 }
 
-module.exports = { ACCENT, TEXT, SURFACE, SITE, escapeHtml, rupees, onDate, shell, footerHtml, footerBlock, sendShellEmail };
+module.exports = {
+  ACCENT,
+  TEXT,
+  SURFACE,
+  SITE,
+  escapeHtml,
+  rupees,
+  onDate,
+  orderUrl,
+  orderIdRow,
+  shell,
+  footerHtml,
+  footerBlock,
+  sendShellEmail,
+};

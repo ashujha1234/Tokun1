@@ -36,6 +36,37 @@ exports.sendAdminLoginOtpEmail = async ({ to, code, minutes, ip, userAgent }) =>
   });
 
 /**
+ * The code that lets an admin set a new password.
+ *
+ * Its own template rather than a reuse of the login code above, because the two
+ * say opposite things about the same event. "Someone just entered the password
+ * for this account" is reassuring on a login and wrong here — the whole point
+ * of this one is that nobody knows the password. And an unexpected copy of THIS
+ * mail means someone is trying to take the account over, which is a different
+ * warning from an unexpected login code.
+ */
+exports.sendAdminPasswordResetOtpEmail = async ({ to, code, minutes, ip, userAgent }) =>
+  sendShellEmail({
+    to,
+    subject: `${code} is your Tokun admin password reset code`,
+    heading: "Reset your admin password",
+    accent: ACCENT.danger,
+    preheader: `Expires in ${minutes} minutes. If you didn't ask for this, ignore it — nothing has changed yet.`,
+    introHtml: `Someone asked to reset the password on this admin account. Enter the code below to choose a new one.
+      <div style="margin:18px 0 6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:34px;letter-spacing:0.32em;font-weight:700;color:#ffffff">${escapeHtml(
+        code
+      )}</div>`,
+    rows: [
+      { label: "Expires in", value: `${minutes} minutes`, emphasis: true },
+      { label: ip ? "Request from" : "", value: ip || "" },
+      { label: userAgent ? "Device" : "", value: userAgent ? String(userAgent).slice(0, 90) : "" },
+    ],
+    footerNote:
+      "Your password has NOT changed yet — it only changes once this code is used. If you didn't ask for this, ignore this email and nothing happens. If these keep arriving, someone knows your admin address and is trying to get in.",
+    receivingBecause: "a password reset request on your Tokun.World admin account",
+  });
+
+/**
  * A successful sign-in.
  *
  * The cheapest intrusion detection there is: the real admin sees a login they

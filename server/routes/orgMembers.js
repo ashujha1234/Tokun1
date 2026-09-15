@@ -2124,7 +2124,15 @@ router.post("/add", requireAuth, async (req, res) => {
            `${SITE_URL}/self-dash` and were producing "/login/self-dash". The
            page each link wants belongs at the link, not in the variable. */
         const base = siteUrl();
-        const inviteUrl = `${base}/login?invite=${member._id}`;
+        /* /accept-invite with the INVITATION id — two fixes in one line.
+           `member._id` was the invitation id only when the invitee had no Tokun
+           account yet; for an existing user it was their USER id, which the
+           accept endpoint (POST /invitations/:id/accept) does not take. And
+           `/login?invite=` pointed at a page that read the parameter nowhere,
+           so the invitation stayed PENDING however many times it was clicked.
+           /accept-invite is behind RequireAuth, so a signed-out recipient is
+           sent to login and returned here automatically. */
+        const inviteUrl = `${base}/accept-invite?invitation=${invitation._id}`;
 
         /* Every placeholder the template contains has to be replaced here.
            Two were missing, and an unreplaced {{token}} does not fail — it
@@ -2140,7 +2148,7 @@ router.post("/add", requireAuth, async (req, res) => {
           .replace(/{{memberEmail}}/g, member.email)
           .replace(/{{orgName}}/g, org.name)
           .replace(/{{inviterName}}/g, req.user?.name || org.name || "your organisation")
-          .replace(/{{featuresLink}}/g, `${base}/features`)
+          .replace(/{{featuresLink}}/g, `${base}/#what-we-offer`)
           .replace(/{{loginLink}}/g, inviteUrl);
         const htmlWithSocial = withFooter(html, { receivingBecause: "an invitation to a Tokun.World organisation" });
 
@@ -3000,12 +3008,26 @@ router.post("/resend-invite/:memberId", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: "member_already_verified" });
     }
 
-    /* Same as the invite route above: root from the env, page appended here.
-       The old expression also dropped the member id entirely — a template
-       literal tagged onto a string, so the invite went to a bare login page
-       with nothing identifying who was joining. */
+    /* Same target as the first invite: /accept-invite with the INVITATION id.
+       This route works off a User (findById on the member), so unlike the
+       invite branch there is no invitation in scope — it has to be looked up by
+       the pair that identifies it. Without that this reminder pointed at
+       `/login?invite=<userId>`: the wrong id, at a page that read the parameter
+       nowhere.
+
+       If no PENDING invitation is found there is nothing to accept, and a link
+       promising otherwise is worse than none — the reader is sent to their
+       notifications, where a live invitation would appear. */
     const inviteBase = siteUrl();
-    const inviteUrl = `${inviteBase}/login?invite=${member._id}`;
+    const pending = await OrgInvitation.findOne({
+      orgId: org._id,
+      email: String(member.email || "").toLowerCase(),
+      status: "PENDING",
+    }).select("_id");
+
+    const inviteUrl = pending
+      ? `${inviteBase}/accept-invite?invitation=${pending._id}`
+      : `${inviteBase}/notifications`;
 
     /* Same two placeholders the first-invite branch above was missing — the
        resend template carries them too, so a reminder went out with a literal
@@ -3015,7 +3037,18 @@ router.post("/resend-invite/:memberId", requireAuth, async (req, res) => {
       .replace(/{{memberEmail}}/g, member.email)
       .replace(/{{orgName}}/g, org.name)
       .replace(/{{inviterName}}/g, req.user?.name || org.name || "your organisation")
-      .replace(/{{featuresLink}}/g, `${inviteBase}/features`)
+      /* The "exploring our features" link. Points at the landing page's
+         What We Offer section, which is the only thing on this platform
+         that answers the sentence it sits in.
+
+         It was `${SITE}/features` — a route that has never existed. The
+         static host serves index.html for every path, so it does not even
+         fail as a 404: the SPA loads, matches nothing, and renders the
+         NotFound page. Every invitation this platform has sent carried it.
+
+         The anchor is the one the landing page's own CTA uses, and
+         ScrollToTop honours a hash rather than jumping to the top. */
+      .replace(/{{featuresLink}}/g, `${inviteBase}/#what-we-offer`)
       .replace(/{{loginLink}}/g, inviteUrl);
     const htmlWithSocial = withFooter(html, { receivingBecause: "an invitation to a Tokun.World organisation" });
 

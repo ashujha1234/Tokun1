@@ -47,9 +47,10 @@
     }
 
     .hero-banner {
-      background: linear-gradient(90deg, #ff3bff, #6534ff, #1aa8ff);
+      background-color: #7B5CFF;
+      background: linear-gradient(90deg, #FF3CF9 0%, #7B5CFF 50%, #2F86FF 100%);
       border-radius: 24px;
-      padding: 32px 32px;
+      padding: 40px 28px;
       /* Was unset, so it inherited left. This block is the headline of the
          email; every other template centres its hero. */
       text-align: center;
@@ -59,11 +60,6 @@
       line-height: 1.3;
       position: relative;
       overflow: hidden;
-    }
-
-    .hero-text {
-      position: relative;
-      z-index: 1;
     }
 
     .body-section {
@@ -151,9 +147,10 @@
     }
 
     @media (max-width: 600px) {
+      /* Padding only. The hero's two lines carry their own font-size
+         inline now, so a font-size here would be dead weight. */
       .hero-banner {
-        padding: 24px 20px;
-        font-size: 22px;
+        padding: 28px 20px;
       }
 
       .body-section {
@@ -168,10 +165,8 @@
 
       <!-- Gradient hero banner -->
       <div class="hero-banner">
-        <div class="hero-text">
-          Start prompt collaborating with<br />
-          your team on Tokun.World
-        </div>
+        <div style="font-family:Inter,Arial,Helvetica,sans-serif; font-weight:700; color:#ffffff; font-size:30px; line-height:38px; letter-spacing:1px;">TOKUN.WORLD</div>
+        <div class="hero-title" style="font-family:Inter,Arial,Helvetica,sans-serif; font-weight:500; color:#EDE9FF; font-size:17px; line-height:26px; padding-top:8px;">Start collaborating on products with your team on Tokun.World</div>
       </div>
 
       <!-- Main text body -->
@@ -189,7 +184,7 @@
            An email that promises either would be lying about the product. -->
       <div class="body-section">
         <p>Hello {{Name}},</p>
-        <p><strong>{{SenderName}}</strong> has invited you to work on a prompt together on Tokun.World.</p>
+        <p><strong>{{SenderName}}</strong> has invited you to work on a product together on Tokun.World.</p>
         <p>
           Opening the invitation puts you both into the same prompt in the Prompt Optimiser.
           You can rewrite it, cut the tokens it burns and keep whichever version reads best —

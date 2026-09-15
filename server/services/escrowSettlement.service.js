@@ -559,6 +559,16 @@ async function settleEscrow(orderKind, orderId, opts = {}) {
     const itemTitle = claimed[kind.titleField] || kind.label;
     const decidedBy = actor === "admin" ? "admin" : "mutual";
 
+    /* HireDeal and ServiceOrder both spell these the same way, so no per-kind
+       mapping is needed. `settledAt` is now rather than a stored field: this
+       function IS the settlement, and it has not written cancelledAt/refundedAt
+       back to the document at the point these go out. */
+    const whenRows = {
+      purchasedAt: claimed.paidAt,
+      requestedAt: claimed.cancelledAt,
+      settledAt: new Date(),
+    };
+
     /* Every outcome is emailed, to both sides.
        All three of these used to be gated on `refundAmount > 0`, so a ruling
        wholly in the creator's favour — the single most contested outcome there
@@ -571,6 +581,17 @@ async function settleEscrow(orderKind, orderId, opts = {}) {
         to: buyer?.email,
         buyerName: buyer?.name,
         itemTitle,
+        /* Both of these were missing, and they are what turn the email from a
+           statement about "your booking" into one about THIS booking: the kind
+           decides the "Type" line, and the pair together decide where the
+           button goes. Without them every settlement email said "Type: Order"
+           and had nowhere to send anyone. */
+        itemKind: orderKind,
+        orderId: String(orderId),
+        purchasedAt: whenRows.purchasedAt,
+        requestedAt: whenRows.requestedAt,
+        refundedAt: whenRows.settledAt,
+        dateLabels: { purchasedLabel: "Booked on", requestedLabel: "Cancelled on" },
         amount: split.refundAmount,
         reason,
         referenceId: refund?.id,
@@ -580,6 +601,9 @@ async function settleEscrow(orderKind, orderId, opts = {}) {
         to: buyer?.email,
         buyerName: buyer?.name,
         itemTitle,
+        itemKind: orderKind,
+        orderId: String(orderId),
+        ...whenRows,
         refundAmount: split.refundAmount,
         sellerPayout: split.sellerPayout,
         sellerPercent: Number(sellerPercent),
@@ -596,6 +620,9 @@ async function settleEscrow(orderKind, orderId, opts = {}) {
         to: buyer?.email,
         buyerName: buyer?.name,
         itemTitle,
+        itemKind: orderKind,
+        orderId: String(orderId),
+        ...whenRows,
         totalPaid: split.totalPayable,
         sellerPayout: split.sellerPayout,
         decidedBy,
@@ -607,6 +634,10 @@ async function settleEscrow(orderKind, orderId, opts = {}) {
       to: seller?.email,
       sellerName: seller?.name,
       itemTitle,
+      itemKind: orderKind,
+      orderId: String(orderId),
+      purchasedAt: whenRows.purchasedAt,
+      settledAt: whenRows.settledAt,
       sellerPayout: split.sellerPayout,
       sellerPercent: Number(sellerPercent),
       fullAmount: split.sellerFull,

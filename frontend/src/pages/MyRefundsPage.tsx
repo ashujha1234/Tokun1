@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -72,6 +72,13 @@ const fmtDate = (d?: string | null) =>
 export default function MyRefundsPage() {
   const { token, isAuthenticated, isReady } = useAuth() as any;
   const navigate = useNavigate();
+
+  /* Which refund the person arrived here to look at.
+     Every refund email's CTA carries it — /my-refunds?request=<id> — because
+     "Track your refund" landing on an undifferentiated list of every refund
+     you have ever had is the same as not linking anywhere. */
+  const [searchParams] = useSearchParams();
+  const focusId = searchParams.get("request") || "";
 
   const [rows, setRows] = useState<RefundRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -160,6 +167,20 @@ export default function MyRefundsPage() {
     };
   }, [isReady, isAuthenticated, token, navigate]);
 
+  /* Bring the linked refund into view once the list exists.
+     The rows are fetched, so at navigation time the target element the browser
+     would scroll to has not been rendered yet — same reason OrderDetailPage
+     re-does this for its own hash. Guarded by a ref so a later re-render
+     doesn't yank the page back while someone is reading further down. */
+  const scrolledTo = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusId || !rows.length || scrolledTo.current === focusId) return;
+    const target = document.getElementById(`refund-${focusId}`);
+    if (!target) return;
+    scrolledTo.current = focusId;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusId, rows]);
+
   return (
     <div className="relative min-h-screen bg-[#030406] text-white overflow-x-hidden">
       <div className="fixed top-0 left-0 right-0 z-[999]">
@@ -211,7 +232,17 @@ export default function MyRefundsPage() {
               return (
                 <div
                   key={`${r.kind}-${r.id}`}
-                  className="rounded-2xl border border-white/10 bg-white/[0.03] p-5"
+                  id={`refund-${r.id}`}
+                  style={{ scrollMarginTop: 110 }}
+                  /* The linked one is ringed as well as scrolled to. On a page
+                     of near-identical cards, arriving in the middle of the list
+                     with nothing marked leaves you counting rows to work out
+                     which one the email meant. */
+                  className={`rounded-2xl border bg-white/[0.03] p-5 ${
+                    focusId === r.id
+                      ? "border-[#1A73E8] ring-1 ring-[#1A73E8]/40"
+                      : "border-white/10"
+                  }`}
                 >
                   <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div className="min-w-0">

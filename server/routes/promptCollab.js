@@ -1194,7 +1194,18 @@ const finalMessage = `${senderName} invited you to collaborate on a prompt in To
         .replace(/{{Name}}/g, name || receiverUser.name || "there")
         .replace(/{{SenderName}}/g, req.user?.name || "Someone")
         .replace(/{{CollaborationLink}}/g, inviteUrl)
-        .replace(/{{featuresLink}}/g, `${siteUrl()}/features`);
+        /* The "exploring our features" link. Points at the landing page's
+           What We Offer section, which is the only thing on this platform
+           that answers the sentence it sits in.
+
+           It was `${SITE}/features` — a route that has never existed. The
+           static host serves index.html for every path, so it does not even
+           fail as a 404: the SPA loads, matches nothing, and renders the
+           NotFound page. Every invitation this platform has sent carried it.
+
+           The anchor is the one the landing page's own CTA uses, and
+           ScrollToTop honours a hash rather than jumping to the top. */
+        .replace(/{{featuresLink}}/g, `${siteUrl()}/#what-we-offer`);
 
       await sendEmail({
         to: email,

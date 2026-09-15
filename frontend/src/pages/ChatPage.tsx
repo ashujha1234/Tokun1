@@ -3450,7 +3450,7 @@ function RevisionReasonPopup({
             color: "rgba(255,255,255,0.42)",
           }}
         >
-          Ye reason creator ko notification mein jayega aur project status revision requested ho jayega.
+         
         </p>
 
         <div className="mt-6 flex items-center justify-center gap-3">
@@ -3499,6 +3499,20 @@ function RevisionReasonPopup({
 
 
 
+/* A status this card can no longer act on, in the words the person reading it
+   would use. The raw enum ("REFUNDED_TO_BUYER") is not a sentence, and a chat
+   card is read weeks later by someone reconstructing what happened. */
+const CLOSED_CARD_LABEL: Record<string, string> = {
+  DISPUTED: "This booking was cancelled and is now in dispute. Tokun decides how the payment is split.",
+  CANCELLED: "This booking was cancelled.",
+  REFUNDED: "This booking was cancelled and refunded.",
+  SETTLED: "This booking was settled — the payment has already been split.",
+  COMPLETED: "This booking is complete. The payment has been released.",
+};
+const closedCardText = (status?: string | null) =>
+  (status && CLOSED_CARD_LABEL[status]) ||
+  "This booking has moved on — there's nothing left to approve here.";
+
 function WorkSubmittedCard({
   data,
   isMine,
@@ -3511,7 +3525,10 @@ function WorkSubmittedCard({
   const [actionState, setActionState] = useState<
     "idle" | "approving" | "revising" | "done"
   >("idle");
-  const [result, setResult] = useState<"approved" | "revision" | null>(null);
+  const [result, setResult] = useState<"approved" | "revision" | "closed" | null>(null);
+  /* What the booking moved on to, when it moved somewhere this card can't act
+     on — shown instead of buttons that would only be refused. */
+  const [closedStatus, setClosedStatus] = useState<string | null>(null);
   const [revisionOpen, setRevisionOpen] = useState(false);
   /** Which deliverable the preview modal is showing, if any. */
   const [previewFile, setPreviewFile] = useState<
@@ -3537,6 +3554,26 @@ function WorkSubmittedCard({
           setActionState("done");
         } else if (deal.status === "REVISION_REQUESTED") {
           setResult("revision");
+          setActionState("done");
+        } else if (
+          deal.status !== "WORK_SUBMITTED" ||
+          deal.fundsStatus !== "HELD_BY_TOKUN"
+        ) {
+          /* Anything that is no longer approvable closes the card.
+
+   The two branches above were the whole list, so a booking that had since been
+   DISPUTED, CANCELLED, REFUNDED or SETTLED fell through, actionState stayed
+   "idle", and the Approve and Request-revision buttons stayed live on a card
+   that could not do either. Clicking produced the server's refusal —
+   "Cannot approve. Current status: DISPUTED" — which is a correct guard
+   answering a question the UI should never have let anyone ask.
+
+   Tested against the server's own rule rather than a list of dead statuses:
+   routes/*.js approve-work requires WORK_SUBMITTED and funds still held, so
+   anything else means the buttons have nothing to act on. A status added later
+   is then closed by default, which is the safe direction. */
+          setClosedStatus(deal.status);
+          setResult("closed");
           setActionState("done");
         }
       })
@@ -3979,8 +4016,12 @@ function WorkSubmittedCard({
                 </div>
               )}
 
-              {/* Auto-release notice for client */}
-              {!isMine && !isApproved && (
+              {/* Auto-release notice for client.
+                  Hidden once the card is closed: a booking that has been
+                  cancelled or disputed is not auto-releasing to anyone in 72
+                  hours, and saying so next to a dispute is worse than saying
+                  nothing. */}
+              {!isMine && !isApproved && result !== "closed" && (
                 <div
                   style={{
                     marginTop: 10,
@@ -4049,6 +4090,31 @@ function WorkSubmittedCard({
               >
                 ↺ Request Revision
               </button>
+            </div>
+          )}
+
+          {/* Shown where the buttons used to be. The card stays in the thread
+              as a record of the delivery; what changes is that it no longer
+              offers an action the server would refuse. */}
+          {actionState === "done" && result === "closed" && (
+            <div
+              style={{
+                minHeight: 48,
+                padding: "12px 14px",
+                borderRadius: 8,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                textAlign: "center",
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.10)",
+                color: "rgba(255,255,255,0.65)",
+                fontWeight: 500,
+                fontSize: 13,
+                lineHeight: 1.5,
+              }}
+            >
+              {closedCardText(closedStatus)}
             </div>
           )}
 
@@ -5215,7 +5281,10 @@ function ServiceWorkSubmittedCard({
   token?: string;
 }) {
   const [actionState, setActionState] = useState<"idle" | "approving" | "revising" | "done">("idle");
-  const [result, setResult] = useState<"approved" | "revision" | null>(null);
+  const [result, setResult] = useState<"approved" | "revision" | "closed" | null>(null);
+  /* What the booking moved on to, when it moved somewhere this card can't act
+     on — shown instead of buttons that would only be refused. */
+  const [closedStatus, setClosedStatus] = useState<string | null>(null);
   const [revisionOpen, setRevisionOpen] = useState(false);
   /** Which deliverable the preview modal is showing, if any. */
   const [previewFile, setPreviewFile] = useState<
@@ -5248,6 +5317,14 @@ function ServiceWorkSubmittedCard({
           setActionState("done");
         } else if (order.status === "REVISION_REQUESTED") {
           setResult("revision");
+          setActionState("done");
+        } else if (
+          order.status !== "WORK_SUBMITTED" ||
+          order.fundsStatus !== "HELD_BY_TOKUN"
+        ) {
+          // Same reasoning as the hire card above.
+          setClosedStatus(order.status);
+          setResult("closed");
           setActionState("done");
         }
       })
@@ -5462,7 +5539,7 @@ function ServiceWorkSubmittedCard({
                 </div>
               )}
 
-              {!isMine && !isApproved && (
+              {!isMine && !isApproved && result !== "closed" && (
                 <div style={{ marginTop: 10, borderRadius: 8, background: "rgba(26,115,232,0.08)", border: "1px solid rgba(26,115,232,0.15)", padding: "8px 12px", fontSize: 11, color: "rgba(255,255,255,0.45)", lineHeight: "17px" }}>
                   ⏱ Payment auto-releases to the creator in <strong style={{ color: "rgba(255,255,255,0.65)" }}>72 hours</strong> if no action is taken. Preview files, then approve or request revision.
                 </div>
@@ -5505,6 +5582,31 @@ function ServiceWorkSubmittedCard({
                 </p>
               )}
             </>
+          )}
+
+          {/* Shown where the buttons used to be — same reasoning as the hire
+              card. The delivery stays in the thread as a record; only the
+              action the server would refuse goes away. */}
+          {actionState === "done" && result === "closed" && (
+            <div
+              style={{
+                minHeight: 48,
+                padding: "12px 14px",
+                borderRadius: 8,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                textAlign: "center",
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.10)",
+                color: "rgba(255,255,255,0.65)",
+                fontWeight: 500,
+                fontSize: 13,
+                lineHeight: 1.5,
+              }}
+            >
+              {closedCardText(closedStatus)}
+            </div>
           )}
 
           {actionState === "done" && result === "approved" && (

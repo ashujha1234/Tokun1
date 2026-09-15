@@ -64,7 +64,7 @@ function fileSize(bytes?: number) {
    signed document. */
 const FUNDS_LABELS: Record<string, string> = {
   NOT_HELD: "Not yet funded",
-  HELD_BY_TOKUN: "Held in escrow by Tokun",
+  HELD_BY_TOKUN: "Held by Tokun",
   RELEASED_TO_SELLER: "Released to the creator",
   RELEASED_TO_FREELANCER: "Released to the creator",
   AUTO_RELEASED: "Auto-released to the creator",
@@ -347,7 +347,7 @@ export function buildNdaHtml(nda: NdaData, sigs?: { client?: string; freelancer?
   @media print{body{background:#fff}.sheet{box-shadow:none;margin:0;max-width:none;padding:0}}
 </style></head>
 <body><div class="sheet">
-  <div class="brand"><h1>TOKUN</h1><span class="tag">Escrow-Protected Engagement</span></div>
+  <div class="brand"><h1>TOKUN</h1><span class="tag">Payment-Protected Engagement</span></div>
   <h2 class="doc-title">SERVICES, CONFIDENTIALITY &amp;<br/>NON-DISCLOSURE AGREEMENT</h2>
   <div class="subtitle">Executed electronically by both parties on the Tokun platform · ${
     isService ? "Service booking" : "Direct hire engagement"
@@ -366,7 +366,7 @@ export function buildNdaHtml(nda: NdaData, sigs?: { client?: string; freelancer?
       `${val(nda.freelancerName)}${nda.freelancerEmail ? `<div style="font-weight:500;color:#6b6675;font-size:10.5px">${esc(nda.freelancerEmail)}</div>` : ""}`
     )}
     ${row("Engagement Type", isService ? "Fixed-price service booking" : "Negotiated project engagement")}
-    ${row("Escrow Agent", "Tokun (funds held until the work is approved or settled)")}
+    ${row("Funds Held By", "Tokun (held until the work is approved or settled)")}
   </div>
 
   <div class="sec">Schedule A — The Engagement</div>
@@ -430,9 +430,9 @@ export function buildNdaHtml(nda: NdaData, sigs?: { client?: string; freelancer?
     ${row("Total Paid by Client", moneyVal(nda.totalPayable))}
     ${row("Currency", esc(currency))}
     ${row("Payment Status", val(humanise(nda.paymentStatus)))}
-    ${row("Escrow Status", val(humanise(nda.fundsStatus, FUNDS_LABELS)))}
+    ${row("Payment Status", val(humanise(nda.fundsStatus, FUNDS_LABELS)))}
     ${nda.paidAt ? row("Funded On", esc(formatDate(nda.paidAt))) : ""}
-    ${nda.escrowExpiresAt ? row("Escrow Must Settle By", esc(formatDate(nda.escrowExpiresAt))) : ""}
+    ${nda.escrowExpiresAt ? row("Payment Must Settle By", esc(formatDate(nda.escrowExpiresAt))) : ""}
   </div>
 
   ${
@@ -488,8 +488,8 @@ export function buildNdaHtml(nda: NdaData, sigs?: { client?: string; freelancer?
   <div class="sec">Part I — The Agreement</div>
 
   <div class="clause"><h3>1. Purpose &amp; structure</h3>
-  <p>This Agreement governs both (a) the disclosure of confidential information between the parties and (b) the performance and payment of the engagement described in Schedule A, contracted and paid for through Tokun's escrow service. Schedules A, B and (where present) C form part of this Agreement and are as binding as the clauses below.</p>
-  <p>In this Agreement the <b>Client</b> is the Disclosing Party named above (the party paying), and the <b>Creator</b> is the Receiving Party named above (the party performing the work). <b>Tokun</b> means the platform operating the escrow. Where a clause refers to something being "in writing", a message sent inside Tokun between the two parties satisfies it.</p></div>
+  <p>This Agreement governs both (a) the disclosure of confidential information between the parties and (b) the performance and payment of the engagement described in Schedule A, contracted and paid for through Tokun's payment protection service. Schedules A, B and (where present) C form part of this Agreement and are as binding as the clauses below.</p>
+  <p>In this Agreement the <b>Client</b> is the Disclosing Party named above (the party paying), and the <b>Creator</b> is the Receiving Party named above (the party performing the work). <b>Tokun</b> means the platform holding the payment. Where a clause refers to something being "in writing", a message sent inside Tokun between the two parties satisfies it.</p></div>
 
   <div class="sec">Part II — Confidentiality</div>
 
@@ -507,7 +507,7 @@ export function buildNdaHtml(nda: NdaData, sigs?: { client?: string; freelancer?
   <div class="clause"><h3>4. Obligations of the Disclosing Party (Client)</h3>
   <ol>
     <li>Treat the creator's working files, methods, drafts and pricing as confidential.</li>
-    <li>Not use, publish, distribute or commercially exploit any deliverable — or any watermarked preview, review copy or progress checkpoint of it — before the escrow for this engagement is released or settled. Previews are provided so the work can be reviewed and approved, and for no other purpose.</li>
+    <li>Not use, publish, distribute or commercially exploit any deliverable — or any watermarked preview, review copy or progress checkpoint of it — before the payment for this engagement is released or settled. Previews are provided so the work can be reviewed and approved, and for no other purpose.</li>
     <li>Not remove, obscure or circumvent any watermark applied to a preview.</li>
   </ol></div>
 
@@ -518,7 +518,7 @@ export function buildNdaHtml(nda: NdaData, sigs?: { client?: string; freelancer?
   <p>Neither party shall send a password, private key, one-time code or other shared secret through Tokun chat, this Agreement, an access checklist or any attachment to them. Tokun is not a credential store and does not undertake to protect a secret disclosed to it in breach of this clause. A party that discloses a credential in breach of this clause bears the consequences of that disclosure, and shall rotate the credential promptly on becoming aware of it.</p>
   <p>The Creator shall not use any access granted under this clause for any purpose other than the Purpose, shall not retain it after revocation, and shall notify the Client without undue delay on becoming aware of any unauthorised use of it.</p></div>
 
-  <div class="clause"><h3>7. Return or destruction</h3><p>On completion, cancellation, or written request, each party shall return or securely destroy the other's Confidential Information, save for one archival copy kept for legal and tax record-keeping, and save for the records Tokun retains as escrow agent (including this Agreement, the brief, the checkpoints and the delivered files) so that a dispute can be adjudicated on evidence.</p></div>
+  <div class="clause"><h3>7. Return or destruction</h3><p>On completion, cancellation, or written request, each party shall return or securely destroy the other's Confidential Information, save for one archival copy kept for legal and tax record-keeping, and save for the records Tokun retains as the holder of the funds (including this Agreement, the brief, the checkpoints and the delivered files) so that a dispute can be adjudicated on evidence.</p></div>
 
   <div class="sec">Part III — The Work</div>
 
@@ -526,7 +526,7 @@ export function buildNdaHtml(nda: NdaData, sigs?: { client?: string; freelancer?
   <p>The Creator shall perform the engagement described in Schedule A with reasonable skill and care, to a standard reasonably expected of a competent practitioner in that field. Schedule A — the ${
     isService ? "listing, the package items and the client's brief" : "project title, description and agreed terms"
   } — is the whole of what is contracted for.</p>
-  <p>Anything not stated in Schedule A is out of scope. Out-of-scope work is not covered by this Agreement, is not covered by the escrow held against it, and gives rise to no obligation on either party until agreed under clause 9.</p></div>
+  <p>Anything not stated in Schedule A is out of scope. Out-of-scope work is not covered by this Agreement, is not covered by the payment held against it, and gives rise to no obligation on either party until agreed under clause 9.</p></div>
 
   <div class="clause"><h3>9. Revisions &amp; change requests</h3>
   <p><b>Revisions.</b> The engagement includes the revisions stated in Schedule A${
@@ -535,20 +535,20 @@ export function buildNdaHtml(nda: NdaData, sigs?: { client?: string; freelancer?
       : ""
   }. A revision means correcting or refining the work against the scope already agreed. Once the included revisions are used, further changes require a variation under this clause.</p>
   <p><b>Not a revision.</b> A request that adds a deliverable, changes the brief, or asks for a different direction from the one agreed is a change of scope, not a revision, however it is described.</p>
-  <p><b>Variations.</b> A change of scope takes effect only when both parties agree it in writing, including any change to price and to the delivery date. A variation agreed without a change to the escrowed amount does not increase the sum the Creator can be paid from this engagement.</p>
+  <p><b>Variations.</b> A change of scope takes effect only when both parties agree it in writing, including any change to price and to the delivery date. A variation agreed without a change to the amount held does not increase the sum the Creator can be paid from this engagement.</p>
   <p><b>Unanswered revisions.</b> Where the Client has requested a revision and the Creator does not respond, Tokun will remind the Creator after ${RULES.revisionStallWarnDays} days and may refer the engagement to the dispute process in clause 26 after ${RULES.revisionStallEscalateDays} days.</p></div>
 
   <div class="clause"><h3>10. Delivery &amp; timelines</h3>
   <p><b>The clock.</b> ${
     nda.deliveryDays
-      ? `Delivery is due ${nda.deliveryDays} day${nda.deliveryDays === 1 ? "" : "s"} from the date the escrow is funded${
+      ? `Delivery is due ${nda.deliveryDays} day${nda.deliveryDays === 1 ? "" : "s"} from the date the payment is funded${
           nda.deliveryDueAt ? `, being ${esc(formatDate(nda.deliveryDueAt))}` : ""
         }.`
       : `No fixed number of delivery days was agreed for this ${label.booking}; the Creator shall deliver within a reasonable time, and by any date stated in Schedule A.`
   } The period runs from payment, not from the Creator starting work — otherwise a Creator who never starts would never be late.</p>
   <p><b>Extensions.</b> The delivery date moves only by written agreement, or by the length of any delay caused by the Client failing to provide something required under clause 11, or by an event under clause 24.</p>
   <p><b>Late delivery.</b> If the Creator has not delivered by the due date, the Client may (a) allow further time in writing, or (b) cancel under clause 25, in which case the extent of the work actually performed determines the split. Late delivery is a factor Tokun will weigh in any ruling under clause 26.</p>
-  <p><b>The outer limit.</b> Escrowed funds cannot be held beyond ${RULES.maxHoldDays} days from payment — this is a limit of the payment processor and neither party nor Tokun can extend it. Every engagement must therefore reach release, refund or settlement before ${
+  <p><b>The outer limit.</b> Held funds cannot be kept beyond ${RULES.maxHoldDays} days from payment — this is a limit of the payment processor and neither party nor Tokun can extend it. Every engagement must therefore reach release, refund or settlement before ${
     nda.escrowExpiresAt ? esc(formatDate(nda.escrowExpiresAt)) : `that date`
   }. Both parties are warned ${RULES.escrowWarningDays} days beforehand. Delivery terms longer than ${RULES.maxDeliveryDays} days cannot be offered for this reason.</p></div>
 
@@ -576,15 +576,15 @@ export function buildNdaHtml(nda: NdaData, sigs?: { client?: string; freelancer?
   <p><b>The Client pays</b> the price plus Tokun's client-side platform fee and the GST on that fee. <b>The Creator receives</b> the price less Tokun's commission and the GST on that commission. Each party bears its own platform fee; neither fee is part of the other's consideration, and neither is refundable on cancellation except where clause 25 says otherwise.</p>
   <p>All amounts are in ${esc(currency)}. Bank charges, currency conversion and payment-instrument charges on either side are borne by the party incurring them.</p></div>
 
-  <div class="clause"><h3>15. Escrow — how the money is held</h3>
+  <div class="clause"><h3>15. How the money is held</h3>
   <p>The Client pays before work begins. Tokun holds the funds — it does not pay them to the Creator on receipt and does not treat them as its own. The Creator is not entitled to payment on funding; funding entitles the Creator to <i>begin</i>, and the Client to require performance.</p>
-  <p>Funds leave escrow only: on the Client approving the delivery; on automatic release under clause 16; on refund to the Client; or on a split under clause 25 or a ruling under clause 26. Nothing else releases them, and neither party may instruct Tokun to release them on any other basis.</p>
-  <p>The escrow secures this engagement alone. It is not security for any other engagement between the parties, and cannot be set off against one.</p></div>
+  <p>Funds are released only: on the Client approving the delivery; on automatic release under clause 16; on refund to the Client; or on a split under clause 25 or a ruling under clause 26. Nothing else releases them, and neither party may instruct Tokun to release them on any other basis.</p>
+  <p>The held payment secures this engagement alone. It is not security for any other engagement between the parties, and cannot be set off against one.</p></div>
 
   <div class="clause"><h3>16. Acceptance &amp; automatic release</h3>
   <p><b>This clause decides when the Creator gets paid. Both parties should read it.</b></p>
   <p>On delivery the Client shall, within ${RULES.autoReleaseHours} hours, either approve the delivery or request a revision to which it is entitled under clause 9. The Client is reminded ${RULES.autoReleaseWarningHours} hours before that period ends.</p>
-  <p><b>If the Client does neither, the delivery is deemed accepted and the escrow is released to the Creator automatically at the end of that period.</b> Silence is acceptance. The Client's remedies after automatic release are those in clause 26 and at law; the money will already have moved.</p>
+  <p><b>If the Client does neither, the delivery is deemed accepted and the payment is released to the Creator automatically at the end of that period.</b> Silence is acceptance. The Client's remedies after automatic release are those in clause 26 and at law; the money will already have moved.</p>
   <p>Requesting a revision within the period stops the clock. It restarts, in full, on the Creator's resubmission. Approval, once given, is final as to acceptance of the delivery and is not withdrawable, and ownership passes under clause 18.</p></div>
 
   <div class="clause"><h3>17. Taxes</h3>
@@ -594,9 +594,9 @@ export function buildNdaHtml(nda: NdaData, sigs?: { client?: string; freelancer?
   <div class="sec">Part V — Rights in the Work</div>
 
   <div class="clause"><h3>18. Ownership &amp; transfer of deliverables</h3>
-  <p>Ownership of the final approved deliverables described in Schedule A transfers to the Client upon full release of the escrow amount in Schedule B, unless otherwise agreed in writing. Until that release the deliverables remain the property of the Creator, and the Client's only right in them is to review them for the purpose of approval under clause 16.</p>
+  <p>Ownership of the final approved deliverables described in Schedule A transfers to the Client upon full release of the held amount in Schedule B, unless otherwise agreed in writing. Until that release the deliverables remain the property of the Creator, and the Client's only right in them is to review them for the purpose of approval under clause 16.</p>
   <p>On transfer, the Creator assigns to the Client all right, title and interest in those deliverables, including copyright, worldwide and for their full term, and waives any moral right it is capable of waiving. The Creator shall, at the Client's reasonable request and cost, do anything further reasonably needed to give effect to that assignment.</p>
-  <p>Where the escrow is settled only in part, ownership transfers only to the extent of the work paid for, and the parties shall record in writing what that covers. Where the escrow is refunded in full, no ownership transfers and the Client shall destroy every copy of the deliverables in its possession.</p>
+  <p>Where the payment is settled only in part, ownership transfers only to the extent of the work paid for, and the parties shall record in writing what that covers. Where the payment is refunded in full, no ownership transfers and the Client shall destroy every copy of the deliverables in its possession.</p>
   <p><b>Retained tools.</b> The Creator retains ownership of the general skills, methods, know-how, and pre-existing or reusable tools, libraries, components and templates it used to make the deliverables, and grants the Client a perpetual, worldwide, non-exclusive, royalty-free licence to use them to the extent they are embedded in the deliverables. This does not entitle the Creator to withhold anything Schedule A requires it to hand over.</p></div>
 
   <div class="clause"><h3>19. Third-party &amp; licensed assets</h3><p>Where a deliverable incorporates a font, stock asset, plugin, library, model or other third-party material, the Creator shall disclose it in writing on or before delivery, together with the licence it is supplied under and any restriction or ongoing fee attached to it. The Creator shall not incorporate material it is not licensed to use for the Purpose, or whose licence does not permit the Client's intended use as stated in Schedule A. Any ongoing third-party licence fee is the Client's, unless Schedule A says the Creator bears it.</p></div>
@@ -617,29 +617,29 @@ export function buildNdaHtml(nda: NdaData, sigs?: { client?: string; freelancer?
   <p>Neither party is liable to the other for loss of profit, loss of revenue, loss of business, loss of anticipated saving, loss of goodwill, or any indirect or consequential loss, however arising.</p>
   <p>Each party's total liability to the other under or in connection with this Agreement is limited in aggregate to <b>${esc(capText)}</b>.</p>
   <p>Nothing in this clause limits liability for death or personal injury caused by negligence, for fraud or fraudulent misrepresentation, for a party's indemnity under clause 22, for a breach of Part II (confidentiality) or clause 6 (credentials), or for any liability that cannot lawfully be limited.</p>
-  <p><b>Tokun's position.</b> Tokun is not a party to this Agreement. It acts as escrow agent and as the operator of the platform, gives no warranty as to the work, the parties, or the outcome of the engagement, and does not guarantee the performance of either party. Its role and its own liability are governed by its platform terms.</p></div>
+  <p><b>Tokun's position.</b> Tokun is not a party to this Agreement. It holds the payment and operates the platform, gives no warranty as to the work, the parties, or the outcome of the engagement, and does not guarantee the performance of either party. Its role and its own liability are governed by its platform terms.</p></div>
 
-  <div class="clause"><h3>24. Force majeure</h3><p>Neither party is in breach for a failure or delay caused by an event beyond its reasonable control — including natural disaster, war, civil unrest, epidemic, government action, failure of a public network or utility, or the extended outage of a third-party platform the engagement depends on. The affected party shall notify the other in writing without undue delay, and the delivery date extends by the length of the event. Inability to pay is never a force majeure event. Where the event continues for more than thirty (30) days, either party may cancel under clause 25 and the escrow shall be settled according to the work actually performed.</p></div>
+  <div class="clause"><h3>24. Force majeure</h3><p>Neither party is in breach for a failure or delay caused by an event beyond its reasonable control — including natural disaster, war, civil unrest, epidemic, government action, failure of a public network or utility, or the extended outage of a third-party platform the engagement depends on. The affected party shall notify the other in writing without undue delay, and the delivery date extends by the length of the event. Inability to pay is never a force majeure event. Where the event continues for more than thirty (30) days, either party may cancel under clause 25 and the payment shall be settled according to the work actually performed.</p></div>
 
   <div class="sec">Part VII — Ending the Engagement</div>
 
   <div class="clause"><h3>25. Cancellation &amp; termination</h3>
-  <p><b>Before the escrow is funded.</b> Either party may withdraw at any time, at no cost and with no liability to the other. An unpaid proposal or booking lapses automatically after ${RULES.unpaidRequestExpiryDays} days.</p>
+  <p><b>Before the payment is funded.</b> Either party may withdraw at any time, at no cost and with no liability to the other. An unpaid proposal or booking lapses automatically after ${RULES.unpaidRequestExpiryDays} days.</p>
   <p><b>After funding, before work has started.</b> The Client may cancel and the price is refunded. Tokun's fees are dealt with under Tokun's refund policy.</p>
   <p><b>After work has started.</b> The money cannot simply go back. Either party may propose cancellation, stating what share of the price the Creator has earned. If the other party accepts, Tokun settles on that basis: the accepted share is released to the Creator and the balance refunded to the Client. If they do not agree, clause 26 applies.</p>
-  <p><b>Termination for cause.</b> Either party may terminate immediately on written notice if the other commits a material breach of this Agreement and does not remedy it within seven (7) days of being asked to, or breaches Part II or clause 6 at all. Termination for cause does not by itself determine how the escrow is settled — that is decided under this clause or clause 26 on the basis of the work performed and the breach.</p>
+  <p><b>Termination for cause.</b> Either party may terminate immediately on written notice if the other commits a material breach of this Agreement and does not remedy it within seven (7) days of being asked to, or breaches Part II or clause 6 at all. Termination for cause does not by itself determine how the payment is settled — that is decided under this clause or clause 26 on the basis of the work performed and the breach.</p>
   <p><b>On any ending.</b> The Client shall revoke every access granted under clause 6; each party shall comply with clause 7; and the clauses listed in clause 27 survive.</p></div>
 
   <div class="clause"><h3>26. Disputes &amp; Tokun's role</h3>
   <p><b>Between the parties first.</b> The parties shall attempt in good faith to resolve any disagreement between themselves through Tokun, including by proposing a split under clause 25.</p>
-  <p><b>Then Tokun.</b> Where they do not agree, either party may refer the matter to Tokun, which may release, refund or split the escrow, including by the decision of a Tokun administrator. In deciding, Tokun may rely on the record it holds: this Agreement, the brief and its attachments, the messages between the parties, the progress checkpoints, the submissions and their history, and the delivery dates. <b>The parties accept that a decision made by Tokun on that record binds them as to how the escrowed money is distributed</b>, and that this is a commercial allocation of funds Tokun holds, not an adjudication of their legal rights.</p>
+  <p><b>Then Tokun.</b> Where they do not agree, either party may refer the matter to Tokun, which may release, refund or split the payment, including by the decision of a Tokun administrator. In deciding, Tokun may rely on the record it holds: this Agreement, the brief and its attachments, the messages between the parties, the progress checkpoints, the submissions and their history, and the delivery dates. <b>The parties accept that a decision made by Tokun on that record binds them as to how the held money is distributed</b>, and that this is a commercial allocation of funds Tokun holds, not an adjudication of their legal rights.</p>
   <p><b>Then the courts.</b> Nothing in this clause prevents either party from pursuing its remedies at law, including against the other for any shortfall. A party that does so may not require Tokun to reverse a distribution already made.</p></div>
 
-  <div class="clause"><h3>27. Term &amp; survival</h3><p>This Agreement takes effect on the Effective Date and continues until the engagement is completed, cancelled or terminated and the escrow is settled. The confidentiality obligations in Part II remain in force for ${RULES.confidentialityYears === 2 ? "two (2)" : String(RULES.confidentialityYears)} years after that date; obligations concerning credentials, personal data and trade secrets survive without limit. Clauses 7, 18, 19, 20, 21, 22, 23, 26, 28, 29, 30 and 34 survive the ending of this Agreement.</p></div>
+  <div class="clause"><h3>27. Term &amp; survival</h3><p>This Agreement takes effect on the Effective Date and continues until the engagement is completed, cancelled or terminated and the payment is settled. The confidentiality obligations in Part II remain in force for ${RULES.confidentialityYears === 2 ? "two (2)" : String(RULES.confidentialityYears)} years after that date; obligations concerning credentials, personal data and trade secrets survive without limit. Clauses 7, 18, 19, 20, 21, 22, 23, 26, 28, 29, 30 and 34 survive the ending of this Agreement.</p></div>
 
   <div class="sec">Part VIII — General</div>
 
-  <div class="clause"><h3>28. Non-circumvention &amp; off-platform dealing</h3><p>This engagement was introduced, contracted and secured through Tokun, and the escrow is the protection both parties are relying on. Neither party shall solicit or agree to move this engagement, or the payment for it, off the platform, and neither shall ask the other to pay or be paid outside the escrow. A party that takes payment for this engagement outside Tokun loses the protection of the escrow and of clause 26 in respect of it, and remains liable to Tokun for the fees it would have earned. This clause does not prevent the parties from freely contracting with each other, on or off Tokun, for different work.</p></div>
+  <div class="clause"><h3>28. Non-circumvention &amp; off-platform dealing</h3><p>This engagement was introduced, contracted and secured through Tokun, and that payment protection is what both parties are relying on. Neither party shall solicit or agree to move this engagement, or the payment for it, off the platform, and neither shall ask the other to pay or be paid outside it. A party that takes payment for this engagement outside Tokun loses that protection and clause 26 in respect of it, and remains liable to Tokun for the fees it would have earned. This clause does not prevent the parties from freely contracting with each other, on or off Tokun, for different work.</p></div>
 
   <div class="clause"><h3>29. Non-solicitation</h3><p>For twelve (12) months after this Agreement ends, neither party shall knowingly solicit or induce an employee, contractor or subcontractor of the other whom it came to know through this engagement to terminate their engagement with that party. A general advertisement not directed at that person is not a breach of this clause.</p></div>
 
@@ -682,14 +682,51 @@ export function buildNdaHtml(nda: NdaData, sigs?: { client?: string; freelancer?
 
 /* ---------- download / print ---------- */
 
-function downloadHtml(nda: NdaData, sigs?: { client?: string; freelancer?: string }) {
+/**
+ * Saves the agreement as a PDF.
+ *
+ * Was a .html download. A signed contract is the one document a party keeps for
+ * years, and an .html file opens as markup in most things people read documents
+ * in — the same reason the emailed copy stopped being HTML.
+ *
+ * Rendered by the server rather than here, through the same renderer that
+ * produces the emailed copy and the stored record
+ * (server/services/agreementPdf.service.js). One implementation: a PDF library
+ * in this bundle would be a second one to keep in step with it, for a document
+ * the server already knows how to draw.
+ *
+ * Falls back to the browser's own print-to-PDF if the request fails, so the
+ * button always does something — that path needs no network and no auth.
+ */
+async function downloadPdf(
+  nda: NdaData,
+  sigs?: { client?: string; freelancer?: string },
+  apiBase?: string,
+  token?: string
+) {
   const html = buildNdaHtml(nda, sigs);
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = `Tokun-Agreement-${nda.dealId || "engagement"}.html`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  const filename = `Tokun-Agreement-${nda.dealId || "engagement"}.pdf`;
+
+  if (!apiBase || !token) return printNda(nda, sigs);
+
+  try {
+    const res = await fetch(`${apiBase}/api/agreement/pdf`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ html, filename }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  } catch {
+    printNda(nda, sigs);
+  }
 }
 
 function printNda(nda: NdaData, sigs?: { client?: string; freelancer?: string }) {
@@ -999,8 +1036,8 @@ function NdaModal({ nda, onClose, dealId, token, apiBase, resource = "hire" }: {
               <iframe title="NDA preview" srcDoc={srcDoc} style={{ width: "100%", height: "100%", border: "none" }} />
             </div>
             <div style={{ display: "flex", gap: 10, padding: "13px 20px", borderTop: "1px solid rgba(255,255,255,0.07)", justifyContent: "flex-end", flexShrink: 0 }}>
-              <button onClick={() => downloadHtml(nda, sigs)} style={{ height: 40, padding: "0 18px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.8)", cursor: "pointer", fontSize: 13 }}>⬇ Download .html</button>
-              <button onClick={() => printNda(nda, sigs)} style={{ height: 40, padding: "0 22px", borderRadius: 8, border: "none", background: GRADIENT, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>⬇ Save as PDF</button>
+              <button onClick={() => downloadPdf(nda, sigs, apiBase, token)} style={{ height: 40, padding: "0 18px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.8)", cursor: "pointer", fontSize: 13 }}>⬇ Download PDF</button>
+              <button onClick={() => printNda(nda, sigs)} style={{ height: 40, padding: "0 22px", borderRadius: 8, border: "none", background: GRADIENT, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>🖨 Print</button>
             </div>
           </>
         )}

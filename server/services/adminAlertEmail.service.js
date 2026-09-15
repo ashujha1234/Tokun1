@@ -12,7 +12,7 @@
 // vanishing if the env var was never set). Comma-separated addresses work —
 // nodemailer accepts them as-is.
 
-const { ACCENT, SITE, escapeHtml, rupees, onDate, sendShellEmail } = require("./emailLayout");
+const { ACCENT, SITE, escapeHtml, rupees, onDate, orderIdRow, sendShellEmail } = require("./emailLayout");
 
 const adminRecipient = () =>
   process.env.ADMIN_ALERT_EMAIL || process.env.SUPPORT_EMAIL || process.env.EMAIL_FROM || "";
@@ -67,12 +67,15 @@ exports.alertDisputeEscalated = async ({ orderTitle, orderId, amount, buyerName,
     accent: ACCENT.danger,
     introHtml: `The two parties couldn't settle <strong style="color:#fff">${escapeHtml(
       orderTitle || String(orderId || "an order")
-    )}</strong> between themselves, so it's been escalated to Tokun. The payment is frozen in escrow until someone rules on it.`,
+    )}</strong> between themselves, so it's been escalated to Tokun. The payment is frozen until someone rules on it.`,
     rows: [
       { label: "Order", value: orderTitle || String(orderId || "—") },
+      /* The admin opening this has to find the order in the panel, and the
+         title is not what the panel is keyed on. */
+      orderIdRow(orderId),
       { label: buyerName ? "Client" : "", value: buyerName || "" },
       { label: sellerName ? "Creator" : "", value: sellerName || "" },
-      { label: amount ? "In escrow" : "", value: amount ? rupees(amount) : "", emphasis: true },
+      { label: amount ? "Payment held" : "", value: amount ? rupees(amount) : "", emphasis: true },
       { label: reason ? "Stated reason" : "", value: reason || "" },
     ],
     adminPath: "/admin/disputes",

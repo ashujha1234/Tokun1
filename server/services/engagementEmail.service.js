@@ -34,7 +34,17 @@ const ServiceOrder = require("../models/ServiceOrder");
 const AccessRequest = require("../models/AccessRequest");
 const { RULES } = require("../config/engagementRules");
 const { downloadBlobToBuffer } = require("../utils/blobStorage");
-const { ACCENT, TEXT, SITE, escapeHtml, rupees, onDate, sendShellEmail } = require("./emailLayout");
+const { agreementHtmlToPdf } = require("./agreementPdf.service");
+const {
+  ACCENT,
+  TEXT,
+  SITE,
+  escapeHtml,
+  rupees,
+  onDate,
+  orderIdRow,
+  sendShellEmail,
+} = require("./emailLayout");
 
 /* The two order shapes differ only in field names. Same approach as
    routes/accessRequests.js, for the same reason: one code path, one place to
@@ -94,14 +104,6 @@ function ruleRows(order) {
       label: "Revisions included",
       value: Number.isFinite(order.revisionsAllowed) ? String(order.revisionsAllowed) : "As agreed",
     },
-    {
-      label: "Escrow held until",
-      value: order.escrowExpiresAt ? onDate(order.escrowExpiresAt) : `Up to ${RULES.maxHoldDays} days`,
-    },
-    {
-      label: "Confidentiality",
-      value: `${RULES.confidentialityYears} years after the engagement ends`,
-    },
   ];
 }
 
@@ -112,7 +114,11 @@ function projectRows(order, cfg) {
   const dueAt = order[cfg.dueAtField];
   return [
     { label: "Project", value: order[cfg.titleField] || "Untitled", emphasis: true },
-    { label: "Amount held in escrow", value: rupees(order.amount) },
+    /* This email is the record of the engagement — the one both sides keep and
+       quote from — so it carries the id the engagement is addressed by
+       everywhere else, including in the URL of the button below. */
+    orderIdRow(order._id),
+    { label: "Payment held by Tokun", value: rupees(order.amount) },
     { label: "Total paid", value: order.totalPayable ? rupees(order.totalPayable) : "" },
     { label: "Paid on", value: order.paidAt ? onDate(order.paidAt) : "" },
     { label: "Delivery due", value: dueAt ? onDate(dueAt) : "" },
@@ -159,7 +165,7 @@ function introFor({ role, order, cfg, counterpartName, outstanding }) {
     <p style="margin:0;font-size:15px;line-height:1.65;color:${TEXT.body}">
       ${
         role === "buyer"
-          ? `Your payment for <strong style="color:#ffffff">${title}</strong> is held safely in escrow. Here's everything about this engagement in one place.`
+          ? `Your payment for <strong style="color:#ffffff">${title}</strong> is held safely by Tokun. Here's everything about this engagement in one place.`
           : `<strong style="color:#ffffff">${escapeHtml(
               counterpartName
             )}</strong> has funded <strong style="color:#ffffff">${title}</strong>. Here's everything about this engagement in one place.`
@@ -178,6 +184,14 @@ function introFor({ role, order, cfg, counterpartName, outstanding }) {
  * so an engagement can legitimately start without one, and the email is still
  * worth sending.
  */
+/**
+ * A Buffer is a PDF if it says so in its first five bytes. Nothing else can be
+ * trusted here: the file was uploaded by a party, and the name it arrived with
+ * describes what the browser called it, not what it contains.
+ */
+const isPdfBytes = (buf) =>
+  Buffer.isBuffer(buf) && buf.length >= 5 && buf.subarray(0, 5).toString("latin1") === "%PDF-";
+
 async function ndaAttachments(order, cfg) {
   const wanted = [
     { blob: order[cfg.buyerNdaBlob], who: cfg.buyerLabel },
@@ -188,11 +202,48 @@ async function ndaAttachments(order, cfg) {
 
   const files = await Promise.all(
     wanted.map(async ({ blob, who }) => {
-      const content = await downloadBlobToBuffer(cfg.ndaContainer, blob);
-      if (!content) return null; // already logged by the helper
+      const stored = await downloadBlobToBuffer(cfg.ndaContainer, blob);
+      if (!stored) return null; // already logged by the helper
+
+      const base = `Tokun-Agreement-${who}-${String(order._id).slice(-6)}`;
+
+      /* Decide the BYTES first, and let the name follow from them.
+       *
+       * These used to be decided together, once per branch, and one branch got
+       * it wrong: the fallback returned the stored content under a ".html"
+       * name without re-checking what the stored content was. Once the upload
+       * route began converting agreements on the way in, that branch could
+       * attach a real PDF called ".html" — which a browser opens as text, so
+       * the recipient sees "%PDF-1.7 << /Filter /FlateDecode ...". A file that
+       * IS a PDF and is unreadable because of its extension is a worse outcome
+       * than the HTML it was meant to be rescuing.
+       *
+       * Deriving the name from the final bytes at a single point makes that
+       * mismatch unrepresentable, whatever the branches above do. */
+      let bytes = stored;
+
+      if (!isPdfBytes(stored)) {
+        /* The HTML the agreement is generated as. Sending it is what produced a
+           screen of `<div class="clause">` in Gmail: mail clients do not render
+           HTML attachments, they show the source. */
+        try {
+          bytes = await agreementHtmlToPdf(stored, {
+            title: `Tokun Agreement — ${order[cfg.titleField] || "Engagement"}`,
+          });
+        } catch (err) {
+          /* Falls back to the original file rather than dropping the agreement:
+             this email is the only copy some people keep. It goes out under its
+             true extension, below. */
+          console.error(`engagementEmail: agreement PDF failed for ${order._id}:`, err.message);
+          bytes = stored;
+        }
+      }
+
+      const pdf = isPdfBytes(bytes);
       return {
-        filename: `Tokun-Agreement-${who}-${String(order._id).slice(-6)}.html`,
-        content,
+        filename: `${base}.${pdf ? "pdf" : "html"}`,
+        content: bytes,
+        contentType: pdf ? "application/pdf" : "text/html",
       };
     })
   );
@@ -271,7 +322,7 @@ async function sendEngagementStartedEmails(orderKind, orderId) {
           rows,
           cta: { label: "Open the engagement", href: orderUrl },
           footerNote: attachments.length
-            ? "Your signed agreement is attached. Keep it — it's the version that was signed, and it won't change."
+            ? "Your signed agreement is attached as a PDF. Keep it — it's the version that was signed, and it won't change."
             : "You can see the full brief, timeline and checklist on the engagement page at any time.",
           receivingBecause: "a funded engagement you're part of on Tokun.World",
           attachments,

@@ -53,7 +53,7 @@ export default function ExecutionTimeline({
 
   const steps: Step[] = [
     { key: "booked", label: "Booked", at: createdAt },
-    { key: "paid", label: "Paid — held in escrow", at: paidAt },
+    { key: "paid", label: "Paid — held by Tokun", at: paidAt },
     {
       key: "started",
       label: "Work started",

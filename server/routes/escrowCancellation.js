@@ -299,6 +299,12 @@ router.post("/:orderKind/:orderId/cancel", requireAuth, async (req, res) => {
         title: order[kind.titleField],
         reason,
         amount: order.totalPayable,
+        /* What turns "Open the dispute" into a link to THIS dispute. The
+           creator reading this has to file a completion claim to be paid
+           anything at all, and the form for it is on the order page — the
+           email used to leave them to find it. */
+        orderKind,
+        orderId: String(orderId),
       });
     } catch (mailErr) {
       console.error("Dispute-opened email failed (dispute still open):", mailErr.message);
@@ -529,12 +535,16 @@ router.post("/:orderKind/:orderId/dispute/respond", requireAuth, async (req, res
             recipientName: seller?.name,
             title: order[kind.titleField],
             escalatedByName: buyer?.name,
+            orderKind,
+            orderId: String(orderId),
           }),
           sendDisputeEscalatedEmail({
             to: buyer?.email,
             recipientName: buyer?.name,
             title: order[kind.titleField],
             escalatedByName: buyer?.name,
+            orderKind,
+            orderId: String(orderId),
           }),
           alertDisputeEscalated({
             orderTitle: order[kind.titleField],

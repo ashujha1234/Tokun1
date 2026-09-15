@@ -379,10 +379,12 @@ const { uploadFileToBlob, blobNameFor, getBlobSasUrl } = require("../utils/blobS
    admin, or a dispute two years from now, actually reads. See
    models/NdaRecord.js for why it is a separate collection. */
 const { recordNdaSignature, sha256File } = require("../utils/ndaRecord");
+const { normaliseAgreementFileToPdf } = require("../services/agreementPdf.service");
 /* Read-only here: GET /:dealId attaches the checklist's asks so the agreement
    and the welcome doc can render them. Mutations live in
    routes/accessRequests.js. */
 const AccessRequest = require("../models/AccessRequest");
+const { deadlineState } = require("../utils/deliveryDeadline");
 const { isPreviewableVideo, isSettled } = require("../utils/deliverableWatermark");
 // The one place that decides what a client may see before the money moves —
 // shared with the service and checkpoint routes.
@@ -680,6 +682,7 @@ router.post("/create-proposal", requireAuth, blockIfSuspended, async (req, res) 
           title: deal.title,
           amount: deal.amount,
           kind: "project",
+          orderId: String(deal._id),
           respondWithinDays: REQUEST_RESPONSE_DAYS,
           deliveryDate: deal.deliveryDate,
         });
@@ -827,14 +830,37 @@ router.post("/:dealId/upload-nda", requireAuth, uploadNdaFile.single("nda"), asy
 
     if (!req.file) return res.status(400).json({ success: false, error: "No file uploaded" });
 
+    /* ── The stored agreement is a PDF ───────────────────────────────────────
+       Converted BEFORE the hash below, not after, because the hash is what
+       makes the archived record provable: it has to describe the bytes that are
+       actually kept. The frontend uploads the agreement as text/html
+       (NdaCard.tsx), which no mail client will render and which reads as markup
+       wherever it is opened.
+
+       A real PDF passes through untouched, and a render failure falls back to
+       the original file. See services/agreementPdf.service.js. */
+    const agreement = await normaliseAgreementFileToPdf(
+      req.file.path,
+      req.file.originalname || "agreement.html"
+    );
+
     /* Hashed HERE, before the upload — uploadFileToBlob() unlinks the temp copy
        on success, so this is the only moment the bytes are readable from disk.
        The hash is what makes the archived record provable rather than merely
        plausible: the stored blob can be shown to be the document that was
        signed, or shown not to be. Never fatal — a signature with no hash is
        still a signature, and sha256File() returns "" rather than throwing. */
-    const docSha256 = await sha256File(req.file.path);
-    const docByteSize = req.file.size || 0;
+    const docSha256 = await sha256File(agreement.path);
+    /* The stored file, not the upload. These two were the same thing until the
+       conversion above; now req.file.size is the HTML that was sent and this
+       has to describe the PDF that is actually kept, alongside its hash. */
+    const docByteSize = (() => {
+      try {
+        return require("fs").statSync(agreement.path).size;
+      } catch {
+        return req.file.size || 0;
+      }
+    })();
 
     /* Streamed into the private container and the temp copy unlinked, before
        anything is written to the deal. Order matters: if the upload throws, the
@@ -844,13 +870,13 @@ router.post("/:dealId/upload-nda", requireAuth, uploadNdaFile.single("nda"), asy
 
        Namespaced by deal id so one agreement's files sit together and can be
        removed as a set with the deal. */
-    const { blobName } = await uploadFileToBlob(req.file.path, {
+    const { blobName } = await uploadFileToBlob(agreement.path, {
       container: NDA_CONTAINER,
-      blobName: blobNameFor(req.file.originalname || "nda.pdf", {
+      blobName: blobNameFor(agreement.originalName, {
         prefix: String(deal._id),
         fallback: "nda",
       }),
-      originalName: req.file.originalname || "nda.pdf",
+      originalName: agreement.originalName,
       // A signed agreement is meant to be saved, not previewed in a tab.
       disposition: "attachment",
       // Private. Reads go through GET /:dealId/nda/:side below.
@@ -1750,6 +1776,7 @@ router.post("/:dealId/submit-work", requireAuth, async (req, res) => {
         amount: deal.freelancerAmount ?? deal.amount,
         autoReleaseAt: new Date(Date.now() + AUTO_RELEASE_HOURS * 60 * 60 * 1000),
         orderPath: `/orders/hire/${deal._id}`,
+        orderId: String(deal._id),
       });
     } catch (mailErr) {
       console.error("Work-submitted email failed (submission stands):", mailErr.message);
@@ -1911,6 +1938,8 @@ router.post("/:dealId/approve-work", requireAuth, async (req, res) => {
         title: deal.title,
         amount: payoutAmount,
         automatic: false,
+        orderKind: "hire",
+        orderId: String(deal._id),
       });
     } catch (mailErr) {
       console.error("Escrow-released email failed (payout stands):", mailErr.message);
@@ -1996,13 +2025,21 @@ router.post("/:dealId/request-revision", requireAuth, async (req, res) => {
     // A revision is work the freelancer has to actually do, and the payout sits
     // frozen until it's done — not something to leave sitting in a badge.
     try {
+      /* Same fix as the service route: this row says "New due date" and was
+         sending the original one. See the note there. */
+      const revisionChecklist = await AccessRequest.findOne({ hireDealId: deal._id }).lean();
+      const revisedDeadline = deadlineState(deal, revisionChecklist);
+
       await sendRevisionRequestedEmail({
         to: deal.freelancerId.email,
         creatorName: deal.freelancerId.name,
         clientName: deal.clientId.name,
         title: deal.title,
         note: reason,
-        dueAt: deal.deliveryDate,
+        dueAt: revisedDeadline.effectiveDueAt || deal.deliveryDate,
+        originalDueAt: revisedDeadline.extendedHours > 0 ? revisedDeadline.agreedDueAt : null,
+        orderKind: "hire",
+        orderId: String(deal._id),
       });
     } catch (mailErr) {
       console.error("Revision email failed (revision still recorded):", mailErr.message);

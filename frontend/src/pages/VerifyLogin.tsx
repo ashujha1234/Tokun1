@@ -823,7 +823,8 @@ import { authError } from "@/lib/authErrors";
 
 
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams, useLocation } from "react-router-dom";
+import { readNext } from "@/lib/nextPath";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/use-toast";
@@ -836,6 +837,7 @@ const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 export default function VerifyLogin() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { persistAuth } = useAuth();
 
   const email = (params.get("email") || "").trim();
@@ -1051,7 +1053,12 @@ const [devOtp, setDevOtp] = useState<string | null>(null);
         "%c[LOGIN/VERIFY] ✅ COMPLETE — navigating to /smartgen",
         "color:#22c55e;font-weight:700;"
       );
-      navigate("/smartgen", { replace: true });
+      /* Where they were actually going. Hardcoded to /smartgen before, so an
+         email link to /self-dash signed you in and then dropped you somewhere
+         else. readNext falls back to /smartgen when there is no `next`, and
+         refuses anything that is not a same-site path — an unvalidated redirect
+         target taken from the URL is an open redirect. */
+      navigate(readNext(location.search), { replace: true });
     } catch (err: any) {
       console.error("[LOGIN/VERIFY] ❌ Exception:", err?.message || err);
       toast({

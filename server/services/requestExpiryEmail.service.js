@@ -52,8 +52,9 @@ exports.sendHireRequestExpiredToClient = async ({
   const html = shell({
     heading: "Your request was closed",
     accent: "#FABC4E",
-    introHtml: `Hello ${escapeHtml(firstName(clientName))}, ${escapeHtml(
-      freelancerName || "the creator"
+    greeting: firstName(clientName),
+    introHtml: `${escapeHtml(
+      freelancerName || "The creator"
     )} didn't respond to your request within ${days} days, so we've closed it. You're free to send the same brief to someone else.`,
     rows,
     footerNote: NO_CHARGE_NOTE,
@@ -96,7 +97,8 @@ exports.sendHireRequestExpiredToFreelancer = async ({
   const html = shell({
     heading: "A request expired before you replied",
     accent: "#FABC4E",
-    introHtml: `Hello ${escapeHtml(firstName(freelancerName))}, a request from ${escapeHtml(
+    greeting: firstName(freelancerName),
+    introHtml: `A request from ${escapeHtml(
       clientName || "a client"
     )} went unanswered for ${days} days, so it was closed automatically. Replying within ${days} days keeps requests open.`,
     rows,
@@ -132,9 +134,8 @@ exports.sendServiceRequestExpiredToClient = async ({ to, clientName, title, days
   const html = shell({
     heading: "Your booking request was closed",
     accent: "#FABC4E",
-    introHtml: `Hello ${escapeHtml(
-      clientName || "there"
-    )}, your booking wasn't paid for within ${days} days, so we've closed the request. You can book the same service again whenever you're ready.`,
+    greeting: clientName || "there",
+    introHtml: `Your booking wasn't paid for within ${days} days, so we've closed the request. You can book the same service again whenever you're ready.`,
     rows,
     footerNote: NO_CHARGE_NOTE,
     cta: SITE ? { href: `${SITE}/find-creators`, label: "Browse services" } : null,
@@ -170,7 +171,8 @@ exports.sendServiceRequestExpiredToSeller = async ({
   const html = shell({
     heading: "A booking request expired",
     accent: "#FABC4E",
-    introHtml: `Hello ${escapeHtml(firstName(sellerName))}, a booking request from ${escapeHtml(
+    greeting: firstName(sellerName),
+    introHtml: `A booking request from ${escapeHtml(
       clientName || "a client"
     )} was closed because payment wasn't completed within ${days} days.`,
     rows,

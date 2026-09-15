@@ -14,9 +14,59 @@
 // payout is made and a product goes live whether or not SMTP is reachable —
 // none of these may ever throw into the flow that called them.
 
-const { ACCENT, SITE, escapeHtml, rupees, onDate, sendShellEmail } = require("./emailLayout");
+const {
+  ACCENT,
+  SITE,
+  escapeHtml,
+  rupees,
+  onDate,
+  orderUrl,
+  orderIdRow,
+  sendShellEmail,
+} = require("./emailLayout");
 
 const firstName = (name) => String(name || "there").trim().split(/\s+/)[0];
+
+/* ── Two dates that are the same day ─────────────────────────────────────────
+ *
+ * The revision email prints "New due date" over "Was". onDate() is day-only —
+ * deliberately, because a date in an email is read out of context days later
+ * and a time on it is noise. But a revision extension is frequently under 24
+ * hours, and then both rows render "16 Sept 2026" and the email says the
+ * deadline moved while showing it twice, which reads as a bug because it looks
+ * like one.
+ *
+ * So the pair is resolved together: same day and the time goes on BOTH, so the
+ * difference is visible; genuinely unchanged and the "Was" row is dropped
+ * rather than printed as an echo. */
+const onDateTime = (value) => {
+  const d = value ? new Date(value) : null;
+  if (!d || Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+};
+
+/** @returns {{now: string, was: string}} — `was` empty when there is nothing to show. */
+function dueDatePair(dueAt, originalDueAt) {
+  if (!dueAt) return { now: "", was: "" };
+  if (!originalDueAt) return { now: onDate(dueAt), was: "" };
+
+  const a = new Date(dueAt).getTime();
+  const b = new Date(originalDueAt).getTime();
+  if (!Number.isFinite(a) || !Number.isFinite(b) || a === b) {
+    return { now: onDate(dueAt), was: "" };
+  }
+
+  return onDate(dueAt) === onDate(originalDueAt)
+    ? { now: onDateTime(dueAt), was: onDateTime(originalDueAt) }
+    : { now: onDate(dueAt), was: onDate(originalDueAt) };
+}
 
 /* ─────────────────────────── SELLING PRODUCTS ─────────────────────────── */
 
@@ -37,6 +87,7 @@ exports.sendPromptSoldEmail = async ({
   platformCut,
   netEarning,
   soldAt,
+  orderId,
 }) =>
   sendShellEmail({
     to,
@@ -44,12 +95,18 @@ exports.sendPromptSoldEmail = async ({
     heading: "You made a sale",
     accent: ACCENT.money,
     preheader: `${rupees(netEarning)} from "${productTitle || "your product"}"`,
-    introHtml: `Hello ${escapeHtml(firstName(sellerName))}, ${escapeHtml(
-      buyerName || "someone"
+    greeting: firstName(sellerName),
+    introHtml: `${escapeHtml(
+      buyerName || "Someone"
     )} just bought <strong style="color:#fff">${escapeHtml(
       productTitle || "your product"
     )}</strong>.`,
     rows: [
+      /* A sale email needs this as much as a refund one does. The seller's
+         first question on the "a refund was approved" mail that may follow is
+         which sale it cancels, and a title alone cannot answer that for anyone
+         who sells the same prompt more than once. Same id on both emails. */
+      orderIdRow(orderId),
       { label: "Sold on", value: onDate(soldAt || new Date()) },
       { label: "Sale price", value: rupees(salePrice) },
       { label: "Tokun fee", value: `− ${rupees(platformCut)}` },
@@ -78,9 +135,8 @@ exports.sendPayoutAccountActivatedEmail = async ({ to, creatorName }) =>
     heading: "You're ready to get paid",
     accent: ACCENT.money,
     preheader: "Razorpay has verified your account. Your products are visible to buyers.",
-    introHtml: `Hello ${escapeHtml(
-      firstName(creatorName)
-    )}, Razorpay has finished verifying your payout account. Your products are now visible to buyers and any sale is transferred straight to your bank account.`,
+    greeting: firstName(creatorName),
+    introHtml: `Razorpay has finished verifying your payout account. Your products are now visible to buyers and any sale is transferred straight to your bank account.`,
     cta: { label: "Go to your dashboard", href: `${SITE}/self-dash` },
     footerNote:
       "Nothing else is needed from you. If you change your bank details later, the account goes back for verification and your products are hidden until it clears again.",
@@ -123,7 +179,8 @@ exports.sendPayoutAccountNeedsAttentionEmail = async ({ to, creatorName, status,
     heading: copy.heading,
     accent: status === "REJECTED" || status === "SUSPENDED" ? ACCENT.danger : ACCENT.warn,
     preheader: "Your products stay hidden from buyers until this is resolved.",
-    introHtml: `Hello ${escapeHtml(firstName(creatorName))}, ${escapeHtml(copy.line)}`,
+    greeting: firstName(creatorName),
+    introHtml: `${escapeHtml(copy.line)}`,
     rows: message ? [{ label: "What Razorpay said", value: message }] : [],
     cta: { label: "Fix it now", href: `${SITE}/self-dash` },
     footerNote:
@@ -142,9 +199,8 @@ exports.sendProductApprovedEmail = async ({ to, creatorName, productTitle, produ
     heading: "Your product is live",
     accent: ACCENT.money,
     preheader: "It's approved and buyers can find it now.",
-    introHtml: `Hello ${escapeHtml(
-      firstName(creatorName)
-    )}, <strong style="color:#fff">${escapeHtml(
+    greeting: firstName(creatorName),
+    introHtml: `<strong style="color:#fff">${escapeHtml(
       productTitle || "your product"
     )}</strong> has passed review and is now listed on the marketplace.`,
     cta: {
@@ -176,9 +232,8 @@ exports.sendProductRejectedEmail = async ({
     heading: editable ? "Your product needs changes" : "Your product wasn't approved",
     accent: editable ? ACCENT.warn : ACCENT.danger,
     preheader: reason ? String(reason).slice(0, 120) : "Review didn't pass.",
-    introHtml: `Hello ${escapeHtml(
-      firstName(creatorName)
-    )}, we reviewed <strong style="color:#fff">${escapeHtml(
+    greeting: firstName(creatorName),
+    introHtml: `We reviewed <strong style="color:#fff">${escapeHtml(
       productTitle || "your product"
     )}</strong> and ${
       editable
@@ -203,9 +258,8 @@ exports.sendProductReportedEmail = async ({ to, creatorName, productTitle, reaso
     preheader: takenDown
       ? "It's hidden from buyers while we review the report."
       : "We're reviewing a report about it.",
-    introHtml: `Hello ${escapeHtml(
-      firstName(creatorName)
-    )}, someone reported <strong style="color:#fff">${escapeHtml(
+    greeting: firstName(creatorName),
+    introHtml: `Someone reported <strong style="color:#fff">${escapeHtml(
       productTitle || "your product"
     )}</strong>${
       takenDown
@@ -227,9 +281,8 @@ exports.sendSellingSuspendedEmail = async ({ to, creatorName, reason }) =>
     heading: "Selling is suspended on your account",
     accent: ACCENT.danger,
     preheader: "Your products are hidden and new sales are blocked.",
-    introHtml: `Hello ${escapeHtml(
-      firstName(creatorName)
-    )}, selling has been suspended on your Tokun account. Your products are hidden from the marketplace and you can't take new orders.`,
+    greeting: firstName(creatorName),
+    introHtml: `Selling has been suspended on your Tokun account. Your products are hidden from the marketplace and you can't take new orders.`,
     rows: reason ? [{ label: "Reason", value: reason, block: true }] : [],
     footerNote:
       "Money already earned and any work in progress is unaffected — existing orders still settle normally. Reply to this email if you'd like this reviewed.",
@@ -254,6 +307,7 @@ exports.sendNewWorkRequestEmail = async ({
   kind = "project", // "project" | "booking"
   respondWithinDays,
   deliveryDate,
+  orderId,
 }) =>
   sendShellEmail({
     to,
@@ -265,12 +319,14 @@ exports.sendNewWorkRequestEmail = async ({
     preheader: respondWithinDays
       ? `Respond within ${respondWithinDays} days or it closes automatically.`
       : "A client is waiting on your reply.",
-    introHtml: `Hello ${escapeHtml(firstName(creatorName))}, <strong style="color:#fff">${escapeHtml(
-      clientName || "a client"
+    greeting: firstName(creatorName),
+    introHtml: `<strong style="color:#fff">${escapeHtml(
+      clientName || "A client"
     )}</strong> has sent you a ${escapeHtml(kind)} request for <strong style="color:#fff">${escapeHtml(
       title || "your work"
     )}</strong>.`,
     rows: [
+      orderIdRow(orderId, kind === "booking" ? "Booking ID" : "Project ID"),
       { label: "Client", value: clientName || "—" },
       { label: kind === "booking" ? "Booking" : "Project", value: title || "—" },
       { label: amount ? "Amount" : "", value: amount ? rupees(amount) : "", emphasis: true },
@@ -278,35 +334,60 @@ exports.sendNewWorkRequestEmail = async ({
     ],
     cta: { label: "Open the request", href: `${SITE}/self-dash?tab=requests` },
     footerNote: respondWithinDays
-      ? `Requests close automatically after ${respondWithinDays} days without a reply, and the client is free to take it elsewhere. Accepting is not a commitment to start — payment is held in escrow until you deliver.`
-      : "Payment is held in escrow until you deliver and the client approves, so you're covered either way.",
+      ? `Requests close automatically after ${respondWithinDays} days without a reply, and the client is free to take it elsewhere. Accepting is not a commitment to start — Tokun holds the client's payment until you deliver.`
+      : "Tokun holds the client's payment until you deliver and they approve it, so you're covered either way.",
     receivingBecause: "a request sent to you on Tokun.World",
   });
 
 /** The client asked for changes before approving. */
-exports.sendRevisionRequestedEmail = async ({ to, creatorName, clientName, title, note, dueAt }) =>
-  sendShellEmail({
+exports.sendRevisionRequestedEmail = async ({
+  to,
+  creatorName,
+  clientName,
+  title,
+  note,
+  dueAt,
+  /* The date before the revision moved it, or null when nothing moved.
+     Shown beside the new one rather than instead of it: "New due date: 18 Sept"
+     on its own is a number the creator has to diff against memory, and the
+     whole reason this row exists is that it used to print the OLD date under a
+     "New due date" label with nothing to catch it. */
+  originalDueAt,
+  orderKind,
+  orderId,
+}) => {
+  const dueDates = dueDatePair(dueAt, originalDueAt);
+
+  return sendShellEmail({
     to,
     subject: `Revision requested on "${title || "your delivery"}"`,
     heading: "The client asked for changes",
     accent: ACCENT.warn,
     preheader: note ? String(note).slice(0, 120) : "Your delivery needs another pass.",
-    introHtml: `Hello ${escapeHtml(firstName(creatorName))}, ${escapeHtml(
-      clientName || "the client"
+    greeting: firstName(creatorName),
+    introHtml: `${escapeHtml(
+      clientName || "The client"
     )} has reviewed your work on <strong style="color:#fff">${escapeHtml(
       title || "the order"
     )}</strong> and asked for changes before approving it.`,
     rows: [
+      orderIdRow(orderId),
       { label: note ? "What they asked for" : "", value: note || "" },
-      { label: dueAt ? "New due date" : "", value: dueAt ? onDate(dueAt) : "" },
+      { label: dueDates.now ? "New due date" : "", value: dueDates.now, emphasis: true },
+      { label: dueDates.was ? "Was" : "", value: dueDates.was },
     ],
-    cta: { label: "Open the order", href: `${SITE}/orders` },
-    footerNote:
-      "The payment stays in escrow until the revision is approved. If the request is unreasonable or outside what was agreed, open a dispute from the order and our team will look at it.",
+    cta: {
+      label: "Open the order",
+      href: orderUrl(orderKind, orderId) || `${SITE}/orders`,
+    },
+    footerNote: dueDates.was
+      ? "Your deadline moved because the time the delivery spent waiting on the client doesn't count against you, and a revision always carries a minimum turnaround. Tokun holds the payment until the revision is approved. If the request is unreasonable or outside what was agreed, open a dispute from the order and our team will look at it."
+      : "Tokun holds the payment until the revision is approved. If the request is unreasonable or outside what was agreed, open a dispute from the order and our team will look at it.",
     receivingBecause: "an order on your Tokun.World creator account",
   });
+};
 
-/** Escrow released — the client approved, or the auto-release timer ran out. */
+/** Paid out — the client approved, or the auto-release timer ran out. */
 exports.sendEscrowReleasedEmail = async ({
   to,
   creatorName,
@@ -314,6 +395,8 @@ exports.sendEscrowReleasedEmail = async ({
   amount,
   automatic = false,
   clientName,
+  orderKind,
+  orderId,
 }) =>
   sendShellEmail({
     to,
@@ -323,14 +406,16 @@ exports.sendEscrowReleasedEmail = async ({
     preheader: automatic
       ? "The review window closed, so the payment was released automatically."
       : `${clientName || "The client"} approved your work.`,
-    introHtml: `Hello ${escapeHtml(firstName(creatorName))}, ${
+    greeting: firstName(creatorName),
+    introHtml: `${
       automatic
-        ? "the review window on"
-        : `${escapeHtml(clientName || "the client")} has approved your work on`
+        ? "The review window on"
+        : `${escapeHtml(clientName || "The client")} has approved your work on`
     } <strong style="color:#fff">${escapeHtml(title || "the order")}</strong>${
       automatic ? " closed without changes being requested" : ""
-    }, and the escrow has been released to you.`,
+    }, and the payment has been released to you.`,
     rows: [
+      orderIdRow(orderId),
       { label: "Released to you", value: rupees(amount), emphasis: true },
       { label: "Released", value: automatic ? "Automatically (review window passed)" : "By the client" },
     ],
@@ -348,8 +433,9 @@ exports.sendReviewReceivedEmail = async ({ to, creatorName, reviewerName, rating
     heading: "You have a new review",
     accent: Number(rating) >= 4 ? ACCENT.money : ACCENT.info,
     preheader: comment ? String(comment).slice(0, 120) : "A client reviewed your work.",
-    introHtml: `Hello ${escapeHtml(firstName(creatorName))}, ${escapeHtml(
-      reviewerName || "a client"
+    greeting: firstName(creatorName),
+    introHtml: `${escapeHtml(
+      reviewerName || "A client"
     )} left a review${title ? ` on <strong style="color:#fff">${escapeHtml(title)}</strong>` : ""}.`,
     rows: [
       { label: rating ? "Rating" : "", value: rating ? `${rating} / 5` : "", emphasis: true },
@@ -375,12 +461,11 @@ exports.sendIntroVideoApprovedEmail = async ({ to, creatorName }) =>
     heading: "You're a Super Creator",
     accent: ACCENT.money,
     preheader: "Your intro video is approved. Services and hire work are unlocked.",
-    introHtml: `Hello ${escapeHtml(
-      firstName(creatorName)
-    )}, your intro video has been approved. Your profile is live in Find Creators, and you can now list services and accept project requests.`,
+    greeting: firstName(creatorName),
+    introHtml: `Your intro video has been approved. Your profile is live in Find Creators, and you can now list services and accept project requests.`,
     cta: { label: "List your first service", href: `${SITE}/self-dash` },
     footerNote:
-      "Clients pay into escrow before you start, so the money is committed before the work is. Keep your response time short — requests close automatically after 7 days of silence.",
+      "Clients pay Tokun up front and we hold it until the work is approved, so the money is committed before the work is. Keep your response time short — requests close automatically after 7 days of silence.",
     receivingBecause: "your Tokun.World creator profile",
   });
 
@@ -392,13 +477,12 @@ exports.sendIntroVideoRejectedEmail = async ({ to, creatorName, reason }) =>
     heading: "Your intro video wasn't approved",
     accent: ACCENT.warn,
     preheader: reason ? String(reason).slice(0, 120) : "Record another one and resubmit.",
-    introHtml: `Hello ${escapeHtml(
-      firstName(creatorName)
-    )}, we reviewed your intro video and it isn't quite there yet. You can record another one and submit it straight away — there's no waiting period.`,
+    greeting: firstName(creatorName),
+    introHtml: `We reviewed your intro video and it isn't quite there yet. You can record another one and submit it straight away — there's no waiting period.`,
     rows: reason ? [{ label: "What needs fixing", value: reason }] : [],
     cta: { label: "Upload a new video", href: `${SITE}/self-dash` },
     footerNote:
-      "Until a video is approved you can still sell prompts, but services and hire work stay locked. Keep it under a minute, well-lit, and say what you do and who you do it for.",
+      "Until a video is approved you can still sell products, but services and hire work stay locked. Keep it under a minute, well-lit, and say what you do and who you do it for.",
     receivingBecause: "your Tokun.World creator profile",
   });
 
@@ -416,12 +500,11 @@ exports.sendIntroVideoPendingEmail = async ({ to, creatorName }) =>
     heading: "Almost there",
     accent: ACCENT.info,
     preheader: "Your intro video is with our reviewers. Services unlock once it's approved.",
-    introHtml: `Hello ${escapeHtml(
-      firstName(creatorName)
-    )}, your creator profile is complete and live. One thing is still pending: your intro video is with our reviewers, and services and hire work stay locked until it's approved.`,
+    greeting: firstName(creatorName),
+    introHtml: `Your creator profile is complete and live. One thing is still pending: your intro video is with our reviewers, and services and hire work stay locked until it's approved.`,
     cta: { label: "Check your status", href: `${SITE}/self-dash` },
     footerNote:
-      "Reviews are usually done within a working day, and we'll email you either way. In the meantime you can upload and sell prompts as normal.",
+      "Reviews are usually done within a working day, and we'll email you either way. In the meantime you can upload and sell products as normal.",
     receivingBecause: "your Tokun.World creator profile",
   });
 
@@ -449,9 +532,8 @@ exports.sendRatingPenaltyEmail = async ({
     heading: "Your rating has been adjusted",
     accent: ACCENT.danger,
     preheader: reason ? String(reason).slice(0, 120) : "An admin reviewed a case on your account.",
-    introHtml: `Hello ${escapeHtml(
-      firstName(creatorName)
-    )}, after reviewing ${escapeHtml(contextLabel || "a case on your account")}, our team has reduced your creator rating.`,
+    greeting: firstName(creatorName),
+    introHtml: `After reviewing ${escapeHtml(contextLabel || "a case on your account")}, our team has reduced your creator rating.`,
     rows: [
       { label: "Deducted", value: `${stars} star${stars === 1 ? "" : "s"}`, emphasis: true },
       { label: newRating ? "Your rating is now" : "", value: newRating ? `${newRating} / 5` : "" },
@@ -471,9 +553,8 @@ exports.sendRatingPenaltyRevokedEmail = async ({ to, creatorName, stars, newRati
     heading: "Your rating has been restored",
     accent: ACCENT.money,
     preheader: "The deduction on your account has been lifted.",
-    introHtml: `Hello ${escapeHtml(
-      firstName(creatorName)
-    )}, the ${stars}-star adjustment on your creator rating has been removed and your rating is back to what your reviews say.`,
+    greeting: firstName(creatorName),
+    introHtml: `The ${stars}-star adjustment on your creator rating has been removed and your rating is back to what your reviews say.`,
     rows: [
       { label: newRating ? "Your rating is now" : "", value: newRating ? `${newRating} / 5` : "" },
       { label: note ? "Note from our team" : "", value: note || "" },

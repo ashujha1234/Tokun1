@@ -1204,6 +1204,7 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
             platformCut: platformCommission,
             netEarning: split.sellerNet,
             soldAt: purchase.purchasedAt,
+            orderId: String(purchase._id),
           });
         }
       } catch (sellerMailErr) {
@@ -1548,6 +1549,11 @@ router.post("/:purchaseId/refund-request", requireAuth, refundUpload.array("atta
         itemTitle: purchase.prompt.title,
         amount: purchase.pricePaid,
         reason: effectiveReason,
+        /* The purchase is the order; the request is what "Track this refund"
+           opens on /my-refunds. Without the request id that button lands on the
+           buyer's entire refund history and leaves them to find this one. */
+        orderId: String(purchase._id),
+        refundRequestId: String(refundRequest._id),
       });
     } catch (mailErr) {
       console.error("Refund-received email failed (request still filed):", mailErr.message);

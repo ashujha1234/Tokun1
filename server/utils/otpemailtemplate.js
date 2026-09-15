@@ -187,7 +187,7 @@ function buildOtpEmailHtml({ name = "there", otp }) {
                          lines: email clients do not inherit a body line-height
                          reliably, and without it the two lines collide as soon
                          as the font grows. -->
-                    <td align="center" style="background-color:#6A67FF; background: linear-gradient(90deg, #A300FF 0%, #6A67FF 50%, #2F86FF 100%); padding: 40px 28px; border-radius: 20px; box-shadow: 0px 5px 14px 0px #080F340A;">
+                    <td align="center" style="background-color:#7B5CFF; background:linear-gradient(90deg, #FF3CF9 0%, #7B5CFF 50%, #2F86FF 100%); padding: 40px 28px; border-radius: 20px; box-shadow: 0px 5px 14px 0px #080F340A;">
                       <div style="font-family: Inter, Arial, Helvetica, sans-serif; font-weight:700; color:#ffffff; font-size:30px; line-height:38px; letter-spacing:1px;">TOKUN.WORLD</div>
                       <div style="font-family: Inter, Arial, Helvetica, sans-serif; font-weight:500; color:#EDE9FF; font-size:17px; line-height:26px; padding-top:8px;">What would you like to create today?</div>
                     </td>

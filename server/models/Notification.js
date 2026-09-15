@@ -314,6 +314,10 @@ const NotificationSchema = new mongoose.Schema(
     "ACCESS_ITEM_DECLINED",
     "ACCESS_ITEM_REOPENED",
     "ACCESS_REQUEST_FULFILLED",
+    /* The reminder, from cron/accessChecklistReminder.js rather than from a
+       click — the client has left required items outstanding and the creator's
+       deadline is extending while they sit there. */
+    "ACCESS_ITEMS_PENDING",
 
     "REVIEW_RECEIVED",
 

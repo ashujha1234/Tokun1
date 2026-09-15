@@ -328,6 +328,17 @@ router.post("/:id/approve", async (req, res) => {
         itemTitle: purchase.promptSnapshot?.title || "Prompt",
         // Which kind of order was refunded — the email said only its title.
         itemKind: "prompt",
+        /* The purchase is the order; the request is what the "Track this
+           refund" button opens on /my-refunds. A prompt has no order page of
+           its own, so without the request id the button lands on the buyer's
+           whole refund history and leaves them to find this one. */
+        orderId: String(purchase._id),
+        refundRequestId: String(refundRequest._id),
+        /* The three dates the buyer needs to reconcile this against a bank
+           statement, and the two the 24-hour window is measured between. */
+        purchasedAt: purchase.purchasedAt,
+        requestedAt: refundRequest.createdAt,
+        refundedAt: refundRequest.resolvedAt || new Date(),
         amount: refundRequest.refundAmount,
         reason: refundRequest.adminNote || "",
         referenceId: refund.id,
@@ -412,6 +423,11 @@ router.post("/:id/reject", async (req, res) => {
         itemTitle: refundRequest.purchase?.promptSnapshot?.title || "Prompt",
         // Which kind of order was refunded — the email said only its title.
         itemKind: "prompt",
+        orderId: refundRequest.purchase?._id ? String(refundRequest.purchase._id) : "",
+        refundRequestId: String(refundRequest._id),
+        purchasedAt: refundRequest.purchase?.purchasedAt,
+        requestedAt: refundRequest.createdAt,
+        decidedAt: refundRequest.resolvedAt,
         adminNote: refundRequest.adminNote,
       });
     } catch (mailErr) {

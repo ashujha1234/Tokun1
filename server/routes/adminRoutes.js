@@ -9,6 +9,7 @@ const { requireAuth } = require("../utils/auth");
 const { signAdminToken } = require("../utils/authTokens");
 const {
   sendAdminLoginOtpEmail,
+  sendAdminPasswordResetOtpEmail,
   sendAdminLoginAlertEmail,
 } = require("../services/adminAuthEmail.service");
 
@@ -388,15 +389,152 @@ router.post("/auth/resend-otp", resendLimiter, async (req, res) => {
  * Body: { email }
  * (placeholder for now - later you will send email reset link)
  */
-router.post("/auth/forgot-password", async (req, res) => {
+router.post("/auth/forgot-password", resendLimiter, async (req, res) => {
   try {
-    // Always return success to avoid email enumeration
-    return res.json({
+    const email = String(req.body?.email || "").trim().toLowerCase();
+
+    /* One reply for every outcome — unknown address, locked account, throttled
+       resend, mail failure. The response must not distinguish an admin address
+       from a stranger's: this endpoint is unauthenticated, and an answer that
+       varies turns it into a tool for discovering who the administrators are.
+       Everything below therefore returns this same object. */
+    const generic = {
       success: true,
-      message: "If this email exists, a reset link will be sent.",
-    });
+      message: "If that address belongs to an admin account, a reset code is on its way.",
+      expiresInMinutes: ADMIN_OTP_TTL_MIN,
+    };
+
+    if (!email) return res.json(generic);
+
+    const admin = await AdminUser.findOne({ email });
+    if (!admin || admin.isActive === false) return res.json(generic);
+
+    /* Throttled on its own clock, not the login OTP's. Otherwise asking for a
+       reset would eat the login resend allowance and vice versa, and either
+       could be used to mailbomb an admin through the other. */
+    const since = admin.lastResetOtpSentAt
+      ? (Date.now() - new Date(admin.lastResetOtpSentAt).getTime()) / 1000
+      : Infinity;
+    if (since < ADMIN_OTP_RESEND_SECONDS) return res.json(generic);
+
+    const otp = genOtp();
+    admin.resetOtpHash = hashOtp(otp);
+    admin.resetOtpExpiresAt = new Date(Date.now() + ADMIN_OTP_TTL_MIN * 60 * 1000);
+    admin.resetOtpAttempts = 0;
+    admin.lastResetOtpSentAt = new Date();
+    await admin.save();
+
+    // Same reasoning as issueOtp(): without this there is no way to test the
+    // flow on a laptop with no SMTP. Never in production.
+    if (process.env.NODE_ENV !== "production") {
+      console.log(
+        `\n🔑 [DEV] Admin password reset code for ${admin.email}: ${otp}  (valid ${ADMIN_OTP_TTL_MIN} min)\n`
+      );
+    }
+
+    try {
+      await sendAdminPasswordResetOtpEmail({
+        to: admin.email,
+        code: otp,
+        minutes: ADMIN_OTP_TTL_MIN,
+        ip: clientIp(req),
+        userAgent: req.headers["user-agent"],
+      });
+    } catch (mailErr) {
+      // Logged, not surfaced: the reply is identical either way by design.
+      console.error("❌ ADMIN RESET OTP EMAIL FAILED:", mailErr.message);
+    }
+
+    return res.json(generic);
   } catch (err) {
     console.error("❌ ADMIN FORGOT ERROR:", err);
+    return res.status(500).json({ success: false, error: "Server error" });
+  }
+});
+
+/**
+ * POST /api/admin/auth/reset-password
+ * Body: { email, code, newPassword }
+ *
+ * Step 2 of the reset. Unlike the login OTP, a correct code here is not a
+ * session — it only authorises the one write below, and is burned either way.
+ *
+ * This endpoint DOES report failure honestly (bad code, expired, too many
+ * tries) where forgot-password above does not. The difference is what a caller
+ * learns: getting here means they already hold a code, so nothing is disclosed
+ * by saying it was wrong, and a reset that silently does nothing is unusable.
+ */
+router.post("/auth/reset-password", otpLimiter, async (req, res) => {
+  try {
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    const code = String(req.body?.code || "").trim();
+    const newPassword = String(req.body?.newPassword || "");
+
+    if (!email || !code || !newPassword) {
+      return res.status(400).json({ success: false, error: "email_code_and_password_required" });
+    }
+    // The same floor PATCH /auth/profile enforces — one rule for one thing.
+    if (newPassword.length < 8) {
+      return res.status(400).json({ success: false, error: "password_too_short" });
+    }
+
+    const admin = await AdminUser.findOne({ email });
+
+    /* Deliberately the same response for "no such admin" and "no reset in
+       progress". Beyond this point a caller already has a code, so failures are
+       specific — but not this one, which is still reachable without one. */
+    if (!admin || !admin.resetOtpHash || !admin.resetOtpExpiresAt) {
+      return res.status(400).json({ success: false, error: "no_reset_in_progress" });
+    }
+
+    if (admin.resetOtpExpiresAt < new Date()) {
+      admin.resetOtpHash = null;
+      admin.resetOtpExpiresAt = null;
+      admin.resetOtpAttempts = 0;
+      await admin.save();
+      return res.status(400).json({ success: false, error: "code_expired" });
+    }
+
+    if ((admin.resetOtpAttempts || 0) >= ADMIN_OTP_MAX_ATTEMPTS) {
+      admin.resetOtpHash = null;
+      admin.resetOtpExpiresAt = null;
+      await admin.save();
+      return res.status(429).json({ success: false, error: "too_many_attempts" });
+    }
+
+    if (!otpMatches(code, admin.resetOtpHash)) {
+      admin.resetOtpAttempts = (admin.resetOtpAttempts || 0) + 1;
+      await admin.save();
+      const left = Math.max(0, ADMIN_OTP_MAX_ATTEMPTS - admin.resetOtpAttempts);
+      return res.status(400).json({ success: false, error: "invalid_code", attemptsLeft: left });
+    }
+
+    admin.passwordHash = await bcrypt.hash(newPassword, 10);
+
+    /* Everything that could let the old state through is cleared in the same
+       write:
+         reset*        the code is single-use
+         otp*          a login challenge started before the reset must not be
+                       completable with the password it was issued against
+         failed/locked a lockout earned while guessing the forgotten password
+                       would otherwise keep the rightful owner out afterwards */
+    admin.resetOtpHash = null;
+    admin.resetOtpExpiresAt = null;
+    admin.resetOtpAttempts = 0;
+    admin.lastResetOtpSentAt = null;
+    admin.otpHash = null;
+    admin.otpExpiresAt = null;
+    admin.otpAttempts = 0;
+    admin.failedLoginAttempts = 0;
+    admin.lockedUntil = null;
+    await admin.save();
+
+    return res.json({
+      success: true,
+      message: "Password updated. Sign in with your new password.",
+    });
+  } catch (err) {
+    console.error("❌ ADMIN RESET ERROR:", err);
     return res.status(500).json({ success: false, error: "Server error" });
   }
 });

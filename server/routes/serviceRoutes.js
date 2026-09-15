@@ -160,8 +160,10 @@ const { uploadFileToBlob, blobNameFor, getBlobSasUrl } = require("../utils/blobS
    ndaSellerUrl fields still gate payment; this is the record. See
    models/NdaRecord.js. */
 const { recordNdaSignature, sha256File } = require("../utils/ndaRecord");
+const { normaliseAgreementFileToPdf } = require("../services/agreementPdf.service");
 /* Read-only here — see the same require in routes/hire.routes.js. */
 const AccessRequest = require("../models/AccessRequest");
+const { deadlineState, isOverdueAfterBlocking } = require("../utils/deliveryDeadline");
 const { tempUploadDir } = require("../utils/privateUploadDirs");
 const { generateInvoicePDF } = require("../services/invoice.service");
 const { sendInvoiceEmail } = require("../services/email.service");
@@ -951,6 +953,7 @@ router.post("/:serviceId/book", requireAuth, blockIfSuspended, async (req, res) 
           title: service.title,
           amount,
           kind: "booking",
+          orderId: String(order._id),
           respondWithinDays: REQUEST_RESPONSE_DAYS,
         });
       }
@@ -982,23 +985,46 @@ router.post("/orders/:orderId/upload-nda", requireAuth, uploadNdaFile.single("nd
 
     if (!req.file) return res.status(400).json({ success: false, error: "no_file_uploaded" });
 
+    /* ── The stored agreement is a PDF ───────────────────────────────────────
+       Converted BEFORE the hash below, not after, because the hash is what
+       makes the archived record provable: it has to describe the bytes that are
+       actually kept. The frontend uploads the agreement as text/html
+       (NdaCard.tsx), which no mail client will render and which reads as markup
+       wherever it is opened.
+
+       A real PDF passes through untouched, and a render failure falls back to
+       the original file. See services/agreementPdf.service.js. */
+    const agreement = await normaliseAgreementFileToPdf(
+      req.file.path,
+      req.file.originalname || "agreement.html"
+    );
+
     /* Hashed before the upload, which unlinks the temp copy — see the same
        block in routes/hire.routes.js. Non-fatal by construction. */
-    const docSha256 = await sha256File(req.file.path);
-    const docByteSize = req.file.size || 0;
+    const docSha256 = await sha256File(agreement.path);
+    /* The stored file, not the upload. These two were the same thing until the
+       conversion above; now req.file.size is the HTML that was sent and this
+       has to describe the PDF that is actually kept, alongside its hash. */
+    const docByteSize = (() => {
+      try {
+        return require("fs").statSync(agreement.path).size;
+      } catch {
+        return req.file.size || 0;
+      }
+    })();
 
     /* Into the private container before the order is touched — see the same
        block in routes/hire.routes.js for why this order matters and what it
        replaces. In short: the previous code recorded a "/uploads/service-nda/…"
        path that the file was never written to, and the only real copy sat in a
        scratch directory the host wipes. */
-    const { blobName } = await uploadFileToBlob(req.file.path, {
+    const { blobName } = await uploadFileToBlob(agreement.path, {
       container: SERVICE_NDA_CONTAINER,
-      blobName: blobNameFor(req.file.originalname || "nda.pdf", {
+      blobName: blobNameFor(agreement.originalName, {
         prefix: String(order._id),
         fallback: "nda",
       }),
-      originalName: req.file.originalname || "nda.pdf",
+      originalName: agreement.originalName,
       disposition: "attachment",
     });
 
@@ -1668,11 +1694,21 @@ router.post("/orders/:orderId/submit-work", requireAuth, async (req, res) => {
        can still cancel, and an admin can still settle, so the money is never
        stuck, but see the note on this in the PR/discussion if that lands badly
        in practice. */
-    if (isDeliveryOverdue(order)) {
+    /* Measured against the EXTENDED deadline, not the agreed one.
+
+       Clause 11 gives the creator back the time they spent waiting on the
+       client, and until now nothing applied it: a creator blocked for nine days
+       on an asset that never arrived was refused here on a date that was never
+       theirs to miss. See utils/deliveryDeadline.js. */
+    const blockingChecklist = await AccessRequest.findOne({ serviceOrderId: order._id }).lean();
+    if (isOverdueAfterBlocking(order, blockingChecklist)) {
+      const state = deadlineState(order, blockingChecklist);
       return res.status(403).json({
         success: false,
         error: "delivery_deadline_passed",
         deliveryDueAt: order.deliveryDueAt,
+        effectiveDueAt: state.effectiveDueAt,
+        extendedHours: state.extendedHours,
         message:
           "The delivery deadline for this booking has passed, so work can no longer be submitted. Talk to the client — they can cancel for a refund, or Tokun can settle it between you.",
       });
@@ -1799,6 +1835,7 @@ router.post("/orders/:orderId/submit-work", requireAuth, async (req, res) => {
         amount: order.sellerAmount ?? order.amount,
         autoReleaseAt: new Date(Date.now() + AUTO_RELEASE_HOURS * 60 * 60 * 1000),
         orderPath: `/orders/service/${order._id}`,
+        orderId: String(order._id),
       });
     } catch (mailErr) {
       console.error("Service work-submitted email failed (submission stands):", mailErr.message);
@@ -1897,6 +1934,8 @@ router.post("/orders/:orderId/approve-work", requireAuth, async (req, res) => {
         title: order.serviceTitle,
         amount: payoutAmount,
         automatic: false,
+        orderKind: "service",
+        orderId: String(order._id),
       });
     } catch (mailErr) {
       console.error("Service escrow-released email failed (payout stands):", mailErr.message);
@@ -1993,13 +2032,29 @@ router.post("/orders/:orderId/request-revision", requireAuth, async (req, res) =
     }
 
     try {
+      /* The REAL new deadline, not the old one.
+
+         This row is labelled "New due date" in the template and has been
+         carrying `deliveryDueAt` — the original, unchanged date — since the
+         email was written, because nothing ever computed a new one. It now
+         reflects the review time being handed back and the minimum turnaround
+         floor, which is the same figure the submit guard enforces.
+
+         Read after the revision is saved, so the revision being answered is
+         included in the maths. */
+      const revisionChecklist = await AccessRequest.findOne({ serviceOrderId: order._id }).lean();
+      const revisedDeadline = deadlineState(order, revisionChecklist);
+
       await sendRevisionRequestedEmail({
         to: order.sellerId.email,
         creatorName: order.sellerId.name,
         clientName: order.buyerId.name,
         title: order.serviceTitle,
         note: reason,
-        dueAt: order.deliveryDueAt,
+        dueAt: revisedDeadline.effectiveDueAt,
+        originalDueAt: revisedDeadline.extendedHours > 0 ? revisedDeadline.agreedDueAt : null,
+        orderKind: "service",
+        orderId: String(order._id),
       });
     } catch (mailErr) {
       console.error("Service revision email failed (revision still recorded):", mailErr.message);
@@ -2179,15 +2234,38 @@ router.get("/orders/:orderId", requireAuth, async (req, res) => {
        doc are generated in the browser from this response. */
     const accessItems = await AccessRequest.itemsForOrder("service", order._id);
 
+    /* The full checklist document, for the deadline maths — itemsForOrder()
+       returns the ask-only projection and deliberately drops blockedHours. */
+    const checklist = await AccessRequest.findOne({ serviceOrderId: order._id })
+      .select("blockedHours blockedSince items")
+      .lean();
+    const deadline = deadlineState(order, checklist);
+
     return res.json({
       success: true,
       order: {
         ...order,
         accessItems,
+        /* Both dates, plus why they differ. The agreed one is what was signed;
+           the effective one is what the submit guard enforces. A screen showing
+           only the second would be a deadline that appears to move on its own,
+           which is the thing models/AccessRequest.js warns about — so they are
+           handed over together and shown together. */
+        deadline: {
+          agreedDueAt: deadline.agreedDueAt,
+          effectiveDueAt: deadline.effectiveDueAt,
+          extendedHours: deadline.extendedHours,
+          extendedDays: deadline.extendedDays,
+          // What the extension is made of, so a screen can say WHY it moved.
+          blockedHours: deadline.blockedHours,
+          reviewHours: deadline.reviewHours,
+          blockedNow: deadline.blockedNow,
+          outstandingRequired: deadline.outstandingRequired,
+        },
         // The client renders a live countdown off deliveryDueAt, but whether
         // the deadline has actually passed is the server's call — its clock is
-        // the one the submit guard uses.
-        deliveryOverdue: isDeliveryOverdue(order),
+        // the one the submit guard uses, extension included.
+        deliveryOverdue: deadline.overdue,
         deliverables: (order.deliverables || []).map(toPublicDeliverable),
         // History of every delivery, so a resubmission after a revision doesn't
         // make the first one vanish from the record.

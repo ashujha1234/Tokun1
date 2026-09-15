@@ -114,8 +114,22 @@ const NdaRecordSchema = new mongoose.Schema(
     /* Exactly one of these is set, matching orderKind. Same shape as
        ProgressReview and Review, so an admin screen joining across all three
        reads them the same way. */
-    hireDealId: { type: mongoose.Schema.Types.ObjectId, ref: "HireDeal", default: null },
-    serviceOrderId: { type: mongoose.Schema.Types.ObjectId, ref: "ServiceOrder", default: null },
+    /* No `default: null` on either. A sparse index skips a document where the
+       field is MISSING — not where it is present and null — so defaulting them
+       put an explicit null on every record and handed the unique indexes below
+       a value to collide on. See the note on orderRef. */
+    hireDealId: { type: mongoose.Schema.Types.ObjectId, ref: "HireDeal" },
+    serviceOrderId: { type: mongoose.Schema.Types.ObjectId, ref: "ServiceOrder" },
+
+    /* The engagement this record belongs to, as one always-present string:
+       "hire:<id>" or "service:<id>".
+
+       This is the real uniqueness key, and it exists because the two nullable
+       id fields could not be one. Whatever the id fields do or don't contain,
+       this is set on every document and distinct for every engagement, so a
+       plain unique index on it means what it says on MongoDB and on Cosmos
+       alike — no sparse semantics, no partial filter, nothing to get wrong. */
+    orderRef: { type: String, required: true },
 
     /* Normalised parties, for querying. The names and emails as signed live on
        each signature above; these ids are how "every agreement this user is a
@@ -187,16 +201,36 @@ const NdaRecordSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-/* One record per engagement. `sparse` because exactly one of the two id fields
-   is populated on any given document and a plain unique index would treat every
-   null as a collision.
-
-   Unique rather than merely indexed: the write path is an upsert keyed on the
-   order, and two parties can sign within milliseconds of each other. Without
-   this, a race produces two half-signed records for one engagement and neither
-   ever reaches EXECUTED. */
-NdaRecordSchema.index({ hireDealId: 1 }, { unique: true, sparse: true });
-NdaRecordSchema.index({ serviceOrderId: 1 }, { unique: true, sparse: true });
+/* ── One record per engagement ───────────────────────────────────────────────
+ *
+ * Unique rather than merely indexed: the write path is an upsert keyed on the
+ * order, and two parties can sign within milliseconds of each other. Without
+ * it a race produces two half-signed records for one engagement and neither
+ * ever reaches EXECUTED.
+ *
+ * It used to be two sparse unique indexes, one per id field, and that was
+ * broken in a way that only showed up on the SECOND engagement of a kind:
+ *
+ *   hire record #1  { hireDealId: A, serviceOrderId: null }   indexed
+ *   hire record #2  { hireDealId: B, serviceOrderId: null }   ← duplicate key
+ *
+ * `sparse` skips a document whose field is absent; both of these had the field
+ * present and null, because the schema defaulted them. So every hire signing
+ * after the first collided on the serviceOrderId index, and every service
+ * signing after the first collided on the hireDealId one. The caller wraps this
+ * write in a try/catch — the signature is what gates payment and must not fail
+ * for an audit row — so it failed silently and the archive has been missing
+ * records ever since, with only a console line to show for it.
+ *
+ * The retry loop in utils/ndaRecord.js could not help: it treats 11000 as
+ * "someone else got there first" and re-reads, but this collision is
+ * deterministic, so all three attempts hit the same wall.
+ *
+ * Keyed on orderRef now — one string, always present, distinct per engagement.
+ * The id fields keep plain non-unique indexes for lookup. */
+NdaRecordSchema.index({ orderRef: 1 }, { unique: true });
+NdaRecordSchema.index({ hireDealId: 1 });
+NdaRecordSchema.index({ serviceOrderId: 1 });
 
 // The admin queue's default read: newest first, optionally filtered by state.
 NdaRecordSchema.index({ status: 1, createdAt: -1 });

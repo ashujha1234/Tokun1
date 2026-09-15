@@ -56,6 +56,20 @@ const RULES = Object.freeze({
   revisionStallWarnDays: 7,
   revisionStallEscalateDays: 14,
 
+  /* The least time a creator gets to answer a revision, counted from when it
+     was asked for.
+
+     A revision is new work the client triggers, and its timing is entirely
+     theirs. Without a floor, a revision requested in the last hour of the
+     window leaves the creator unable to answer it and then late for not having
+     — the failure the submit guard in routes/serviceRoutes.js already flagged
+     as an open question.
+
+     Giving the review time back (see utils/deliveryDeadline.js) covers the case
+     where the client sat on the delivery. This covers the rest: even an instant
+     revision needs somewhere to be done. */
+  minRevisionHours: 24,
+
   /* Progress checkpoints. */
   progressRequestCooldownHours: 24,
   progressMaxMedia: 6,

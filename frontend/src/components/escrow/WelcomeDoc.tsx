@@ -132,8 +132,8 @@ const STAGES = [
   {
     key: "FUNDED",
     label: "Funded",
-    buyer: "Your payment is held in escrow. The creator can now start.",
-    seller: "The money is in escrow. You're clear to start — press Start work.",
+    buyer: "Your payment is held by Tokun. The creator can now start.",
+    seller: "Tokun is holding the money. You're clear to start — press Start work.",
   },
   {
     key: "IN_PROGRESS",
@@ -145,7 +145,7 @@ const STAGES = [
     key: "WORK_SUBMITTED",
     label: "Delivered — your review",
     buyer: `The work is with you. You have ${RULES.autoReleaseHours} hours to approve it or ask for a revision.`,
-    seller: `Delivered. If the client says nothing for ${RULES.autoReleaseHours} hours, the escrow releases to you automatically.`,
+    seller: `Delivered. If the client says nothing for ${RULES.autoReleaseHours} hours, the payment releases to you automatically.`,
   },
   {
     key: "REVISION_REQUESTED",
@@ -246,17 +246,17 @@ export function buildWelcomeHtml(doc: WelcomeDocData): string {
   @media print{body{background:#fff}.sheet{box-shadow:none;margin:0;max-width:none;padding:0}}
 </style></head>
 <body><div class="sheet">
-  <div class="brand"><h1>TOKUN</h1><span class="tag">Escrow-Protected Engagement</span></div>
+  <div class="brand"><h1>TOKUN</h1><span class="tag">Payment-Protected Engagement</span></div>
 
   <h2 class="doc-title">${isBuyer ? "Welcome — here's how this works" : "Your engagement — what happens now"}</h2>
   <p class="lede">${
     isBuyer
-      ? `${you ? `${esc(you)}, y` : "Y"}our payment for <b>${esc(doc.title || "this engagement")}</b> is held in escrow${
+      ? `${you ? `${esc(you)}, y` : "Y"}our payment for <b>${esc(doc.title || "this engagement")}</b> is held by Tokun${
           other ? ` and ${esc(other)} has been notified` : ""
         }. This document is the whole process in order: what happens next, what we need from you, where your money sits, and what to do if something isn't right. Nothing in it is a surprise later.`
       : `${you ? `${esc(you)}, t` : "T"}his is the engagement <b>${esc(doc.title || "you've taken on")}</b>${
           other ? ` for ${esc(other)}` : ""
-        }. The client's money is already held in escrow, so the only thing between you and the payout is the work. Here is the sequence, the deadline, and exactly what releases the money.`
+        }. The client's money is already held by Tokun, so the only thing between you and the payout is the work. Here is the sequence, the deadline, and exactly what releases the money.`
   }</p>
 
   <div class="sec">The engagement at a glance</div>
@@ -265,7 +265,7 @@ export function buildWelcomeHtml(doc: WelcomeDocData): string {
       isBuyer ? "You paid" : "You'll receive",
       or(money(isBuyer ? (doc.totalPayable ?? doc.amount) : doc.amount, currency)),
       isBuyer
-        ? "Held in escrow, not paid out yet"
+        ? "Held by Tokun, not paid out yet"
         : "Before Tokun's commission — see your earnings record"
     )}
     ${fact(
@@ -384,7 +384,7 @@ export function buildWelcomeHtml(doc: WelcomeDocData): string {
                   .join("")}</table>`
              : ""
          }
-         <p class="muted" style="font-size:11.5px">Anything not listed above is out of scope. It isn't covered by the escrow held against this engagement, and needs a new booking or a written variation both of you agree to.</p>`
+         <p class="muted" style="font-size:11.5px">Anything not listed above is out of scope. It isn't covered by the payment held against this engagement, and needs a new booking or a written variation both of you agree to.</p>`
       : ""
   }
 
@@ -404,7 +404,7 @@ export function buildWelcomeHtml(doc: WelcomeDocData): string {
     }</td></tr>
     <tr><td><b>Automatic release</b></td><td>If the delivery is neither approved nor sent back for a revision within <b>${
       RULES.autoReleaseHours
-    } hours</b>, it counts as accepted and the escrow releases ${
+    } hours</b>, it counts as accepted and the payment releases ${
       isBuyer ? "to the creator" : "to you"
     }. ${
       isBuyer
@@ -416,7 +416,7 @@ export function buildWelcomeHtml(doc: WelcomeDocData): string {
         ? "A revision request you're entitled to, a cancellation you both agree on, or a dispute decided in your favour."
         : "A cancellation you both agree on, or a dispute decided for the client. A cancellation after work has started is normally settled as a split."
     }</td></tr>
-    <tr><td><b>The outer limit</b></td><td>Escrow can't be held past <b>${
+    <tr><td><b>The outer limit</b></td><td>The payment can't be held past <b>${
       doc.escrowExpiresAt ? esc(formatDate(doc.escrowExpiresAt)) : `${RULES.maxHoldDays} days from payment`
     }</b> — a payment-processor limit neither of you nor Tokun can extend. Everything has to be settled before then, and you're both warned ${
       RULES.escrowWarningDays
@@ -445,13 +445,13 @@ export function buildWelcomeHtml(doc: WelcomeDocData): string {
     }</td></tr>
     <tr><td><b>${isBuyer ? "Nothing is happening" : "The client has gone quiet"}</b></td><td>${
       isBuyer
-        ? `Ask for a progress checkpoint first. If the delivery date passes with nothing delivered, you can allow more time in writing or cancel — and how much was actually done decides how the escrow splits.`
+        ? `Ask for a progress checkpoint first. If the delivery date passes with nothing delivered, you can allow more time in writing or cancel — and how much was actually done decides how the payment splits.`
         : `An unanswered revision is chased after ${RULES.revisionStallWarnDays} days and can be referred to Tokun after ${RULES.revisionStallEscalateDays}. If you're waiting on the client for something from the access checklist, your deadline extends for that time.`
     }</td></tr>
     <tr><td><b>Cancelling</b></td><td>Before work starts, the payment is refunded. After it starts the money can't just go back: either of you can propose a split, saying what share ${
       isBuyer ? "the creator" : "you"
     } has earned, and if the other accepts, Tokun settles on that basis.</td></tr>
-    <tr><td><b>No agreement</b></td><td>Either of you can refer it to Tokun, which decides how the escrow is distributed on the record it holds — this document's engagement, the brief, your messages, the checkpoints and the delivery dates. That is why checkpoints and written messages matter more than they look.</td></tr>
+    <tr><td><b>No agreement</b></td><td>Either of you can refer it to Tokun, which decides how the payment is distributed on the record it holds — this document's engagement, the brief, your messages, the checkpoints and the delivery dates. That is why checkpoints and written messages matter more than they look.</td></tr>
   </table>
 
   <div class="callout info">
@@ -674,11 +674,11 @@ export default function WelcomeDocPanel({ doc }: { doc: WelcomeDocData }) {
       return isBuyer
         ? {
             tone: "urgent" as const,
-            text: `The work is with you. Approve it or ask for a revision within ${RULES.autoReleaseHours} hours of delivery — after that it counts as accepted and the escrow releases automatically.`,
+            text: `The work is with you. Approve it or ask for a revision within ${RULES.autoReleaseHours} hours of delivery — after that it counts as accepted and the payment releases automatically.`,
           }
         : {
             tone: "info" as const,
-            text: `Delivered. If the client neither approves nor asks for a revision within ${RULES.autoReleaseHours} hours, the escrow releases to you automatically.`,
+            text: `Delivered. If the client neither approves nor asks for a revision within ${RULES.autoReleaseHours} hours, the payment releases to you automatically.`,
           };
     }
     if (outstanding > 0) {
@@ -697,7 +697,7 @@ export default function WelcomeDocPanel({ doc }: { doc: WelcomeDocData }) {
       return {
         tone: "urgent" as const,
         text: isBuyer
-          ? `Delivery is ${Math.abs(dueIn)} day${Math.abs(dueIn) === 1 ? "" : "s"} overdue. You can allow more time in writing, or cancel — how much was actually done decides how the escrow splits.`
+          ? `Delivery is ${Math.abs(dueIn)} day${Math.abs(dueIn) === 1 ? "" : "s"} overdue. You can allow more time in writing, or cancel — how much was actually done decides how the payment splits.`
           : `Delivery is ${Math.abs(dueIn)} day${Math.abs(dueIn) === 1 ? "" : "s"} past the agreed date. Deliver, or agree an extension with the client in writing.`,
       };
     }
@@ -712,8 +712,8 @@ export default function WelcomeDocPanel({ doc }: { doc: WelcomeDocData }) {
     return {
       tone: "info" as const,
       text: isBuyer
-        ? "Your payment is held in escrow and won't reach the creator until you approve the work."
-        : "The client's payment is held in escrow. It's released to you when they approve the delivery.",
+        ? "Your payment is held by Tokun and won't reach the creator until you approve the work."
+        : "The client's payment is held by Tokun. It's released to you when they approve the delivery.",
     };
   }, [doc.status, outstanding, dueIn, isBuyer]);
 
@@ -761,7 +761,7 @@ export default function WelcomeDocPanel({ doc }: { doc: WelcomeDocData }) {
                 </span>
               </span>
               <span>
-                {isBuyer ? "In escrow" : "Your side"}{" "}
+                {isBuyer ? "Held by Tokun" : "Your side"}{" "}
                 <span className="text-white/70">
                   {money(isBuyer ? (doc.totalPayable ?? doc.amount) : doc.amount, doc.currency) || "—"}
                 </span>

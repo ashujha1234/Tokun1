@@ -236,8 +236,8 @@ export default function DeliverablePreviewModal({
             <ShieldAlert className="w-4 h-4 text-[#FABC4E] shrink-0 mt-px" />
             <p className="text-[11px] leading-relaxed text-[#FABC4E]">
               {isVideo
-                ? "Watermarked review copy, reduced in quality — the payment is still held in escrow. Approve the work and the full-quality original is yours."
-                : "Watermarked preview — the payment is still held in escrow. Approve the work and the original file, without the watermark, is yours."}
+                ? "Watermarked review copy, reduced in quality — the payment is still held by Tokun. Approve the work and the full-quality original is yours."
+                : "Watermarked preview — the payment is still held by Tokun. Approve the work and the original file, without the watermark, is yours."}
             </p>
           </div>
         )}

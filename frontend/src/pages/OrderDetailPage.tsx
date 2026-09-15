@@ -152,6 +152,11 @@ function normalizeOrder(kind: OrderKind, raw: any, viewerId: string) {
     // minutes behind must not show "Submit work" for an order the server will
     // reject.
     deliveryOverdue: !!raw.deliveryOverdue,
+    /* The agreed date, the extended one, and why they differ. Computed server
+       side (utils/deliveryDeadline.js) because the same numbers decide whether
+       the submit guard lets the creator through — two implementations of that
+       is two answers to "am I late?". */
+    deadlineInfo: raw.deadline || null,
     chatId: raw.chatId,
     createdAt: raw.createdAt,
     paidAt: raw.paidAt,
@@ -323,8 +328,16 @@ export default function OrderDetailPage() {
   const canCancel = CANCELLABLE.includes(order.status) && order.fundsStatus === "HELD_BY_TOKUN";
   const showProgress = WORK_UNDERWAY.includes(order.status) || order.status === "DISPUTED";
   // The deadline only means anything while the work is still owed.
+  /* Counts down to the date the creator is actually held to. Against the
+     agreed date, a creator blocked for a week is shown "3 days late" while the
+     server would still accept the submission — the banner and the guard
+     disagreeing is worse than either being wrong on its own. */
+  const effectiveDueAt = order.deadlineInfo?.effectiveDueAt || order.deliveryDueAt;
+  const extendedDays = Number(order.deadlineInfo?.extendedDays || 0);
+  const blockedNow = !!order.deadlineInfo?.blockedNow;
+
   const deadline = WORK_UNDERWAY.includes(order.status)
-    ? deadlineLabel(order.deliveryDueAt, nowTick)
+    ? deadlineLabel(effectiveDueAt, nowTick)
     : null;
   // The server's flag is the authority, but a page left open past the deadline
   // has to catch up on its own — otherwise the button stays live until reload.
@@ -368,19 +381,35 @@ export default function OrderDetailPage() {
         </div>
 
         {/* The cancellation negotiation outranks everything else on the page —
-            it's the only thing either side can act on while it's open. */}
+            it's the only thing either side can act on while it's open.
+
+            #dispute is where every dispute and refund email lands — see
+            orderUrl() in services/emailLayout.js. "A dispute was opened",
+            "escalated to Tokun" and "the dispute has been settled" all point
+            at this one order, and they need to arrive ON the panel rather
+            than at the top of a page whose first screen is the brief. */}
         {isDisputed && (
-          <DisputePanel
-            orderKind={kind}
-            orderId={order.id}
-            role={order.role}
-            token={token}
-            onChanged={load}
-          />
+          <div id="dispute" style={{ scrollMarginTop: 90 }}>
+            <DisputePanel
+              orderKind={kind}
+              orderId={order.id}
+              role={order.role}
+              token={token}
+              onChanged={load}
+            />
+          </div>
         )}
 
-        {/* Settled outcomes say where the money went, not just "Cancelled". */}
+        {/* Settled outcomes say where the money went, not just "Cancelled".
+
+            Takes over the #dispute anchor once the panel above is gone, which
+            is the state the "dispute resolved" email is read in: by the time
+            anyone opens that mail the dispute is closed, so the thing they
+            came to see is the outcome. Conditional because the two are only
+            mutually exclusive in practice, and two elements sharing an id
+            would make which one the browser scrolls to a coin toss. */}
         {order.settlementSellerPercent !== null && order.settlementSellerPercent !== undefined && (
+          <div id={isDisputed ? undefined : "dispute"} style={{ scrollMarginTop: 90 }}>
           <Section title="How this was settled">
             <p className="text-sm text-white/75">
               Assessed at <strong>{order.settlementSellerPercent}%</strong> completed —{" "}
@@ -388,6 +417,7 @@ export default function OrderDetailPage() {
               {rupees(order.refundAmount)} refunded to the client.
             </p>
           </Section>
+          </div>
         )}
 
         {/* The promised delivery date, kept in front of both sides for as long
@@ -430,8 +460,30 @@ export default function OrderDetailPage() {
               </p>
             </div>
 
+            {/* Why the date moved, next to the date. models/AccessRequest.js
+                warns that a deadline which appears to shift on its own is worse
+                than the problem it solves — so the extension is never shown
+                without the original date and the reason beside it. */}
+            {extendedDays > 0 && (
+              <p className="mt-1.5 text-[11px] leading-relaxed text-[#FABC4E]">
+                Extended by {extendedDays} day{extendedDays === 1 ? "" : "s"} — the creator was
+                waiting on the client for items on the checklist below.{" "}
+                <span className="text-white/40">
+                  Originally {formatDateTime(order.deliveryDueAt)}.
+                </span>
+              </p>
+            )}
+
+            {blockedNow && (
+              <p className="mt-1.5 text-[11px] leading-relaxed text-[#FF8F8F]">
+                {order.role === "buyer"
+                  ? "The creator is blocked right now — the deadline keeps moving until you answer the outstanding items."
+                  : "You're marked as blocked — the deadline keeps extending while these items are outstanding."}
+              </p>
+            )}
+
             <p className="mt-1.5 text-sm text-white/75">
-              {formatDateTime(order.deliveryDueAt)}
+              {formatDateTime(effectiveDueAt)}
               {order.deliveryDays ? (
                 <span className="text-white/35">
                   {" "}
@@ -692,7 +744,10 @@ export default function OrderDetailPage() {
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-white/45">Escrow</span>
+              {/* "Payment", not "Escrow". The value beside it already says
+                  "Held by Tokun", which is the whole meaning of the word
+                  without asking the reader to know it. */}
+              <span className="text-white/45">Payment</span>
               <span>
                 {order.fundsStatus === "HELD_BY_TOKUN"
                   ? "Held by Tokun"

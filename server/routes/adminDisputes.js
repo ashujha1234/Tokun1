@@ -446,6 +446,10 @@ router.post("/:id/resolve", async (req, res) => {
           refundAmount: result.refundAmount,
           sellerPayout: result.sellerPayout,
           decidedBy: "Tokun",
+          /* Both sides' "See the full decision" opens the order this ruling was
+             about, landing on the settled-outcome section. */
+          orderKind: dispute.orderKind,
+          orderId: String(orderId),
         }),
         sendDisputeResolvedEmail({
           to: dispute.buyerId?.email,
@@ -455,6 +459,8 @@ router.post("/:id/resolve", async (req, res) => {
           refundAmount: result.refundAmount,
           sellerPayout: result.sellerPayout,
           decidedBy: "Tokun",
+          orderKind: dispute.orderKind,
+          orderId: String(orderId),
         }),
       ]);
     } catch (mailErr) {

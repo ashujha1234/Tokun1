@@ -607,6 +607,8 @@ const smartgenDetectRoutes = require("./routes/smartgenDetectRoutes");
 
 require("./cron/autoReleaseEscrow");
 require("./cron/autoReleaseServiceEscrow");
+/* Chases a client whose outstanding checklist items are holding a creator up. */
+require("./cron/accessChecklistReminder");
 /* Razorpay stops holding a transfer at 90 days. This warns both parties (and
    logs for admin) a week before a still-open booking hits that wall. */
 require("./cron/escrowDeadlineWatch");
@@ -2086,6 +2088,8 @@ app.use("/api/seller", sellerRoutes);
 app.use("/api/activity", activityRoutes);
 app.use("/api/wallet", walletRoutes);
 app.use("/api/hire", hireRoutes);
+/* Renders agreement markup to PDF for the NdaCard download button. */
+app.use("/api/agreement", require("./routes/agreement"));
 app.use("/api/admin/escrow", adminEscrowRouter);
 app.use("/api/admin/prompt-validation", adminPromptValidationRouter);
 app.use("/api/admin/notifications", adminNotificationsRouter);

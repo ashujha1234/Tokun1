@@ -84,6 +84,8 @@ async function releaseEscrowToWallet(deal) {
       title: deal.title,
       amount: payoutAmount,
       automatic: true,
+      orderKind: "hire",
+      orderId: String(deal._id),
     });
   } catch (mailErr) {
     console.error("Auto-release email failed (payout stands):", mailErr.message);
@@ -128,6 +130,7 @@ async function warnBeforeAutoRelease() {
           new Date(doc.workSubmittedAt).getTime() + AUTO_RELEASE_HOURS * 60 * 60 * 1000
         ),
         hoursLeft: WARN_BEFORE_HOURS,
+        orderId: String(doc._id),
         orderPath: `/orders/hire/${doc._id}`,
       });
     } catch (mailErr) {

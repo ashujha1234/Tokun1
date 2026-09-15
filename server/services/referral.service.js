@@ -297,7 +297,7 @@ async function qualifyReferral(referral, purchase) {
 
   await notify(
     referral.referrerId,
-    `${referred.name || "Someone you invited"} made their first sale — your next prompt sale is commission-free.`,
+    `${referred.name || "Someone you invited"} made their first sale — your next product sale is commission-free.`,
     { referralId: String(referral._id) }
   );
   /* Worded from what they actually got. Promising a commission-free sale to

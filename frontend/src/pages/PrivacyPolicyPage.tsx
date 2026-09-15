@@ -3,9 +3,9 @@ import Footer from "@/components/Footer";
 
 /* Written against what the code actually does, not against a template.
  *
- * Every claim below is checkable in this repository: KYC in server/routes/
- * kycRoutes.js and utils/kyc, payments in routes/hire.routes.js and
- * utils/razorpay.js, file storage in utils/blobStorage.js and
+ * Every claim below is checkable in this repository: payments in
+ * routes/hire.routes.js and utils/razorpay.js, the payout account and the PAN
+ * sent with it in routes/bankAccounts.js, file storage in utils/blobStorage.js and
  * utils/serviceWorkStorage.js, telemetry in utils/telemetry.js and
  * src/lib/telemetry.ts, sessions in utils/authTokens.js.
  *
@@ -36,19 +36,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "3. Identity verification (KYC)",
-    body: [
-      "Tokun offers identity verification, and some accounts complete it. It is the most sensitive data the platform handles, so it is described separately and in full — whether or not you ever use it.",
-      "It is optional today. Nothing on the platform is gated behind it, and you can browse, buy, sell and be hired without submitting anything. If that changes, this section and the Terms will say so before it takes effect.",
-      "What is collected: images of the front and back of one government ID — Aadhaar or Passport — that you upload yourself.",
-      "What is done with them: the images are read automatically to extract the name printed on the document, and that name is compared with the name on your Tokun account. The extracted name, a similarity score, and the outcome are stored against your account. Extraction runs on our own servers; your ID images are not sent to a third-party verification service.",
-      "If automated checking cannot decide, a member of the Tokun admin team reviews the documents manually. If a submission is rejected you are told the reason, and there is a waiting period before you may resubmit.",
-      "Who can see the documents: Tokun admin staff reviewing your submission. They are never shown to buyers, sellers, clients or other creators, and are not used for anything other than verifying who you are.",
-      "You can decline to verify, and you can ask us to delete a submission you have already made.",
-    ],
-  },
-  {
-    title: "4. Information collected automatically",
+    title: "3. Information collected automatically",
     body: [
       "Usage: token consumption per feature, which features you use, and your activity history within your account.",
       "Diagnostics: we use Microsoft Azure Application Insights on both the website and the server to record errors and performance. This includes the pages you visit, the requests your browser makes, the browser and device you use, and an approximate location derived from your IP address. When something fails, an error identifier is shown to you and recorded with the technical detail, so that a report can be matched to what actually went wrong.",
@@ -57,7 +45,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "5. Payments, earnings and bank details",
+    title: "4. Payments, earnings and bank details",
     body: [
       "All card, UPI and netbanking details are entered on Razorpay's checkout and handled by Razorpay. Tokun never receives or stores them.",
       "For payouts, the bank account or UPI ID you add is passed to Razorpay to create a payout account. Tokun stores the resulting account references and the details needed to show you which account you are paid into.",
@@ -66,31 +54,30 @@ const SECTIONS = [
     ],
   },
   {
-    title: "6. How we use your information",
+    title: "5. How we use your information",
     body: [
       "To run the platform and the features you use.",
-      "To process payments, hold and release escrow funds, pay out earnings, and handle refunds and disputes.",
-      "To verify identity where selling or paid work requires it.",
+      "To process payments, hold and release funds, pay out earnings, and handle refunds and disputes.",
       "To email you about your account, your transactions, and things that need your attention — a delivery due, a booking about to lapse, a subscription about to expire.",
       "To review reported content, investigate abuse, prevent fraud, and enforce the Terms.",
       "To find and fix faults, and to understand which parts of the product are used.",
     ],
   },
   {
-    title: "7. What other people can see",
+    title: "6. What other people can see",
     body: [
       "Public: your public profile, your listings, your ratings and reviews, and — once approved by our team — your creator intro video.",
       "The people you deal with: a buyer, seller or client you transact with sees your name, profile, the messages and files you exchange, and the details of that transaction.",
       "Signed agreements: an NDA you sign, including the signature you draw, is stored privately and is readable only by the two parties to that agreement and by Tokun admin staff resolving a dispute about it.",
       "Delivered work: files a creator delivers are stored privately and are opened through links that expire. Before payment is released, a client sees a watermarked preview rather than the original file.",
       "Your organisation: if your account belongs to an organisation, its owner can see your token allowance and how much of it you have used. They cannot read your messages.",
-      "Tokun staff: admin staff can access account, transaction, KYC and dispute data where their work requires it.",
+      "Tokun staff: admin staff can access account, transaction and dispute data where their work requires it.",
     ],
   },
   {
-    title: "8. Who we share data with",
+    title: "7. Who we share data with",
     body: [
-      "Razorpay — payments, escrow transfers, payouts and refunds.",
+      "Razorpay — payments, held funds, payouts and refunds.",
       "Microsoft Azure — hosting, file storage and diagnostics.",
       "MongoDB Atlas — the database.",
       "Google — only if you choose to sign in with Google, or use a Google Meet link created through the platform.",
@@ -100,17 +87,16 @@ const SECTIONS = [
     ],
   },
   {
-    title: "9. Where your data is stored",
+    title: "8. Where your data is stored",
     body: [
       "The platform runs on Microsoft Azure and its database is hosted on MongoDB Atlas. Uploaded files are stored in Azure Blob Storage.",
-      "Files that are meant to be public — listing images and previews, approved intro videos — are stored so that anyone holding the link can view them. Files that are not — ID documents, signed NDAs, delivered work, attachments — are stored privately and reached only through short-lived links issued after we check who is asking.",
+      "Files that are meant to be public — listing images and previews, approved intro videos — are stored so that anyone holding the link can view them. Files that are not — signed agreements, delivered work, attachments — are stored privately and reached only through short-lived links issued after we check who is asking.",
     ],
   },
   {
-    title: "10. How long we keep it",
+    title: "9. How long we keep it",
     body: [
       "Account and profile data: while your account is open.",
-      "KYC documents and their results, if you submitted any: while your account is open, and afterwards only as long as we are required to keep proof of verification. Deleted on request.",
       "Transaction and payout records: retained after account closure, because tax and financial law requires it.",
       "Messages and dispute evidence: kept while the related booking can still be disputed, and afterwards where a dispute was raised.",
       "Diagnostics: kept for a limited period for fault-finding and then discarded.",
@@ -118,7 +104,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "11. Your content",
+    title: "10. Your content",
     body: [
       "You keep ownership of what you create and upload. Listing a product grants buyers a licence to use it as described at the time of purchase.",
       "You are responsible for having the right to upload and sell what you list.",
@@ -126,7 +112,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "12. Cookies and browser storage",
+    title: "11. Cookies and browser storage",
     body: [
       "Tokun keeps your session in your browser's local storage rather than in a cookie. Signing in stores two tokens: a short-lived one that authorises each request and expires within an hour, and a longer-lived one used to obtain the next short-lived token. Signing out removes both and revokes the long-lived one on our servers.",
       "We also store small amounts of local data to remember your preferences and recent activity between visits.",
@@ -134,7 +120,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "13. Security",
+    title: "12. Security",
     body: [
       "Traffic is encrypted in transit. Access to admin tools is separated from ordinary accounts and admin sessions are deliberately short.",
       "Private files are never served from a public address; each read is authorised first and the link issued expires.",
@@ -143,7 +129,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "14. Your rights",
+    title: "13. Your rights",
     body: [
       "You can ask for a copy of your personal data, ask us to correct it, or ask us to delete it.",
       "You can withdraw consent for identity verification and ask us to delete the documents you submitted.",
@@ -153,13 +139,13 @@ const SECTIONS = [
     ],
   },
   {
-    title: "15. Children",
+    title: "14. Children",
     body: [
       "Tokun is not intended for anyone under 18. If we learn that an account belongs to a child, we close it and delete the data.",
     ],
   },
   {
-    title: "16. Changes to this policy",
+    title: "15. Changes to this policy",
     body: [
       "We may update this policy as the platform changes. Material changes are notified in-app or by email, and the date at the top of this page always reflects the current version.",
     ],

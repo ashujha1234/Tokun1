@@ -1077,6 +1077,9 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
             netEarning:
               Number(purchase.pricePaid || 0) - Number(purchase.platformCommission || 0),
             soldAt: purchase.purchasedAt,
+            /* Per purchase, not per checkout — so the id on the sale email is
+               the same one the buyer's refund request would later quote. */
+            orderId: String(purchase._id),
           });
         } catch (sellerMailErr) {
           console.error(
