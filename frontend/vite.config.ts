@@ -23,9 +23,19 @@ export default defineConfig(({ mode }) => ({
 
   plugins: [react()],
 
+  server: {
+    // @shared resolves outside this project root; the dev server has to be
+    // told that directory is allowed or the import 404s in `vite dev` only.
+    fs: { allow: [path.resolve(__dirname), path.resolve(__dirname, "../server/shared")] },
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      /* The welcome doc is generated from ONE builder, shared with the server.
+         It lives under server/ because the backend deploy packages server/**
+         and nothing else — a module outside it would resolve here and be
+         missing in production. See server/shared/welcomeDoc.mjs. */
+      "@shared": path.resolve(__dirname, "../server/shared"),
     },
   },
 

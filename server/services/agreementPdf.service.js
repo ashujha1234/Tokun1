@@ -51,20 +51,52 @@ const PAGE = { w: 595.28, h: 841.89 };
 const MARGIN = { top: 56, bottom: 56, left: 54, right: 54 };
 const CONTENT_W = PAGE.w - MARGIN.left - MARGIN.right;
 
-const INK = rgb(0.09, 0.09, 0.11);
-const MUTED = rgb(0.42, 0.42, 0.46);
-const RULE = rgb(0.85, 0.85, 0.87);
+/* ── The palette, taken from the stylesheet the page uses ───────────────────
+ *
+ * The agreement has a look on the website — a white sheet, a purple wordmark,
+ * purple uppercase section bands, tinted boxes around the brief and the grids.
+ * Rendering it as plain black text produced a document that was correct and
+ * unrecognisable: a party who signed it on screen and then opened the PDF could
+ * reasonably wonder whether it was the same agreement.
+ *
+ * These are the exact values from .sheet/.sec/.quote/.grid in NdaCard.tsx. A
+ * PDF drawn with primitives will never be the page, but it can be the same
+ * document — same colours, same bands, same boxes, same order. */
+const hex = (h) =>
+  rgb(
+    parseInt(h.slice(1, 3), 16) / 255,
+    parseInt(h.slice(3, 5), 16) / 255,
+    parseInt(h.slice(5, 7), 16) / 255
+  );
+
+const INK = hex("#14121b"); // .cell .v — body and values
+const MUTED = hex("#8b8794"); // .cell .k, .tag, .note — labels and fine print
+const SOFT = hex("#6b6675"); // .subtitle, .sig .line
+const BRAND = hex("#7c3aed"); // .brand h1, .sec — the purple
+const RULE = hex("#ece9f3"); // .sec bottom border, .grid border
+const BOX_BG = hex("#faf9fc"); // .grid, .quote background
+const BOX_BAR = hex("#d9d0f5"); // .quote left bar
 
 /* size / leading / space above / colour, per block kind. */
 const STYLE = {
-  title: { size: 20, lead: 26, above: 0, bold: true },
-  subtitle: { size: 13, lead: 18, above: 6, color: MUTED },
-  section: { size: 12, lead: 17, above: 20, bold: true },
-  heading: { size: 11, lead: 15, above: 13, bold: true },
+  // .brand h1 — the wordmark, purple and letter-spaced.
+  title: { size: 20, lead: 26, above: 0, bold: true, color: BRAND, center: true, track: 3 },
+  // .doc-title — centred, and .tag/.subtitle under it.
+  docTitle: { size: 15, lead: 21, above: 10, bold: true, center: true },
+  subtitle: { size: 8.5, lead: 13, above: 4, color: MUTED, center: true, caps: true, track: 1.6 },
+  // .sec — small, uppercase, purple, with a hairline under it.
+  section: { size: 8.5, lead: 13, above: 22, bold: true, color: BRAND, caps: true, track: 1.6, rule: true },
+  heading: { size: 10.5, lead: 15, above: 13, bold: true },
   body: { size: 9.5, lead: 14, above: 6 },
   bullet: { size: 9.5, lead: 14, above: 4, indent: 14 },
-  key: { size: 8, lead: 11, above: 8, color: MUTED, caps: true },
-  value: { size: 9.5, lead: 13, above: 1 },
+  // .cell .k / .lbl — tiny uppercase grey labels.
+  key: { size: 7.5, lead: 11, above: 9, color: MUTED, caps: true, track: 1.1 },
+  // .cell .v — the value, semibold and dark.
+  value: { size: 9.5, lead: 13, above: 1, bold: true },
+  // .quote — the brief, in a tinted box with a purple bar down its left edge.
+  quote: { size: 9.5, lead: 14, above: 6, box: true, indent: 12 },
+  // .note / .disclaimer — the small print at the end.
+  note: { size: 8, lead: 12, above: 8, color: MUTED },
 };
 
 /* ── Text that a standard PDF font can actually draw ────────────────────────
@@ -128,8 +160,10 @@ function decodeEntities(s) {
    the bare div that everything else falls into. */
 const BLOCKS = [
   { re: /^<h1\b/i, kind: "title" },
-  { re: /^<h2\b/i, kind: "title" },
+  { re: /^<h2\b/i, kind: "docTitle" },
   { re: /^<span\s[^>]*class="[^"]*\btag\b/i, kind: "subtitle" },
+  { re: /^<[a-z]+\s[^>]*class="[^"]*\bsubtitle\b/i, kind: "subtitle" },
+  { re: /^<[a-z]+\s[^>]*class="[^"]*\b(note|disclaimer)\b/i, kind: "note" },
   { re: /^<div\s[^>]*class="[^"]*\bsec\b/i, kind: "section" },
   { re: /^<h3\b/i, kind: "heading" },
   { re: /^<div\s[^>]*class="[^"]*\bk\b/i, kind: "key" },
@@ -137,7 +171,7 @@ const BLOCKS = [
   /* The brief sits in div.quote with a div.lbl caption above it, and the text
      is a direct child of the div rather than inside a <p>. */
   { re: /^<div\s[^>]*class="[^"]*\blbl\b/i, kind: "key" },
-  { re: /^<div\s[^>]*class="[^"]*\bquote\b/i, kind: "body" },
+  { re: /^<div\s[^>]*class="[^"]*\bquote\b/i, kind: "quote" },
   { re: /^<li\b/i, kind: "bullet" },
   { re: /^<(p|td|th)\b/i, kind: "body" },
 ];
@@ -223,6 +257,17 @@ function parseBlocks(html) {
 }
 
 /**
+ * How wide a run actually draws, tracking included.
+ *
+ * Drawing, wrapping and centring all have to agree on this, or a tracked line
+ * centres off-axis and wraps in the wrong place.
+ */
+function runWidth(run, fonts, st) {
+  const w = fonts.pick(run).widthOfTextAtSize(run.text, st.size);
+  return st.track ? w + st.track * run.text.length : w;
+}
+
+/**
  * Greedy word wrap over styled runs. Returns lines of runs.
  *
  * Whitespace-faithful on purpose. The obvious version — split each run on " "
@@ -234,8 +279,9 @@ function parseBlocks(html) {
  * So the text is tokenised into words and the actual gaps between them, and a
  * gap is only drawn where the source had one.
  */
-function wrapRuns(runs, fonts, size, maxWidth) {
-  const widthOf = (text, run) => fonts.pick(run).widthOfTextAtSize(text, size);
+function wrapRuns(runs, fonts, size, maxWidth, track = 0) {
+  const widthOf = (text, run) =>
+    fonts.pick(run).widthOfTextAtSize(text, size) + track * text.length;
 
   // Flatten to tokens that remember which run they came from. \n is a <br>
   // that survived the scan and forces a break.
@@ -349,7 +395,7 @@ async function agreementHtmlToPdf(html, { title = "Tokun Agreement" } = {}) {
     }));
     if (st.caps) runs = runs.map((r) => ({ ...r, text: r.text.toUpperCase() }));
 
-    const lines = wrapRuns(runs, fonts, st.size, CONTENT_W - indent);
+    const lines = wrapRuns(runs, fonts, st.size, CONTENT_W - indent, st.track || 0);
     if (!lines.length) continue;
 
     y -= st.above;
@@ -359,21 +405,42 @@ async function agreementHtmlToPdf(html, { title = "Tokun Agreement" } = {}) {
     const needed = st.lead * Math.min(lines.length, 2) + (st.above || 0);
     if (y - needed < MARGIN.bottom) newPage();
 
-    if (block.kind === "section") {
-      page.drawLine({
-        start: { x: MARGIN.left, y: y + 6 },
-        end: { x: PAGE.w - MARGIN.right, y: y + 6 },
-        thickness: 0.7,
-        color: RULE,
+    /* .quote — a tinted panel with a purple bar down its left edge. Drawn
+       before the text so it sits behind it, which means its height has to be
+       known up front: that is why the lines are wrapped above rather than as
+       they are drawn. */
+    if (st.box) {
+      const boxH = lines.length * st.lead + 14;
+      const boxTop = y + 4;
+      page.drawRectangle({
+        x: MARGIN.left,
+        y: boxTop - boxH,
+        width: CONTENT_W,
+        height: boxH,
+        color: BOX_BG,
       });
-      y -= 6;
+      page.drawRectangle({
+        x: MARGIN.left,
+        y: boxTop - boxH,
+        width: 2.5,
+        height: boxH,
+        color: BOX_BAR,
+      });
+      y -= 7;
     }
 
     lines.forEach((line, i) => {
       if (y - st.lead < MARGIN.bottom) newPage();
       y -= st.lead;
 
-      let x = MARGIN.left + indent;
+      /* .doc-title and .brand h1 are centred; everything else runs from the
+         left margin. Measured per line, so a wrapped title centres each of its
+         lines rather than the block. */
+      const lineW = line.reduce((w, r) => w + runWidth(r, fonts, st), 0);
+      let x = st.center
+        ? MARGIN.left + Math.max(0, (CONTENT_W - lineW) / 2)
+        : MARGIN.left + indent;
+
       /* Only the first line. Drawn on every line, a three-line bullet came out
          as three bullets, which reads as three obligations rather than one. */
       if (block.kind === "bullet" && i === 0) {
@@ -391,13 +458,41 @@ async function agreementHtmlToPdf(html, { title = "Tokun Agreement" } = {}) {
            The width is still advanced, so the rest of the line keeps its
            position instead of sliding left over the gap. */
         try {
-          page.drawText(run.text, { x, y, size: st.size, font, color: st.color || INK });
+          if (st.track) {
+            /* Letter-spacing, the way .sec and .brand h1 use it. pdf-lib has no
+               tracking option and there is no faking it inside one string:
+               injecting a space between characters spaces them by a SPACE, and
+               "PAYMENT-PROTECTED ENGAGEMENT" came out as an unreadable ladder.
+               So the characters are placed individually, `track` POINTS apart. */
+            let cx = x;
+            for (const ch of run.text) {
+              page.drawText(ch, { x: cx, y, size: st.size, font, color: st.color || INK });
+              cx += font.widthOfTextAtSize(ch, st.size) + st.track;
+            }
+          } else {
+            page.drawText(run.text, { x, y, size: st.size, font, color: st.color || INK });
+          }
         } catch (err) {
           console.error("agreementPdf: skipped an unrenderable run:", err.message);
         }
-        x += font.widthOfTextAtSize(run.text, st.size);
+        x += runWidth(run, fonts, st);
       }
     });
+
+    /* .sec's border-bottom. Drawn after the text, under the last line, which is
+       where the CSS puts it — above it the band reads as a separator belonging
+       to the section before. */
+    if (st.rule) {
+      page.drawLine({
+        start: { x: MARGIN.left, y: y - 5 },
+        end: { x: PAGE.w - MARGIN.right, y: y - 5 },
+        thickness: 0.7,
+        color: RULE,
+      });
+      y -= 5;
+    }
+
+    if (st.box) y -= 7;
   }
 
   /* Page numbers last, once the count is known. An unpaginated contract is the

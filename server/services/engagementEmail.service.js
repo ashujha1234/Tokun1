@@ -35,6 +35,59 @@ const AccessRequest = require("../models/AccessRequest");
 const { RULES } = require("../config/engagementRules");
 const { downloadBlobToBuffer } = require("../utils/blobStorage");
 const { agreementHtmlToPdf } = require("./agreementPdf.service");
+
+/**
+ * The welcome doc, as a PDF, for one side of the engagement.
+ *
+ * Built from the SAME builder the app's modal uses — server/shared/
+ * welcomeDoc.mjs — so the document a party is emailed and the one they see
+ * in the app cannot drift apart. That file explains why it lives where it does.
+ *
+ * Loaded with a dynamic import() because it is ESM and this file is CommonJS.
+ * Imported inside the function rather than at module load so that a problem
+ * with it surfaces as one missing attachment rather than a server that will not
+ * boot.
+ *
+ * Returns null on any failure: the agreements are the legally load-bearing
+ * attachments and must go out regardless of whether this one renders.
+ */
+async function welcomeDocPdf(order, cfg, viewerRole) {
+  try {
+    const { buildWelcomeHtml } = await import("../shared/welcomeDoc.mjs");
+    const { RULES } = require("../config/engagementRules");
+
+    const html = buildWelcomeHtml(
+      {
+        orderKind: cfg === KIND_CONFIG.hire ? "hire" : "service",
+        orderId: String(order._id),
+        title: order[cfg.titleField],
+        brief: order[cfg.briefField],
+        amount: order.amount,
+        totalPayable: order.totalPayable,
+        currency: order.currency || "INR",
+        deliveryDays: order.deliveryDays,
+        deliveryDueAt: order[cfg.dueAtField],
+        revisionsAllowed: order.revisionsAllowed,
+        revisionsUsed: order.revisionsUsed,
+        escrowExpiresAt: order.escrowExpiresAt,
+        status: order.status,
+        fundsStatus: order.fundsStatus,
+        paidAt: order.paidAt,
+        clientName: order[cfg.buyerField]?.name,
+        creatorName: order[cfg.sellerField]?.name,
+        viewerRole,
+      },
+      RULES
+    );
+
+    return await agreementHtmlToPdf(html, {
+      title: `Tokun — how this engagement works`,
+    });
+  } catch (err) {
+    console.error(`engagementEmail: welcome doc PDF failed for ${order._id}:`, err.message);
+    return null;
+  }
+}
 const {
   ACCENT,
   TEXT,
@@ -303,6 +356,14 @@ async function sendEngagementStartedEmails(orderKind, orderId) {
       },
     ];
 
+    /* Rendered once per side, before the loop, so a send that retries does not
+       re-render the document. Sequential rather than Promise.all: this is off
+       the response path already and two pdf-lib renders competing for the event
+       loop only slows both. */
+    for (const s of sends) {
+      if (s.to) s.welcome = await welcomeDocPdf(order, cfg, s.role);
+    }
+
     for (const s of sends) {
       if (!s.to) continue;
       try {
@@ -322,10 +383,24 @@ async function sendEngagementStartedEmails(orderKind, orderId) {
           rows,
           cta: { label: "Open the engagement", href: orderUrl },
           footerNote: attachments.length
-            ? "Your signed agreement is attached as a PDF. Keep it — it's the version that was signed, and it won't change."
+            ? "Two things are attached: your signed agreement — keep it, it's the version that was signed and it won't change — and a short guide to how this engagement runs, with the dates and the deadlines in it."
             : "You can see the full brief, timeline and checklist on the engagement page at any time.",
           receivingBecause: "a funded engagement you're part of on Tokun.World",
-          attachments,
+          /* Per recipient, not shared: the welcome doc is written from one
+             side's point of view ("you'll have 72 hours to approve", vs "the
+             money is held until you deliver"), so the client's copy and the
+             creator's copy are different documents. The agreements are the
+             same for both and are reused. */
+          attachments: s.welcome
+            ? [
+                ...attachments,
+                {
+                  filename: `Tokun-How-this-works-${String(order._id).slice(-6)}.pdf`,
+                  content: s.welcome,
+                  contentType: "application/pdf",
+                },
+              ]
+            : attachments,
         });
       } catch (err) {
         // One address failing must not stop the other from being told.
