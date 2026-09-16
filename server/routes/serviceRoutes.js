@@ -166,6 +166,10 @@ const AccessRequest = require("../models/AccessRequest");
 const { deadlineState, isOverdueAfterBlocking } = require("../utils/deliveryDeadline");
 const { tempUploadDir } = require("../utils/privateUploadDirs");
 const { generateInvoicePDF } = require("../services/invoice.service");
+const {
+  fetchPaymentDetails,
+  invoiceDetailRows,
+} = require("../services/paymentDetails.service");
 const { sendInvoiceEmail } = require("../services/email.service");
 const {
   sendNewWorkRequestEmail,
@@ -1395,12 +1399,36 @@ router.post("/orders/:orderId/verify-payment", requireAuth, blockIfSuspended, as
         const subtotal = Number(order.totalPayable);
         const gst = 0;
         const total = +subtotal.toFixed(2);
-        const items = [{ title: `Service: ${order.serviceTitle}`, price: subtotal }];
+        // The booking's own name — see the note in routes/hire.routes.js.
+        const items = [
+          {
+            title: order.serviceTitle || "Service booking",
+            subtitle: order.sellerId?.name ? `Creator: ${order.sellerId.name}` : undefined,
+            price: subtotal,
+          },
+        ];
 
         const logoPath = path.join(__dirname, "../assets/icons/Tokun.png");
         const logoBase64 = fs.existsSync(logoPath)
           ? `data:image/png;base64,${fs.readFileSync(logoPath).toString("base64")}`
           : "";
+
+        /* How it was paid, and which order it belongs to.
+
+           An invoice is read months later against a card statement or a
+           Razorpay settlement, and until now it carried neither the payment
+           method nor the gateway's own id for the payment — only our invoice
+           number, which Razorpay has never heard of. Fetched once and handed to
+           BOTH the PDF and the email body, so the two cannot disagree. */
+        const payment = await fetchPaymentDetails(order.razorpayPaymentId);
+        const details = invoiceDetailRows({
+          payment,
+          orderId: String(order._id),
+          orderKind: "service",
+          projectTitle: order.serviceTitle || "Service booking",
+          // Spelled out, not just the symbol — "INR" matters to anyone abroad.
+          currencyAmount: `${payment.currency || "INR"} ${chargeAmount.toFixed(2)}`,
+        });
 
         const pdfBuffer = await generateInvoicePDF({
           logo: logoBase64,
@@ -1412,6 +1440,7 @@ router.post("/orders/:orderId/verify-payment", requireAuth, blockIfSuspended, as
           // Makes the invoice say what this payment actually is — money held in
           // escrow until the buyer approves, not a completed purchase.
           kind: "service",
+          details,
         });
 
         await sendInvoiceEmail({
@@ -1426,6 +1455,7 @@ router.post("/orders/:orderId/verify-payment", requireAuth, blockIfSuspended, as
           total,
           pdfBuffer,
           kind: "service",
+          details,
         });
       }
     } catch (invoiceErr) {

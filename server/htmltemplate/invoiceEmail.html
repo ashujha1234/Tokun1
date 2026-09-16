@@ -62,6 +62,12 @@
              below already says everything this sentence did. -->
         {{INTRO_ROW}}
 
+        <!-- PAYMENT & REFERENCE DETAILS. How it was paid, the gateway's own id
+             for the payment, the currency spelled out, and which order this
+             belongs to — the things an invoice is asked for once it is being
+             matched against a statement. Empty for invoices with none of it. -->
+        {{DETAIL_ROWS}}
+
         <!-- PLAN CARD (subscriptions only — empty string otherwise) -->
         <tr>
           <td style="padding:28px 24px 0">

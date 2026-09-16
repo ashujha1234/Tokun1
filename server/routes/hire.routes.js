@@ -392,6 +392,10 @@ const { serveHeldPreview } = require("../utils/escrowPreviewGate");
 const { warmVideoPreview } = require("../utils/deliverableVideoPreview");
 const { fetchTransferIdsByAccount } = require("../utils/routePayouts");
 const { generateInvoicePDF } = require("../services/invoice.service");
+const {
+  fetchPaymentDetails,
+  invoiceDetailRows,
+} = require("../services/paymentDetails.service");
 const { sendInvoiceEmail } = require("../services/email.service");
 const {
   sendNewWorkRequestEmail,
@@ -1409,7 +1413,11 @@ router.post("/:dealId/verify-payment", requireAuth, blockIfSuspended, async (req
         const chargeAmount = Number(deal.totalPayable || deal.amount);
         const items = [
           {
-            title: `Hire: ${deal.title || "Custom work"}`,
+            /* The project's own name, not "Hire: <name>". The kind of
+               engagement is already said by the intro line and by the Project
+               ID row above; prefixing it here turned the one field a client
+               scans for into "Hire: hiring for the python app". */
+            title: deal.title || "Custom work",
             subtitle: deal.freelancerId?.name ? `Freelancer: ${deal.freelancerId.name}` : undefined,
             price: chargeAmount,
           },
@@ -1433,6 +1441,23 @@ router.post("/:dealId/verify-payment", requireAuth, blockIfSuspended, async (req
           ? `data:image/png;base64,${fs.readFileSync(logoPath).toString("base64")}`
           : "";
 
+        /* How it was paid, and which order it belongs to.
+
+           An invoice is read months later against a card statement or a
+           Razorpay settlement, and until now it carried neither the payment
+           method nor the gateway's own id for the payment — only our invoice
+           number, which Razorpay has never heard of. Fetched once and handed to
+           BOTH the PDF and the email body, so the two cannot disagree. */
+        const payment = await fetchPaymentDetails(deal.razorpayPaymentId);
+        const details = invoiceDetailRows({
+          payment,
+          orderId: String(deal._id),
+          orderKind: "hire",
+          projectTitle: deal.title || "Custom work",
+          // Spelled out, not just the symbol — "INR" matters to anyone abroad.
+          currencyAmount: `${payment.currency || "INR"} ${chargeAmount.toFixed(2)}`,
+        });
+
         const pdfBuffer = await generateInvoicePDF({
           logo: logoBase64,
           date,
@@ -1444,6 +1469,7 @@ router.post("/:dealId/verify-payment", requireAuth, blockIfSuspended, async (req
           // escrow until the client approves, and split by completion if the
           // project is cancelled after work starts.
           kind: "hire",
+          details,
         });
 
         await sendInvoiceEmail({
@@ -1458,6 +1484,7 @@ router.post("/:dealId/verify-payment", requireAuth, blockIfSuspended, async (req
           total,
           pdfBuffer,
           kind: "hire",
+          details,
         });
       }
     } catch (invoiceErr) {

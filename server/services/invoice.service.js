@@ -1472,6 +1472,34 @@ exports.generateInvoicePDF = async (data) => {
   y -= 54;
   line(y, { color: COLORS.line, thickness: 1 });
 
+  /* ================= PAYMENT & REFERENCE DETAILS ================= */
+  /* What an invoice gets asked for months later, once it is being matched
+     against a card statement or a Razorpay settlement: how it was paid, the
+     gateway's own id for the payment (ours is the invoice number, which
+     Razorpay has never heard of), the currency spelled out, and the id of the
+     order it belongs to.
+
+     Built in services/paymentDetails.service.js so this and the emailed body
+     list exactly the same things — they are one document, and people hold them
+     side by side. Rows with an empty value are skipped, so a detail nobody
+     could determine costs a line rather than printing a blank one. */
+  const details = (data.details || []).filter((d) => d && d.value);
+  if (details.length) {
+    y -= 22;
+    const labelW = 120;
+    for (const d of details) {
+      // A long project title wraps instead of running off the page edge.
+      const valueLines = wrapText(String(d.value), fontReg, 11, R - L - labelW, 2);
+      text(d.label, L, y, { size: 10, color: COLORS.muted });
+      valueLines.forEach((vl, i) => {
+        text(vl, L + labelW, y - i * 14, { size: 11 });
+      });
+      y -= 14 * Math.max(1, valueLines.length) + 4;
+    }
+    y -= 8;
+    line(y, { color: COLORS.line, thickness: 1 });
+  }
+
   /* ================= INTRO DESCRIPTION (every invoice) ================= */
   y -= 24;
   // A prompt download, a booked service and a funded project are three

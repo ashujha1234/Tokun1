@@ -326,7 +326,8 @@ exports.sendNewWorkRequestEmail = async ({
       title || "your work"
     )}</strong>.`,
     rows: [
-      orderIdRow(orderId, kind === "booking" ? "Booking ID" : "Project ID"),
+      // "Order ID" everywhere — see the note in paymentDetails.service.js.
+      orderIdRow(orderId),
       { label: "Client", value: clientName || "—" },
       { label: kind === "booking" ? "Booking" : "Project", value: title || "—" },
       { label: amount ? "Amount" : "", value: amount ? rupees(amount) : "", emphasis: true },

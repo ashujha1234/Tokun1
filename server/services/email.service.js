@@ -146,6 +146,11 @@ exports.sendInvoiceEmail = async ({
   // "prompt" | "service" | "hire" — decides the intro line and the escrow /
   // refund note. Omitted falls back to the generic wording.
   kind,
+  /* [{label, value}] — payment method, gateway transaction id, currency,
+     order id, project title. Built by services/paymentDetails.service.js and
+     passed to generateInvoicePDF() unchanged, so the body and its own
+     attachment cannot list different things. */
+  details,
 }) => {
   const templatePath = path.join(
     __dirname,
@@ -169,6 +174,28 @@ exports.sendInvoiceEmail = async ({
     )
     .join("");
 
+  /* Same rows the PDF draws. Skipped where a value could not be determined —
+     a blank "Payment method:" line is worse than no line, because it reads as
+     information we lost rather than information we never had. */
+  const detailRowsHtml = (details || [])
+    .filter((d) => d && d.value)
+    .map(
+      (d) => `
+      <tr>
+        <td style="padding:6px 0;font-size:12px;color:${TEXT.muted};white-space:nowrap">${escapeHtml(d.label)}</td>
+        <td align="right" style="padding:6px 0;font-size:12px;color:#ffffff;word-break:break-word">${escapeHtml(d.value)}</td>
+      </tr>`
+    )
+    .join("");
+
+  const detailBlockHtml = detailRowsHtml
+    ? `<tr><td style="padding:18px 24px 0">
+         <div style="border-radius:10px;background:${SURFACE.inset};border:1px solid ${SURFACE.rule};padding:12px 16px">
+           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${detailRowsHtml}</table>
+         </div>
+       </td></tr>`
+    : "";
+
   const planCardHtml = buildPlanCardHtml(planCard);
   const introText = buildIntroText(planCard, kind);
   const invoiceNoteHtml = buildInvoiceNoteHtml(planCard, kind);
@@ -185,6 +212,7 @@ exports.sendInvoiceEmail = async ({
         ? `<tr><td style="padding:20px 24px 0;font-size:13px;line-height:1.6;color:#C7C7CD">${introText}</td></tr>`
         : ""
     )
+    .replace(/{{DETAIL_ROWS}}/g, detailBlockHtml)
     .replace(/{{INVOICE_NOTE_HTML}}/g, invoiceNoteHtml)
     .replace(/{{PLAN_CARD_HTML}}/g, planCardHtml)
     .replace(/{{ITEMS_ROWS}}/g, itemsRows)

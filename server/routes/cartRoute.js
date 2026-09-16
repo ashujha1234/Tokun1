@@ -35,6 +35,10 @@ const {
 const PlatformWallet = require("../models/PlatformWallet");
 const { route } = require("./authRoutes");
 const { generateInvoicePDF } = require("../services/invoice.service");
+const {
+  fetchPaymentDetails,
+  invoiceDetailRows,
+} = require("../services/paymentDetails.service");
 const { sendInvoiceEmail } = require("../services/email.service");
 const { sendPromptSoldEmail } = require("../services/creatorEmail.service");
 const {
@@ -1020,6 +1024,24 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
             ? `data:image/png;base64,${fs.readFileSync(logoPath).toString("base64")}`
             : "";
 
+        /* One checkout, one payment, several purchases.
+
+           So the product-level rows only make sense when the cart held a single
+           item; with three, "Project: <one of them>" would be worse than
+           saying nothing, and the items table above already lists all three.
+           The payment rows are the same either way — it was one payment. */
+        const payment = await fetchPaymentDetails(purchases[0].razorpayPaymentId);
+        const single = purchases.length === 1 ? purchases[0] : null;
+        const details = invoiceDetailRows({
+          payment,
+          orderId: single ? String(single._id) : "",
+          orderKind: "prompt",
+          projectTitle: single
+            ? single.promptSnapshot?.title || "Product"
+            : `${purchases.length} products`,
+          currencyAmount: `${payment.currency || "INR"} ${subtotal.toFixed(2)}`,
+        });
+
           const pdfBuffer = await generateInvoicePDF({
             logo: logoBase64,
             date,
@@ -1028,8 +1050,9 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
             buyerEmail: req.user.email || "",
             items,
             // Instant delivery and a 24-hour refund window — a very different
-            // thing from the escrow-backed service and hire invoices.
+            // thing from the held-payment service and hire invoices.
             kind: "prompt",
+            details,
           });
 
           await sendInvoiceEmail({
@@ -1044,6 +1067,7 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
             total,
             pdfBuffer,
             kind: "prompt",
+            details,
           });
         }
       } catch (invoiceErr) {

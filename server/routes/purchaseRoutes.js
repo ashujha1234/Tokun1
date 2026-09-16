@@ -405,6 +405,10 @@ const path = require("path");
 const fs = require("fs");
 const { embedWatermark, extractWatermark } = require("../utils/nvisibleWatermark");
 const { generateInvoicePDF } = require("../services/invoice.service");
+const {
+  fetchPaymentDetails,
+  invoiceDetailRows,
+} = require("../services/paymentDetails.service");
 const { sendInvoiceEmail } = require("../services/email.service");
 const { sendPromptSoldEmail } = require("../services/creatorEmail.service");
 const {
@@ -1121,6 +1125,19 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
           ? `data:image/png;base64,${fs.readFileSync(logoPath).toString("base64")}`
           : "";
 
+        /* Same block the service and hire invoices carry — see the note at
+           the equivalent call site in routes/hire.routes.js. A prompt purchase
+           is the one people are most likely to query against a card statement,
+           because it is small and there are many of them. */
+        const payment = await fetchPaymentDetails(purchase.razorpayPaymentId);
+        const details = invoiceDetailRows({
+          payment,
+          orderId: String(purchase._id),
+          orderKind: "prompt",
+          projectTitle: prompt.title || "Product",
+          currencyAmount: `${payment.currency || "INR"} ${subtotal.toFixed(2)}`,
+        });
+
         const pdfBuffer = await generateInvoicePDF({
           logo: logoBase64,
           date,
@@ -1129,8 +1146,9 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
           buyerEmail: req.user.email || "",
           items,
           // Instant delivery and a 24-hour refund window — a very different
-          // thing from the escrow-backed service and hire invoices.
+          // thing from the held-payment service and hire invoices.
           kind: "prompt",
+          details,
         });
 
         if (req.user.email) {
@@ -1146,6 +1164,7 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
             total,
             pdfBuffer,
             kind: "prompt",
+            details,
           });
         }
       } catch (invoiceErr) {
