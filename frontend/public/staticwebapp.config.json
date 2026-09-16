@@ -4,13 +4,20 @@
     "exclude": [
       "/assets/*",
       "/models/*",
-      "/*.{png,jpg,jpeg,gif,svg,ico,webp,woff,woff2,ttf,eot,json,txt,map,glb,gltf,bin}"
+      "/hdri/*",
+      "/*.{png,jpg,jpeg,gif,svg,ico,webp,woff,woff2,ttf,eot,json,txt,map,glb,gltf,bin,hdr}"
     ]
   },
 
   "routes": [
     {
       "route": "/assets/*",
+      "headers": {
+        "Cache-Control": "public, max-age=31536000, immutable"
+      }
+    },
+    {
+      "route": "/hdri/*",
       "headers": {
         "Cache-Control": "public, max-age=31536000, immutable"
       }

@@ -13,7 +13,7 @@
  */
 import { useEffect, useMemo, useRef } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { OrbitControls, useGLTF } from '@react-three/drei'
+import { OrbitControls, useGLTF, Environment } from '@react-three/drei'
 import * as THREE from 'three'
 
 /* Served from public/, and cached for a year by the /models/* rule in
@@ -122,25 +122,25 @@ function GlobeScene() {
       <directionalLight position={[-3, -2, -4]} intensity={0.85} color="#1A73E8" />
       <pointLight position={[2, 1, 4]} intensity={1.15} color="#FF14EF" />
       <spotLight position={[0, 6, 6]} angle={0.45} penumbra={1} intensity={1.35} color="#ffffff" />
-      {/* No <Environment preset>. It is why this globe rendered on localhost
-          and never in production.
-
-          drei's presets are not bundled — `preset="city"` fetches an HDR from
-          https://raw.githack.com/pmndrs/drei-assets/…/hdri/ at runtime. That
-          host is not in the CSP's connect-src (public/staticwebapp.config.json),
-          so the browser blocked it, drei threw, and CanvasErrorBoundary swapped
-          the whole canvas for the fallback circle. The dev server applies no
-          CSP, which is exactly why it looked fine locally.
-
-          Allow-listing the CDN would fix it and make a landing-page visual
-          depend on a third party's repository — the same trade this codebase
-          already refused for the email icons (see services/emailSocialIcons.js).
-          Self-hosting the HDR means shipping another multi-megabyte asset to a
-          page whose 8 MB model is already the thing people wait on.
-
-          So it goes. The six lights above are a complete lighting rig on their
-          own; what is lost is image-based reflection on the model's metallic
-          surfaces, not whether it is lit. */}
+      {/* The same HDR as before, served by us.
+          
+          `preset="city"` is drei shorthand for this exact file, but drei fetches
+          it from raw.githack.com — a host outside our CSP's connect-src. So in
+          production the browser blocked it, drei threw, and the error boundary
+          replaced the canvas with the fallback circle. It worked locally only
+          because the dev server applies no CSP.
+          
+          Dropping it altogether was tried first and is what turned the globe
+          into a plain white ball: this model's shading comes almost entirely
+          from the environment map, not from the six lights above. Generating
+          one with PMREM/RoomEnvironment instead rendered nothing at all under
+          software WebGL, so it is not something to rely on either.
+          
+          Self-hosted it is. 1.5 MB, same-origin so 'self' already covers it,
+          and cached for a year by the /hdri/* rule in
+          public/staticwebapp.config.json. If it is ever replaced, rename the
+          file — that rule says immutable. */}
+      <Environment files="/hdri/potsdamer_platz_1k.hdr" />
       <GlobeRig />
       <OrbitControls
         enableZoom={false}
