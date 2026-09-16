@@ -98,15 +98,33 @@ async function fetchPaymentDetails(paymentId) {
  * here — they belong on the order page and in the delivery emails, which is
  * where they are actually true.
  */
-function invoiceDetailRows({ payment, orderId, orderKind, projectTitle, currencyAmount }) {
+function invoiceDetailRows({ payment, orderId, orderKind, projectTitle, currencyAmount, purchasedAt }) {
+  /* What the thing bought is CALLED. Unlike the id label below, this one does
+     vary by kind, and has to: a prompt is a product someone downloaded, and
+     labelling it "Project" reads as though they commissioned it. */
+  const titleLabel =
+    { prompt: "Product", service: "Service", hire: "Project" }[orderKind] || "Item";
+
+  /* The date the money moved, spelled out rather than left to the invoice
+     header's dd/mm/yyyy. This is what a refund email is matched against months
+     later — "you were charged on 16 Sept, refunded on 22 Sept" — so the two
+     documents say it the same way. */
+  const paidOn = purchasedAt
+    ? new Date(purchasedAt).toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : "";
   /* "Order ID" on every kind, deliberately.
      It was "Project ID" for hire and "Booking ID" for service, which reads fine
      on its own document and badly across a set of them: a person with an
      invoice, a refund email and a support thread open is matching ONE number,
      and three names for it makes them check whether it is the same number. */
   return [
-    { label: "Project", value: projectTitle || "" },
+    { label: titleLabel, value: projectTitle || "" },
     { label: "Order ID", value: orderId ? String(orderId) : "" },
+    { label: "Purchase date", value: paidOn },
     { label: "Payment method", value: [payment?.method, payment?.methodDetail].filter(Boolean).join(" · ") },
     /* Separate from the invoice number on purpose: the invoice number is ours,
        this is the gateway's, and reconciling a Razorpay settlement against our

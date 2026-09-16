@@ -1136,6 +1136,7 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
           orderKind: "prompt",
           projectTitle: prompt.title || "Product",
           currencyAmount: `${payment.currency || "INR"} ${subtotal.toFixed(2)}`,
+          purchasedAt: purchase.purchasedAt || purchase.createdAt,
         });
 
         const pdfBuffer = await generateInvoicePDF({
@@ -1573,6 +1574,8 @@ router.post("/:purchaseId/refund-request", requireAuth, refundUpload.array("atta
            buyer's entire refund history and leaves them to find this one. */
         orderId: String(purchase._id),
         refundRequestId: String(refundRequest._id),
+        purchasedAt: purchase.purchasedAt || purchase.createdAt,
+        requestedAt: refundRequest.createdAt,
       });
     } catch (mailErr) {
       console.error("Refund-received email failed (request still filed):", mailErr.message);

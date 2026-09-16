@@ -1427,7 +1427,9 @@ router.post("/orders/:orderId/verify-payment", requireAuth, blockIfSuspended, as
           orderKind: "service",
           projectTitle: order.serviceTitle || "Service booking",
           // Spelled out, not just the symbol — "INR" matters to anyone abroad.
-          currencyAmount: `${payment.currency || "INR"} ${chargeAmount.toFixed(2)}`,
+          // `subtotal` here, not `chargeAmount` — this route never declares one.
+          currencyAmount: `${payment.currency || "INR"} ${subtotal.toFixed(2)}`,
+          purchasedAt: order.paidAt,
         });
 
         const pdfBuffer = await generateInvoicePDF({

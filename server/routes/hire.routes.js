@@ -1456,6 +1456,7 @@ router.post("/:dealId/verify-payment", requireAuth, blockIfSuspended, async (req
           projectTitle: deal.title || "Custom work",
           // Spelled out, not just the symbol — "INR" matters to anyone abroad.
           currencyAmount: `${payment.currency || "INR"} ${chargeAmount.toFixed(2)}`,
+          purchasedAt: deal.paidAt,
         });
 
         const pdfBuffer = await generateInvoicePDF({

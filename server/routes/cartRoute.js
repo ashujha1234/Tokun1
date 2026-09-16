@@ -1040,6 +1040,7 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
             ? single.promptSnapshot?.title || "Product"
             : `${purchases.length} products`,
           currencyAmount: `${payment.currency || "INR"} ${subtotal.toFixed(2)}`,
+          purchasedAt: purchases[0].purchasedAt || purchases[0].createdAt,
         });
 
           const pdfBuffer = await generateInvoicePDF({

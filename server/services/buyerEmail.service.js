@@ -343,6 +343,12 @@ exports.sendRefundRequestReceivedEmail = async ({
   reason,
   orderId,
   refundRequestId,
+  /* The two dates this email is read against: when the money went out, and
+     when the request landed. The 24-hour refund window is the gap between
+     them, so a buyer who is later told they were outside it can see for
+     themselves rather than take our word for it. */
+  purchasedAt,
+  requestedAt,
 }) =>
   sendShellEmail({
     to,
@@ -356,6 +362,8 @@ exports.sendRefundRequestReceivedEmail = async ({
     )}</strong> and it's with our team.`,
     rows: [
       orderIdRow(orderId),
+      { label: purchasedAt ? "Purchased on" : "", value: purchasedAt ? onDate(purchasedAt) : "" },
+      { label: requestedAt ? "Requested on" : "", value: requestedAt ? onDate(requestedAt) : "" },
       { label: amount ? "Amount requested" : "", value: amount ? rupees(amount) : "" },
       { label: reason ? "Your reason" : "", value: reason || "" },
     ],
