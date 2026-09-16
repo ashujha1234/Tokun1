@@ -97,6 +97,10 @@ const STYLE = {
   quote: { size: 9.5, lead: 14, above: 6, box: true, indent: 12 },
   // .note / .disclaimer — the small print at the end.
   note: { size: 8, lead: 12, above: 8, color: MUTED },
+  // A step heading, carrying its number as a prefix.
+  stepLabel: { size: 10, lead: 14, above: 11, bold: true },
+  // .dot never becomes a line of its own — see pendingPrefix in the draw loop.
+  stepnum: { size: 10, lead: 0, above: 0 },
 };
 
 /* ── Text that a standard PDF font can actually draw ────────────────────────
@@ -172,6 +176,13 @@ const BLOCKS = [
      is a direct child of the div rather than inside a <p>. */
   { re: /^<div\s[^>]*class="[^"]*\blbl\b/i, kind: "key" },
   { re: /^<div\s[^>]*class="[^"]*\bquote\b/i, kind: "quote" },
+  /* The numbered steps in the welcome doc: <li> holds a .dot carrying the step
+     number, then a .label and a .what beside it. Without these the <li> block
+     swallowed the number and the step came out as "-1" on one line with
+     "FundedYou are here" under it. */
+  { re: /^<div\s[^>]*class="[^"]*\bdot\b/i, kind: "stepnum" },
+  { re: /^<div\s[^>]*class="[^"]*\blabel\b/i, kind: "stepLabel" },
+  { re: /^<div\s[^>]*class="[^"]*\bwhat\b/i, kind: "body" },
   { re: /^<li\b/i, kind: "bullet" },
   { re: /^<(p|td|th)\b/i, kind: "body" },
 ];
@@ -238,6 +249,14 @@ function parseBlocks(html) {
     if (name === "b" || name === "strong") bold += closing ? -1 : 1;
     else if (name === "i" || name === "em") italic += closing ? -1 : 1;
     else if (!closing) {
+      /* A chip rendered beside the text it annotates — .badge is "You are here"
+         next to "Funded". Flowing them into one run produced "FundedYou are
+         here": the markup relies on the box around the badge to separate them,
+         and a PDF line has no boxes. */
+      if (/class="[^"]*\bbadge\b/i.test(tag) && current && current.runs.some((r) => r.text.trim())) {
+        current.runs.push({ text: " \u2014 ", bold: false, italic: false });
+      }
+
       const hit = BLOCKS.find((b) => b.re.test(tag));
       if (hit) {
         close();
@@ -383,9 +402,25 @@ async function agreementHtmlToPdf(html, { title = "Tokun Agreement" } = {}) {
     y = PAGE.h - MARGIN.top;
   };
 
+  /* The step number belongs to the heading that follows it, not to a line of
+     its own — and the <li> around it must not also draw a bullet, or every step
+     reads as "-1". */
+  let pendingPrefix = "";
+
   for (const block of blocks) {
     const st = STYLE[block.kind] || STYLE.body;
+
+    if (block.kind === "stepnum") {
+      const n = block.runs.map((r) => r.text).join("").trim();
+      pendingPrefix = n ? `${n}. ` : "";
+      continue;
+    }
     const indent = st.indent || 0;
+
+    if (pendingPrefix) {
+      block.runs.unshift({ text: pendingPrefix, bold: true, italic: false });
+      pendingPrefix = "";
+    }
 
     let runs = block.runs.map((r) => ({
       ...r,

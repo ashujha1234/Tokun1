@@ -23,20 +23,24 @@
  * icon set. The glyphs in assets/email are rendered from simple-icons paths
  * (CC0) at 2x and displayed at 32px.
  *
- * ── Why an unconfigured network is dropped, not linked to "#" ───────────────
+ * ── Where an icon points ────────────────────────────────────────────────────
  *
  * Every one of these was `href="#"`. A footer icon that goes nowhere is worse
  * than no icon: it reads as broken, and on some clients "#" scrolls the reader
- * to the top of the mail for no reason. A network with no URL configured is
- * simply not rendered — so the row shrinks rather than filling with dead ends.
+ * to the top of the mail for no reason.
  *
- * Set these in the environment to turn each one on:
+ * An unconfigured network now points at the site root instead — see
+ * activeNetworks() for why that is different from "#", and for why it no longer
+ * drops the network entirely.
+ *
+ * Set these to point each icon at the real profile:
  *   TOKUN_SOCIAL_FACEBOOK   TOKUN_SOCIAL_X
  *   TOKUN_SOCIAL_INSTAGRAM  TOKUN_SOCIAL_LINKEDIN
  */
 
 const path = require("path");
 const fs = require("fs");
+const { siteUrl } = require("../utils/siteUrl");
 
 const ICON_DIR = path.join(__dirname, "../assets/email");
 
@@ -47,11 +51,35 @@ const NETWORKS = [
   { key: "linkedin", label: "LinkedIn", env: "TOKUN_SOCIAL_LINKEDIN" },
 ];
 
-/** Only the networks that actually have somewhere to point. */
+/**
+ * The networks to render, with somewhere real for each to point.
+ *
+ * ── Why an unconfigured network no longer disappears ────────────────────────
+ *
+ * This used to drop any network without a URL, so with none of the four
+ * TOKUN_SOCIAL_* variables set the row rendered as "" and the footer had no
+ * icons at all. That is what has been happening in production: the variables
+ * live in .env, and .env is explicitly excluded from the deploy artifact
+ * (see .github/workflows/main_backendtokun1.yml), so the code shipped and the
+ * values did not.
+ *
+ * The note above still stands — an icon pointing at "#" is worse than no icon,
+ * because it reads as broken and scrolls the reader to the top of the mail.
+ * But the site root is not "#": it is a real page, it is ours, and someone who
+ * clicks it lands somewhere sensible rather than nowhere.
+ *
+ * So an unconfigured network falls back to the site instead of vanishing. Set
+ * the variable and the icon points at the profile; leave it and the brand row
+ * still looks like a brand row.
+ *
+ * A network whose ICON is missing is still dropped — there is nothing to draw.
+ */
 function activeNetworks() {
-  return NETWORKS.map((n) => ({ ...n, url: String(process.env[n.env] || "").trim() })).filter(
-    (n) => n.url && fs.existsSync(path.join(ICON_DIR, `social-${n.key}.png`))
-  );
+  const fallback = siteUrl();
+  return NETWORKS.map((n) => ({
+    ...n,
+    url: String(process.env[n.env] || "").trim() || fallback,
+  })).filter((n) => fs.existsSync(path.join(ICON_DIR, `social-${n.key}.png`)));
 }
 
 /**
