@@ -19,6 +19,26 @@ import * as THREE from 'three'
 /* Served from public/, and cached for a year by the /models/* rule in
    public/staticwebapp.config.json.
    
+   ── Why the globe rendered as a plain white ball in Chrome ──────────────────
+   
+   This model carries its texture INSIDE the .glb — one image, stored in a
+   bufferView with no uri. GLTFLoader handles that by extracting the bytes into
+   a Blob and loading the texture from the resulting blob: URL
+   (three/examples/jsm/loaders/GLTFLoader.js, createObjectURL).
+   
+   Our CSP's connect-src did not list `blob:`, so Chrome refused that fetch:
+   
+     Fetch API cannot load blob:https://www.tokun.world/548dc6d4-…
+     Refused to connect because it violates the document's Content Security Policy
+   
+   The geometry loaded, the texture did not, and an untextured globe is a white
+   sphere. Safari is laxer about blob: URLs a page created itself, which is why
+   it looked right there and wrong in Chrome — the same shape of "works here,
+   not there" as the CSP problem above, just a different directive.
+   
+   `blob:` is now allowed in connect-src. It grants no new reach: a blob: URL
+   can only be created by this page, from bytes it already has.
+   
    Before that rule existed this path fell through to Static Web Apps' default
    of `max-age=30, must-revalidate`, so every visit re-downloaded 8.2 MB and the
    globe took as long to appear on the tenth visit as on the first.
@@ -130,11 +150,13 @@ function GlobeScene() {
           replaced the canvas with the fallback circle. It worked locally only
           because the dev server applies no CSP.
           
-          Dropping it altogether was tried first and is what turned the globe
-          into a plain white ball: this model's shading comes almost entirely
-          from the environment map, not from the six lights above. Generating
-          one with PMREM/RoomEnvironment instead rendered nothing at all under
-          software WebGL, so it is not something to rely on either.
+          Generating one with PMREM/RoomEnvironment instead — no download at
+          all — rendered nothing under software WebGL, so it is not something to
+          rely on for the one visual on this page.
+          
+          (The white ball this briefly rendered as was NOT caused by dropping
+          this: that was the model's embedded texture being blocked. See the
+          note on GLOBE_MODEL_URL.)
           
           Self-hosted it is. 1.5 MB, same-origin so 'self' already covers it,
           and cached for a year by the /hdri/* rule in
