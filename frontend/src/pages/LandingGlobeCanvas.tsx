@@ -30,7 +30,30 @@ const GLOBE_MODEL_URL = '/models/airports_around_the_world.glb'
 
 function GlobeModel() {
   const groupRef = useRef(null)
-  const { scene } = useGLTF(GLOBE_MODEL_URL)
+  /* Both extensions off — the two `false`s are useDraco and useMeshopt.
+   *
+   * drei defaults both to true, so a bare useGLTF() sets up a DRACOLoader and
+   * instantiates a Meshopt decoder for every model, whether or not the model
+   * uses them. This one uses neither: its only glTF extension is
+   * KHR_materials_specular.
+   *
+   * Left on, each broke the page under our CSP:
+   *
+   *   Meshopt  compiles WebAssembly the moment it is constructed, and
+   *            script-src has no 'wasm-unsafe-eval' — "CompileError:
+   *            WebAssembly.instantiate() ... violates the following Content
+   *            Security policy directive". It then builds its worker from a
+   *            blob: URL, which connect-src does not allow either.
+   *
+   *   Draco    defaults its decoder path to https://www.gstatic.com/draco/,
+   *            another host outside connect-src. Harmless only because this
+   *            model never triggers a fetch from it — a Draco-compressed model
+   *            later would fail exactly like the Environment HDR did.
+   *
+   * So they are switched off rather than allow-listed: nothing here needs them,
+   * and every one of them is a CSP hole that only exists to serve a decoder we
+   * never call. */
+  const { scene } = useGLTF(GLOBE_MODEL_URL, false, false)
   const clonedScene = useMemo(() => scene.clone(true), [scene])
 
   useEffect(() => {
