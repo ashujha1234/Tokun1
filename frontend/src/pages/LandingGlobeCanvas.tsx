@@ -16,6 +16,16 @@ import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls, useGLTF, Environment } from '@react-three/drei'
 import * as THREE from 'three'
 
+/* Served from public/, and cached for a year by the /models/* rule in
+   public/staticwebapp.config.json.
+   
+   Before that rule existed this path fell through to Static Web Apps' default
+   of `max-age=30, must-revalidate`, so every visit re-downloaded 8.2 MB and the
+   globe took as long to appear on the tenth visit as on the first.
+   
+   The URL is fixed rather than content-hashed, so `immutable` is a promise this
+   file has to keep: REPLACE the model by renaming it (or bumping a ?v= here),
+   never by overwriting the same path — caches will not come back for a year. */
 const GLOBE_MODEL_URL = '/models/airports_around_the_world.glb'
 
 function GlobeModel() {
