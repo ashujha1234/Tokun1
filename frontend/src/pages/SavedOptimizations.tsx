@@ -395,7 +395,7 @@ const SavedOptimizations = () => {
     } catch (err: any) {
       console.error("Load saved optimizations error:", err);
       toast({
-        title: "Couldn’t load optimiser history",
+        title: "Couldn't load optimizer history",
         description: err?.message || "Try again",
       });
     } finally {

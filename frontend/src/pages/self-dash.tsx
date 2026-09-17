@@ -2350,7 +2350,7 @@ const startEnterpriseSubscriptionPurchase = async (annual: boolean) => {
   if (!authToken) {
     toast({
       title: "Login required",
-      description: "Please login again.",
+      description: "Please log in again.",
     });
     return;
   }
@@ -2360,7 +2360,7 @@ const startEnterpriseSubscriptionPurchase = async (annual: boolean) => {
   if (!orgId) {
     toast({
       title: "Organization missing",
-      description: "We could not find your Organization ID.",
+      description: "We could not find your organization ID.",
     });
     return;
   }
@@ -2784,7 +2784,7 @@ const handleAcceptRequest = async (item: any) => {
   if (!token) {
     toast({
       title: "Login required",
-      description: "Please login again.",
+      description: "Please log in again.",
     });
     return;
   }

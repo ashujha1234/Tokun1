@@ -2126,7 +2126,7 @@ const handleConfirmEndSession = () => {
 
   const handleOptimize = async () => {
     if (!text.trim()) {
-      toast({ title: "Empty product", description: "Please enter text to optimize" });
+      toast({ title: "Empty prompt", description: "Please enter some text to optimize." });
       return;
     }
 
@@ -2143,7 +2143,7 @@ const handleConfirmEndSession = () => {
     const gate = await checkOptimizeAllowed();
     if (!gate.allowed) {
       toast({
-        title: "Can't optimise",
+        title: "Can't optimize",
         description: gate.message,
       });
       return;
@@ -2366,7 +2366,7 @@ const handleConfirmEndSession = () => {
   const selectOption = async (option: OptimizationOption) => {
     try {
       await navigator.clipboard.writeText(option.text);
-      showCenterToast("Optimized product copied", "It's on your clipboard and ready to use.");
+      showCenterToast("Optimized prompt copied", "It's on your clipboard and ready to use.");
 
       // reset parent & UI
       onOptimize("", 0, 0, [], undefined);
@@ -2408,7 +2408,7 @@ const handleConfirmEndSession = () => {
   const handleSaveFromDropdown = async (payload?: { title?: string; category?: string; quick?: boolean }) => {
     const textToSave = optimizationOption?.text || text;
     if (!textToSave.trim()) {
-      toast({ title: "Nothing to save", description: "Generate or enter a product first." });
+      toast({ title: "Nothing to save", description: "Generate or enter a prompt first." });
       return;
     }
 
@@ -2878,7 +2878,7 @@ const startCollaboration = async (): Promise<string | null> => {
                   className="w-10 h-10 rounded-full bg-[#252525] flex items-center justify-center hover:opacity-90 border border-[#333335]"
                   onClick={() =>
                     navigator.clipboard.writeText(optimizationOption.text).then(() =>
-                      toast({ title: "Copied", description: "Optimized product copied to clipboard" })
+                      toast({ title: "Copied", description: "Optimized prompt copied to your clipboard." })
                     )
                   }
                   title="Copy"

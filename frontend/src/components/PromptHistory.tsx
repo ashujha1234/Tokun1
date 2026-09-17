@@ -995,7 +995,7 @@ const mapped: Prompt[] = (body.purchases || []).map((p: any) => {
     } catch (err: any) {
       setPurchasesError(err?.message || "Failed to load purchase history");
       toast({
-        title: "Couldn’t load purchases",
+        title: "Couldn't load purchases",
         description: err?.message || "Please try again.",
       });
     } finally {
@@ -1200,7 +1200,7 @@ const mapped: Prompt[] = (body.purchases || []).map((p: any) => {
       } catch (err: any) {
         setUploadsError(err?.message || "Failed to load uploads");
         toast({
-          title: "Couldn’t load your uploads",
+          title: "Couldn't load your uploads",
           description: err?.message || "Please try again.",
         });
       } finally {
@@ -1572,7 +1572,7 @@ useEffect(() => {
   icon="upload"
   onClick={() =>
     toast({
-      title: "Upload Product",
+      title: "Upload product",
       description: "Upload flow will be added later.",
     })
   }

@@ -2308,7 +2308,7 @@ export default function SellPromptModal({
       // generic network error after the whole file has been sent.
       const okSize = file.size <= maxAttachmentBytes;
       if (!okType) {
-        toast({ title: "Invalid file type", description: "Only image and video files are allowed" });
+        toast({ title: "Invalid file type", description: "Only image and video files are allowed." });
         return false;
       }
       if (!okSize) {
@@ -2414,7 +2414,7 @@ export default function SellPromptModal({
     const finalCategory = isOtherCategory ? customCategory.trim() : category;
 
     if (!title || !description || !promptText || !finalCategory || (!isFree && !price)) {
-      toast({ title: "Missing Information", description: "Please fill in all required fields" });
+      toast({ title: "Missing information", description: "Please fill in all required fields." });
       return;
     }
 
@@ -2428,7 +2428,7 @@ export default function SellPromptModal({
     if (badLink) {
       toast({
         title: "Check that link",
-        description: "Repository links need to start with http:// or https://",
+        description: "Repository links need the http:// or https:// prefix.",
       });
       return;
     }

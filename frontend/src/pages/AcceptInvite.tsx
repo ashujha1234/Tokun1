@@ -67,7 +67,7 @@ export default function AcceptInvite() {
 
         if (res.ok && data?.success) {
           setState("done");
-          toast({ title: "You're in", description: "The organisation has been added to your account." });
+          toast({ title: "You're in", description: "The organization has been added to your account." });
           setTimeout(() => navigate("/self-dash", { replace: true }), 1200);
           return;
         }

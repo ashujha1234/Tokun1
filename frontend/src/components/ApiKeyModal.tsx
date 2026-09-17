@@ -75,7 +75,7 @@ const ApiKeyModal = ({ open, onOpenChange, onSave }: ApiKeyModalProps) => {
       
       setIsKeySet(true);
       toast({
-        title: "API Key Saved",
+        title: "API key saved",
         description: `Your ${providerLabels[provider]} API key has been saved securely.`,
       });
       onSave();

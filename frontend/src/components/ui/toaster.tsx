@@ -13,13 +13,20 @@ import {
    Sonner, in App.tsx) can be set from a number someone can actually find — they
    used to disagree by whatever their separate library defaults happened to be.
 
+   Two seconds, asked for directly: these are confirmations of something the
+   person just did ("Added to cart", "Copied"), and a confirmation that outstays
+   the action it confirms is clutter. It is short — the few toasts carrying a
+   sentence to read rather than a word to glance at set their own longer
+   duration at the call site, the way the credential warning in
+   escrow/AccessRequestPanel.tsx does with 15_000.
+
    Radix still pauses this countdown while the pointer is over the toast or the
    window is in the background, which is why one could seem to hang around
    forever: the viewport sits top-centre, right where the cursor tends to be, and
    a pointermove across it stops the clock. That pause is deliberate — it stops a
    message vanishing while it's being read — and resumes the moment the pointer
    leaves. */
-export const TOAST_DURATION = 4000
+export const TOAST_DURATION = 2000
 
 export function Toaster() {
   const { toasts } = useToast()

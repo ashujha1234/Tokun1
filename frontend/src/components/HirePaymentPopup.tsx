@@ -42,7 +42,7 @@ export default function HirePaymentPopup({
       if (!token) {
         toast({
           title: "Login required",
-          description: "Please login again.",
+          description: "Please log in again.",
         });
         return;
       }

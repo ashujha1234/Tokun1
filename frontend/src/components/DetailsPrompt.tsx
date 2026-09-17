@@ -1797,7 +1797,7 @@ const soldOut = !!prompt?.exclusive && !!prompt?.sold;
                   }
 
                   toast({
-                    title: "Added to Cart",
+                    title: "Added to cart",
                     description: `"${prompt.title}" was added.`,
                   });
                   onOpenChange(false);

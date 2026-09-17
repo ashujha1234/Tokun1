@@ -1000,7 +1000,7 @@ const PromptMarketplacePage = () => {
             if (vb?.success) {
               setPurchasedPrompts((prev) => (prev.includes(promptId) ? prev : [...prev, promptId]));
               setDetailsOpen(false);
-              toast({ title: "Payment Successful", description: "You now own this product." });
+              toast({ title: "Payment successful", description: "You now own this product." });
               try {
                 window.dispatchEvent(
                   new CustomEvent("tokun:purchased", { detail: vb.purchase })
@@ -1010,11 +1010,11 @@ const PromptMarketplacePage = () => {
                 state: { refreshPurchases: true },
               });
             } else {
-              toast({ title: "Verification Failed", description: vb?.error || "Unknown error" });
+              toast({ title: "Verification failed", description: vb?.error || "Unknown error" });
             }
           } catch (err) {
             console.error("Verify error", err);
-            toast({ title: "Verification Error", description: "Could not verify payment." });
+            toast({ title: "Verification error", description: "Could not verify payment." });
           }
         },
       };
@@ -1034,7 +1034,7 @@ const PromptMarketplacePage = () => {
       const rzp = new (window as any).Razorpay(withTokunBranding(options));
       rzp.on("payment.failed", () => {
         releaseHold();
-        toast({ title: "Payment Failed", description: "Please try again." });
+        toast({ title: "Payment failed", description: "Please try again." });
       });
       rzp.open();
 
@@ -1044,7 +1044,7 @@ const PromptMarketplacePage = () => {
       setConfirmPrompt(null);
     } catch (err: any) {
       console.error("Purchase flow error", err);
-      toast({ title: "Purchase Error", description: err?.message || "Something went wrong." });
+      toast({ title: "Purchase error", description: err?.message || "Something went wrong." });
     } finally {
       setConfirmBusy(false);
     }

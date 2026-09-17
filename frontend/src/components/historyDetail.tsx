@@ -195,7 +195,7 @@ async function handleDownloadInvoice() {
   if (!prompt?.id) {
     toast({
       title: "Invoice error",
-      description: "Product ID missing",
+      description: "The product ID is missing.",
     });
     return;
   }

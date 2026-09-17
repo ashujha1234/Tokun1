@@ -3078,7 +3078,7 @@ const mapped: Prompt[] = (data.prompts || []).map((doc: any) => mapPromptDoc(doc
         console.error("Failed to load products", err);
         setLoadError(err?.message || "Failed to load prompts");
         toast({
-          title: "Couldn’t load products",
+          title: "Couldn't load products",
           description: err?.message || "Please try again.",
         });
       } finally {
@@ -3408,9 +3408,9 @@ const filteredPrompts = prompts.filter((p) => {
 
   const handlePreview = (prompt: Prompt) => {
     if (purchasedPrompts.includes(prompt.id)) {
-      toast({ title: "Full Product Access", description: `You have full access to "${prompt.title}"` });
+      toast({ title: "Full product access", description: `You have full access to "${prompt.title}"` });
     } else {
-      toast({ title: "Preview Mode", description: `Showing preview for "${prompt.title}". Purchase to see full product.` });
+      toast({ title: "Preview mode", description: `Showing preview for "${prompt.title}". Purchase to see full product.` });
     }
   };
 
@@ -3446,7 +3446,7 @@ const filteredPrompts = prompts.filter((p) => {
    }
 
    toast({
-     title: "Added to Cart",
+     title: "Added to cart",
      description: title ? `"${title}" was added.` : "Product was added.",
    });
    return true;
@@ -3592,7 +3592,7 @@ const filteredPrompts = prompts.filter((p) => {
   } catch {}
 
   toast({
-    title: "Payment Successful",
+    title: "Payment successful",
     description: "You now own this product.",
   });
 
@@ -3605,11 +3605,11 @@ const filteredPrompts = prompts.filter((p) => {
     state: { refreshPurchases: true },
   });
 } else {
-              toast({ title: "Verification Failed", description: vb?.error || "Unknown error" });
+              toast({ title: "Verification failed", description: vb?.error || "Unknown error" });
             }
           } catch (err) {
             console.error("Verify error", err);
-            toast({ title: "Verification Error", description: "Could not verify payment." });
+            toast({ title: "Verification error", description: "Could not verify payment." });
           }
         },
       };
@@ -3629,7 +3629,7 @@ const filteredPrompts = prompts.filter((p) => {
       const rzp = new (window as any).Razorpay(withTokunBranding(options));
       rzp.on("payment.failed", function () {
         releaseHold();
-        toast({ title: "Payment Failed", description: "Please try again." });
+        toast({ title: "Payment failed", description: "Please try again." });
       });
 
       // Closed only once Razorpay is actually up, so the buyer is never looking
@@ -3638,7 +3638,7 @@ const filteredPrompts = prompts.filter((p) => {
       rzp.open();
     } catch (err: any) {
       console.error("Purchase flow error", err);
-      toast({ title: "Purchase Error", description: err?.message || "Something went wrong." });
+      toast({ title: "Purchase error", description: err?.message || "Something went wrong." });
       // Left open on failure: the reason is in the toast and the buyer can read
       // it against what they were about to pay for, then retry or cancel.
     } finally {

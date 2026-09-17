@@ -609,7 +609,7 @@ export default function VerifySignup() {
     if (!email) {
       toast({
         title: "Missing email",
-        description: "Please go back and signup again.",
+        description: "Please go back and sign up again.",
       });
       navigate("/signup", { replace: true });
     }

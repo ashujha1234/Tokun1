@@ -448,7 +448,7 @@ const PromptLibrary = ({ onSelectPrompt }: PromptLibraryProps) => {
     navigator.clipboard.writeText(text);
     toast({
       title: "Copied to clipboard",
-      description: "Product has been copied to your clipboard"
+      description: "The prompt has been copied to your clipboard."
     });
   };
 
@@ -456,8 +456,8 @@ const PromptLibrary = ({ onSelectPrompt }: PromptLibraryProps) => {
     if (onSelectPrompt) {
       onSelectPrompt(text);
       toast({
-        title: "Product selected",
-        description: "The product has been loaded into the optimizer"
+        title: "Prompt selected",
+        description: "The prompt has been loaded into the optimizer."
       });
     }
   };

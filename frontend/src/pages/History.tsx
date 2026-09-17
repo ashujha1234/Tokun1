@@ -97,7 +97,7 @@ const setTabAndUrl = (next: TabKey) => {
     } catch (err: any) {
       console.error("Load saved optimizations error:", err);
       toast({
-        title: "Couldn’t load optimiser history",
+        title: "Couldn't load optimizer history",
         description: err?.message || "Try again",
       });
     } finally {
@@ -498,7 +498,7 @@ useEffect(() => {
         }
       } catch (e: any) {
         toast({
-          title: "Couldn’t load smartgen history",
+          title: "Couldn't load SmartGen history",
           description: e?.message || "Try again",
         });
       } finally {

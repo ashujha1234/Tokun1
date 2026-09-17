@@ -171,7 +171,7 @@ function HistorySmartgenList() {
         }
       } catch (e: any) {
         toast({
-          title: "Couldn’t load smartgen history",
+          title: "Couldn't load SmartGen history",
           description: e?.message || "Try again",
         });
       } finally {

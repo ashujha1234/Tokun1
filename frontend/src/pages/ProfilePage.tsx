@@ -3296,7 +3296,7 @@ const addPromptToCart = async (prompt: any) => {
   const result = await addToCart(String(prompt.id));
   toast(
     result.ok
-      ? { title: "Added to Cart", description: `"${prompt.title}" was added.` }
+      ? { title: "Added to cart", description: `"${prompt.title}" was added.` }
       : {
           title:
             result.error === "already_in_cart"

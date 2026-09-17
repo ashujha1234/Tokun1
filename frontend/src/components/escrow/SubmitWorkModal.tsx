@@ -104,7 +104,7 @@ export default function SubmitWorkModal({
     const url = linkDraft.trim();
     if (!url) return;
     if (!/^https?:\/\//i.test(url)) {
-      toast({ title: "Invalid link", description: "Links must start with http:// or https://" });
+      toast({ title: "Invalid link", description: "Links need the http:// or https:// prefix." });
       return;
     }
     setLinks((prev) => [...prev, { url, name: describeLink(url) }]);

@@ -71,12 +71,12 @@ const PromptMarketplace = () => {
   const handlePreview = (prompt: any) => {
     if (purchasedPrompts.includes(prompt.id)) {
       toast({
-        title: "Full Product Access",
+        title: "Full product access",
         description: `You have full access to "${prompt.title}"`
       });
     } else {
       toast({
-        title: "Preview Mode",
+        title: "Preview mode",
         description: `Showing preview for "${prompt.title}". Purchase to see full product.`
       });
     }
@@ -90,7 +90,7 @@ const PromptMarketplace = () => {
 const handlePurchaseComplete = (promptId: number) => {
   setPurchasedPrompts(prev => [...prev, promptId]);
   toast({
-    title: "Purchase Successful!",
+    title: "Purchase successful",
     description: "You now have full access to this product."
   });
 };

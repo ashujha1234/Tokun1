@@ -476,7 +476,7 @@ const BrandPromptsPage = () => {
                   const result = await addToCart(String(p.id));
                   toast(
                     result.ok
-                      ? { title: "Added to Cart", description: `"${p.title}" was added.` }
+                      ? { title: "Added to cart", description: `"${p.title}" was added.` }
                       : {
                           title:
                             result.error === "already_in_cart"

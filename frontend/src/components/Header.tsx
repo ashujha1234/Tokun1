@@ -3570,7 +3570,7 @@ const doCheckout = async () => {
     console.error("[Checkout] ❌ No auth token found");
     toast({
       title: "Unauthorized",
-      description: "Please login first.",
+      description: "Please log in first.",
     });
     return;
   }

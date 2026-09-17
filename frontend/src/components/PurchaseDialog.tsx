@@ -70,15 +70,15 @@ export default function PurchaseDialog({ open, onOpenChange, prompt, onPurchaseC
 
   const handlePurchase = async () => {
     if (!formData.fullName || !formData.email || !formData.cardNumber || !formData.expiryDate || !formData.cvv) {
-      toast({ title: "Missing Information", description: "Please fill in all required payment details" });
+      toast({ title: "Missing information", description: "Please fill in all required payment details." });
       return;
     }
     const user = JSON.parse(localStorage.getItem("tokun_user") || "{}");
     if (!user.id) {
-      toast({ title: "User not found", description: "Please login again" });
+      toast({ title: "User not found", description: "Please log in again." });
       return;
     }
-    toast({ title: "Processing Purchase", description: "Your payment is being processed..." });
+    toast({ title: "Processing purchase", description: "Your payment is being processed..." });
     try {
       const res = await fetch(`${API_BASE}/api/prompt/purchase`, {
   method: "POST",
@@ -95,12 +95,12 @@ export default function PurchaseDialog({ open, onOpenChange, prompt, onPurchaseC
 });
       const data = await res.json();
       if (data.success) {
-        toast({ title: "Purchase Successful", description: `You now own "${prompt?.title}"` });
+        toast({ title: "Purchase successful", description: `You now own "${prompt?.title}"` });
         onPurchaseComplete?.(prompt.id);
         onOpenChange(false);
         setFormData({ fullName: "", email: "", cardNumber: "", expiryDate: "", cvv: "" });
       } else {
-        toast({ title: "Purchase Failed", description: data.error || "Please try again later." });
+        toast({ title: "Purchase failed", description: data.error || "Please try again later." });
       }
     } catch (e) {
       console.error(e);

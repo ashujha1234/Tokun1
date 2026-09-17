@@ -850,7 +850,7 @@ const [devOtp, setDevOtp] = useState<string | null>(null);
     if (!email) {
       toast({
         title: "Missing email",
-        description: "Please go back and login again.",
+        description: "Please go back and log in again.",
       });
       navigate("/login", { replace: true });
     }
