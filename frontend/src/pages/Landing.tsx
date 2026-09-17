@@ -1834,9 +1834,24 @@ const STEPS = [
  * allowlist (see frontend/SECURITY-HEADERS.md) so the browser would refuse it
  * outright. A file under public/ is same-origin, which 'self' already covers.
  */
+/* Both tiles go to SmartGen and open its file chooser — nothing more.
+ *
+ * They used to be bare links to /smartgen, so neither did what its label said:
+ * you arrived at the tool and still had to find the paperclip yourself.
+ *
+ * `?attach=1` is read by SmarterPrompt, which opens the chooser on arrival.
+ * What follows is SmartGen's own flow, unchanged: pick a file, and the same
+ * popup that a click on the paperclip produces asks whether you want Markdown,
+ * a prompt, or both. The tiles are a shortcut INTO that flow, not a second
+ * version of it — one place decides what happens to a document, and it is the
+ * tool, not the landing page.
+ *
+ * The parameter survives the sign-in redirect: /smartgen is behind RequireAuth,
+ * which sends the whole location, query included, as `next` (lib/nextPath.ts),
+ * so a logged-out visitor lands where a logged-in one does. */
 const SG_FEATURES = [
-  { label: 'PDF to Smart Prompt', to: ROUTES.smartgen },
-  { label: 'PDF to MD File', to: ROUTES.smartgen },
+  { label: 'PDF to Smart Prompt', to: `${ROUTES.smartgen}?attach=1` },
+  { label: 'PDF to MD File', to: `${ROUTES.smartgen}?attach=1` },
 ]
 
 /* Its own reveal rather than the shared `fadeUp`, and the reason is a type
@@ -2792,13 +2807,65 @@ function GlobeSection() {
    FAQSection
    ============================================================ */
 
+/* The answers are the product's actual behaviour, and they were not.
+ *
+ * What was here promised a Stripe/PayPal monthly payout, an 80% revenue share,
+ * a production API with a 99.9% SLA and "10,000 API calls/month" on Pro, and
+ * SOC2 Type II compliance. None of those exist: payouts run through Razorpay
+ * per sale, there is no public API to have an SLA, and a compliance claim we
+ * cannot evidence is the most expensive sentence on the page. A FAQ is the one
+ * part of a landing page a buyer reads as a commitment rather than as
+ * marketing, so it has to be the part that is true.
+ *
+ * Half of it had also been through a find-and-replace of "prompt" -> "product"
+ * that hit the sentences too — "rewrites products to be semantically
+ * equivalent", "we never train our models on your products" — which reads as
+ * machine-written, on the section that exists to sound like a person.
+ *
+ * ── WHY THERE ARE ALMOST NO NUMBERS HERE ────────────────────────────────────
+ *
+ * Deliberate, and it is the second thing to know before editing this list.
+ * Commission rates, plan prices and token allowances all live server-side and
+ * are env-configurable (TOKUN_PROMPT_SELLER_COMMISSION_PERCENT,
+ * server/config/plans.js), and this is static marketing copy that cannot read
+ * them — so every figure written here is a promise that silently goes stale the
+ * day someone changes the real one. Pricing has its own page, which is
+ * generated from those values; this section says what you can do, and sends
+ * anyone asking "how much" to the place that knows.
+ *
+ * The one figure that stayed is the 24-hour refund window (REFUND_WINDOW_HOURS),
+ * because a deadline a buyer has to act inside is not useful as "soon after you
+ * buy". If that env value changes, this is the other place to edit.
+ */
 const FAQ_ITEMS = [
-  { q: 'What LLMs does Tokun support?', a: 'Tokun supports all major LLMs including GPT-4, GPT-4o, Claude 3 (Sonnet, Opus, Haiku), Gemini Pro/Ultra, Llama 3, Mistral, and more. New models are added within days of their public release.' },
-  { q: 'How does the token reduction actually work?', a: 'SmartGen analyzes your intent and rewrites products to be semantically equivalent but structurally more efficient. It removes redundant instructions, consolidates overlapping requirements, and uses model-specific formatting that reduces token consumption without sacrificing output quality.' },
-  { q: 'How do I earn money on the marketplace?', a: 'You list your optimized products with a price (one-time or subscription). When other users purchase your product, you receive 80% of the revenue. Payouts are processed monthly via Stripe to your bank account or PayPal.' },
-  { q: 'Is my product data private and secure?', a: 'Yes. All products you create are private by default. We never train our models on your products without explicit consent. You choose what to share publicly on the marketplace. We are SOC2 Type II compliant.' },
-  { q: 'Can I use the API in production apps?', a: 'Absolutely. The Tokun API is production-ready with 99.9% SLA uptime. Pro plans include 10,000 API calls/month. Teams plans have no limit. We offer dedicated infrastructure for enterprise customers requiring higher throughput.' },
-  { q: 'What makes Tokun different from just using ChatGPT directly?', a: "Tokun isn't a chatbot — it's an optimization layer. It takes your raw product ideas, refines them for any LLM, tracks performance metrics, and lets you monetize your best work. It works on top of any LLM, not instead of it." },
+  {
+    q: 'What can I actually do on Tokun?',
+    a: 'Four things. SmartGen turns a document or a rough brief into a finished, structured prompt — drop in a PDF, Word file, spreadsheet or deck and it reads the whole thing first. The Optimizer takes a prompt you already have and cuts what it costs to run. The Marketplace is where you buy prompts other people have built, or sell your own. And Super Creator is for when you would rather hire the person than buy the prompt — with the payment held safely until the work is delivered.',
+  },
+  {
+    q: 'Do I need to know prompt engineering?',
+    a: 'No — that is most of the point. Describe what you want in your own words, or hand SmartGen the document you already have, and it writes the prompt for you. If you have written one yourself and it nearly works, the Optimizer will tighten it. And if you would rather not write anything at all, the Marketplace is full of prompts built by people who do this every day.',
+  },
+  {
+    q: 'What can I put into SmartGen?',
+    a: 'A PDF, a Word document, a spreadsheet, a slide deck, an OpenDocument file, a CSV or plain text — and it reads the whole file, keeping headings, tables and lists intact rather than skimming the first page. You can also skip the file entirely and just type what you need. If all you want is the document itself in a clean, readable form, SmartGen will hand you Markdown and stop there.',
+  },
+  {
+    q: 'How does hiring a creator work?',
+    a: 'You find a creator, agree what the work is, and both of you sign an NDA before a single file or brief changes hands. Your payment then goes to Tokun rather than to them — it sits there, untouched, while the work is done, and is released when you approve the delivery. Revisions are agreed before anything starts, and if the two of you cannot settle something, either side can bring it to us while the money is still being held.',
+  },
+  {
+    q: 'How do I earn money on the marketplace?',
+    a: 'List a prompt you have written, set your own price, and you are selling. Connect your payout account once, before your listings go on sale, and your earnings from each sale reach that account on their own — there is nothing to withdraw and no payout day to wait for. If you would rather be hired than sell off the shelf, a Super Creator profile puts you in front of clients looking for exactly that.',
+  },
+  {
+    q: 'What if a product is not what I expected?',
+    a: 'You have 24 hours from the purchase to ask for a refund, straight from the order, and you tell us what went wrong in your own words rather than picking from a list. Free products are never charged for in the first place, so there is nothing to undo. Hired work is covered differently — the payment is held, not paid out, until you have seen the delivery and approved it.',
+  },
+  {
+    q: 'Is my work private?',
+    a: 'Yes, and by default. Everything you generate is yours and visible only to you until you choose to list it. Tokun does not train any model on your prompts. A prompt listed for sale shows its title, description and preview publicly — never the prompt text itself, which only ever reaches someone who has bought it.',
+  },
 ]
 
 function FAQSection() {

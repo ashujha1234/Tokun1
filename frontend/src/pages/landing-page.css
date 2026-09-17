@@ -1805,14 +1805,19 @@ body.is-loading { overflow: hidden; }
 
 /* ── stat ── */
 
-/* 32 + 32 put 64px between the feature links and this line, which left the
-   "Upto 60% token reduction" figure sitting well below the divider and near
-   the bottom of the column. Pulled up 22px in total — most of it off the
-   padding, so the gap above the rule stays wide enough to read as a section
-   break rather than the rule crowding the links. */
+/* THREE gaps used to stack above this line, and only two of them were visible
+   in this rule: .sg-show__copy is a flex column with `gap: 24px`, so its own
+   spacing already sits between the feature links and this block before
+   margin-top and padding-top are added to it. 24 + 24 + 18 put 66px above a
+   single line of text, which is what left the "Upto 60% token reduction"
+   figure stranded near the bottom of the column.
+
+   The margin is gone and the flex gap does that job alone — one gap, in one
+   place, instead of two that have to be read together. The padding stays,
+   smaller: it is the space between the rule and the text, and without it the
+   divider crowds the figure it is meant to set apart. 66px -> 38px. */
 .sg-show__stats {
-  margin-top: 24px;
-  padding-top: 18px;
+  padding-top: 14px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 

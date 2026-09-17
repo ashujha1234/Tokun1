@@ -787,6 +787,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
   const outputRef   = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+
   // Derived
   const effectiveDomainId    = manualDomainId ?? detection?.domainId ?? null;
   const effectiveDomainLabel = manualLabel    ?? detection?.categoryLabel ?? null;
@@ -884,7 +885,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
   /* ── Core generate function ── */
   const doGenerate = useCallback(async (answersOverride?: Record<string,string>) => {
     if (!user) { navigate("/login"); return; }
-    if (!prompt.trim()) { toast({title:"Enter a product first"}); return; }
+    if (!prompt.trim()) { toast({title:"Enter a prompt first"}); return; }
     // Token limit reached → block generation and prompt to subscribe.
     if (isOutOfTokens(user)) { toast(TOKEN_LIMIT_TOAST); return; }
     if (isGenerating) { abortRef.current?.abort(); return; }
@@ -1103,7 +1104,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
         setGenerated(data.prompt);
         setTokensUsed(outputTokens);
         if (data.truncated) {
-          toast({ title: "Document was very long", description: "Only the first part of it was used to build the product." });
+          toast({ title: "Document was very long", description: "Only the first part of it was used to build the prompt." });
         }
         // Deduct quota BEFORE notifying the parent (which refreshes the quota widget) —
         // otherwise the widget refetches before the spend lands and looks stale.
@@ -1158,7 +1159,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
     if (!smartgenDocId) {
       // Only reachable if the generation succeeded but its own save failed —
       // warnIfQuotaSaveFailed has already explained why.
-      toast({ title: "Can't save yet", description: "This product wasn't recorded, so it can't be added to your saved list. Try regenerating." });
+      toast({ title: "Can't save yet", description: "This prompt wasn't recorded, so it can't be added to your saved list. Try regenerating." });
       return;
     }
 
@@ -1197,6 +1198,31 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
       setSavingBookmark(false);
     }
   }, [savingBookmark, smartgenDocId, isBookmarked]);
+
+  /* ?attach=1 — the landing page's "PDF to Smart Prompt" and "PDF to MD File"
+     tiles, which are shortcuts into this tool's own flow.
+     ────────────────────────────────────────────────────────────────────────
+     All it does is reach for the paperclip on your behalf. Everything after
+     that is unchanged: the file lands, and the same popup a click on the
+     paperclip produces asks what to do with it. The landing page does not get
+     to decide that — one place answers that question, and it is this one.
+
+     The parameter is stripped immediately, with `replace`, so it is spent
+     once: without that, going back to this page or refreshing it would reopen
+     the chooser at a moment nobody asked for it.
+
+     A file chooser needs a user gesture to open, and the one that navigated
+     here is only good for a few seconds — so if the browser declines, the
+     click does nothing and no error is shown. The page is then simply the tool
+     as it always looks, with the paperclip where it always is. */
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("attach") !== "1") return;
+
+    navigate(window.location.pathname, { replace: true });
+    fileInputRef.current?.click();
+    // Once, on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
