@@ -101,7 +101,123 @@ const STYLE = {
   stepLabel: { size: 10, lead: 14, above: 11, bold: true },
   // .dot never becomes a line of its own — see pendingPrefix in the draw loop.
   stepnum: { size: 10, lead: 0, above: 0 },
+  /* .sig — drawn by hand in the loop rather than flowed as text, so only the
+     gap above it is read from here. */
+  sigpanel: { size: 9.5, lead: 14, above: 26 },
 };
+
+/* ── The signature block ────────────────────────────────────────────────────
+ *
+ * .sig is the one part of the agreement that is NOT a run of text, and it was
+ * the one part that did not survive this renderer.
+ *
+ * Two things were wrong. The signature itself is an <img> holding a data URI
+ * drawn on the signing canvas, and the scan below only ever collected TEXT — so
+ * a tag carrying no text contributed nothing and the signature silently
+ * vanished. What arrived was the names, the emails and "Signed 4 Sep 2026" in a
+ * single stacked column: a contract that says it was signed and shows no
+ * signature, which is the one thing a party opens it to check.
+ *
+ * And .sig is a two-column grid. Flowed as ordinary blocks, the Client's name,
+ * email and date ran straight into the Creator's with nothing between them, so
+ * even the text that did arrive did not read as two parties.
+ *
+ * So the block is lifted out before the scan, parsed into its two columns, and
+ * drawn to the same shape the page uses: name, email, the signature above a
+ * rule, then the date and the party's role under it. A marker is left in its
+ * place so it still renders where it belongs in the document.
+ */
+
+/** Gap between the two signature columns, and the height reserved for the
+    signature itself between the email and the rule it sits on. */
+const SIG_GAP = 26;
+const SIG_AREA_H = 46;
+
+/** Index of the `</div>` closing the div whose BODY starts at `from`, or -1. */
+function matchingDivEnd(s, from) {
+  const re = /<div\b[^>]*>|<\/div\s*>/gi;
+  re.lastIndex = from;
+  let depth = 0;
+  let m;
+  while ((m = re.exec(s))) {
+    if (m[0][1] === "/") {
+      if (depth === 0) return m.index;
+      depth -= 1;
+    } else depth += 1;
+  }
+  return -1;
+}
+
+/** The immediate <div> children of a fragment, as their inner HTML. */
+function topLevelDivs(inner) {
+  const out = [];
+  const re = /<div\b[^>]*>/gi;
+  let m;
+  while ((m = re.exec(inner))) {
+    const bodyStart = m.index + m[0].length;
+    const end = matchingDivEnd(inner, bodyStart);
+    if (end < 0) break;
+    out.push(inner.slice(bodyStart, end));
+    re.lastIndex = end;
+  }
+  return out;
+}
+
+const stripTags = (h) => decodeEntities(String(h || "").replace(/<[^>]+>/g, " "))
+  .replace(/\s+/g, " ")
+  .trim();
+
+/* Inner HTML of the first div/span carrying `cls`.
+ *
+ * The closing tag is matched by BACKREFERENCE to the opening one, and that is
+ * the whole trick: .line is a <div> containing a <span class="role">, so a
+ * pattern ending in `</(?:div|span)>` stopped at the span's close and returned
+ * a fragment with the role's opening tag but not its closing one. The role then
+ * could not be found inside it, and the date line came out as
+ * "Signed 4 Sep 2026 - Receiving Party" in one undifferentiated run. */
+const innerOfClass = (html, cls) => {
+  const re = new RegExp(
+    `<(div|span)\\s[^>]*class="[^"]*\\b${cls}\\b[^"]*"[^>]*>([\\s\\S]*?)<\\/\\1\\s*>`,
+    "i"
+  );
+  return (String(html).match(re) || [])[2] || "";
+};
+
+/**
+ * Lifts <div class="sig"> out of the document.
+ *
+ * @returns {{ html: string, panels: Array<{name,email,sig,when,role}> }}
+ *          `html` with the block swapped for a marker, and one entry per party
+ *          in the order the page lays them out (Client first).
+ */
+function extractSignaturePanels(html) {
+  const s = String(html);
+  const m = s.match(/<div\s[^>]*class="[^"]*\bsig\b[^"]*"[^>]*>/i);
+  if (!m) return { html: s, panels: [] };
+
+  const bodyStart = m.index + m[0].length;
+  const end = matchingDivEnd(s, bodyStart);
+  if (end < 0) return { html: s, panels: [] };
+
+  const panels = topLevelDivs(s.slice(bodyStart, end)).map((col) => {
+    const lineHtml = innerOfClass(col, "line");
+    const roleHtml = innerOfClass(lineHtml, "role");
+    return {
+      name: stripTags(innerOfClass(col, "name")),
+      email: stripTags(innerOfClass(col, "email")),
+      // The drawn signature, as the data URI the canvas produced.
+      sig: (col.match(/<img[^>]*\bsrc="(data:image\/[a-z+.-]+;base64,[^"]*)"/i) || [])[1] || "",
+      when: stripTags(lineHtml.replace(roleHtml, "")).replace(/[\s•·-]+$/, "").trim(),
+      role: stripTags(roleHtml).replace(/^[\s•·-]+/, "").trim(),
+    };
+  });
+
+  const closeEnd = s.indexOf(">", end) + 1;
+  const marked =
+    s.slice(0, m.index) + '<div class="sigpanel">signatures</div>' + s.slice(closeEnd);
+
+  return { html: marked, panels };
+}
 
 /* ── Text that a standard PDF font can actually draw ────────────────────────
  *
@@ -149,7 +265,7 @@ function toDrawable(str) {
 const ENTITIES = {
   amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
   mdash: "—", ndash: "–", hellip: "…", rsquo: "’", lsquo: "‘",
-  ldquo: "“", rdquo: "”", times: "×", middot: "·",
+  ldquo: "“", rdquo: "”", times: "×", middot: "·", bull: "•",
 };
 
 function decodeEntities(s) {
@@ -183,6 +299,10 @@ const BLOCKS = [
   { re: /^<div\s[^>]*class="[^"]*\bdot\b/i, kind: "stepnum" },
   { re: /^<div\s[^>]*class="[^"]*\blabel\b/i, kind: "stepLabel" },
   { re: /^<div\s[^>]*class="[^"]*\bwhat\b/i, kind: "body" },
+  /* The marker extractSignaturePanels() leaves behind. It has to be in this
+     table so the panel keeps its place in the flow — the signatures belong
+     above the disclaimer, where the page puts them, not appended at the end. */
+  { re: /^<div\s[^>]*class="[^"]*\bsigpanel\b/i, kind: "sigpanel" },
   { re: /^<li\b/i, kind: "bullet" },
   { re: /^<(p|td|th)\b/i, kind: "body" },
 ];
@@ -359,12 +479,61 @@ function wrapRuns(runs, fonts, size, maxWidth, track = 0) {
 }
 
 /**
+ * Wrap for the signature columns: on spaces, and INSIDE a token that cannot fit
+ * on a line of its own.
+ *
+ * wrapRuns() only breaks at spaces, which is right for prose and wrong for the
+ * one field here that routinely has none — an email address. A long one ran
+ * straight out of its column and across the page margin, over the column beside
+ * it. The stylesheet says `word-break:break-all` on .sig .email for exactly
+ * this reason; this is that rule.
+ */
+function wrapHard(text, font, size, maxW) {
+  const lines = [];
+  let line = "";
+  const flush = () => {
+    if (line) lines.push(line);
+    line = "";
+  };
+
+  for (const word of toDrawable(text || "").split(/\s+/).filter(Boolean)) {
+    let rest = word;
+
+    while (font.widthOfTextAtSize(rest, size) > maxW) {
+      let cut = 1;
+      while (cut < rest.length && font.widthOfTextAtSize(rest.slice(0, cut + 1), size) <= maxW) {
+        cut += 1;
+      }
+      flush();
+      lines.push(rest.slice(0, cut));
+      rest = rest.slice(cut);
+    }
+
+    const next = line ? `${line} ${rest}` : rest;
+    if (font.widthOfTextAtSize(next, size) > maxW) {
+      flush();
+      line = rest;
+    } else {
+      line = next;
+    }
+  }
+
+  flush();
+  return lines;
+}
+
+/**
  * @param {string|Buffer} html   the stored agreement
  * @param {object} [opts]
  * @param {string} [opts.title]  PDF metadata title
+ * @param {{client?: string, freelancer?: string}} [opts.signatures]
+ *        Data URIs to fall back on for a party whose signature the stored
+ *        markup does not carry. A signature already IN the document always
+ *        wins — this only fills a box that was drawn empty, which happens
+ *        when a copy was signed before the other party had signed at all.
  * @returns {Promise<Buffer>}
  */
-async function agreementHtmlToPdf(html, { title = "Tokun Agreement" } = {}) {
+async function agreementHtmlToPdf(html, { title = "Tokun Agreement", signatures = null } = {}) {
   const doc = await PDFDocument.create();
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -379,7 +548,24 @@ async function agreementHtmlToPdf(html, { title = "Tokun Agreement" } = {}) {
   doc.setProducer("Tokun.World");
   doc.setCreationDate(new Date());
 
-  const blocks = parseBlocks(html);
+  /* The signature grid, lifted out before the scan — see extractSignaturePanels. */
+  const { html: flowHtml, panels } = extractSignaturePanels(html);
+
+  /* A party who signed first has the other side's box empty in their stored
+     copy, because it WAS empty when they signed it. The order record holds both
+     signatures, so a caller that has it can pass them and the emailed copy
+     shows the agreement as it stands now — fully executed, the same way the
+     page shows it. Never overwrites a signature the document already carries. */
+  if (signatures && panels.length) {
+    const fallback = [signatures.client, signatures.freelancer];
+    panels.forEach((panel, i) => {
+      if (!panel.sig && typeof fallback[i] === "string" && fallback[i].startsWith("data:image/")) {
+        panel.sig = fallback[i];
+      }
+    });
+  }
+
+  const blocks = parseBlocks(flowHtml);
 
   /* Nothing recognisable in the input is a FAILURE, not an empty document.
      Without this the renderer happily returns a 957-byte blank page and the
@@ -407,8 +593,141 @@ async function agreementHtmlToPdf(html, { title = "Tokun Agreement" } = {}) {
      reads as "-1". */
   let pendingPrefix = "";
 
+  /* Embeds one signature data URI. Returns null for anything it cannot read —
+     a signature that fails to draw must cost the signature, never the
+     agreement, so the box falls back to the empty rule below. */
+  const embedSignature = async (dataUrl) => {
+    try {
+      const [, mime, b64] = String(dataUrl).match(/^data:(image\/[a-z+.-]+);base64,(.+)$/i) || [];
+      if (!b64) return null;
+      const bytes = Buffer.from(b64, "base64");
+      if (!bytes.length) return null;
+      return /jpe?g/i.test(mime) ? await doc.embedJpg(bytes) : await doc.embedPng(bytes);
+    } catch (err) {
+      console.error("agreementPdf: signature image skipped:", err.message);
+      return null;
+    }
+  };
+
+  /* The two-column signature grid, drawn to the shape .sig has on the page:
+     name, email, the signature sitting ON the rule, then the date and the
+     party's role under it. Both columns are measured together and drawn
+     together, so the two sides line up whatever either one contains. */
+  const drawSignaturePanels = async (list) => {
+    const colW = (CONTENT_W - SIG_GAP) / 2;
+    const columns = await Promise.all(
+      list.slice(0, 2).map(async (panel) => ({
+        ...panel,
+        image: panel.sig ? await embedSignature(panel.sig) : null,
+        nameLines: wrapHard(panel.name, boldFont, 10.5, colW),
+        emailLines: wrapHard(panel.email, regular, 8, colW).slice(0, 2),
+      }))
+    );
+    if (!columns.length) return;
+
+    const nameRows = Math.max(1, ...columns.map((c) => c.nameLines.length));
+    const emailRows = Math.max(0, ...columns.map((c) => c.emailLines.length));
+    const height = nameRows * 14 + emailRows * 11 + SIG_AREA_H + 8 + 12;
+
+    /* page-break-inside: avoid, as the stylesheet has it. A signature split
+       across two sheets is the one break that makes a contract look altered. */
+    if (y - height < MARGIN.bottom) newPage();
+
+    const top = y;
+    columns.forEach((col, i) => {
+      const x = MARGIN.left + i * (colW + SIG_GAP);
+      let cy = top;
+
+      const drawLineOfText = (text, size, font, color) => {
+        try {
+          page.drawText(text, { x, y: cy, size, font, color });
+        } catch (err) {
+          /* Per-line, like the main loop is per-run: one unrenderable character
+             in a name costs that line, not the panel. */
+          console.error("agreementPdf: skipped a signature line:", err.message);
+        }
+      };
+
+      col.nameLines.forEach((line) => {
+        cy -= 14;
+        drawLineOfText(line, 10.5, boldFont, INK);
+      });
+      cy -= (nameRows - col.nameLines.length) * 14;
+
+      col.emailLines.forEach((line) => {
+        cy -= 11;
+        drawLineOfText(line, 8, regular, MUTED);
+      });
+      cy -= (emailRows - col.emailLines.length) * 11;
+
+      const ruleY = cy - SIG_AREA_H;
+
+      if (col.image) {
+        /* Scaled to fit the box and drawn just above the rule, the way a
+           signature sits on a printed line. */
+        const scale = Math.min(colW / col.image.width, (SIG_AREA_H - 6) / col.image.height);
+        page.drawImage(col.image, {
+          x,
+          y: ruleY + 3,
+          width: col.image.width * scale,
+          height: col.image.height * scale,
+        });
+      } else {
+        /* Nobody has signed this side. A dashed line says "still to sign",
+           where empty space over a solid rule reads as a signature that failed
+           to print. */
+        page.drawLine({
+          start: { x, y: ruleY + 12 },
+          end: { x: x + colW, y: ruleY + 12 },
+          thickness: 0.8,
+          color: RULE,
+          dashArray: [3, 3],
+        });
+      }
+
+      page.drawLine({
+        start: { x, y: ruleY },
+        end: { x: x + colW, y: ruleY },
+        thickness: 0.8,
+        color: INK,
+      });
+
+      const lineY = ruleY - 10;
+      const when = toDrawable(col.when || "Signature / Date");
+      try {
+        page.drawText(when, { x, y: lineY, size: 8, font: regular, color: SOFT });
+      } catch (err) {
+        console.error("agreementPdf: skipped a signature date:", err.message);
+      }
+
+      if (col.role) {
+        /* Uppercase and letter-spaced, as .role is — character by character,
+           because pdf-lib has no tracking option. */
+        let rx = x + regular.widthOfTextAtSize(when, 8) + 8;
+        for (const ch of toDrawable(col.role).toUpperCase()) {
+          try {
+            page.drawText(ch, { x: rx, y: lineY, size: 6.5, font: regular, color: MUTED });
+          } catch (err) {
+            console.error("agreementPdf: skipped a role character:", err.message);
+          }
+          rx += regular.widthOfTextAtSize(ch, 6.5) + 1.1;
+        }
+      }
+    });
+
+    y = top - height;
+  };
+
   for (const block of blocks) {
     const st = STYLE[block.kind] || STYLE.body;
+
+    if (block.kind === "sigpanel") {
+      if (panels.length) {
+        y -= st.above;
+        await drawSignaturePanels(panels);
+      }
+      continue;
+    }
 
     if (block.kind === "stepnum") {
       const n = block.runs.map((r) => r.text).join("").trim();

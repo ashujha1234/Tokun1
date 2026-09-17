@@ -13,6 +13,7 @@
 // nodemailer accepts them as-is.
 
 const { ACCENT, SITE, escapeHtml, rupees, onDate, orderIdRow, sendShellEmail } = require("./emailLayout");
+const { formatOrderId } = require("../utils/orderId");
 
 const adminRecipient = () =>
   process.env.ADMIN_ALERT_EMAIL || process.env.SUPPORT_EMAIL || process.env.EMAIL_FROM || "";
@@ -62,14 +63,16 @@ exports.sendAdminAlert = sendAdminAlert;
 /** A dispute neither side could settle. Money is frozen until Tokun decides. */
 exports.alertDisputeEscalated = async ({ orderTitle, orderId, amount, buyerName, sellerName, reason }) =>
   sendAdminAlert({
-    subject: `Dispute escalated — "${orderTitle || orderId}"`,
+    subject: `Dispute escalated — "${orderTitle || formatOrderId(orderId)}"`,
     heading: "A dispute needs a decision",
     accent: ACCENT.danger,
     introHtml: `The two parties couldn't settle <strong style="color:#fff">${escapeHtml(
-      orderTitle || String(orderId || "an order")
+      orderTitle || formatOrderId(orderId) || "an order"
     )}</strong> between themselves, so it's been escalated to Tokun. The payment is frozen until someone rules on it.`,
     rows: [
-      { label: "Order", value: orderTitle || String(orderId || "—") },
+      /* Falls back to the id in the same form the row below prints it, so a
+         titleless order is not named two different ways in one email. */
+      { label: "Order", value: orderTitle || formatOrderId(orderId) || "—" },
       /* The admin opening this has to find the order in the panel, and the
          title is not what the panel is keyed on. */
       orderIdRow(orderId),

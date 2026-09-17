@@ -17,6 +17,8 @@
  * renderers drop empty rows rather than printing "Method: undefined".
  */
 
+const { formatOrderId } = require("../utils/orderId");
+
 /* Razorpay's `method` is a lowercase token. These are the words a person would
    use for the same thing on their own statement. An unknown method is title-
    cased rather than dropped — a new payment type should show up as itself, not
@@ -123,7 +125,10 @@ function invoiceDetailRows({ payment, orderId, orderKind, projectTitle, currency
      and three names for it makes them check whether it is the same number. */
   return [
     { label: titleLabel, value: projectTitle || "" },
-    { label: "Order ID", value: orderId ? String(orderId) : "" },
+    /* Written the same way the emails write it — "OD-…" — through the one
+       formatter, so an invoice and the email announcing it name the order
+       identically. See utils/orderId.js. */
+    { label: "Order ID", value: formatOrderId(orderId) },
     { label: "Purchase date", value: paidOn },
     { label: "Payment method", value: [payment?.method, payment?.methodDetail].filter(Boolean).join(" · ") },
     /* Separate from the invoice number on purpose: the invoice number is ours,

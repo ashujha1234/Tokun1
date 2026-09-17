@@ -113,6 +113,8 @@ const KIND_CONFIG = {
     ndaContainer: "nda",
     buyerNdaBlob: "ndaClientBlob",
     sellerNdaBlob: "ndaFreelancerBlob",
+    buyerNdaSig: "ndaClientSignature",
+    sellerNdaSig: "ndaFreelancerSignature",
     buyerLabel: "client",
     sellerLabel: "freelancer",
     dueAtField: "deliveryDate",
@@ -127,6 +129,8 @@ const KIND_CONFIG = {
     ndaContainer: "service-nda",
     buyerNdaBlob: "ndaBuyerBlob",
     sellerNdaBlob: "ndaSellerBlob",
+    buyerNdaSig: "ndaBuyerSignature",
+    sellerNdaSig: "ndaSellerSignature",
     buyerLabel: "buyer",
     sellerLabel: "seller",
     dueAtField: "deliveryDueAt",
@@ -282,6 +286,18 @@ async function ndaAttachments(order, cfg) {
         try {
           bytes = await agreementHtmlToPdf(stored, {
             title: `Tokun Agreement — ${order[cfg.titleField] || "Engagement"}`,
+            /* Both parties' signatures, from the order record.
+             *
+             * A copy signed FIRST was uploaded with the other side's box still
+             * empty, because it was empty at that moment. By the time this email
+             * goes out both have signed — funding requires it — so the readable
+             * copy shows the agreement as it actually stands, the same way the
+             * page shows it. The renderer only fills a box the markup left
+             * blank; a signature already in the document always wins. */
+            signatures: {
+              client: order[cfg.buyerNdaSig] || "",
+              freelancer: order[cfg.sellerNdaSig] || "",
+            },
           });
         } catch (err) {
           /* Falls back to the original file rather than dropping the agreement:

@@ -28,6 +28,7 @@ const ServiceOrder = require("../models/ServiceOrder");
 const { requireAuth } = require("../utils/auth");
 const { requireAdmin } = require("../middleware/requireAdmin");
 const { getBlobSasUrl } = require("../utils/blobStorage");
+const { parseOrderId } = require("../utils/orderId");
 
 const router = express.Router();
 router.use(requireAuth, requireAdmin);
@@ -130,7 +131,13 @@ router.get("/", async (req, res) => {
     if (kind === "hire" || kind === "service") filter.orderKind = kind;
     if (mismatch === "1" || mismatch === "true") filter.versionMismatch = true;
 
-    const term = String(q || "").trim();
+    const raw = String(q || "").trim();
+    /* Emails, invoices and support replies write an order id as "OD-<id>" (see
+       utils/orderId.js), and what an admin pastes here is whatever the party
+       quoted at them. The prefix comes off before the id is tested, so the
+       number that was sent out is the number that finds the record. Anything
+       that is not an order id passes through untouched. */
+    const term = parseOrderId(raw);
     if (term) {
       /* An order id pasted into the search box is the single most likely thing
          an admin does here — they arrive from a dispute holding one. Matched

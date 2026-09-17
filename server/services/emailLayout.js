@@ -13,6 +13,7 @@
 
 const transporter = require("../utils/mailer");
 const { siteUrl } = require("../utils/siteUrl");
+const { formatOrderId, ORDER_ID_PREFIX } = require("../utils/orderId");
 
 /* The accent runs down the top bar, the eyebrow and any CTA. Picked by MEANING,
    not by taste — a creator learns to read the colour before the words:
@@ -169,7 +170,8 @@ function orderUrl(orderKind, orderId, hash = "") {
  */
 const orderIdRow = (orderId, label = "Order ID") => ({
   label,
-  value: orderId ? String(orderId) : "",
+  // "OD-<id>", from the one definition of that form — see utils/orderId.js.
+  value: formatOrderId(orderId),
 });
 
 function escapeHtml(str) {
@@ -393,6 +395,8 @@ module.exports = {
   onDate,
   orderUrl,
   orderIdRow,
+  formatOrderId,
+  ORDER_ID_PREFIX,
   shell,
   footerHtml,
   footerBlock,

@@ -965,15 +965,31 @@ function NdaModal({ nda, onClose, dealId, token, apiBase, resource = "hire" }: {
   const handleSigConfirmed = useCallback((dataUrl: string) => {
     setMySig(dataUrl);
     setStep(2);
-    const mySigs = {
-      client: role === "client" ? dataUrl : undefined,
-      freelancer: role === "freelancer" ? dataUrl : undefined,
+    /* BOTH signatures, not just this signer's.
+     *
+     * This used to send only the party's own, so the copy filed against the
+     * engagement showed one signature and an empty line beside it — and that
+     * copy is what the funded-engagement email attaches. A party opened their
+     * signed contract and could not see the other side had signed it, while the
+     * same document on screen showed both.
+     *
+     * The counterparty's comes from the order record, which is where the
+     * preview above reads it from too (see `sigs`) — so what is filed is what
+     * the signer was actually looking at when they signed. Read from ndaStatus
+     * rather than from `sigs`, because setMySig above has not landed yet.
+     *
+     * Whoever signs FIRST still files a copy with one signature: at that moment
+     * there genuinely is only one, and a document must not show a signature
+     * that did not exist when it was signed. */
+    const signedSigs = {
+      client: role === "client" ? dataUrl : ndaStatus?.clientSignature || undefined,
+      freelancer: role === "freelancer" ? dataUrl : ndaStatus?.freelancerSignature || undefined,
     };
-    const html = buildNdaHtml(nda, mySigs);
+    const html = buildNdaHtml(nda, signedSigs);
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const file = new File([blob], `Tokun-Agreement-${nda.dealId || "engagement"}.html`, { type: "text/html" });
     handleUpload(file, dataUrl);
-  }, [role, nda, handleUpload]);
+  }, [role, nda, handleUpload, ndaStatus]);
 
   const retrySubmit = useCallback(() => {
     if (pendingFileRef.current) handleUpload(pendingFileRef.current, mySig || undefined);
