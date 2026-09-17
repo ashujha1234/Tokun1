@@ -90,6 +90,12 @@ tight.
 - `*.agora.io` / `*.sd-rtn.com`, both schemes — Agora RTC's signalling and media
   edge. `sd-rtn.com` is Agora's own delivery network and is not optional; audio
   and video calls fail without it.
+- `countriesnow.space` — the per-country city list behind the City field in the
+  Super Creator form (see `src/lib/cityLookup.ts`). It was missing here, and the
+  failure was a quiet one: the picker is built to degrade to free text when the
+  list can't be fetched, so a blocked request looked like a third-party outage
+  ("Couldn't load the city list") rather than our own header. It only ever broke
+  in production — the dev server sends no CSP at all.
 
 ### `worker-src 'self' blob:`
 

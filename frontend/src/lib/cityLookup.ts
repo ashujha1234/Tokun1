@@ -23,6 +23,38 @@
 
 const ENDPOINT = "https://countriesnow.space/api/v0.1/countries/cities/q";
 
+/**
+ * Countries this API files under a different name than COUNTRIES uses.
+ *
+ * Our list carries the current, official names — Türkiye, Czechia, Eswatini,
+ * Côte d'Ivoire — which is right for the form. The API's dataset predates
+ * several of those renames and answers `country not found` (HTTP 200, `error:
+ * true`) for every one of them, so the picker degraded to free text for a dozen
+ * countries while working perfectly for their neighbours. That reads as "this
+ * is broken sometimes", which is the hardest kind of bug to report.
+ *
+ * Only the display name is translated; the cache and everything the user sees
+ * stay on our spelling. Verified one by one against the live endpoint — each of
+ * these returns a real list.
+ *
+ * NOT here, because the dataset has no cities for them under any spelling:
+ * Micronesia, Palestine, South Sudan, Tajikistan, Tuvalu, and Congo (Kinshasa)
+ * — the API's lone "Congo" is Brazzaville, and pointing Kinshasa at it would
+ * hand someone in the DRC a list of another country's cities. Those keep the
+ * free-text fallback, which is what it is there for.
+ */
+const API_COUNTRY_ALIASES: Record<string, string> = {
+  "cabo verde": "Cape Verde",
+  "congo (brazzaville)": "Congo",
+  "côte d'ivoire": "Ivory Coast",
+  czechia: "Czech Republic",
+  eswatini: "Swaziland",
+  "north macedonia": "Macedonia",
+  "são tomé and príncipe": "Sao Tome and Principe",
+  türkiye: "Turkey",
+  "vatican city": "Vatican City State (Holy See)",
+};
+
 export type CityLookup =
   | { status: "idle" }
   | { status: "loading" }
@@ -53,7 +85,8 @@ export async function fetchCities(country: string): Promise<string[] | null> {
 
   const request = (async () => {
     try {
-      const res = await fetch(`${ENDPOINT}?country=${encodeURIComponent(country.trim())}`);
+      const asked = API_COUNTRY_ALIASES[key] ?? country.trim();
+      const res = await fetch(`${ENDPOINT}?country=${encodeURIComponent(asked)}`);
       const data = await res.json().catch(() => null);
       // `error: true` is how this API reports an unknown country, with HTTP 200.
       if (!res.ok || !data || data.error || !Array.isArray(data.data)) return null;
