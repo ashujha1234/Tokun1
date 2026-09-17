@@ -162,3 +162,291 @@ export const PROFESSIONAL_TITLES: string[] = [
   "Nutritionist", "Fitness Coach", "Travel Consultant",
   "Event Planner", "Real Estate Consultant", "Freelancer",
 ];
+
+/**
+ * Degrees offered under Education → Degree.
+ *
+ * Suggestions, not a whitelist — `SearchableSelect` keeps `allowCustom`, so a
+ * qualification that isn't here is still typed and saved as given. The list
+ * exists for the same reason PROFESSIONAL_TITLES does: an empty box produced
+ * "btech", "B-Tech", "Bachelor of Technology" and "B.Tech." on four profiles
+ * that all mean one thing, and none of them match each other when a buyer
+ * filters.
+ *
+ * Indian qualifications first and grouped by level, because the picker shows
+ * this order before anything is typed — same India-first reasoning as LANGUAGES.
+ * Abbreviations are the primary form ("B.Tech", not "Bachelor of Technology")
+ * because that is what people type and what fits the field.
+ */
+export const DEGREES: string[] = [
+  // Undergraduate — engineering and computing
+  "B.Tech", "B.E.", "B.Sc", "BCA", "B.Sc (Computer Science)", "B.Sc (IT)",
+
+  // Undergraduate — commerce, arts, management
+  "B.Com", "B.Com (Hons)", "B.A.", "B.A. (Hons)", "BBA", "BMS", "BBM", "BMM",
+  "B.El.Ed", "B.Ed", "B.P.Ed", "B.Voc", "BHM",
+
+  // Undergraduate — design, media, fine arts
+  "B.Des", "BFA", "B.Arch", "B.Plan", "BJMC",
+
+  // Undergraduate — law, medicine, allied health
+  "LL.B", "B.A. LL.B", "BBA LL.B", "MBBS", "BDS", "BAMS", "BHMS", "BUMS",
+  "B.Pharm", "BPT", "B.Sc (Nursing)", "BVSc", "BOT", "B.Sc (Agriculture)",
+
+  // Postgraduate — engineering, computing, science
+  "M.Tech", "M.E.", "M.Sc", "MCA", "M.S.", "M.Sc (Computer Science)",
+
+  // Postgraduate — commerce, arts, management
+  "MBA", "PGDM", "M.Com", "M.A.", "MMS", "M.Ed", "MSW", "MPA", "M.Voc",
+
+  // Postgraduate — design, media, fine arts
+  "M.Des", "MFA", "M.Arch", "M.Plan", "MJMC",
+
+  // Postgraduate — law, medicine, allied health
+  "LL.M", "MD", "MS (Surgery)", "MDS", "M.Pharm", "MPT", "MPH", "M.Sc (Nursing)",
+
+  // Doctoral and beyond
+  "Ph.D.", "D.Phil", "D.Sc", "D.Litt", "DM", "M.Ch", "Post-Doctoral Fellowship",
+
+  // Integrated and dual programmes — common at the IITs, IISc and the NLUs
+  "Integrated M.Tech", "Integrated M.Sc", "Integrated MBA", "Dual Degree (B.Tech + M.Tech)",
+  "Integrated B.Tech + MBA", "BS-MS (Dual Degree)",
+
+  // Professional qualifications people list here as their education
+  "CA (Chartered Accountant)", "CS (Company Secretary)", "CMA (Cost Accountant)",
+  "CFA", "ACCA", "FRM",
+
+  // Shorter programmes and school-level, for profiles that have no degree yet
+  "Diploma", "Advanced Diploma", "Post Graduate Diploma", "Certificate Course",
+  "Polytechnic Diploma", "ITI", "Associate Degree",
+  "Higher Secondary (Class 12)", "Secondary (Class 10)",
+
+  // International equivalents, for anyone who studied outside India
+  "BS", "BA", "BEng", "BBA (International)", "MS", "MA", "MEng", "MPhil", "PhD",
+  "Bachelor's Degree", "Master's Degree", "Self-taught",
+];
+
+/**
+ * Institutions offered under Education → Institution.
+ *
+ * SAME RULE AS ABOVE: suggestions, never a whitelist. No list of colleges can
+ * be complete — India alone has tens of thousands — so the field accepts
+ * anything typed, and this exists to spell the well-known ones consistently
+ * ("IIT Bombay" on every profile rather than "IITB", "iit bombay", "Indian
+ * Institute of Technology, Bombay").
+ *
+ * Deliberately NOT fetched from an API, unlike the city list. A college name is
+ * typed once on a profile that is then read for years — it is not worth a
+ * network dependency, a CSP entry and a loading state, and the free university
+ * APIs have patchy Indian coverage, which is most of this audience.
+ *
+ * Ordered so the most-searched groups come first: the national institutes, then
+ * the large universities, then the well-known colleges by field, then a short
+ * international tail. `SearchableSelect` filters prefix-first, so typing "IIT",
+ * "NIT" or "Delhi" narrows to the right cluster immediately.
+ */
+export const INSTITUTIONS: string[] = [
+  // ── IITs ──
+  "IIT Bombay", "IIT Delhi", "IIT Madras", "IIT Kanpur", "IIT Kharagpur",
+  "IIT Roorkee", "IIT Guwahati", "IIT Hyderabad", "IIT (BHU) Varanasi",
+  "IIT Indore", "IIT Gandhinagar", "IIT Ropar", "IIT Patna", "IIT Mandi",
+  "IIT Jodhpur", "IIT Bhubaneswar", "IIT Tirupati", "IIT Palakkad",
+  "IIT Bhilai", "IIT Goa", "IIT Jammu", "IIT Dharwad", "IIT (ISM) Dhanbad",
+
+  // ── IISc, IISERs and the research institutes ──
+  "Indian Institute of Science (IISc), Bangalore",
+  "IISER Pune", "IISER Kolkata", "IISER Mohali", "IISER Bhopal",
+  "IISER Thiruvananthapuram", "IISER Tirupati", "IISER Berhampur",
+  "Indian Statistical Institute (ISI)", "Tata Institute of Fundamental Research (TIFR)",
+  "Chennai Mathematical Institute (CMI)", "Indian Institute of Space Science and Technology (IIST)",
+
+  // ── NITs ──
+  "NIT Tiruchirappalli", "NIT Karnataka, Surathkal", "NIT Warangal",
+  "NIT Calicut", "NIT Rourkela", "NIT Kurukshetra", "NIT Durgapur",
+  "MNNIT Allahabad", "MANIT Bhopal", "VNIT Nagpur", "MNIT Jaipur",
+  "SVNIT Surat", "NIT Jamshedpur", "NIT Silchar", "NIT Hamirpur",
+  "NIT Jalandhar", "NIT Srinagar", "NIT Patna", "NIT Raipur", "NIT Agartala",
+  "NIT Delhi", "NIT Goa", "NIT Meghalaya", "NIT Manipur", "NIT Mizoram",
+  "NIT Nagaland", "NIT Puducherry", "NIT Sikkim", "NIT Uttarakhand",
+  "NIT Andhra Pradesh", "NIT Arunachal Pradesh",
+
+  // ── IIITs ──
+  "IIIT Hyderabad", "IIIT Bangalore", "IIIT Delhi", "IIIT Allahabad",
+  "ABV-IIITM Gwalior", "IIITDM Jabalpur", "IIITDM Kancheepuram", "IIIT Lucknow",
+  "IIIT Pune", "IIIT Nagpur", "IIIT Vadodara", "IIIT Kottayam", "IIIT Una",
+  "IIIT Sri City", "IIIT Kalyani", "IIIT Bhagalpur", "IIIT Bhopal",
+  "IIIT Surat", "IIIT Ranchi", "IIIT Dharwad",
+
+  // ── IIMs ──
+  "IIM Ahmedabad", "IIM Bangalore", "IIM Calcutta", "IIM Lucknow",
+  "IIM Kozhikode", "IIM Indore", "IIM Shillong", "IIM Rohtak", "IIM Ranchi",
+  "IIM Raipur", "IIM Tiruchirappalli", "IIM Udaipur", "IIM Kashipur",
+  "IIM Nagpur", "IIM Visakhapatnam", "IIM Bodh Gaya", "IIM Amritsar",
+  "IIM Sambalpur", "IIM Sirmaur", "IIM Jammu", "IIM Mumbai",
+  "XLRI Jamshedpur", "FMS Delhi", "MDI Gurgaon", "SPJIMR Mumbai",
+  "IIFT Delhi", "IMT Ghaziabad", "TAPMI Manipal", "Great Lakes Institute of Management",
+
+  // ── Central and large state universities ──
+  "University of Delhi", "Jawaharlal Nehru University (JNU)",
+  "Banaras Hindu University (BHU)", "Aligarh Muslim University (AMU)",
+  "Jamia Millia Islamia", "University of Hyderabad", "University of Mumbai",
+  "University of Calcutta", "University of Madras", "Anna University",
+  "Osmania University", "Jadavpur University", "Savitribai Phule Pune University",
+  "Panjab University", "University of Allahabad", "University of Lucknow",
+  "University of Rajasthan", "Gujarat University", "Bangalore University",
+  "University of Mysore", "Mangalore University", "University of Kerala",
+  "University of Calicut", "Mahatma Gandhi University, Kottayam",
+  "Cochin University of Science and Technology (CUSAT)", "Andhra University",
+  "Sri Venkateswara University", "Kakatiya University", "Utkal University",
+  "Ravenshaw University", "Sambalpur University", "Gauhati University",
+  "Dibrugarh University", "Tezpur University", "North-Eastern Hill University (NEHU)",
+  "Assam University", "Tripura University", "Manipur University",
+  "Visva-Bharati University", "Shivaji University", "Bharathiar University",
+  "Bharathidasan University", "Madurai Kamaraj University", "Annamalai University",
+  "Periyar University", "Alagappa University", "Kurukshetra University",
+  "Maharshi Dayanand University, Rohtak", "Guru Nanak Dev University",
+  "Chaudhary Charan Singh University, Meerut", "Jiwaji University",
+  "Devi Ahilya Vishwavidyalaya, Indore", "Barkatullah University",
+  "Guru Gobind Singh Indraprastha University (GGSIPU)", "Jamia Hamdard",
+  "Dr. B.R. Ambedkar Open University", "IGNOU",
+
+  // ── Technical universities that award most state engineering degrees ──
+  "Dr. A.P.J. Abdul Kalam Technical University (AKTU)",
+  "Visvesvaraya Technological University (VTU)",
+  "Rajiv Gandhi Proudyogiki Vishwavidyalaya (RGPV)",
+  "Gujarat Technological University (GTU)", "Rajasthan Technical University (RTU)",
+  "Maulana Abul Kalam Azad University of Technology (MAKAUT)",
+  "JNTU Hyderabad", "JNTU Kakinada", "JNTU Anantapur",
+  "Punjab Technical University (IKGPTU)", "Biju Patnaik University of Technology (BPUT)",
+  "Dr. Babasaheb Ambedkar Technological University (DBATU)",
+  "APJ Abdul Kalam Technological University (KTU)",
+
+  // ── Well-known private and deemed universities ──
+  "BITS Pilani", "BITS Pilani, Goa Campus", "BITS Pilani, Hyderabad Campus",
+  "VIT Vellore", "VIT Chennai", "VIT-AP University", "VIT Bhopal",
+  "SRM Institute of Science and Technology", "SRM University, AP",
+  "Manipal Institute of Technology", "Manipal Academy of Higher Education",
+  "Manipal University Jaipur", "Amrita Vishwa Vidyapeetham",
+  "Amity University", "Lovely Professional University (LPU)",
+  "Thapar Institute of Engineering and Technology", "Shiv Nadar University",
+  "Ashoka University", "O.P. Jindal Global University",
+  "Symbiosis International University", "Christ University",
+  "Kalinga Institute of Industrial Technology (KIIT)",
+  "Siksha 'O' Anusandhan University", "Chandigarh University",
+  "Chitkara University", "Graphic Era University", "Bennett University",
+  "UPES Dehradun", "Jaypee Institute of Information Technology",
+  "Nirma University", "Pandit Deendayal Energy University (PDEU)",
+  "DA-IICT Gandhinagar", "PES University", "NMIMS Mumbai",
+  "Sharda University", "Galgotias University", "Bharati Vidyapeeth University",
+  "Mahindra University", "Alliance University", "Jain University",
+  "GITAM University", "KL University", "Sastra University",
+  "Vignan's University", "Presidency University, Bangalore",
+  "Woxsen University", "Plaksha University", "Krea University",
+  "Flame University", "Azim Premji University", "TISS Mumbai",
+
+  // ── Engineering colleges people name by the college, not the university ──
+  "Delhi Technological University (DTU)",
+  "Netaji Subhas University of Technology (NSUT)",
+  "Indira Gandhi Delhi Technical University for Women (IGDTUW)",
+  "College of Engineering, Pune (COEP)", "VJTI Mumbai",
+  "Sardar Patel Institute of Technology, Mumbai",
+  "K. J. Somaiya College of Engineering", "D. J. Sanghvi College of Engineering",
+  "Thadomal Shahani Engineering College", "MIT World Peace University, Pune",
+  "Vishwakarma Institute of Technology, Pune", "Pune Institute of Computer Technology (PICT)",
+  "Cummins College of Engineering for Women",
+  "College of Engineering, Guindy (CEG)", "Madras Institute of Technology (MIT), Chennai",
+  "SSN College of Engineering", "PSG College of Technology",
+  "Thiagarajar College of Engineering", "Coimbatore Institute of Technology",
+  "Kumaraguru College of Technology", "R.V. College of Engineering",
+  "BMS College of Engineering", "M.S. Ramaiah Institute of Technology",
+  "Dayananda Sagar College of Engineering",
+  "Sir M. Visvesvaraya Institute of Technology",
+  "Chaitanya Bharathi Institute of Technology (CBIT)",
+  "Vasavi College of Engineering", "VNR Vignana Jyothi Institute of Engineering and Technology",
+  "IIEST Shibpur", "Heritage Institute of Technology, Kolkata",
+  "Punjab Engineering College (PEC)", "LNM Institute of Information Technology (LNMIIT)",
+  "L.D. College of Engineering", "SGSITS Indore",
+  "College of Engineering, Trivandrum (CET)", "Model Engineering College, Kochi",
+  "TKM College of Engineering", "Rajagiri School of Engineering and Technology",
+  "Maharaja Agrasen Institute of Technology", "JECRC University",
+
+  // ── Medicine ──
+  "AIIMS New Delhi", "AIIMS Jodhpur", "AIIMS Bhubaneswar", "AIIMS Bhopal",
+  "AIIMS Patna", "AIIMS Raipur", "AIIMS Rishikesh", "JIPMER Puducherry",
+  "Christian Medical College (CMC), Vellore", "Armed Forces Medical College (AFMC)",
+  "King George's Medical University (KGMU)", "Maulana Azad Medical College",
+  "Lady Hardinge Medical College", "Vardhman Mahavir Medical College",
+  "Grant Medical College, Mumbai", "Seth G.S. Medical College, Mumbai",
+  "St. John's Medical College, Bangalore", "Kasturba Medical College, Manipal",
+  "Bangalore Medical College and Research Institute", "Madras Medical College",
+  "Osmania Medical College", "Gandhi Medical College, Hyderabad",
+
+  // ── Law ──
+  "NLSIU Bangalore", "NALSAR Hyderabad", "National Law University, Delhi",
+  "WB National University of Juridical Sciences (NUJS)",
+  "National Law University, Jodhpur", "Gujarat National Law University (GNLU)",
+  "Symbiosis Law School", "ILS Law College, Pune", "Faculty of Law, University of Delhi",
+  "Government Law College, Mumbai",
+
+  // ── Design, art and architecture ──
+  "National Institute of Design (NID), Ahmedabad", "NID Bengaluru", "NID Gandhinagar",
+  "NIFT Delhi", "NIFT Mumbai", "NIFT Bengaluru", "NIFT Chennai", "NIFT Hyderabad",
+  "NIFT Kolkata", "IDC School of Design, IIT Bombay",
+  "Srishti Manipal Institute of Art, Design and Technology",
+  "MIT Institute of Design, Pune", "Pearl Academy",
+  "Sir J.J. School of Art", "Symbiosis Institute of Design",
+  "Sir J.J. College of Architecture", "School of Planning and Architecture, Delhi",
+  "CEPT University", "Academy of Art and Design",
+
+  // ── Film, media and communication ──
+  "Film and Television Institute of India (FTII)",
+  "Satyajit Ray Film and Television Institute (SRFTI)",
+  "Whistling Woods International", "Indian Institute of Mass Communication (IIMC)",
+  "Asian College of Journalism", "Xavier Institute of Communications",
+  "Symbiosis Institute of Media and Communication",
+
+  // ── The arts, science and commerce colleges named on their own ──
+  "Shri Ram College of Commerce (SRCC)", "Lady Shri Ram College for Women (LSR)",
+  "Hindu College, Delhi", "St. Stephen's College, Delhi", "Hansraj College",
+  "Miranda House", "Kirori Mal College", "Ramjas College", "Gargi College",
+  "Sri Venkateswara College", "Jesus and Mary College", "Daulat Ram College",
+  "Deshbandhu College", "Dyal Singh College",
+  "St. Xavier's College, Mumbai", "St. Xavier's College, Kolkata",
+  "St. Xavier's College, Ahmedabad", "Presidency University, Kolkata",
+  "Presidency College, Chennai", "Loyola College, Chennai", "Stella Maris College",
+  "Madras Christian College", "Fergusson College, Pune",
+  "St. Joseph's College, Bangalore", "Mount Carmel College, Bangalore",
+  "Narsee Monjee College of Commerce and Economics", "H.R. College of Commerce",
+  "Jai Hind College", "K.C. College", "Mithibai College", "Ramnarain Ruia College",
+  "St. Thomas College", "Banasthali Vidyapith",
+
+  // ── Professional bodies people list as their education ──
+  "Institute of Chartered Accountants of India (ICAI)",
+  "Institute of Company Secretaries of India (ICSI)",
+  "Institute of Cost Accountants of India (ICMAI)",
+
+  // ── A short international tail ──
+  "Massachusetts Institute of Technology (MIT)", "Stanford University",
+  "Harvard University", "University of California, Berkeley",
+  "California Institute of Technology (Caltech)", "Carnegie Mellon University",
+  "Princeton University", "Yale University", "Columbia University",
+  "Cornell University", "University of Chicago", "University of Pennsylvania",
+  "UCLA", "University of Michigan", "Georgia Institute of Technology",
+  "University of Illinois Urbana-Champaign", "University of Texas at Austin",
+  "University of Washington", "New York University", "Purdue University",
+  "Northeastern University", "Arizona State University",
+  "University of Toronto", "University of British Columbia", "McGill University",
+  "University of Waterloo", "University of Oxford", "University of Cambridge",
+  "Imperial College London", "University College London (UCL)",
+  "London School of Economics (LSE)", "University of Edinburgh",
+  "University of Manchester", "University of Warwick", "ETH Zurich", "EPFL",
+  "Technical University of Munich", "TU Delft", "KU Leuven", "Sorbonne University",
+  "HEC Paris", "INSEAD", "National University of Singapore (NUS)",
+  "Nanyang Technological University (NTU)", "University of Melbourne",
+  "University of Sydney", "UNSW Sydney", "Monash University",
+  "Australian National University", "University of Auckland",
+  "University of Tokyo", "Kyoto University", "Tsinghua University",
+  "Peking University", "KAIST", "Seoul National University",
+  "University of Hong Kong", "HKUST", "Technion", "Tel Aviv University",
+  "University of Cape Town",
+];

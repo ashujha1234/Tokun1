@@ -7,6 +7,8 @@ import {
   AboutCounter,
   CityPicker,
   CountryPicker,
+  DegreePicker,
+  InstitutionPicker,
   LanguagesEditor,
   ProfessionalTitlePicker,
   RepeatableRows,
@@ -164,6 +166,51 @@ const stepErrors = (step: StepId, f: FormState): string[] => {
       return [];
   }
 };
+
+/* ── These three live at MODULE scope, and that is load-bearing ──────────────
+   CredentialBlock and SummaryRow used to be declared inside the component, as
+   `const CredentialBlock = (...) => ...`. A function declared in a render body
+   is a NEW function on every render, and React compares element types by
+   identity — so each keystroke gave `<CredentialBlock>` a type it had never
+   seen, and React unmounted the old subtree and mounted a fresh one instead of
+   updating it.
+
+   What that looked like: the experience, education and certification fields
+   accepted exactly one character and then lost focus, because the input being
+   typed into no longer existed. Everything typed was saved — `form` is held up
+   here — so it read as the keyboard being ignored rather than as data loss,
+   which is why it was reported as "it won't let me type".
+
+   The basics step never had it: that step is a plain function CALL
+   (`renderBasicsStep()`), which returns elements into this component's own
+   tree rather than introducing a component type of its own.
+
+   So: a component that closes over nothing belongs out here. One that needs
+   state from the wizard should stay a `render…()` function, like the steps do.
+   Declaring it inside and USING IT AS JSX is the shape to avoid. */
+
+const CredentialBlock = ({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) => (
+  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+    <h4 className="text-sm font-medium text-white">{title}</h4>
+    <p className="text-[11px] text-white/40 mt-0.5 mb-3">{description}</p>
+    {children}
+  </div>
+);
+
+const SummaryRow = ({ label, value }: { label: string; value: React.ReactNode }) => (
+  <div className="flex items-start justify-between gap-4 py-2 border-b border-white/5 last:border-0">
+    <span className="text-xs text-white/45 shrink-0">{label}</span>
+    <span className="text-xs text-white text-right">{value || "—"}</span>
+  </div>
+);
 
 const Field = ({
   label,
@@ -540,22 +587,6 @@ export default function BecomeFreelancerWizard({
     );
   };
 
-  const CredentialBlock = ({
-    title,
-    description,
-    children,
-  }: {
-    title: string;
-    description: string;
-    children: React.ReactNode;
-  }) => (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-      <h4 className="text-sm font-medium text-white">{title}</h4>
-      <p className="text-[11px] text-white/40 mt-0.5 mb-3">{description}</p>
-      {children}
-    </div>
-  );
-
   const renderCredentialsStep = () => (
     <div className="space-y-4">
       <CredentialBlock
@@ -636,17 +667,13 @@ export default function BecomeFreelancerWizard({
           emptyHint="Nothing added yet."
           renderRow={(item, update) => (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pr-6">
-              <input
-                className={inputClass}
+              <InstitutionPicker
                 value={item.institution}
-                onChange={(e) => update({ institution: e.target.value })}
-                placeholder="Institution"
+                onChange={(institution) => update({ institution })}
               />
-              <input
-                className={inputClass}
+              <DegreePicker
                 value={item.degree || ""}
-                onChange={(e) => update({ degree: e.target.value })}
-                placeholder="Degree, e.g. B.Tech"
+                onChange={(degree) => update({ degree })}
               />
               <input
                 className={inputClass}
@@ -710,13 +737,6 @@ export default function BecomeFreelancerWizard({
           )}
         />
       </CredentialBlock>
-    </div>
-  );
-
-  const SummaryRow = ({ label, value }: { label: string; value: React.ReactNode }) => (
-    <div className="flex items-start justify-between gap-4 py-2 border-b border-white/5 last:border-0">
-      <span className="text-xs text-white/45 shrink-0">{label}</span>
-      <span className="text-xs text-white text-right">{value || "—"}</span>
     </div>
   );
 

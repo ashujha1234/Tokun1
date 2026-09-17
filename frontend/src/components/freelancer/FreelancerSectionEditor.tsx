@@ -16,6 +16,8 @@ import {
   AboutCounter,
   CityPicker,
   CountryPicker,
+  DegreePicker,
+  InstitutionPicker,
   LanguagesEditor,
   ProfessionalTitlePicker,
   RepeatableRows,
@@ -827,17 +829,13 @@ export default function FreelancerSectionEditor({
             emptyHint="Nothing added yet."
             renderRow={(item, update) => (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pr-6">
-                <input
-                  className={inputClass}
+                <InstitutionPicker
                   value={item.institution}
-                  onChange={(e) => update({ institution: e.target.value })}
-                  placeholder="Institution"
+                  onChange={(institution) => update({ institution })}
                 />
-                <input
-                  className={inputClass}
+                <DegreePicker
                   value={item.degree || ""}
-                  onChange={(e) => update({ degree: e.target.value })}
-                  placeholder="Degree, e.g. B.Tech"
+                  onChange={(degree) => update({ degree })}
                 />
                 <input
                   className={inputClass}

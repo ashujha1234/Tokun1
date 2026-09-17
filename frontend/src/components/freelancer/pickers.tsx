@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type InputHTMLAttributes } from "react";
 import { Check, Loader2, Plus, Search, X } from "lucide-react";
 import SearchableSelect from "@/components/ui/SearchableSelect";
-import { COUNTRIES, LANGUAGES, PROFESSIONAL_TITLES } from "@/lib/referenceData";
+import {
+  COUNTRIES,
+  DEGREES,
+  INSTITUTIONS,
+  LANGUAGES,
+  PROFESSIONAL_TITLES,
+} from "@/lib/referenceData";
 import { cachedCities, fetchCities, type CityLookup } from "@/lib/cityLookup";
 import {
   searchSkills,
@@ -382,6 +388,61 @@ export function CityPicker({
           : undefined
       }
       ariaLabel="City"
+    />
+  );
+}
+
+/* ══════════════════════ education ══════════════════════ */
+
+/**
+ * Institution and degree, for the Education rows in both edit screens.
+ *
+ * Both were plain text inputs, which is how one profile said "IIT Bombay",
+ * the next "iitb" and a third "Indian Institute of Technology, Bombay" — three
+ * spellings of one college that match each other nowhere, and a degree field
+ * holding "btech", "B-Tech" and "Bachelor of Technology" beside them.
+ *
+ * Suggestions rather than a whitelist, the same as country and language:
+ * `SearchableSelect` keeps `allowCustom`, so a college that isn't in the list —
+ * and no list of colleges can be complete — is typed and saved exactly as
+ * given. Nobody is locked out of naming where they actually studied; the list
+ * only makes the common answer the easy one.
+ */
+
+export function InstitutionPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <SearchableSelect
+      value={value}
+      onChange={onChange}
+      options={INSTITUTIONS}
+      placeholder="College or university"
+      hint="Search, or type any institution"
+      ariaLabel="Institution"
+    />
+  );
+}
+
+export function DegreePicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <SearchableSelect
+      value={value}
+      onChange={onChange}
+      options={DEGREES}
+      placeholder="Degree, e.g. B.Tech"
+      hint="Search, or type your own"
+      ariaLabel="Degree"
     />
   );
 }
