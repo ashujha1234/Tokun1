@@ -393,6 +393,7 @@ const { requireAdmin } = require("../middleware/requireAdmin");
 // for by THIS buyer. Shared with cartRoute.js so both checkouts cannot drift.
 const {
   PaymentRejected,
+  BUYER_MESSAGES,
   readPaymentFields,
   resolvePaidOrder,
   assertOrderUnused,
@@ -439,6 +440,13 @@ const {
 // GET /api/purchase/seller-payout-status/:promptId
 // Buyer-facing check — lets the frontend disable "Buy Now" before the buyer
 // even attempts checkout, instead of failing later.
+/* How long one buyer holds an exclusive listing while they are in checkout.
+   Long enough to read a page and finish a UPI or card payment without being
+   hurried, short enough that an abandoned tab is not felt by the next buyer.
+   See the note on Prompt.reservedBy. */
+const EXCLUSIVE_HOLD_MINUTES = 15;
+const EXCLUSIVE_HOLD_MS = EXCLUSIVE_HOLD_MINUTES * 60 * 1000;
+
 router.get("/seller-payout-status/:promptId", async (req, res) => {
   try {
     const { promptId } = req.params;
@@ -633,7 +641,75 @@ router.post("/create-order/:promptId", requireAuth, blockIfSuspended, blockOrgTe
       orderPayload.notes.commissionWaived = String(+(sellerReceives - split.sellerNet).toFixed(2));
     }
 
-    const order = await Razorpay.orders.create(orderPayload);
+    /* ── HOLD AN EXCLUSIVE LISTING BEFORE CHECKOUT OPENS ────────────────────
+     *
+     * The `exclusive && sold` check near the top of this handler is a read, and
+     * `sold` is not set until /verify — after the buyer has paid. So two people
+     * opening this listing together both passed that check, both were given a
+     * Razorpay order, and both paid for a thing only one of them could own.
+     * Measured against a real MongoDB: two Purchase rows, one listing.
+     *
+     * Whoever gets here first now holds the listing, and the second is turned
+     * away BEFORE Razorpay opens — no money taken, nothing to refund, which is
+     * the whole point of doing this here rather than at /verify.
+     *
+     * The hold LAPSES rather than locks. Abandoning checkout must not take a
+     * listing off sale for good, so after EXCLUSIVE_HOLD_MS anyone may take it.
+     * Re-entering your own checkout renews your hold rather than being refused
+     * by it — that is the `reservedBy` arm of the $or.
+     *
+     * This is not the only guard. A buyer whose hold lapsed while they were on
+     * Razorpay can still pay, so /verify claims the listing atomically too and
+     * refunds anyone who lost it in between. This one keeps that case rare;
+     * that one keeps it correct. */
+    if (prompt.exclusive) {
+      const now = new Date();
+      const held = await Prompt.findOneAndUpdate(
+        {
+          _id: prompt._id,
+          exclusive: true,
+          sold: false,
+          $or: [
+            { reservedUntil: null },
+            { reservedUntil: { $lte: now } },
+            { reservedBy: req.user._id },
+          ],
+        },
+        { $set: { reservedBy: req.user._id, reservedUntil: new Date(now.getTime() + EXCLUSIVE_HOLD_MS) } },
+        { new: true }
+      );
+
+      if (!held) {
+        /* Someone else is mid-checkout, or finished one. Told apart so the
+           buyer knows whether to wait or to stop waiting. */
+        const current = await Prompt.findById(prompt._id).select("sold").lean();
+        return res.status(409).json({
+          success: false,
+          error: current?.sold ? "prompt_already_sold" : "prompt_reserved",
+          message: current?.sold
+            ? "This one-of-a-kind product has just been bought by someone else."
+            : `Someone else is checking out this one-of-a-kind product right now. If they don't complete it, it comes back within ${EXCLUSIVE_HOLD_MINUTES} minutes.`,
+        });
+      }
+    }
+
+    let order;
+    try {
+      order = await Razorpay.orders.create(orderPayload);
+    } catch (orderErr) {
+      /* No checkout, so the hold has nothing to protect — give the listing
+         straight back instead of making the next buyer wait it out. Scoped to
+         our own hold so it cannot release one taken since. */
+      if (prompt.exclusive) {
+        await Prompt.updateOne(
+          { _id: prompt._id, reservedBy: req.user._id, sold: false },
+          { $set: { reservedBy: null, reservedUntil: null } }
+        ).catch((releaseErr) =>
+          console.error("create-order: could not release the exclusive hold:", releaseErr?.message)
+        );
+      }
+      throw orderErr;
+    }
 
     /* Bind the held credit to the order that actually exists, so /verify can
        match it exactly rather than guessing from "this seller has something
@@ -873,49 +949,132 @@ router.post("/verify/:promptId", requireAuth, blockIfSuspended, blockOrgTeamMemb
        seller, and that has to come out at exactly what they were transferred. */
     const platformCommission = +(chargedToBuyer - sellerNet).toFixed(2);
 
-    // Create purchase record
-    const purchase = await Purchase.create({
-      buyer: req.user._id,
-      prompt: prompt._id,
-      /* Server-derived, not the client's `pricePaid` from the request body.
-         That value used to be taken on trust, and it decides what a refund
-         gives back — a caller could have named their own figure. It is also
-         now the discounted amount when a Refer & Earn welcome discount was
-         spent, which the client has no way of computing correctly. */
-      pricePaid: chargedToBuyer,
-      platformCommission,
-      // Carried onto the purchase so a refund can tell the non-refundable fee
-      // apart from the rest of Tokun's cut.
-      platformFee: split.platformFee,
-      platformFeeGst: split.platformFeeGst,
-      razorpayPaymentId,
-      razorpayOrderId,
-      paymentStatus: "SUCCESS",
-     promptSnapshot: {
-        title: prompt.title,
-        description: prompt.description,
-        promptText: embedWatermark(prompt.promptText, String(req.user._id)), // ← marked
-        attachment: prompt.attachment,
-        uploadCode: prompt.uploadCode,
-        // The complete code record — pasted snippets included, which
-        // `uploadCode` never held. See the note on Purchase.promptSnapshot.
-        codeAssets: prompt.codeAssets,
-        originalPrice: prompt.price,
-      },
-
-    });
-
-    // Mark exclusive prompt as sold
+    /* ── CLAIM THE EXCLUSIVE LISTING, BEFORE ANY RECORD OF A SALE ───────────
+     *
+     * create-order holds the listing so a second buyer never reaches payment,
+     * and that is where this race is meant to end. This is the backstop for the
+     * one case that hold cannot cover: a buyer whose 15 minutes lapsed while
+     * they sat on Razorpay, during which someone else took and completed it.
+     *
+     * It has to come BEFORE the Purchase row, or a buyer who lost the listing
+     * still walks away with a purchase record for it.
+     *
+     * The refund is the part that matters. This buyer has paid for something
+     * they cannot be given, so the money goes back here and now rather than
+     * through a support ticket: the seller's share of a prompt sale is a Route
+     * transfer held for REFUND_WINDOW_HOURS (see transferOnHoldUntil), so
+     * reverse_all claws it back cleanly and the buyer is made whole. */
     if (prompt.exclusive) {
-      prompt.sold = true;
+      const claimed = await Prompt.findOneAndUpdate(
+        { _id: prompt._id, exclusive: true, sold: false },
+        { $set: { sold: true, reservedBy: null, reservedUntil: null } },
+        { new: true }
+      );
+
+      if (!claimed) {
+        let refunded = null;
+        try {
+          refunded = await Razorpay.payments.refund(razorpayPaymentId, {
+            notes: {
+              reason: "Exclusive product was bought by someone else first",
+              promptId: String(prompt._id),
+              userId: String(req.user._id),
+            },
+            reverse_all: 1,
+          });
+        } catch (refundErr) {
+          /* The buyer is owed money and we could not send it. This is the one
+             line in this handler that has to be findable in a log at 2am. */
+          console.error(
+            `REFUND FAILED for lost exclusive race — buyer ${req.user._id} paid for prompt ${prompt._id} (payment ${razorpayPaymentId}) and has NOT been refunded:`,
+            refundErr?.message
+          );
+        }
+
+        return res.status(409).json({
+          success: false,
+          error: "prompt_already_sold",
+          message: refunded
+            ? "Someone completed their purchase of this one-of-a-kind product moments before you. Your payment has been refunded in full — it usually reaches your account within 5-7 working days."
+            : "Someone completed their purchase of this one-of-a-kind product moments before you. Your refund could not be sent automatically — please contact support with your payment ID and we will return it.",
+          razorpayPaymentId,
+        });
+      }
     }
 
-    // Update prompt sales stats. totalRevenue tracks what the SELLER earned,
-    // net of Tokun's cut — it's surfaced to the seller as their earnings, so
-    // crediting the gross list price here would overstate it by the commission.
-    prompt.salesCount += 1;
-    prompt.totalRevenue += sellerNet;  // the amount actually transferred, waiver included
-    await prompt.save();
+    /* Create purchase record.
+     *
+     * Wrapped because the (razorpayOrderId, prompt) index on Purchase is now
+     * what actually settles a double verify — see the note on that index. The
+     * loser of that race arrives here with a duplicate key, which without this
+     * would surface as a 500 reading "E11000 duplicate key" to a buyer whose
+     * purchase is, in fact, perfectly fine and already recorded. */
+    let purchase;
+    try {
+      purchase = await Purchase.create({
+        buyer: req.user._id,
+        prompt: prompt._id,
+        /* Server-derived, not the client's `pricePaid` from the request body.
+           That value used to be taken on trust, and it decides what a refund
+           gives back — a caller could have named their own figure. It is also
+           now the discounted amount when a Refer & Earn welcome discount was
+           spent, which the client has no way of computing correctly. */
+        pricePaid: chargedToBuyer,
+        platformCommission,
+        // Carried onto the purchase so a refund can tell the non-refundable fee
+        // apart from the rest of Tokun's cut.
+        platformFee: split.platformFee,
+        platformFeeGst: split.platformFeeGst,
+        razorpayPaymentId,
+        razorpayOrderId,
+        paymentStatus: "SUCCESS",
+       promptSnapshot: {
+          title: prompt.title,
+          description: prompt.description,
+          promptText: embedWatermark(prompt.promptText, String(req.user._id)), // ← marked
+          attachment: prompt.attachment,
+          uploadCode: prompt.uploadCode,
+          // The complete code record — pasted snippets included, which
+          // `uploadCode` never held. See the note on Purchase.promptSnapshot.
+          codeAssets: prompt.codeAssets,
+          originalPrice: prompt.price,
+        },
+
+      });
+
+    } catch (createErr) {
+      if (createErr?.code === 11000) {
+        /* The same order, verified twice at once. The other request recorded
+           the purchase — this buyer owns it, was charged once, and has nothing
+           to fix, so this reads as the existing "already redeemed" refusal
+           rather than as a failure. */
+        console.warn(
+          `verify: duplicate purchase blocked by index — buyer=${req.user._id} prompt=${promptId} order=${razorpayOrderId}`
+        );
+        return res.status(400).json({
+          success: false,
+          error: "order_already_redeemed",
+          message: BUYER_MESSAGES.order_already_redeemed,
+        });
+      }
+      throw createErr;
+    }
+
+    /* Sales stats. totalRevenue tracks what the SELLER earned, net of Tokun's
+       cut — it's surfaced to the seller as their earnings, so crediting the
+       gross list price here would overstate it by the commission.
+       `sold` is not set here: the claim above already did it, and only for a
+       listing this buyer actually won.
+
+       $inc, not `+= 1` on a loaded document. Two sales of the same prompt in
+       the same moment each read salesCount as N and each wrote N+1, so two
+       sales counted as one and the seller's revenue was short by a whole sale.
+       Measured, not theorised — it is the quietest of these bugs, because the
+       money is right and only the number a seller reads is wrong. */
+    await Prompt.updateOne(
+      { _id: prompt._id },
+      { $inc: { salesCount: 1, totalRevenue: sellerNet } }
+    );
 
     // IMPORTANT:
     // Tumhare Prompt model me seller/uploader ka field userId hai.

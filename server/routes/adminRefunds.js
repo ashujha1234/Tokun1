@@ -92,20 +92,65 @@ router.get("/", async (req, res) => {
 
 // POST /api/admin/refunds/:id/approve
 router.post("/:id/approve", async (req, res) => {
+  /* Declared out here rather than inside the try, because the catch at the
+     bottom needs it and a `const` in the try block is not in scope there —
+     `typeof` would quietly read as undefined and the release would never run. */
+  let releaseClaim = null;
+
   try {
-    const refundRequest = await RefundRequest.findById(req.params.id).populate("purchase");
+    /* ── CLAIM THE REQUEST BEFORE SPENDING ANY MONEY ─────────────────────────
+     *
+     * This was findById() followed by `if (status !== "PENDING") reject`, and
+     * between those two statements and the Razorpay call below there was
+     * nothing stopping a second admin. Measured against a real MongoDB: two
+     * approvals fired together both passed the check and both called Razorpay,
+     * so the buyer was refunded TWICE. A FULL refund happens to be saved by
+     * Razorpay refusing to exceed the refundable amount; a partial one is not,
+     * and partial refunds are exactly what this screen issues.
+     *
+     * The check is now the update's own condition, so MongoDB hands the request
+     * to one admin and the other finds nothing to claim.
+     *
+     * Claimed straight to APPROVED rather than to an intermediate state, so the
+     * status enum stays as it is. If anything below refuses, releaseClaim()
+     * puts it back to PENDING — the retryable state the old code left it in. */
+    const refundRequest = await RefundRequest.findOneAndUpdate(
+      { _id: req.params.id, status: "PENDING" },
+      { $set: { status: "APPROVED" } },
+      { new: true }
+    ).populate("purchase");
+
     if (!refundRequest) {
-      return res.status(404).json({ success: false, error: "refund_request_not_found" });
+      /* Does not exist, or someone else has it. Both are read-only lookups on
+         a request we have NOT claimed, so neither can double-spend. */
+      const existing = await RefundRequest.findById(req.params.id).select("status").lean();
+      if (!existing) {
+        return res.status(404).json({ success: false, error: "refund_request_not_found" });
+      }
+      return res.status(400).json({ success: false, error: "already_" + existing.status.toLowerCase() });
     }
-    if (refundRequest.status !== "PENDING") {
-      return res.status(400).json({ success: false, error: "already_" + refundRequest.status.toLowerCase() });
-    }
+
+    /* Every refusal between here and the Razorpay call has to hand the claim
+       back, or the request is stranded as APPROVED with no refund behind it.
+       Guarded on razorpayRefundId being unset so a late failure — one that
+       happens after Razorpay has actually paid — can never reopen a request
+       that was genuinely refunded. */
+    releaseClaim = async () => {
+      await RefundRequest.updateOne(
+        { _id: refundRequest._id, status: "APPROVED", razorpayRefundId: { $in: [null, ""] } },
+        { $set: { status: "PENDING" } }
+      ).catch((err) =>
+        console.error(`refund ${refundRequest._id}: could not return the claim to PENDING:`, err?.message)
+      );
+    };
 
     const purchase = refundRequest.purchase;
     if (!purchase) {
+      await releaseClaim();
       return res.status(400).json({ success: false, error: "purchase_not_found" });
     }
     if (!purchase.razorpayPaymentId) {
+      await releaseClaim();
       return res.status(400).json({
         success: false,
         error: "no_payment_id_on_purchase",
@@ -132,6 +177,7 @@ router.post("/:id/approve", async (req, res) => {
 
     const refundAmountPaise = Math.round(refundAmount * 100);
     if (!refundAmountPaise || refundAmountPaise <= 0) {
+      await releaseClaim();
       return res.status(400).json({ success: false, error: "invalid_refund_amount" });
     }
 
@@ -169,6 +215,7 @@ router.post("/:id/approve", async (req, res) => {
       });
     } catch (razorpayErr) {
       console.error("Razorpay refund failed:", razorpayErr);
+      await releaseClaim();
       return res.status(502).json({
         success: false,
         error: "razorpay_refund_failed",
@@ -178,6 +225,20 @@ router.post("/:id/approve", async (req, res) => {
           "Razorpay rejected the refund — request was NOT marked approved, retry once resolved.",
       });
     }
+
+    /* The refund id goes down NOW, before anything else can fail.
+     *
+     * Everything from here on is recovery and bookkeeping, and any of it can
+     * throw. If it does and this id is not yet stored, releaseClaim() in the
+     * catch below would see an unrefunded-looking request and hand it back to
+     * PENDING — and the next admin to approve it would refund a buyer who has
+     * already been refunded. One small write closes that: after this line the
+     * claim can never be released, because the request provably carries a
+     * refund. */
+    await RefundRequest.updateOne(
+      { _id: refundRequest._id },
+      { $set: { razorpayRefundId: refund.id } }
+    );
 
     // ── Recover the seller's share.
     //
@@ -350,6 +411,13 @@ router.post("/:id/approve", async (req, res) => {
     return res.json({ success: true, refundRequest, refund });
   } catch (err) {
     console.error("Admin refund approve error:", err);
+    /* Something unplanned threw. If it threw BEFORE Razorpay paid, the request
+       is sitting claimed as APPROVED with nothing behind it and no admin could
+       ever retry it — so it goes back to PENDING. If it threw after, the write
+       above means razorpayRefundId is set and this does nothing, which is the
+       half that matters: a refunded request must never become approvable
+       again. releaseClaim is only defined once the request has been claimed. */
+    if (releaseClaim) await releaseClaim();
     return res.status(500).json({
       success: false,
       error: err?.error?.description || err?.message || "server_error",

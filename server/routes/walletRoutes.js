@@ -2632,6 +2632,10 @@ router.post("/withdraw/request", requireAuth, blockIfSuspended, async (req, res)
 
     const wallet = await getOrCreateWallet(userId);
 
+    /* Read first, only to say a useful number back. The balance is NOT decided
+       here — see the conditional debit below, which is what actually enforces
+       it. This early return exists so someone asking for more than they have
+       is told how much they have, rather than a bare refusal. */
     if (wallet.availableBalance < amount) {
       return res.status(400).json({
         success: false,
@@ -2647,37 +2651,99 @@ router.post("/withdraw/request", requireAuth, blockIfSuspended, async (req, res)
       return res.status(400).json({ success: false, error: "invalid_net_amount" });
     }
 
-    const withdrawal = await WalletWithdrawal.create({
-      userId,
-      bankAccountId: bankAccount._id,
-      amount,
-      serviceFee,
-      netAmount,
-      status: "Pending",
-      note: `Withdrawal to ${describePayoutDestination(bankAccount)}`,
-    });
+    /* ── THE DEBIT, AND WHY IT IS ONE STATEMENT ──────────────────────────────
+     *
+     * This used to be: read the balance, check it, create the withdrawal row,
+     * subtract, save. Five statements with the check in the first one, so two
+     * requests arriving together both read ₹1000, both passed the check, and
+     * both wrote a ₹1000 withdrawal — ₹2000 requested against ₹1000, with the
+     * balance debited once. Measured, not theorised: a double-click was enough,
+     * and the second save also threw a Mongoose VersionError (both had loaded
+     * the same document), so one of the two callers got a 500 AFTER their
+     * withdrawal row had already been written.
+     *
+     * The balance check is now part of the write. `availableBalance: { $gte }`
+     * is a condition on the update itself, so MongoDB applies it to one caller
+     * at a time and the second finds nothing to match. No read-then-write gap
+     * exists to race in.
+     *
+     * $inc rather than assigning a number computed in Node, for the same
+     * reason: assigning would write a total derived from a balance that may
+     * have moved since it was read.
+     *
+     * The id is generated up front because the transaction entry names the
+     * withdrawal it belongs to, and the debit has to be the first write. */
+    const withdrawalId = new mongoose.Types.ObjectId();
+    const destination = describePayoutDestination(bankAccount);
 
-    wallet.availableBalance -= amount;
-    wallet.transactions.unshift({
-      type: "debit",
-      status: "Pending",
-      amount,
-      description: `Withdrawal to ${describePayoutDestination(bankAccount)}`,
-      createdAt: new Date(),
-      meta: {
-        source: "withdrawal",
-        withdrawalId: withdrawal._id,
+    const debited = await Wallet.findOneAndUpdate(
+      { userId, availableBalance: { $gte: amount } },
+      {
+        $inc: { availableBalance: -amount },
+        $push: {
+          transactions: {
+            $each: [{
+              type: "debit",
+              status: "Pending",
+              amount,
+              description: `Withdrawal to ${destination}`,
+              createdAt: new Date(),
+              meta: {
+                source: "withdrawal",
+                withdrawalId,
+                bankAccountId: bankAccount._id,
+                serviceFee,
+                netAmount,
+              },
+            }],
+            // Newest first, capped at 100 — what unshift() + slice(0, 100) did,
+            // as one atomic operation so a concurrent debit cannot drop it.
+            $position: 0,
+            $slice: 100,
+          },
+        },
+      },
+      { new: true }
+    );
+
+    /* Only reachable when another request took the money between the read
+       above and this write — the exact case this rewrite exists for. */
+    if (!debited) {
+      return res.status(409).json({
+        success: false,
+        error: "insufficient_balance",
+        message: "Your balance changed while this request was being made. Please check it and try again.",
+      });
+    }
+
+    let withdrawal;
+    try {
+      withdrawal = await WalletWithdrawal.create({
+        _id: withdrawalId,
+        userId,
         bankAccountId: bankAccount._id,
+        amount,
         serviceFee,
         netAmount,
-      },
-    });
-    await wallet.save();
+        status: "Pending",
+        note: `Withdrawal to ${destination}`,
+      });
+    } catch (createErr) {
+      /* The money is already debited and there is now no request to justify it.
+         Put it back rather than leave the balance short — a failed withdrawal
+         must cost the user nothing. The transaction entry is left in place on
+         purpose: it names a withdrawal that does not exist, which is the state
+         support needs to see. */
+      await Wallet.updateOne({ userId }, { $inc: { availableBalance: amount } }).catch((rollbackErr) =>
+        console.error("withdraw/request: balance rollback failed", { userId: String(userId), amount, err: rollbackErr?.message })
+      );
+      throw createErr;
+    }
 
     return res.json({
       success: true,
       message: "withdrawal_requested",
-      availableBalance: wallet.availableBalance,
+      availableBalance: debited.availableBalance,
       withdrawal,
     });
   } catch (err) {

@@ -140,7 +140,30 @@ const PromptSchema = new mongoose.Schema(
     // listed regardless of their seller's Route verification status.
     requiresSellerVerification: { type: Boolean, default: false },
      exclusive: { type: Boolean, default: false },   // ✅ new
-     sold: { type: Boolean, default: false },  
+     sold: { type: Boolean, default: false },
+
+     /* ── Who is part-way through buying this exclusive listing ──────────────
+      *
+      * An exclusive prompt is sold once, and buying it has two steps with a
+      * payment in between: create-order, then the buyer pays on Razorpay, then
+      * verify. `sold` is only set at the end, so two buyers could both pass the
+      * check at the start and both pay — and the second one's money was taken
+      * for something they could never receive.
+      *
+      * The listing is now held for whoever reaches create-order first, and the
+      * second buyer is turned away BEFORE Razorpay opens rather than after they
+      * have paid.
+      *
+      * reservedUntil is why this is a hold and not a lock. Someone who opens
+      * checkout and closes the tab must not take the listing off sale forever,
+      * so the hold simply lapses and the next buyer takes it. Nothing sweeps
+      * these — an expired hold is indistinguishable from none, because every
+      * query that cares compares the date against now.
+      *
+      * Both fields are cleared when the sale completes. They mean nothing on a
+      * non-exclusive listing and are never set on one. */
+     reservedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+     reservedUntil: { type: Date, default: null },
      promptHash: { type: String, default: "", index: true },
      attachmentHash: { type: String, default: "", index: true },
 

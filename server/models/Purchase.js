@@ -166,4 +166,39 @@ const PurchaseSchema = new mongoose.Schema(
   }
 );
 
+/* ── One payment can buy a prompt exactly once ───────────────────────────────
+ *
+ * assertOrderUnused() in utils/paymentIntegrity.js asks "has this order been
+ * redeemed?" with a read, and a read cannot stop the request racing beside it
+ * from doing the same. Measured against a real MongoDB: the same Razorpay order
+ * verified twice, concurrently, produced TWO purchases for one payment. Only
+ * the database can settle that, so this index does.
+ *
+ * COMPOUND, and that is not a detail. A cart checkout writes one Purchase per
+ * prompt and they all carry the SAME razorpayOrderId — a unique index on the
+ * order id alone would reject every cart of more than one item. Keyed by
+ * (order, prompt) it allows exactly what a cart is and refuses exactly what the
+ * race produced: the same prompt bought twice on one payment.
+ *
+ * PARTIAL, not sparse. A free product is a Purchase row with no order id, and a
+ * sparse compound index would still index those as (null, promptId) — so the
+ * second person to claim the same free product would collide with the first.
+ * Restricting the index to rows that actually carry an order id keeps free
+ * claims out of it entirely.
+ *
+ * Building it on an existing collection FAILS if duplicates are already there,
+ * and Mongoose logs that failure rather than throwing — the app would carry on
+ * with no guard and nothing on screen to say so. Run
+ * `node scripts/check-purchase-order-index.js` first: it reports duplicates,
+ * and builds the index once there are none. */
+PurchaseSchema.index(
+  { razorpayOrderId: 1, prompt: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { razorpayOrderId: { $type: "string" } },
+    name: "uniq_order_prompt",
+  }
+);
+
+
 module.exports = mongoose.model("Purchase", PurchaseSchema);
