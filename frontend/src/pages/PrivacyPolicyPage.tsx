@@ -7,7 +7,7 @@ import Footer from "@/components/Footer";
  * routes/hire.routes.js and utils/razorpay.js, the payout account and the PAN
  * sent with it in routes/bankAccounts.js, file storage in utils/blobStorage.js and
  * utils/serviceWorkStorage.js, telemetry in utils/telemetry.js and
- * src/lib/telemetry.ts, sessions in utils/authTokens.js.
+ * src/lib/telemetry.ts.
  *
  * If a feature changes, this page has to change with it — a privacy policy that
  * describes a version of the product that no longer exists is worse than none,
@@ -48,7 +48,7 @@ const SECTIONS = [
     title: "4. Payments, earnings and bank details",
     body: [
       "All card, UPI and netbanking details are entered on Razorpay's checkout and handled by Razorpay. Tokun never receives or stores them.",
-      "For payouts, the bank account or UPI ID you add is passed to Razorpay to create a payout account. Tokun stores the resulting account references and the details needed to show you which account you are paid into.",
+      "For payouts, the bank account you add is passed to Razorpay to create a payout account. Tokun stores the resulting account references and the details needed to show you which account you are paid into.",
       "Money for Services and Projects is held by Razorpay until the work is approved or the booking is settled — Tokun does not hold your funds. Wallet balances shown in your account are a record of what is owed to you.",
       "Transaction records — what was bought or sold, when, for how much, the fees applied and the payment reference — are kept as financial records and are not deleted when an account is closed.",
     ],
@@ -78,9 +78,7 @@ const SECTIONS = [
     title: "7. Who we share data with",
     body: [
       "Razorpay — payments, held funds, payouts and refunds.",
-      "Microsoft Azure — hosting, file storage and diagnostics.",
       "MongoDB Atlas — the database.",
-      "Google — only if you choose to sign in with Google, or use a Google Meet link created through the platform.",
       "Our email provider — to deliver account and transaction email.",
       "Law enforcement or regulators, where we are legally required to.",
       "We do not sell personal information, and we do not share it for advertising.",
@@ -112,15 +110,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "11. Cookies and browser storage",
-    body: [
-      "Tokun keeps your session in your browser's local storage rather than in a cookie. Signing in stores two tokens: a short-lived one that authorises each request and expires within an hour, and a longer-lived one used to obtain the next short-lived token. Signing out removes both and revokes the long-lived one on our servers.",
-      "We also store small amounts of local data to remember your preferences and recent activity between visits.",
-      "Where cookies are used, you are asked to consent on your first visit.",
-    ],
-  },
-  {
-    title: "12. Security",
+    title: "11. Security",
     body: [
       "Traffic is encrypted in transit. Access to admin tools is separated from ordinary accounts and admin sessions are deliberately short.",
       "Private files are never served from a public address; each read is authorised first and the link issued expires.",
@@ -129,7 +119,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "13. Your rights",
+    title: "12. Your rights",
     body: [
       "You can ask for a copy of your personal data, ask us to correct it, or ask us to delete it.",
       "You can withdraw consent for identity verification and ask us to delete the documents you submitted.",
@@ -139,13 +129,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "14. Children",
-    body: [
-      "Tokun is not intended for anyone under 18. If we learn that an account belongs to a child, we close it and delete the data.",
-    ],
-  },
-  {
-    title: "15. Changes to this policy",
+    title: "13. Changes to this policy",
     body: [
       "We may update this policy as the platform changes. Material changes are notified in-app or by email, and the date at the top of this page always reflects the current version.",
     ],

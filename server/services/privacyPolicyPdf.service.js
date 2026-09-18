@@ -30,8 +30,8 @@ const SECTIONS = [
     title: "3. Payments & Wallet",
     body: [
       "All payments are processed via Razorpay. Tokun does not store your card, UPI, or bank credentials directly.",
-      "Wallet balances shown in your account represent amounts owed to you and are tracked internally; funds are only transferred to your bank account or UPI ID when you request a withdrawal.",
-      "Bank account and UPI details you add for withdrawals are shared with Razorpay to enable payouts.",
+      "Wallet balances shown in your account represent amounts owed to you and are tracked internally; funds are only transferred to your bank account when you request a withdrawal.",
+      "Bank account details you add for withdrawals are shared with Razorpay to enable payouts.",
     ],
   },
   {
