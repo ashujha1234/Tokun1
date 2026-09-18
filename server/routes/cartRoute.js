@@ -13,6 +13,7 @@ const { requireAuth, blockIfSuspended, blockOrgTeamMemberPurchase } = require(".
 const Cart=require('../models/Cart');
 const user=require('../models/User');
 const Prompt=require('../models/Prompt');
+const { EXCLUSIVE_HOLD_MINUTES, EXCLUSIVE_HOLD_MS } = require("../config/exclusiveHold");
 const  razorpay  = require("../utils/razorpay");
 const { splitPromptSale } = require("../utils/commission");
 // Same rule as POST /api/purchase/verify — one place, so the two checkouts
@@ -504,7 +505,72 @@ router.post("/checkout", requireAuth, blockIfSuspended, blockOrgTeamMemberPurcha
         }));
       }
 
-      order = await razorpay.orders.create(orderPayload);
+      /* ── HOLD EVERY ONE-TIME PRODUCT IN THE CART ────────────────────────
+       *
+       * The same hold Buy Now takes (see purchaseRoutes.js create-order), for
+       * the same reason: `sold` is not set until /verify, so without this two
+       * people could both pay for a product only one of them can own — and the
+       * cart's own loser is handled worse than Buy Now's, because /verify skips
+       * a line that has been sold in the meantime and the buyer simply does not
+       * get it.
+       *
+       * Taken for every exclusive line at once. If any one of them is already
+       * held or sold, the holds taken so far are handed straight back and the
+       * whole checkout is refused by name — a cart is bought as a unit, so
+       * letting it through minus one line would charge for something the buyer
+       * did not agree to. */
+      const exclusiveLines = purchasablePrompts.filter((p) => p.exclusive);
+      const heldIds = [];
+
+      const releaseHolds = async () => {
+        if (!heldIds.length) return;
+        await Prompt.updateMany(
+          { _id: { $in: heldIds }, reservedBy: req.user._id, sold: false },
+          { $set: { reservedBy: null, reservedUntil: null } }
+        ).catch((releaseErr) =>
+          console.error("cart checkout: could not release exclusive holds:", releaseErr?.message)
+        );
+      };
+
+      for (const p of exclusiveLines) {
+        const now = new Date();
+        const held = await Prompt.findOneAndUpdate(
+          {
+            _id: p._id,
+            exclusive: true,
+            sold: false,
+            $or: [
+              { reservedUntil: null },
+              { reservedUntil: { $lte: now } },
+              { reservedBy: req.user._id },
+            ],
+          },
+          { $set: { reservedBy: req.user._id, reservedUntil: new Date(now.getTime() + EXCLUSIVE_HOLD_MS) } },
+          { new: true }
+        );
+
+        if (!held) {
+          await releaseHolds();
+          const current = await Prompt.findById(p._id).select("sold").lean();
+          return res.status(409).json({
+            success: false,
+            error: current?.sold ? `prompt_already_sold: ${p.title}` : `prompt_reserved: ${p.title}`,
+            message: current?.sold
+              ? `"${p.title}" has just been bought by someone else. Remove it from your cart to check out.`
+              : `Someone else is checking out "${p.title}" right now. If they don't complete it, it comes back within ${EXCLUSIVE_HOLD_MINUTES} minutes.`,
+          });
+        }
+        heldIds.push(p._id);
+      }
+
+      try {
+        order = await razorpay.orders.create(orderPayload);
+      } catch (orderErr) {
+        // No checkout, so the holds protect nothing — give them back rather
+        // than make the next buyer wait them out.
+        await releaseHolds();
+        throw orderErr;
+      }
 
       // Bind each held credit to the order that now exists — /verify matches
       // on it exactly. See the note on reservedForOrderId.
@@ -677,6 +743,11 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
     // rolled-back checkout would leave ledger rows for purchases that never
     // existed). Neither is acceptable in a ledger.
     let ledgerRows = [];
+    /* Set by the loop below when a one-time product in this cart turns out to
+       have been bought by someone else. Declared out here because the catch
+       needs it to tell that abort apart from a genuine failure — the two owe
+       the buyer completely different things. */
+    let lostToAnotherBuyer = null;
     const session = await mongoose.startSession();
     try {
       await session.withTransaction(async () => {
@@ -684,6 +755,7 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
         // on a transient error, and appending twice would duplicate the invoice.
         purchases.length = 0;
         ledgerRows = [];
+        lostToAnotherBuyer = null;
 
         /* Both per-item lookups below used to run INSIDE the loop: one
            Purchase.findOne and one CommissionRebate.findOne per line, so a
@@ -907,6 +979,26 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
                 },
               });
             }
+          } else {
+            /* A one-time product that was bought by somebody else between this
+               buyer's checkout and this moment — the only way past the hold
+               taken at checkout is for that hold to have lapsed while they were
+               on Razorpay.
+               
+               This line used to be skipped in silence: the buyer paid for the
+               whole cart, this product was simply not delivered, and nothing
+               told them or us. Aborting instead, so the transaction writes
+               NOTHING and the catch below returns the entire payment.
+
+               The whole payment rather than this line's share, deliberately.
+               The cart carries a discount spread across its lines and one Route
+               transfer per seller, so a per-line refund is arithmetic that has
+               to be exactly right about money; reverse_all is exact by
+               construction. A buyer who wanted five things and can have four
+               would rather choose again than be charged for a cart they did not
+               agree to. */
+            lostToAnotherBuyer = p.title || "A one-time product";
+            throw new Error("cart_line_sold_elsewhere");
           }
         }
 
@@ -914,6 +1006,35 @@ router.post("/verify", requireAuth, blockIfSuspended, async (req, res) => {
         await Cart.deleteOne({ user: req.user._id }, { session }); // clear cart
       });
     } catch (txErr) {
+      /* Nothing was written either way — the difference is whose fault it is
+         and therefore what happens to the money. */
+      if (lostToAnotherBuyer) {
+        let refunded = null;
+        try {
+          refunded = await razorpay.payments.refund(razorpayPaymentId, {
+            notes: {
+              reason: "A one-time product in this cart was bought by someone else first",
+              userId: String(req.user._id),
+            },
+            reverse_all: 1,
+          });
+        } catch (refundErr) {
+          console.error(
+            `REFUND FAILED for lost cart race — buyer ${req.user._id} paid (payment ${razorpayPaymentId}) and has NOT been refunded:`,
+            refundErr?.message
+          );
+        }
+
+        return res.status(409).json({
+          success: false,
+          error: "prompt_already_sold",
+          message: refunded
+            ? `"${lostToAnotherBuyer}" was bought by someone else moments before your payment went through. Nothing in this cart was charged for — your payment has been refunded in full, and it usually reaches your account within 5-7 working days.`
+            : `"${lostToAnotherBuyer}" was bought by someone else moments before your payment went through. Your refund could not be sent automatically — please contact support with your payment ID and we will return it.`,
+          razorpayPaymentId,
+        });
+      }
+
       // Nothing was written — the buyer's payment stands, so this has to be
       // visible and retryable rather than reported as success.
       console.error("Cart verify transaction failed — nothing recorded:", txErr);

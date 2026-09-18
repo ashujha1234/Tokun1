@@ -89,16 +89,27 @@ const PurchaseSchema = new mongoose.Schema(
     // don't need a second query — RefundRequest stays the source of truth
     // for the reason/admin note/audit trail.
     refundStatus: {
-
-    /* When the referral job last looked at this sale.
-       The job sweeps every purchase that has outlived the refund window and
-       either qualifies a referral or pays out a rebate against it. Without a
-       marker it would do both again on the next tick, every hour, forever. */
-    referralProcessedAt: { type: Date, default: null },
       type: String,
       enum: ["NONE", "REQUESTED", "APPROVED", "REJECTED", "REFUNDED"],
       default: "NONE",
     },
+
+    /* When the referral job last looked at this sale.
+       The job sweeps every purchase that has outlived the refund window and
+       either qualifies a referral or pays out a rebate against it. Without a
+       marker it would do both again on the next tick, every hour, forever.
+
+       This spent a while declared INSIDE refundStatus above — a paste landing a
+       line too high. Mongoose read the surrounding block as a String schema
+       type with an unknown extra option and silently ignored it, so the field
+       did not exist: cron/referralSettlement.js filtered on
+       `referralProcessedAt: null`, which matches a missing field, and its $set
+       was dropped by strict mode. The marker was never written and the sweep
+       re-read the same oldest 500 purchases every hour. Referral qualification
+       is idempotent on the Referral document's own status, so nobody was paid
+       twice — but once more than 500 purchases were eligible, the ones past the
+       limit would never have been reached. */
+    referralProcessedAt: { type: Date, default: null },
     refundedAt: {
       type: Date,
       default: null,

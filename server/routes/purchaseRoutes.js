@@ -399,6 +399,7 @@ const {
   assertOrderUnused,
 } = require("../utils/paymentIntegrity");
 const { splitPromptSale } = require("../utils/commission");
+const { EXCLUSIVE_HOLD_MINUTES, EXCLUSIVE_HOLD_MS } = require("../config/exclusiveHold");
 const { promptUnavailableReason } = require("../utils/promptVisibility");
 const ledger = require("../utils/ledger");
 const { logActivity } = require("../utils/activityLogger");
@@ -440,13 +441,6 @@ const {
 // GET /api/purchase/seller-payout-status/:promptId
 // Buyer-facing check — lets the frontend disable "Buy Now" before the buyer
 // even attempts checkout, instead of failing later.
-/* How long one buyer holds an exclusive listing while they are in checkout.
-   Long enough to read a page and finish a UPI or card payment without being
-   hurried, short enough that an abandoned tab is not felt by the next buyer.
-   See the note on Prompt.reservedBy. */
-const EXCLUSIVE_HOLD_MINUTES = 15;
-const EXCLUSIVE_HOLD_MS = EXCLUSIVE_HOLD_MINUTES * 60 * 1000;
-
 router.get("/seller-payout-status/:promptId", async (req, res) => {
   try {
     const { promptId } = req.params;

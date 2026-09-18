@@ -21,6 +21,7 @@ const router = express.Router();
 const Razorpay = require("../utils/razorpay");
 const RefundRequest = require("../models/RefundRequest");
 const Purchase = require("../models/Purchase");
+const Prompt = require("../models/Prompt");
 const Wallet = require("../models/Wallet");
 const PlatformWallet = require("../models/PlatformWallet");
 const Notification = require("../models/Notification");
@@ -314,6 +315,40 @@ router.post("/:id/approve", async (req, res) => {
     purchase.refundedAt = new Date();
     purchase.razorpayRefundId = refund.id;
     await purchase.save();
+
+    /* A refunded one-time product goes BACK ON SALE.
+     *
+     * `sold` was set when this purchase completed and nothing ever cleared it,
+     * so a refund left the listing in the only state it cannot recover from:
+     * the buyer's access is revoked (purchase history filters REFUNDED), the
+     * seller's money has been clawed back, and the listing is hidden from the
+     * marketplace for good. Nobody holds the product and nobody was paid for
+     * it, and the seller has lost the one thing they were selling.
+     *
+     * Worse, leaving it that way made the listing killable: buy a rival's
+     * one-time product, ask for a refund inside the window, and their listing
+     * is off the market permanently at no cost. Putting it back closes that.
+     *
+     * It does NOT undo the buyer having read it — nothing can, and the
+     * per-buyer watermark is what covers that case instead. The hold fields go
+     * with it, so the listing is immediately buyable rather than waiting out a
+     * stale reservation.
+     *
+     * Scoped to `exclusive`: an ordinary product is sold many times and its
+     * `sold` flag means nothing. Best-effort like everything else down here —
+     * the buyer's money has already moved and a failure to relist must not be
+     * reported as a failed refund. */
+    if (purchase.prompt) {
+      await Prompt.updateOne(
+        { _id: purchase.prompt, exclusive: true },
+        { $set: { sold: false, reservedBy: null, reservedUntil: null } }
+      ).catch((relistErr) =>
+        console.error(
+          `refund ${refundRequest._id}: one-time product ${purchase.prompt} could not be put back on sale:`,
+          relistErr?.message
+        )
+      );
+    }
 
     // Ledger row for a refund WE initiated. The webhook will record the same
     // refund when Razorpay processes it, and the natural-key index makes that
