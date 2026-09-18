@@ -2077,10 +2077,10 @@ export default function SellPromptModal({
    * making a request, while the real upload only happened on submit. A seller
    * who saw that message and then pressed Cancel had uploaded nothing.
    *
-   * `codeEnabled` is a deliberate toggle rather than `category === "coding"`,
-   * which is what gated the old section: automation, data and design prompts
-   * ship code too, and a seller in one of those categories had no way to attach
-   * any. Picking Coding turns it on as a default, not as a rule. */
+   * The section itself belongs to the Coding category (see its JSX below).
+   * `codeEnabled` is the toggle INSIDE it, so a coding seller with nothing to
+   * ship can leave it off — picking Coding turns it on as a default, not as an
+   * obligation. */
   const [codeEnabled, setCodeEnabled] = useState(false);
   const [codeItems, setCodeItems] = useState<CodeItem[]>([]);
   const [codeLanguages, setCodeLanguages] = useState<CodeLanguage[]>([]);
@@ -2152,12 +2152,13 @@ export default function SellPromptModal({
     [categories]
   );
 
-  /* Coding suggests the section, it doesn't own it.
+  /* Opens the section ready to use when Coding is picked.
    *
-   * Only ever turns the toggle ON, and only while nothing has been attached —
-   * switching away from Coding used to wipe the code the seller had already
-   * added, silently, which is the wrong way round: the seller chose to attach
-   * it, and a category change is not a request to throw it away. */
+   * Only ever turns the toggle ON. It never turns it off and never clears
+   * codeItems: switching away from Coding used to wipe the code the seller had
+   * already added, silently, which is the wrong way round — the seller chose to
+   * attach it, and a category change is not a request to throw it away. The
+   * category decides what is SHOWN and SENT, not what is remembered. */
   useEffect(() => {
     if (isCodingCategory) setCodeEnabled(true);
   }, [isCodingCategory]);
@@ -2393,7 +2394,7 @@ export default function SellPromptModal({
      An empty snippet or blank link is the "Add" button's own placeholder, not a
      mistake worth refusing an upload over — the server drops these too. What is
      refused is a row filled in wrongly, which is the two checks below. */
-  const codeItemsToSend = codeEnabled
+  const codeItemsToSend = codeEnabled && isCodingCategory
     ? codeItems.filter((c) =>
         c.kind === "inline" ? c.content.trim() : c.kind === "link" ? c.url.trim() : true
       )
@@ -2835,14 +2836,26 @@ export default function SellPromptModal({
             )}
           </div>
 
-          {/* ── CODE ──────────────────────────────────────────────────────────
-              Was a single file picker behind a fake progress bar, shown only to
-              the Coding category. It is now the second half of the product:
-              pasted snippets are the primary way in (most coding prompts ship
+          {/* ── CODE — Coding category only ────────────────────────────────
+              Shown when the seller picks Coding, and not otherwise. It was
+              briefly offered on every category, on the reasoning that
+              automation, data and design prompts ship code too; asked for as a
+              Coding-only section again, so that is what it is.
+
+              Pasted snippets are the primary way in (most coding prompts ship
               one file, and the first twelve lines of the first one become the
               public teaser), files cover real projects, and a repo link is
               reference material — never the thing being sold, which is why it
-              says so on the row. */}
+              says so on the row.
+
+              Nothing here is wiped when the category changes: `codeItems`
+              survives, so a seller who picks Coding, pastes a snippet, looks at
+              another category and comes back finds their code where they left
+              it. What DOES change is that it stops being submitted — see
+              codeItemsToSend, which is gated on the same condition. Hiding a
+              field while still uploading what is in it is the one behaviour to
+              avoid here. */}
+          {isCodingCategory && (
           <div className="space-y-3">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -3040,6 +3053,7 @@ export default function SellPromptModal({
               </div>
             )}
           </div>
+          )}
 
           <div className="flex items-center justify-end gap-3 pt-2">
             {/* hover:text-white is load-bearing, not decoration.
