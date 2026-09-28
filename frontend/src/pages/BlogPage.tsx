@@ -122,7 +122,7 @@ export default function BlogPage() {
                     "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)",
                 }}
               >
-                the TOKUN promptverse
+                the TOKUN producttverse
               </span>
             </h1>
 
