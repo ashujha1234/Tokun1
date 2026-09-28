@@ -536,7 +536,7 @@ export default function AboutPage() {
 
             <p className="mt-6 text-white/75 text-base sm:text-lg leading-relaxed max-w-3xl mx-auto">
               TOKUN is built for creators, teams, and businesses that want
-              better AI outcomes. From product optimization to generation and
+              better AI outcomes. From prompt optimization to generation and
               marketplace publishing, we bring the entire product workflow into
               one focused platform.
             </p>

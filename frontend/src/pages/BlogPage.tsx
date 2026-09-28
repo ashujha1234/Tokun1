@@ -27,7 +27,7 @@ const posts = [
   {
     title: "How Token Reduction Improves Cost and Speed",
     description:
-      "See how product optimization can reduce unnecessary tokens without losing meaning or output quality.",
+      "See how prompt optimization can reduce unnecessary tokens without losing meaning or output quality.",
     category: "Optimization",
     date: "Jan 05, 2026",
     readTime: "5 min read",
