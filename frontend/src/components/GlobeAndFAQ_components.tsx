@@ -3483,7 +3483,7 @@ import * as THREE from "three";
 
 const TICKER_ITEMS = [
   "SmartGen AI",
-  "Product Optimization",
+  "Prompt Optimization",
   "Token Reduction",
   "Product Marketplace",
   "LLM Compatible",

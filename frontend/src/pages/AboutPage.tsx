@@ -449,7 +449,7 @@ const features = [
   {
     icon: Zap,
     iconSrc: "/icons/prompt-optimization.svg",
-    title: "Product Optimization",
+    title: "Prompt Optimization",
     description:
       "Reduce token usage while keeping the meaning, clarity, and output quality strong across leading LLM platforms.",
   },
