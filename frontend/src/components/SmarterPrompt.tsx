@@ -1509,7 +1509,7 @@ export default function SmarterPrompt({onPromptGenerated, onUseInOptimizer}: Sma
               <span style={{fontSize:15}}>⊞</span>
               {detection||manualDomainId
                 ? <><span>{stripEmoji(effectiveDomainLabel)}</span>{effectiveSubcatLabel&&<><span>·</span><span>{effectiveSubcatLabel}</span></>}</>
-                : <span>General · Product Engineering</span>
+                : <span>General · Prompt Engineering</span>
               }
             </div>
           </div>

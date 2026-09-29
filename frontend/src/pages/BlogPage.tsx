@@ -10,7 +10,7 @@ const featuredPost = {
   title: "How to Write Better AI Products for Consistent Results",
   description:
     "Learn the structure, clarity patterns, and optimization methods that help products perform better across LLM workflows.",
-  category: "Product Engineering",
+  category: "Prompt Engineering",
   date: "Jan 12, 2026",
   readTime: "6 min read",
 };
@@ -68,7 +68,7 @@ const posts = [
 
 const categories = [
   "All",
-  "Product Engineering",
+  "Prompt Engineering",
   "Optimization",
   "Marketplace",
   "Teams",
@@ -122,12 +122,12 @@ export default function BlogPage() {
                     "linear-gradient(90deg, #FF14EF 0%, #1A73E8 100%)",
                 }}
               >
-                the TOKUN producttverse
+                the TOKUN productverse
               </span>
             </h1>
 
             <p className="mt-6 text-white/75 text-base sm:text-lg leading-relaxed max-w-3xl mx-auto">
-              Explore product engineering tips, workflow improvements, product
+              Explore prompt engineering tips, workflow improvements, product
               ideas, and practical strategies to get better outcomes from AI
               systems.
             </p>
