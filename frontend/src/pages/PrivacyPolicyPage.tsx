@@ -7,7 +7,13 @@ import Footer from "@/components/Footer";
  * routes/hire.routes.js and utils/razorpay.js, the payout account and the PAN
  * sent with it in routes/bankAccounts.js, file storage in utils/blobStorage.js and
  * utils/serviceWorkStorage.js, telemetry in utils/telemetry.js and
- * src/lib/telemetry.ts.
+ * src/lib/telemetry.ts, the OpenAI calls in index.js, skillEngine/dynamicDomain.js,
+ * utils/promptMediaValidation.js and memory/, and the local document conversion in
+ * services/docToMarkdown.js.
+ *
+ * Google sign-in is deliberately NOT described: /api/auth/google exists, but it
+ * only connects a Calendar for Meet links (ChatPage's connectGoogle) and issues
+ * no Tokun session. Nobody signs in to Tokun with Google.
  *
  * If a feature changes, this page has to change with it — a privacy policy that
  * describes a version of the product that no longer exists is worse than none,
@@ -28,7 +34,7 @@ const SECTIONS = [
   {
     title: "2. Information you give us",
     body: [
-      "Account: your name, email address, and — if you sign in with Google — the basic profile Google returns. Tokun does not store a password for normal accounts; signing in uses a one-time code sent to your email.",
+      "Account: your name and email address. Tokun does not store a password for normal accounts; signing in uses a one-time code sent to your email.",
       "Profile: anything you choose to add — display name, professional title, About text, country, city, languages, skills, work history, education and certifications. What you put in a public profile is public.",
       "Content: products, prompts and optimisations you create, files you upload, marketplace listings, and the media attached to them.",
       "Organisations: if you belong to an org, the name of that organisation and your role in it.",
@@ -45,7 +51,18 @@ const SECTIONS = [
     ],
   },
   {
-    title: "4. Payments, earnings and bank details",
+    title: "4. AI features and how your input is processed",
+    body: [
+      "Smartgen, the Product Optimiser and the prompt tools run on OpenAI's models. To produce a result, the text you enter is sent to OpenAI's API, and where a feature works on something you attach, the image or the text taken from your document is sent with it.",
+      "This covers generating and optimising prompts, answering your follow-up questions, reading an image you attach, and checking that the media on a marketplace listing matches the product being sold with it.",
+      "After a Smartgen session, a separate model call reads that exchange and saves the durable parts of it — the project you are working on, decisions you have stated, preferences you have shown — so a later session starts with that context instead of asking you again. It is stored against your account, used only to answer you, and never shown to other users. Ask us through Support and we will delete it.",
+      "OpenAI acts as our processor for this. Under its API terms, input sent through the API is not used to train its models.",
+      "Your bank details, payout information and payment records are never sent to an AI model. Neither is the content of your messages with other users.",
+      "Documents you upload — PDF, Word, PowerPoint, spreadsheets — are converted to text on our own servers using an open-source library, Firecrawl anydoc. That conversion runs inside our own infrastructure; the file is not sent to Firecrawl or anyone else for it. The text it produces is then treated like anything else you type: it reaches OpenAI only if you use it in a feature that calls a model.",
+    ],
+  },
+  {
+    title: "5. Payments, earnings and bank details",
     body: [
       "All card, UPI and netbanking details are entered on Razorpay's checkout and handled by Razorpay. Tokun never receives or stores them.",
       "For payouts, the bank account you add is passed to Razorpay to create a payout account. Tokun stores the resulting account references and the details needed to show you which account you are paid into.",
@@ -54,7 +71,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "5. How we use your information",
+    title: "6. How we use your information",
     body: [
       "To run the platform and the features you use.",
       "To process payments, hold and release funds, pay out earnings, and handle refunds and disputes.",
@@ -64,7 +81,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "6. What other people can see",
+    title: "7. What other people can see",
     body: [
       "Public: your public profile, your listings, your ratings and reviews, and — once approved by our team — your creator intro video.",
       "The people you deal with: a buyer, seller or client you transact with sees your name, profile, the messages and files you exchange, and the details of that transaction.",
@@ -75,8 +92,9 @@ const SECTIONS = [
     ],
   },
   {
-    title: "7. Who we share data with",
+    title: "8. Who we share data with",
     body: [
+      "OpenAI — the AI features described in section 4. What is sent, and what is not, is set out there.",
       "Razorpay — payments, held funds, payouts and refunds.",
       "MongoDB Atlas — the database.",
       "Our email provider — to deliver account and transaction email.",
@@ -85,14 +103,14 @@ const SECTIONS = [
     ],
   },
   {
-    title: "8. Where your data is stored",
+    title: "9. Where your data is stored",
     body: [
       "The platform runs on Microsoft Azure and its database is hosted on MongoDB Atlas. Uploaded files are stored in Azure Blob Storage.",
       "Files that are meant to be public — listing images and previews, approved intro videos — are stored so that anyone holding the link can view them. Files that are not — signed agreements, delivered work, attachments — are stored privately and reached only through short-lived links issued after we check who is asking.",
     ],
   },
   {
-    title: "9. How long we keep it",
+    title: "10. How long we keep it",
     body: [
       "Account and profile data: while your account is open.",
       "Transaction and payout records: retained after account closure, because tax and financial law requires it.",
@@ -102,7 +120,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "10. Your content",
+    title: "11. Your content",
     body: [
       "You keep ownership of what you create and upload. Listing a product grants buyers a licence to use it as described at the time of purchase.",
       "You are responsible for having the right to upload and sell what you list.",
@@ -110,7 +128,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "11. Security",
+    title: "12. Security",
     body: [
       "Traffic is encrypted in transit. Access to admin tools is separated from ordinary accounts and admin sessions are deliberately short.",
       "Private files are never served from a public address; each read is authorised first and the link issued expires.",
@@ -119,7 +137,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "12. Your rights",
+    title: "13. Your rights",
     body: [
       "You can ask for a copy of your personal data, ask us to correct it, or ask us to delete it.",
       "You can withdraw consent for identity verification and ask us to delete the documents you submitted.",
@@ -129,7 +147,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "13. Changes to this policy",
+    title: "14. Changes to this policy",
     body: [
       "We may update this policy as the platform changes. Material changes are notified in-app or by email, and the date at the top of this page always reflects the current version.",
     ],
@@ -153,7 +171,7 @@ export default function PrivacyPolicyPage() {
           <h1 className="text-4xl sm:text-5xl font-bold leading-tight">
             Privacy Policy
           </h1>
-          <p className="mt-4 text-white/60 text-sm">Last updated: 3 September 2026</p>
+          <p className="mt-4 text-white/60 text-sm">Last updated: 2 October 2026</p>
           <p className="mt-6 text-white/75 max-w-2xl mx-auto leading-relaxed">
             What Tokun collects, why, who can see it, how long it is kept, and what
             you can ask us to do with it.
