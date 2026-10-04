@@ -1,6 +1,11 @@
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 
+/* The age rules in section 2 mirror PrivacyPolicyPage's section 3 — they are
+   one position stated in two documents, so neither may be changed alone.
+   Neither is enforced by code yet: there is no date of birth at signup, no
+   identity verification and no restricted-account state. These are the
+   obligations; the checks are still to be built. */
 const SECTIONS = [
   {
     title: "1. Acceptance of Terms",
@@ -14,7 +19,12 @@ const SECTIONS = [
     body: [
       "You must provide accurate information when creating an account and keep access to your email secure — signing in uses a one-time code sent to it, so whoever controls the inbox controls the account.",
       "You are responsible for all activity that happens under your account.",
-      "Tokun is for people aged 18 and over.",
+      "To hold an account you must be 18 or older, or otherwise legally able to enter into a contract. Every purchase, sale and booking made on Tokun is a contract, which is why this is a condition of holding an account at all.",
+      "Nobody under 13 may use Tokun, in any form.",
+      "Someone aged 13 to 17 may have their work sold through Tokun, but only on an account created, owned and managed by their parent or legal guardian. The adult is the account holder and is the party to every contract made from that account. Permission from a guardian is not enough on its own — the account must be theirs.",
+      "On an account of that kind you must also: keep the identity and tax details on file in the adult account holder's name and not the minor's; keep the minor out of the profile photo, using a logo or the adult's own photo instead; and state plainly on the public profile and on every listing that the work is done by a minor with their guardian's permission and oversight.",
+      "Where we verify identity, the document must belong to the adult account holder. A document showing the holder is under 18 leaves the account restricted until it is verified again with a parent or legal guardian's document. A document showing the holder is under 13 is refused.",
+      "Accounts that break these age rules may be restricted or closed, and any pending payout may be held until the account holder's identity is confirmed.",
     ],
   },
   {
@@ -121,7 +131,7 @@ export default function TermsPage() {
           <h1 className="text-4xl sm:text-5xl font-bold leading-tight">
             Terms &amp; Conditions
           </h1>
-          <p className="mt-4 text-white/60 text-sm">Last updated: 3 September 2026</p>
+          <p className="mt-4 text-white/60 text-sm">Last updated: 4 October 2026</p>
           <p className="mt-6 text-white/75 max-w-2xl mx-auto leading-relaxed">
             These terms govern your use of Tokun, including Smartgen, Product Optimiser,
             Productverse, Hire, and Wallet.

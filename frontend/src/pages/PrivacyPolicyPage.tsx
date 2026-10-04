@@ -15,6 +15,11 @@ import Footer from "@/components/Footer";
  * only connects a Calendar for Meet links (ChatPage's connectGoogle) and issues
  * no Tokun session. Nobody signs in to Tokun with Google.
  *
+ * Section 3 (age) is the ONE part of this page not yet backed by code. There is
+ * no date of birth at signup, no identity verification, and no restricted-account
+ * state — the rule is stated, the enforcement is still to be built. Whoever
+ * builds it should make the code match this text, not the other way round.
+ *
  * If a feature changes, this page has to change with it — a privacy policy that
  * describes a version of the product that no longer exists is worse than none,
  * because it is a statement of fact that is now untrue.
@@ -42,7 +47,18 @@ const SECTIONS = [
     ],
   },
   {
-    title: "3. Information collected automatically",
+    title: "3. Age, and accounts involving a minor",
+    body: [
+      "Tokun is for adults. To hold an account you must be 18 or older, or otherwise legally able to enter into a contract — every purchase, sale and booking made on Tokun is one.",
+      "Nobody under 13 may use Tokun, in any form, and we do not knowingly collect personal data from anyone under 13. If we find that an account belongs to someone under 13 we close it and delete what we hold, apart from anything the law requires us to keep.",
+      "Someone aged 13 to 17 may have their work sold through Tokun, but only on an account created, owned and managed by their parent or legal guardian. The adult is the account holder, is the party to every contract made from that account, and is responsible for everything done through it.",
+      "On an account of that kind: the identity and tax details on file must be the adult account holder's own and not the minor's; the profile photo must not show the minor, so use a logo or the adult's own photo instead; and the public profile and every listing must say plainly that the work is done by a minor with their guardian's permission and oversight, so that the people buying know who they are dealing with.",
+      "Where we verify identity, the document must belong to the adult account holder. A document showing the holder is under 18 leaves the account restricted until it is verified again with a parent or legal guardian's document. A document showing the holder is under 13 is refused.",
+      "If you are a parent or legal guardian and you believe your child holds an account, or has given us personal data, write to us through the Support page and we will remove it.",
+    ],
+  },
+  {
+    title: "4. Information collected automatically",
     body: [
       "Usage: token consumption per feature, which features you use, and your activity history within your account.",
       "Diagnostics: we use Microsoft Azure Application Insights on both the website and the server to record errors and performance. This includes the pages you visit, the requests your browser makes, the browser and device you use, and an approximate location derived from your IP address. When something fails, an error identifier is shown to you and recorded with the technical detail, so that a report can be matched to what actually went wrong.",
@@ -51,7 +67,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "4. AI features and how your input is processed",
+    title: "5. AI features and how your input is processed",
     body: [
       "Smartgen, the Product Optimiser and the prompt tools run on OpenAI's models. To produce a result, the text you enter is sent to OpenAI's API, and where a feature works on something you attach, the image or the text taken from your document is sent with it.",
       "This covers generating and optimising prompts, answering your follow-up questions, reading an image you attach, and checking that the media on a marketplace listing matches the product being sold with it.",
@@ -62,7 +78,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "5. Payments, earnings and bank details",
+    title: "6. Payments, earnings and bank details",
     body: [
       "All card, UPI and netbanking details are entered on Razorpay's checkout and handled by Razorpay. Tokun never receives or stores them.",
       "For payouts, the bank account you add is passed to Razorpay to create a payout account. Tokun stores the resulting account references and the details needed to show you which account you are paid into.",
@@ -71,7 +87,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "6. How we use your information",
+    title: "7. How we use your information",
     body: [
       "To run the platform and the features you use.",
       "To process payments, hold and release funds, pay out earnings, and handle refunds and disputes.",
@@ -81,7 +97,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "7. What other people can see",
+    title: "8. What other people can see",
     body: [
       "Public: your public profile, your listings, your ratings and reviews, and — once approved by our team — your creator intro video.",
       "The people you deal with: a buyer, seller or client you transact with sees your name, profile, the messages and files you exchange, and the details of that transaction.",
@@ -92,7 +108,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "8. Who we share data with",
+    title: "9. Who we share data with",
     body: [
       "OpenAI — the AI features described in section 4. What is sent, and what is not, is set out there.",
       "Razorpay — payments, held funds, payouts and refunds.",
@@ -103,14 +119,14 @@ const SECTIONS = [
     ],
   },
   {
-    title: "9. Where your data is stored",
+    title: "10. Where your data is stored",
     body: [
       "The platform runs on Microsoft Azure and its database is hosted on MongoDB Atlas. Uploaded files are stored in Azure Blob Storage.",
       "Files that are meant to be public — listing images and previews, approved intro videos — are stored so that anyone holding the link can view them. Files that are not — signed agreements, delivered work, attachments — are stored privately and reached only through short-lived links issued after we check who is asking.",
     ],
   },
   {
-    title: "10. How long we keep it",
+    title: "11. How long we keep it",
     body: [
       "Account and profile data: while your account is open.",
       "Transaction and payout records: retained after account closure, because tax and financial law requires it.",
@@ -120,7 +136,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "11. Your content",
+    title: "12. Your content",
     body: [
       "You keep ownership of what you create and upload. Listing a product grants buyers a licence to use it as described at the time of purchase.",
       "You are responsible for having the right to upload and sell what you list.",
@@ -128,7 +144,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "12. Security",
+    title: "13. Security",
     body: [
       "Traffic is encrypted in transit. Access to admin tools is separated from ordinary accounts and admin sessions are deliberately short.",
       "Private files are never served from a public address; each read is authorised first and the link issued expires.",
@@ -137,7 +153,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "13. Your rights",
+    title: "14. Your rights",
     body: [
       "You can ask for a copy of your personal data, ask us to correct it, or ask us to delete it.",
       "You can withdraw consent for identity verification and ask us to delete the documents you submitted.",
@@ -147,7 +163,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: "14. Changes to this policy",
+    title: "15. Changes to this policy",
     body: [
       "We may update this policy as the platform changes. Material changes are notified in-app or by email, and the date at the top of this page always reflects the current version.",
     ],
@@ -171,7 +187,7 @@ export default function PrivacyPolicyPage() {
           <h1 className="text-4xl sm:text-5xl font-bold leading-tight">
             Privacy Policy
           </h1>
-          <p className="mt-4 text-white/60 text-sm">Last updated: 2 October 2026</p>
+          <p className="mt-4 text-white/60 text-sm">Last updated: 4 October 2026</p>
           <p className="mt-6 text-white/75 max-w-2xl mx-auto leading-relaxed">
             What Tokun collects, why, who can see it, how long it is kept, and what
             you can ask us to do with it.

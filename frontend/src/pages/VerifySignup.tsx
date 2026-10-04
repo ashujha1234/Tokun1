@@ -760,10 +760,10 @@ return (
   <div className="min-h-screen w-full bg-black text-white flex font-inter">
     {/* Desktop left image */}
     <aside className="hidden lg:block basis-[60%] relative" aria-hidden>
-      <img loading="lazy" decoding="async"
+      <img loading="lazy" decoding="async" draggable={false}
         src="/icons/signup.jpg"
         alt=""
-        className="absolute inset-0 w-full h-full object-cover"
+        className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
       />
     </aside>
 
@@ -812,7 +812,7 @@ return (
           animation: "spin-img 8s linear infinite",
         }}
       >
-        <img loading="lazy" decoding="async"
+        <img loading="lazy" decoding="async" draggable={false}
           src="/icons/signup.jpg"
           alt="Tokun AI"
           className="w-full h-full object-cover pointer-events-none select-none"

@@ -479,6 +479,7 @@ import ModalComponent from "@/components/ModalComponent";
 import { ShoppingCart, Clock, Info, Lock } from "lucide-react";
 import PurchaseConfirmModal from "@/components/PurchaseConfirmModal";
 import { releaseCheckoutHold } from "@/lib/referral";
+import { currentAsNext } from "@/lib/nextPath";
 import { ensureRazorpayOrToast } from "@/lib/razorpayCheckout";
 import { useCart } from "@/contexts/CartContext";
 import SellPromptModal from "@/components/SellPromptModal";
@@ -4256,6 +4257,15 @@ const savePromptToCollections = async ({
 
           <LibSellHireSection
             onSell={() => {
+              /* Signed out, this was a dead button. setSellerFormOpen(true) did
+                 flip the state, but SellerLinkedAccountForm is rendered behind
+                 `token &&` at the bottom of this file, so nothing opened and
+                 nothing said why. Send them to sign in and bring them straight
+                 back here — same ?next= carrier RequireAuth uses. */
+              if (!token) {
+                navigate(`/login?next=${encodeURIComponent(currentAsNext(location))}`);
+                return;
+              }
               // Team members sell through their org, so the payout onboarding
               // form is never the right next step for them.
               if (teamMember) {
