@@ -27,6 +27,7 @@
 
 
 import { Suspense, lazy, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 import {
   AnimatePresence,
   motion,
@@ -66,6 +67,8 @@ import {
   Twitter,
   User as UserIcon,
   Users,
+  Volume2,
+  VolumeX,
   Wallet,
   Zap,
 } from 'lucide-react'
@@ -1702,29 +1705,78 @@ function WhatWeOffer() {
    LaptopDemo
    ============================================================ */
 
-/* The mock UI's tab strip. "Product Library" was the fourth one and is gone —
-   the library is a signed-in tool and is already hidden from the app nav and the
-   footer, so advertising it here sent people to something they can't see.
-
-   ACTIVE_TAB is named rather than compared inline because the tab that was
-   removed was ALSO the highlighted one: dropping it from this array left the
-   strip with nothing active at all, and the next person to edit the list would
-   have hit the same thing. */
-const TABS = ['Smartgen', 'Prompt Optimiser', 'Productverse']
-const ACTIVE_TAB = 'Productverse'
-
-const SAVED_ITEMS = [
-  { title: 'SEO Blog Writer', tag: 'Marketing', tokens: '-42%' },
-  { title: 'React Component Gen', tag: 'Coding', tokens: '-38%' },
-  { title: 'Product Launch Email', tag: 'Marketing', tokens: '-51%' },
-]
-
+/* The product demo.
+ *
+ * ── Loading ────────────────────────────────────────────────────
+ *
+ * The source recording is 37 MB of 1080p60; what ships is a 720p30 re-encode at
+ * 6.5 MB (public/icons/tokun-product.mp4). This is one section of a long landing
+ * page, so none of that may be on the critical path.
+ *
+ * `preload` is not what holds it back — browsers treat it as a hint and several
+ * fetch the opening bytes regardless. The guarantee is structural: until the
+ * section has been near the viewport once, there is no <video> element at all,
+ * so there is nothing to fetch. `armed` latches that moment and never unsets,
+ * because tearing the element down on scroll-away would re-download the file
+ * every time someone scrolled back.
+ *
+ * ── Playback ───────────────────────────────────────────────────
+ *
+ * It starts on its own as soon as the section is reached, and loops. That costs
+ * one thing that is not negotiable: autoplay only works MUTED. Every browser
+ * blocks sound without a user gesture, and a <video> that calls play() with
+ * audio simply has the promise rejected — the result is not "plays quietly",
+ * it is "does not play". Hence the unmute button: the click is the gesture.
+ *
+ * It also pauses when scrolled away or when the tab is hidden. A looping video
+ * decoding behind a backgrounded tab is pure battery cost on a laptop.
+ *
+ * Reduced motion is honoured by not autoplaying at all — a video that starts
+ * moving by itself is the exact thing that setting asks us not to do. Those
+ * viewers get the poster and the play button, and nothing downloads until they
+ * press it.
+ *
+ * A WebM/VP9 source was encoded and deliberately dropped. On this content —
+ * screen capture, large flat areas — VP9 landed at 8.5 MB against H.264's
+ * 6.5 MB. A second format that is bigger AND less compatible buys nothing.
+ */
 function LaptopDemo() {
+  const stageRef = useRef(null)
+  /* 200px of margin so the fetch starts just before the section is reached and
+     the first frame is ready when it is, rather than a beat after. */
+  const inView = useIsInViewport(stageRef, { rootMargin: '200px' })
+  const pageVisible = usePageVisible()
+  const reduceMotion = usePrefersReducedMotion()
+
+  const videoRef = useRef(null)
+  const [armed, setArmed] = useState(false)
+  const [muted, setMuted] = useState(true)
+
+  /* One-way latch — see the loading note above. */
+  useEffect(() => {
+    if (inView && !reduceMotion) setArmed(true)
+  }, [inView, reduceMotion])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || reduceMotion) return
+
+    if (inView && pageVisible) {
+      /* play() rejects on its own for reasons outside our control — a browser
+         policy, a tab restored mid-scroll. Swallowed because there is nothing
+         useful to do about it and an unhandled rejection in the console is
+         worse than a video that did not start. */
+      video.play().catch(() => {})
+    } else {
+      video.pause()
+    }
+  }, [inView, pageVisible, reduceMotion, armed])
+
   return (
     <div className="laptop-demo">
       <div className="laptop-demo__ambient" aria-hidden="true" />
 
-      <div className="laptop-demo__stage">
+      <div className="laptop-demo__stage" ref={stageRef}>
         <div className="laptop-demo__frame">
           <div className="laptop-demo__chrome">
             <div className="laptop-demo__dots" aria-hidden="true">
@@ -1740,52 +1792,58 @@ function LaptopDemo() {
           </div>
 
           <div className="laptop-demo__viewport">
-            <div className="laptop-ui">
-              <header className="laptop-ui__nav">
-                <div className="laptop-ui__brand">
-                  <span className="laptop-ui__brand-dot" />
-                  TOKUN.WORLD
-                </div>
-                <div className="laptop-ui__actions">
-                  <button type="button" className="laptop-ui__btn laptop-ui__btn--ghost">
-                    + Post a prompt
-                  </button>
-                  <button type="button" className="laptop-ui__btn laptop-ui__btn--pro">
-                    Get Pro
-                  </button>
-                  <span className="laptop-ui__user">Hello, Ashutosh</span>
-                </div>
-              </header>
-
-              <h3 className="laptop-ui__title">Saved Items</h3>
-
-              <div className="laptop-ui__tabs">
-                {TABS.map((tab) => (
-                  <span
-                    key={tab}
-                    className={`laptop-ui__tab${tab === ACTIVE_TAB ? ' laptop-ui__tab--active' : ''}`}
+            {armed ? (
+              <>
+                <video
+                  ref={videoRef}
+                  className="laptop-demo__media"
+                  src="/icons/tokun-product.mp4"
+                  poster="/icons/tokun-product-poster.webp"
+                  autoPlay
+                  muted={muted}
+                  loop
+                  playsInline
+                  preload="metadata"
+                  /* Decorative: the "Product Demo" heading above already says
+                     what this is, so it stays out of the accessibility tree. */
+                  aria-hidden
+                />
+                <button
+                  type="button"
+                  className="laptop-demo__sound"
+                  aria-label={muted ? 'Unmute product demo' : 'Mute product demo'}
+                  onClick={() => setMuted((m) => !m)}
+                >
+                  {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                </button>
+              </>
+            ) : (
+              <>
+                <img
+                  className="laptop-demo__media"
+                  src="/icons/tokun-product-poster.webp"
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  draggable={false}
+                />
+                {/* Only reachable with reduced motion on, where nothing starts
+                    by itself. Everyone else passes straight to the video. */}
+                {reduceMotion && (
+                  <button
+                    type="button"
+                    className="laptop-demo__play laptop-demo__play--idle"
+                    aria-label="Play product demo"
+                    onClick={() => {
+                      setMuted(false)
+                      setArmed(true)
+                    }}
                   >
-                    {tab}
-                  </span>
-                ))}
-              </div>
-
-              <div className="laptop-ui__list">
-                {SAVED_ITEMS.map((item) => (
-                  <div key={item.title} className="laptop-ui__row">
-                    <div>
-                      <p className="laptop-ui__row-title">{item.title}</p>
-                      <span className="laptop-ui__row-tag">{item.tag}</span>
-                    </div>
-                    <span className="laptop-ui__row-stat">{item.tokens}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <button type="button" className="laptop-demo__play" aria-label="Play product demo">
-              <Play size={22} fill="currentColor" strokeWidth={0} />
-            </button>
+                    <Play size={22} fill="currentColor" strokeWidth={0} />
+                  </button>
+                )}
+              </>
+            )}
           </div>
         </div>
 

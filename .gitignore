@@ -90,3 +90,16 @@ desktop.ini
 
 # TypeScript incremental build state — written by `tsc --build`, never source.
 *.tsbuildinfo
+
+# ── Master video recordings ──────────────────────────────────────────────────
+# The high-bitrate originals the shipped clips are encoded FROM. They are source
+# material, not assets: nothing in the app references them, and at tens of MB
+# each they do not belong in the history.
+#
+# Note this ignores them from git only. Anything sitting under frontend/public
+# is still copied into frontend/dist verbatim by the build, so a master left
+# there is shipped to users even though no page links it. Keep masters outside
+# public/ — these rules are the safety net, not the plan.
+frontend/public/**/*-1080p60.mp4
+frontend/public/**/*-master.mp4
+frontend/public/**/*-source.mp4

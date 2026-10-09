@@ -2593,6 +2593,22 @@ body.is-loading { overflow: hidden; }
   z-index: 2;
 }
 
+/* The poster image and the <video> that replaces it are swapped in and out of
+   the same slot, so they are sized by one rule rather than two that can drift.
+
+   The aspect-ratio is what gives .laptop-demo__viewport its height. The mock UI
+   that used to sit here supplied that through its own min-height; with the mock
+   gone there is nothing else to hold the laptop screen open, and without this
+   the frame collapses to the browser chrome strip before the poster loads. */
+.laptop-demo__media {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: #08060f;
+  border-radius: 0 0 19px 19px;
+}
+
 .laptop-demo__play {
   position: absolute;
   inset: 0;
@@ -2623,6 +2639,46 @@ body.is-loading { overflow: hidden; }
 .laptop-demo__frame:hover .laptop-demo__play,
 .laptop-demo__play:focus-visible { opacity: 1; }
 
+/* Always visible while the poster is showing. The hover-only rule above was
+   written for a decorative button over a mock screen; this one is the only way
+   to start the video, and a control that appears on hover cannot be found on a
+   touch screen at all. */
+.laptop-demo__play--idle { opacity: 1; background: rgba(6, 4, 15, 0.25); }
+
+/* Unmute toggle. Sits in the corner rather than over the middle because the
+   video is playing underneath it the whole time — this is a control on a
+   running demo, not a cover over a stopped one.
+
+   z-index 5 puts it above .laptop-demo__viewport::after, the glass sheen,
+   which is inert itself (pointer-events: none) but would otherwise sit over
+   the button and wash it out. */
+.laptop-demo__sound {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(6, 4, 15, 0.55);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+}
+
+.laptop-demo__sound:hover,
+.laptop-demo__sound:focus-visible {
+  color: #fff;
+  background: rgba(6, 4, 15, 0.78);
+  border-color: rgba(168, 85, 247, 0.55);
+}
+
 .laptop-demo__play:hover { background: rgba(6, 4, 15, 0.45); }
 
 .laptop-demo__reflection {
@@ -2647,151 +2703,11 @@ body.is-loading { overflow: hidden; }
   filter: blur(8px);
 }
 
-.laptop-ui {
-  min-height: 380px;
-  padding: 20px 24px 28px;
-  background: linear-gradient(180deg, #0c0a14 0%, #08060f 100%);
-  text-align: left;
-}
-
-.laptop-ui__nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 28px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.laptop-ui__brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-family: var(--font-display);
-  font-size: 14px;
-  font-weight: 700;
-  color: #fff;
-  letter-spacing: -0.02em;
-}
-
-.laptop-ui__brand-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #ec4899, #a855f7, #38bdf8);
-  box-shadow: 0 0 8px rgba(168, 85, 247, 0.5);
-}
-
-.laptop-ui__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-
-.laptop-ui__btn {
-  border: none;
-  cursor: default;
-  font-family: var(--font-body);
-  font-size: 11px;
-  font-weight: 600;
-  padding: 6px 12px;
-  border-radius: 100px;
-  white-space: nowrap;
-}
-
-.laptop-ui__btn--ghost {
-  color: rgba(255, 255, 255, 0.7);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.laptop-ui__btn--pro { color: #fff; background: linear-gradient(135deg, #ec4899, #a855f7); }
-
-.laptop-ui__user {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.45);
-  padding: 6px 10px;
-  border-radius: 100px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.laptop-ui__title {
-  margin: 0 0 20px;
-  text-align: center;
-  font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 700;
-  color: #fff;
-  letter-spacing: -0.02em;
-}
-
-.laptop-ui__tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: center;
-  margin-bottom: 24px;
-}
-
-.laptop-ui__tab {
-  font-size: 11px;
-  font-weight: 500;
-  padding: 7px 14px;
-  border-radius: 100px;
-  color: rgba(255, 255, 255, 0.45);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.laptop-ui__tab--active {
-  color: #fff;
-  background: linear-gradient(135deg, rgba(236, 72, 153, 0.35), rgba(168, 85, 247, 0.35));
-  border-color: rgba(168, 85, 247, 0.45);
-  box-shadow: 0 0 20px rgba(168, 85, 247, 0.2);
-}
-
-.laptop-ui__list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-width: 520px;
-  margin: 0 auto;
-}
-
-.laptop-ui__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.laptop-ui__row-title { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: #fff; }
-
-.laptop-ui__row-tag {
-  font-size: 10px;
-  color: var(--tokun-blue);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.laptop-ui__row-stat {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  color: #4ade80;
-}
-
 @media (max-width: 640px) {
   .laptop-demo__frame { transform: rotateX(4deg); }
   .laptop-demo__stage:hover .laptop-demo__frame { transform: rotateX(2deg) translateY(-2px); }
   .laptop-demo__chrome { grid-template-columns: 56px 1fr; padding: 10px 12px; }
   .laptop-demo__chrome-spacer { display: none; }
-  .laptop-ui { min-height: 340px; padding: 16px 14px 20px; }
-  .laptop-ui__nav { flex-direction: column; align-items: flex-start; }
-  .laptop-ui__title { font-size: 18px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
